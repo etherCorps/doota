@@ -1,0 +1,6 @@
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - sharp
+  - '@tailwindcss/oxide'
+  - '@better-auth/root'
