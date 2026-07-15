@@ -57,12 +57,16 @@ user makes the create-admin bootstrap guard (`userCount > 0`) refuse to run, and
 stale rows pollute later tests.
 
 Scope deletes to your known test emails (safer than truncating). Deleting from
-`user` cascades to `session`/`account`/`two_factor`/`passkey`; `verification`
-and `rate_limit` have no FK and are cleared separately:
+`user` cascades to `session`/`account`/`two_factor`/`passkey`/`member`;
+`organization` is **not** cascaded (the owner is just a member row), and
+`verification` / `rate_limit` have no FK — clear those separately. A leftover
+test org also keeps its domain "served", which will reject reused recovery
+addresses in later tests.
 
 ```bash
 pnpm wrangler d1 execute doota --local --command "
   DELETE FROM user WHERE email LIKE '%@your-test-domain';
+  DELETE FROM organization WHERE domain = 'your-test-domain';
   DELETE FROM verification;
   DELETE FROM rate_limit;"
 ```

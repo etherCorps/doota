@@ -14,9 +14,19 @@
    Auth changes must never touch or re-derive an encryption key.
 4. **Generic, rate-limited responses** on forgot-password and recovery lookups.
    Never reveal whether an account or recovery address exists.
-5. **Never send login codes or reset links to an `@MAIL_DOMAIN` address.**
-   Enforced by `isDootaAddress()` at every write and send point.
+5. **Never send login codes or reset links to a served-domain address.**
+   Enforced by `isServedDomain()` (system `MAIL_DOMAIN` + every org domain) at
+   every write and send point.
 6. **No TOTP step after a passkey login.**
+7. **The in-app password change requires code *and* current password.** The
+   authenticated dialog (`reset-password.remote.ts`) proves both a mailed code
+   and the current password via `changePassword` before the change lands —
+   neither alone is enough.
+8. **Provisioned accounts get a temp password + `mustChangePassword`.** The
+   onboarding gate forces the reset before the account can do anything, so the
+   emailed temp value never survives onboarding. (`ponytail:` note in
+   `provisionUser` — swap for a set-password magic link if plaintext-in-mail is
+   ever unacceptable.)
 
 ## Hardening applied
 
@@ -64,9 +74,19 @@ These were found in an audit of the flows and fixed.
 
 ## Scope gaps (per the spec's Definition of Done — not yet built)
 
-- **Admin-create-member** flow (only first-user bootstrap exists).
 - **Admin-initiated reset** for a member with no working recovery path.
-- **`can()` wired into every auth-gated route** — the helper exists but nothing
-  calls it yet.
-- **Require a verified recovery email before an admin/superadmin is "fully
-  active"** — the hook enforces TOTP/passkey but not recovery-email verification.
+- **`can()` wired into every auth-gated route** — it now gates provisioning
+  (`provisionUser`, `pauseUser`, `removeUser`); other routes still use
+  role/redirect guards.
+
+### Now built (previously gaps)
+
+- **Admin-create-member/admin** — org-centric provisioning + invite mail
+  (`server/provisioning.ts`, `manage-users.remote.ts`,
+  `/admin/organizations/[orgId]`).
+- **Verified recovery / primary email required to be "fully active"** — enforced
+  by the onboarding gate (`hooks.server.ts` + `server/onboarding.ts`), which also
+  requires 2FA/passkey for elevated roles and a password change for provisioned
+  accounts before any route is reachable.
+- **Self-service authenticated password change** — the code + current-password
+  dialog (`reset-password.remote.ts`, `server/password-reset.ts`).

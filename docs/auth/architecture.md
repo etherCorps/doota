@@ -4,15 +4,43 @@
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `recoveryEmail` | `string \| null` | External address. Rejected at write time if it is on the Doota mail domain. |
+| `recoveryEmail` | `string \| null` | External address. Rejected at write time if it is on any served domain. |
 | `recoveryEmailVerified` | `boolean` (default `false`) | `input: false` — cannot be set by a client, only by the verify flow. |
 | `recoveryEmailVerifiedAt` | `number \| null` | `input: false`. |
+| `mustChangePassword` | `boolean` (default `false`) | `input: false`. Set when an admin provisions the account with a temp password; forces the set-password onboarding step. Cleared on change. |
+| `onboardedAt` | `number \| null` | `input: false`. Stamped once every onboarding step is done; used as the request-hook fast path. |
 | `role` | `string` | From the `admin` plugin: `member` \| `admin` \| `superadmin`. |
 
-Recovery-email verification **reuses the existing `verification` table** with a
-namespaced identifier `recovery-email:<token>` — no new table. Setting or
-changing `recoveryEmail` flips `recoveryEmailVerified` back to `false` (enforced
-in the `databaseHooks.user.update.before` hook) and sends a fresh confirm link.
+Recovery-email verification and the login-time password-reset code both **reuse
+the existing `verification` table** with namespaced identifiers
+(`recovery-email:<token>`, `pwreset:<id>`, `pwreset-throttle:<id>`) — no new
+table. Setting or changing `recoveryEmail` flips `recoveryEmailVerified` back to
+`false` (enforced in `databaseHooks.user.update.before`) and sends a fresh
+confirm link.
+
+## Organizations (org == domain)
+
+The `organization` plugin models **one organization per mail domain**
+(`organization.domain`, unique). Membership lives in the `member` table
+(`organizationId`, `userId`, org role `owner` \| `admin` \| `member`).
+
+- Only a `superadmin` may create orgs (`allowUserToCreateOrganization`); they
+  become the org **owner** (`creatorRole: "owner"`).
+- `server/org-domains.ts` is the single source of truth for "which domains does
+  this deployment serve", a module-scoped cache (30 s TTL + explicit invalidate
+  on org create/update/delete). `isServedDomain()` / `orgForDomain()` drive
+  login-domain validation, recovery-address rejection, and (future) inbound
+  routing.
+- Org additional fields `dkimStatus` / `sendingStatus` exist on the table but are
+  currently managed from the Cloudflare dashboard, not surfaced in the UI.
+
+## Onboarding state (`server/onboarding.ts`)
+
+`getOnboardingStatus(db, user)` is the single derivation of remaining steps,
+consumed by both the request hook (the gate) and the `/onboarding` load (client
+checklist via `locals.onboarding`). `markOnboarded` stamps `onboardedAt`;
+`onboardingHome(role)` sends `superadmin` → `/admin`, everyone else → `/app`.
+See [flows.md](flows.md#onboarding-gate-hooksserverts--onboardingts).
 
 ## Roles
 
@@ -32,21 +60,26 @@ should route through it so there is one place to audit and log.
 
 ```
 can(user, action, target):
-  1. superadmin AND action !== 'send'        → allow
-  2. action === 'send' AND owns/granted       → allow
-  3. (team-admin over owner's team)            → TODO, marked ponytail:
+  1. action === 'send' AND owns/granted        → allow   (send is a mailbox
+                                                           capability, not a role)
+  2. superadmin (any read/manage)              → allow
+  3. org-admin over target's organizationId    → allow   (actor.orgAdminOf)
   4. owner of the target                       → allow
   else                                         → deny
 ```
 
-Teams are not built yet; the team-scoped branch is a marked stub. `can()` is
-currently defined but **not yet wired into routes** — that wiring is outstanding
-work (see the scope gaps in [security-decisions.md](security-decisions.md)).
+`can()` is a **pure decision function** — the caller resolves the facts
+(`actorOrgAdminOf(db, userId)` for the actor's owner/admin org memberships, the
+target's org) and passes them in, keeping this the one auditable place with no
+hidden I/O. It is wired into the provisioning path (`provisionUser`,
+`pauseUser`, `removeUser` in `manage-users.remote.ts`); other auth-gated routes
+still rely on role/redirect guards.
 
 ## Plugins (`auth.ts`)
 
-`admin` (roles) · `lastLoginMethod` · `twoFactor` (TOTP + backup codes) ·
-`passkey` (WebAuthn) · `sveltekitCookies` (**must be last**). The original
+`admin` (roles) · `organization` (org == domain) · `multiSession` (switching
+accounts across domains) · `lastLoginMethod` · `twoFactor` (TOTP + backup codes)
+· `passkey` (WebAuthn) · `sveltekitCookies` (**must be last**). The original
 `magicLink` plugin was removed — an emailed login code to the Doota address is
 the exact circular problem this design forbids.
 
@@ -63,4 +96,4 @@ sharp edge — see item 6 in [security-decisions.md](security-decisions.md).
 |-----|--------|---------|
 | `BETTER_AUTH_SECRET` | no | Session/token signing. |
 | `ORIGIN` | yes | Base URL. **Must match the dev server's port** or `/api/auth/*` 404s (Better Auth's `svelteKitHandler` gates on request origin). |
-| `MAIL_DOMAIN` | yes | The Doota mail domain; drives `isDootaAddress()`. |
+| `MAIL_DOMAIN` | yes | The system no-reply domain; part of `isServedDomain()` alongside registered org domains. |
