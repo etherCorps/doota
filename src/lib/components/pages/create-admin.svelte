@@ -4,7 +4,7 @@
 	import User from '@lucide/svelte/icons/user';
 	import { Button } from '$lib/components/ui/button';
 	import { DecorIcon } from '$lib/components/ui/decor-icon';
-	import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupButton } from '$lib/components/ui/input-group';
+	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
 	import { cn } from '$lib/utils/ui.js';
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { createAdminRemoteFunction } from '$lib/rpc/create-admin.remote.js';
@@ -14,8 +14,6 @@
 	import { sineInOut } from 'svelte/easing';
 	import { toast } from 'svelte-sonner';
 	import { registerSchema } from '$lib/shared/model/auth.zod.schema';
-    import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-    import { InfoIcon } from '@lucide/svelte';
 
 	type AuthTwoProps = HTMLAttributes<HTMLDivElement> & {
 		class?: string;
@@ -31,16 +29,16 @@
 	let { result } = $derived(createAdminRemoteFunction);
 
 	async function enhancedFormLogin({
-		form,
-		data,
+		element,
 		submit
 	}: Parameters<Parameters<typeof createAdminRemoteFunction.enhance>[0]>[0]) {
 		formState.isLoading = true;
 		try {
 			await submit();
+			console.log('Form submitted, result:', result);
 			switch (result?.success) {
 				case true:
-					form.reset();
+					element.reset();
 					toast.success(result?.message as string);
 					break;
 				case false:
@@ -82,7 +80,7 @@
 		<div class="w-full max-w-sm animate-in space-y-8">
 			<div class="flex flex-col space-y-1">
 				<h1 class="text-2xl font-bold tracking-wide">Doota</h1>
-				<p class="text-base text-muted-foreground">Create an admin account for the app.</p>
+				<p class="text-base text-muted-foreground">Create the super-admin account for this deployment.</p>
 			</div>
 
 			<div class="space-y-4">
@@ -117,69 +115,8 @@
 								<InputGroupAddon align="inline-start">
 									<AtSignIcon />
 								</InputGroupAddon>
-								<InputGroupAddon align="inline-end">
-								    <Tooltip.Provider>
-                                        <Tooltip.Root>
-                                            <Tooltip.Trigger>
-                                            {#snippet child({ props })}
-                                                <InputGroupButton
-                                                {...props}
-                                                variant="ghost"
-                                                aria-label="Info"
-                                                size="icon-xs"
-                                                >
-                                                <InfoIcon />
-                                                </InputGroupButton>
-                                            {/snippet}
-                                            </Tooltip.Trigger>
-                                            <Tooltip.Content>
-                                            <p>name@yourdomain.tld</p>
-                                            </Tooltip.Content>
-                                        </Tooltip.Root>
-									</Tooltip.Provider>
-                                </InputGroupAddon>
 						    </InputGroup>
-							<Field.Description>Email shoudl end with your domain.</Field.Description>
-							{#if fields.email.issues()?.length}
-								{#each fields.email.issues() as error (error)}
-									<Field.Error>{error.message}</Field.Error>
-								{/each}
-							{/if}
-						</Field.Field>
-						<Field.Field>
-							<Field.Label>Email</Field.Label>
-							<InputGroup>
-								<InputGroupInput
-									placeholder="hello@email.com"
-									{...fields.email.as('email')}
-									type="email"
-								/>
-								<InputGroupAddon align="inline-start">
-									<AtSignIcon />
-								</InputGroupAddon>
-								<InputGroupAddon align="inline-end">
-								    <Tooltip.Provider>
-                                        <Tooltip.Root>
-                                            <Tooltip.Trigger>
-                                            {#snippet child({ props })}
-                                                <InputGroupButton
-                                                {...props}
-                                                variant="ghost"
-                                                aria-label="Info"
-                                                size="icon-xs"
-                                                >
-                                                <InfoIcon />
-                                                </InputGroupButton>
-                                            {/snippet}
-                                            </Tooltip.Trigger>
-                                            <Tooltip.Content>
-                                            <p>youremail@gmail.com</p>
-                                            </Tooltip.Content>
-                                        </Tooltip.Root>
-									</Tooltip.Provider>
-                                </InputGroupAddon>
-						    </InputGroup>
-							<Field.Description>This email will be used to recover the account.</Field.Description>
+							<Field.Description>Your external email — used to log in and to recover this account. It must not be on a domain this server hosts.</Field.Description>
 							{#if fields.email.issues()?.length}
 								{#each fields.email.issues() as error (error)}
 									<Field.Error>{error.message}</Field.Error>

@@ -12,6 +12,11 @@ export const variables = defineEnvVars({
     required: true,
     type: 'string'
   },
+  MAIL_DOMAIN: {
+    public: true,
+    required: true,
+    type: 'string'
+  },
 	ORIGIN: {
     public: true,
     required: true,

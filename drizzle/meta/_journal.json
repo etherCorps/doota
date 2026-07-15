@@ -8,6 +8,27 @@
       "when": 1783919317335,
       "tag": "0000_oval_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783996335808,
+      "tag": "0001_aromatic_moonstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784052193152,
+      "tag": "0002_steady_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784096426932,
+      "tag": "0003_condemned_thunderbolt",
+      "breakpoints": true
     }
   ]
 }

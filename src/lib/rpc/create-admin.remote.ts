@@ -3,91 +3,90 @@ import { getDiceBearURL } from '$lib/utils/dice-bear.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
 import { registerSchema } from '$lib/shared/model/auth.zod.schema.js';
 import { createAuth } from '$lib/server/auth.js';
+import { isServedDomain } from '$lib/server/org-domains.js';
 import { getDb } from '$lib/server/db';
 import { user } from '$lib/server/db/schema.js';
 import { APIError } from 'better-auth/api';
-import { DrizzleQueryError } from 'drizzle-orm';
-import { eq } from 'drizzle-orm/sql';
 
-export const createAdminRemoteFunction = form(registerSchema, async ({ name, email, password }) => {
-	const db = getDb(getRequestEvent().platform?.env.DB!);
-	const adminUser = await db.query.user.findFirst({
-		where: eq(user.role, 'admin')
-	});
-	if (adminUser) {
-		return {
-			success: false,
-			message: 'Admin already exists.'
-		};
-	}
-	const auth = createAuth(db);
-	const authCtx = await auth.$context;
-	const internalAdapter = authCtx.internalAdapter;
-	const { error, data } = await tryCatch(
-		internalAdapter.createUser({
-			email,
-			name,
-			password,
-			image: getDiceBearURL({ seed: email }),
-			role: 'admin',
-			createdAt: new Date(),
-			updatedAt: new Date()
-		})
-	);
+export const createAdminRemoteFunction = form(
+	registerSchema,
+	async ({ name, email, password }) => {
+		const db = getDb(getRequestEvent().platform?.env.DB!);
+		// Bootstrap only: the first user is the EXTERNAL super-admin (auto-assigned
+		// the superadmin role via databaseHooks). Everyone else is provisioned by
+		// an admin under an organization.
+		const userCount = await db.$count(user);
+		if (userCount > 0) {
+			return {
+				success: false,
+				message: 'Setup already completed. Ask an admin to create your account.'
+			};
+		}
 
-	if (error instanceof APIError) {
-		return {
-			success: false,
-			message: error.body?.message as string
-		};
-	}
+		// The super-admin is external: their login email must NOT be on a domain
+		// this server hosts (at bootstrap that is just the system MAIL_DOMAIN).
+		if (await isServedDomain(db, email)) {
+			return {
+				success: false,
+				message: 'Use an external email address — not one on a domain this server hosts.'
+			};
+		}
 
-	if (error instanceof DrizzleQueryError) {
-		return {
-			success: false,
-			message: 'Issue with creating admin, connect with the creator'
-		};
-	}
+		const auth = createAuth(db);
+		const authCtx = await auth.$context;
+		const internalAdapter = authCtx.internalAdapter;
 
-	if (!data) {
-		return {
-			success: false,
-			message: 'Unable to create admin.'
-		};
-	}
+		const { error: createError, data: createdUser } = await tryCatch(
+			internalAdapter.createUser({
+				email,
+				name,
+				image: getDiceBearURL({ seed: email }),
+				createdAt: new Date(),
+				updatedAt: new Date()
+			})
+		);
 
-	const { error: linkAccountError, data: linkAccountData } = await tryCatch(
-		internalAdapter.linkAccount({
-			providerId: 'credential',
-			accountId: data.id,
-			userId: data.id,
-			password: await authCtx.password.hash(password)
-		})
-	);
+		if (createError || !createdUser) {
+			const message =
+				createError instanceof APIError
+					? (createError.body?.message as string)
+					: 'Unable to create the super-admin. Check the server logs and try again.';
+			return { success: false, message };
+		}
 
-	if (linkAccountError instanceof APIError) {
-		return {
-			success: false,
-			message: linkAccountError.body?.message as string
-		};
-	}
+		// Password lives on the credential account, not the user row. If this
+		// fails we must remove the just-created user, otherwise the userCount
+		// guard wedges the bootstrap on retry (orphaned, passwordless admin).
+		const { error: linkError } = await tryCatch(
+			internalAdapter.linkAccount({
+				providerId: 'credential',
+				accountId: createdUser.id,
+				userId: createdUser.id,
+				password: await authCtx.password.hash(password)
+			})
+		);
 
-	if (linkAccountError instanceof DrizzleQueryError) {
-		return {
-			success: false,
-			message: 'Issue with linking admin account, connect with the creator'
-		};
-	}
+		if (linkError) {
+			await tryCatch(internalAdapter.deleteUser(createdUser.id));
+			const message =
+				linkError instanceof APIError
+					? (linkError.body?.message as string)
+					: 'Unable to set the super-admin password. The partial account was rolled back — please try again.';
+			return { success: false, message };
+		}
 
-	if (linkAccountData) {
+		// Kick off primary-email verification — the first onboarding step for the
+		// external super-admin. Best-effort: a mail failure must not fail creation.
+		await tryCatch(
+			auth.api.sendVerificationEmail({
+				body: { email, callbackURL: '/onboarding' }
+			})
+		);
+
 		return {
 			success: true,
-			message: 'Successfully created admin user and connected to account'
+			message:
+				'Super-admin created. Check your email to verify it, then log in to finish setup (2FA / passkey).'
 		};
 	}
-
-	return {
-		success: false,
-		message: 'Unable to create admin.'
-	};
-});
+);
