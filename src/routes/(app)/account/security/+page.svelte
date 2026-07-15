@@ -42,7 +42,7 @@
 		recoveryEmail={data.user.recoveryEmail}
 		recoveryEmailVerified={data.user.recoveryEmailVerified}
 	/>
-	<TwoFactorCard enabled={data.user.twoFactorEnabled} />
+	<TwoFactorCard enabled={data.user.twoFactorEnabled} email={data.user.email} />
 	<PasskeyCard passkeys={data.passkeys} />
 
 	<Card.Card>

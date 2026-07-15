@@ -15,6 +15,9 @@
 
 	let step = $state<'request' | 'confirm'>('request');
 	let sending = $state(false);
+	// Result persists after submit; track which one we already acted on so the
+	// close effect fires once per submit, not again on every reopen.
+	let handled: unknown;
 
 	// Reset to the first step whenever the dialog reopens.
 	$effect(() => {
@@ -26,7 +29,9 @@
 
 	// Close on a successful change.
 	$effect(() => {
-		if (confirmPasswordReset.result?.success) {
+		const result = confirmPasswordReset.result;
+		if (result?.success && result !== handled) {
+			handled = result;
 			toast.success('Password updated.');
 			open = false;
 		}
@@ -58,8 +63,8 @@
 		{#if step === 'request'}
 			<div class="flex flex-col gap-4 py-2">
 				<p class="text-muted-foreground text-sm">
-					We'll email a 6-digit code to your recovery address. Enter it along with your current
-					password to set a new one.
+					We'll email a 6-digit code to the address on file for your account. Enter it along with
+					your current password to set a new one.
 				</p>
 				<Button class="gap-1.5 self-start" onclick={sendCode} disabled={sending}>
 					{#if sending}<Spinner class="mr-1" />{:else}<MailIcon class="size-4" />{/if}

@@ -11,7 +11,6 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
-	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import { users, mailboxes } from '$lib/mock/index.js';
 
 	let { data } = $props();
@@ -129,11 +128,7 @@
 						<li class="flex items-center justify-between py-2.5">
 							<div class="flex flex-col">
 								<span class="font-mono text-sm font-medium">{org.domain}</span>
-								<span class="text-muted-foreground text-xs">{org.membershipRole}</span>
-							</div>
-							<div class="flex gap-1.5">
-								<StatusChip status={org.dkimStatus ?? 'pending'} />
-								<StatusChip status={org.sendingStatus ?? 'pending'} />
+								<span class="text-muted-foreground text-xs capitalize">{org.membershipRole}</span>
 							</div>
 						</li>
 					{/each}

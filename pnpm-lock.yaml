@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@better-svelte-email/components':
+        specifier: ^2.1.1
+        version: 2.1.1(@sveltejs/kit@2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)))(svelte@5.56.4)
+      '@better-svelte-email/server':
+        specifier: ^2.1.1
+        version: 2.1.1(svelte@5.56.4)
       '@fontsource-variable/bricolage-grotesque':
         specifier: ^5.2.10
         version: 5.2.10
@@ -462,6 +468,20 @@ packages:
 
   '@better-fetch/fetch@1.3.1':
     resolution: {integrity: sha512-ABkD1WhyfPZprKRQI3bhATjeiFuNWC9PXhfGWqL+sg/gKrM977oFrYkdb4msM3hgUGonr7KlOsOFT5TU2rht9g==}
+
+  '@better-svelte-email/components@2.1.1':
+    resolution: {integrity: sha512-1YDr3h/9yBQKUei7oZwT2I0ZTHFcA4SOdRh6MCng1gHHJsOHCGppwKpE3cteabkYo51Gr4JG3iInt3dpCq9V7g==}
+    peerDependencies:
+      '@sveltejs/kit': '>=2'
+      svelte: '>=5.14.3'
+    peerDependenciesMeta:
+      '@sveltejs/kit':
+        optional: true
+
+  '@better-svelte-email/server@2.1.1':
+    resolution: {integrity: sha512-j7t7ROnyI65RHd+59Hq9i5lNalj/ueKZC07DF4DQX4T90mh1kdvquenQD0nyC10DSMGBKjEXQmdW3eWcV5+xSA==}
+    peerDependencies:
+      svelte: '>=5.14.3'
 
   '@chevrotain/cst-dts-gen@10.5.0':
     resolution: {integrity: sha512-lhmC/FyqQ2o7pGK4Om+hzuDrm9rhFYIJ/AXoQBeongmn870Xeb0L6oGEiuR8nohFNL5sMaQEJWCxr1oIVIVXrw==}
@@ -1650,6 +1670,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@selderee/plugin-htmlparser2@0.12.0':
+    resolution: {integrity: sha512-oELmoyA6ML9jDRMV3kgcMQFKxUfBU0yFVn6yTctVaLT5ygXnxH52I3TZEgV9EhXJC68/uFvE5Daj1/25c0Xa/A==}
+    peerDependencies:
+      selderee: ~0.12.0
+
   '@simplewebauthn/browser@13.3.0':
     resolution: {integrity: sha512-BE/UWv6FOToAdVk0EokzkqQQDOWtNydYlY6+OrmiZ5SCNmb41VehttboTetUM3T/fr6EAFYVXjz4My2wg230rQ==}
 
@@ -2237,6 +2262,10 @@ packages:
     resolution: {integrity: sha512-LOHxIOaPYdHlJRtCQfDIVZtfw/ufM8+rVj649RIHzcm/vGwQRXFt6OPqIFWsm2XEMrNIEtWR64sY1LEKD2vAOA==}
     engines: {node: '>=4.0.0'}
 
+  deepmerge-ts@7.1.5:
+    resolution: {integrity: sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==}
+    engines: {node: '>=16.0.0'}
+
   deepmerge@4.3.1:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
@@ -2276,6 +2305,19 @@ packages:
 
   devalue@5.8.1:
     resolution: {integrity: sha512-4CXDYRBGqN+57wVJkuXBYmpAVUSg3L6JAQa/DFqm238G73E1wuyc/JhGQJzN7vUf/CMphYau2zXbfWzDR5aTEw==}
+
+  dom-serializer@2.0.0:
+    resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
+
+  domelementtype@2.3.0:
+    resolution: {integrity: sha512-OLETBj6w0OsagBwdXnPdN0cnMfF9opN69co+7ZrbfPGrdpPVNBUj02spi6B1N7wChLQiPn4CSH/zJvXw56gmHw==}
+
+  domhandler@5.0.3:
+    resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
+    engines: {node: '>= 4'}
+
+  domutils@3.2.2:
+    resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
 
   dotenv@17.3.1:
     resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
@@ -2387,6 +2429,18 @@ packages:
     resolution: {integrity: sha512-aNnGCvbJ/RIyWo1IuhNdVjnNF+EjH9wpzpNHt+ci/m9He9LJvUN8wrCcXjp9cWsGNAuvSpVFTx/vraAFQ8qGjQ==}
     engines: {node: '>=10.13.0'}
 
+  entities@4.5.0:
+    resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
+    engines: {node: '>=0.12'}
+
+  entities@7.0.1:
+    resolution: {integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==}
+    engines: {node: '>=0.12'}
+
+  entities@8.0.0:
+    resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
+    engines: {node: '>=20.19.0'}
+
   error-stack-parser-es@1.0.5:
     resolution: {integrity: sha512-5qucVt2XcuGMcEGgWI7i+yZpmpByQ8J1lHhcL7PwqCwu9FPP3VUXzT4ltHe5i2z9dePwEHcDVOAfSnHsOlCXRA==}
 
@@ -2481,6 +2535,13 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  html-to-text@10.0.0:
+    resolution: {integrity: sha512-2OH59Gtprdczel+7Rxgpz9hGVJREaf8Lt1H4kZwWHpEn70VQKRuMNGsb2eDbwaTzrYzb0hheiOG1P7Dim0B4dQ==}
+    engines: {node: '>=20.19.0'}
+
+  htmlparser2@10.1.0:
+    resolution: {integrity: sha512-VTZkM9GWRAtEpveh7MSF6SjjrpNVNNVJfFup7xTY3UpFtm67foy9HDVXneLtFVt4pMz5kZtgNcvCniNFb1hlEQ==}
+
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
@@ -2560,6 +2621,9 @@ packages:
     resolution: {integrity: sha512-XoEYBztamA8lMxtF/Jz3aDX0HMk8dI+o4fK9fSl8ecT2Tdx3DQUjtKGtlQAOFdwC/AWifeLmKq5cMTQt9COZPQ==}
     peerDependencies:
       svelte: ^5.0.0
+
+  leac@0.7.0:
+    resolution: {integrity: sha512-qMrZeyEekgdRQ9o6a4NAB2EQZrv827GJdn1vnapwSJ90hWRB4TzUSunvacPkxQ2TnNqHNI1/zSt0hlo0crG8Jw==}
 
   libsql@0.5.28:
     resolution: {integrity: sha512-wKqx9FgtPcKHdPfR/Kfm0gejsnbuf8zV+ESPmltFvsq5uXwdeN9fsWn611DmqrdXj1e94NkARcMA2f1syiAqOg==}
@@ -2739,11 +2803,20 @@ packages:
     resolution: {integrity: sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA==}
     engines: {node: '>=18'}
 
+  parse5@8.0.1:
+    resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
+
+  parseley@0.13.1:
+    resolution: {integrity: sha512-uNBJZzmb60l6p6VWLTmevizNAGnE0xoSf1n0B4q3ntegDNzcS68NRCcBDZTcyXHxt2XhBChsCuqj4M+nChvE/A==}
+
   path-to-regexp@6.3.0:
     resolution: {integrity: sha512-Yhpw4T9C6hPpgPeA28us07OJeqZ5EzQTkbfwuhsUg0c237RomFoETJgmp2sa3F/41gfLE6G5cqcYwznmeEeOlQ==}
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+
+  peberminta@0.10.0:
+    resolution: {integrity: sha512-80B2AsU+I4Qdb0ZAPSfe9UwvGzwkM37IKIFEvdS3D/3Ndgv2bsuJ0bfG1+iEYO+l7Gfd4EUJmuRyq7efLgRMzQ==}
 
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
@@ -2800,6 +2873,9 @@ packages:
 
   pkg-types@2.3.0:
     resolution: {integrity: sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==}
+
+  postcss-value-parser@4.2.0:
+    resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
   postcss@8.5.16:
     resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
@@ -2944,6 +3020,9 @@ packages:
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
+
+  selderee@0.12.0:
+    resolution: {integrity: sha512-b1YMh3+DHZp59DLna3qVwQ5iOla/nrI6mLBNW02XxU77M3046Df6VLkoaJyFz20VsGIG5kkp+FK0kg4K4HnUFw==}
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -3612,6 +3691,21 @@ snapshots:
       '@noble/hashes': 2.2.0
 
   '@better-fetch/fetch@1.3.1': {}
+
+  '@better-svelte-email/components@2.1.1(@sveltejs/kit@2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)))(svelte@5.56.4)':
+    dependencies:
+      svelte: 5.56.4
+    optionalDependencies:
+      '@sveltejs/kit': 2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0))
+
+  '@better-svelte-email/server@2.1.1(svelte@5.56.4)':
+    dependencies:
+      html-to-text: 10.0.0
+      parse5: 8.0.1
+      postcss: 8.5.16
+      postcss-value-parser: 4.2.0
+      svelte: 5.56.4
+      tailwindcss: 4.3.2
 
   '@chevrotain/cst-dts-gen@10.5.0':
     dependencies:
@@ -4431,6 +4525,12 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
 
+  '@selderee/plugin-htmlparser2@0.12.0(selderee@0.12.0)':
+    dependencies:
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+      selderee: 0.12.0
+
   '@simplewebauthn/browser@13.3.0': {}
 
   '@simplewebauthn/server@13.3.2':
@@ -4982,6 +5082,8 @@ snapshots:
   deep-extend@0.6.0:
     optional: true
 
+  deepmerge-ts@7.1.5: {}
+
   deepmerge@4.3.1: {}
 
   default-browser-id@5.0.1: {}
@@ -5008,6 +5110,24 @@ snapshots:
   detect-libc@2.1.2: {}
 
   devalue@5.8.1: {}
+
+  dom-serializer@2.0.0:
+    dependencies:
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+      entities: 4.5.0
+
+  domelementtype@2.3.0: {}
+
+  domhandler@5.0.3:
+    dependencies:
+      domelementtype: 2.3.0
+
+  domutils@3.2.2:
+    dependencies:
+      dom-serializer: 2.0.0
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
 
   dotenv@17.3.1: {}
 
@@ -5038,6 +5158,12 @@ snapshots:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.3
+
+  entities@4.5.0: {}
+
+  entities@7.0.1: {}
+
+  entities@8.0.0: {}
 
   error-stack-parser-es@1.0.5: {}
 
@@ -5213,6 +5339,21 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
+  html-to-text@10.0.0:
+    dependencies:
+      '@selderee/plugin-htmlparser2': 0.12.0(selderee@0.12.0)
+      deepmerge-ts: 7.1.5
+      dom-serializer: 2.0.0
+      htmlparser2: 10.1.0
+      selderee: 0.12.0
+
+  htmlparser2@10.1.0:
+    dependencies:
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+      domutils: 3.2.2
+      entities: 7.0.1
+
   iconv-lite@0.6.3:
     dependencies:
       safer-buffer: 2.1.2
@@ -5299,6 +5440,8 @@ snapshots:
     transitivePeerDependencies:
       - '@sveltejs/kit'
       - zod
+
+  leac@0.7.0: {}
 
   libsql@0.5.28:
     dependencies:
@@ -5457,9 +5600,20 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
+  parse5@8.0.1:
+    dependencies:
+      entities: 8.0.0
+
+  parseley@0.13.1:
+    dependencies:
+      leac: 0.7.0
+      peberminta: 0.10.0
+
   path-to-regexp@6.3.0: {}
 
   pathe@2.0.3: {}
+
+  peberminta@0.10.0: {}
 
   perfect-debounce@2.1.0: {}
 
@@ -5522,6 +5676,8 @@ snapshots:
       confbox: 0.2.4
       exsolve: 1.0.8
       pathe: 2.0.3
+
+  postcss-value-parser@4.2.0: {}
 
   postcss@8.5.16:
     dependencies:
@@ -5693,6 +5849,10 @@ snapshots:
     optional: true
 
   safer-buffer@2.1.2: {}
+
+  selderee@0.12.0:
+    dependencies:
+      parseley: 0.13.1
 
   semver@6.3.1: {}
 

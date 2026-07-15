@@ -15,8 +15,8 @@
 
 	const nav = [
 		{ href: '/admin', label: 'Dashboard', icon: LayoutDashboardIcon },
+		{ href: '/admin/organizations', label: 'Organizations', icon: UsersIcon },
 		{ href: '/admin/domains', label: 'Domains', icon: GlobeIcon },
-		{ href: '/admin/users', label: 'Users & Mailboxes', icon: UsersIcon },
 		{ href: '/admin/oversight', label: 'Oversight', icon: EyeIcon, superadmin: true },
 		{ href: '/admin/settings', label: 'Settings', icon: SettingsIcon }
 	] as const;
@@ -47,7 +47,11 @@
 				<Sidebar.Menu>
 					{#each items as item (item.href)}
 						<Sidebar.MenuItem>
-							<Sidebar.MenuButton isActive={page.url.pathname === item.href}>
+							<Sidebar.MenuButton
+								isActive={item.href === '/admin'
+									? page.url.pathname === '/admin'
+									: page.url.pathname.startsWith(item.href)}
+							>
 								{#snippet child({ props })}
 									<a href={resolve(item.href)} {...props}>
 										<item.icon class="size-4" />

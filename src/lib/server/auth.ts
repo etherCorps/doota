@@ -19,6 +19,7 @@ import { sendMailBackground } from "./mailer";
 import { isServedDomain, invalidateDomainCache } from "./org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGIN } from "$app/env/public";
+import { verificationMailTemplate } from "$lib/client/email";
 
 // Instance roles (admin plugin). Separate from org membership roles
 // (owner/admin/member), which the organization plugin manages per-membership.
@@ -88,10 +89,14 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
       // external inbox). Mailbox users verify a recovery address instead — their
       // primary email is an unreadable Doota inbox — so we never send here for them.
       sendVerificationEmail: async ({ user, url }) => {
+        console.log(`Verification email link: ${url}`);
+        const mail = await verificationMailTemplate({ verificationLink: url });
+        console.log(`Sending verification link: ${url}: \n${mail.html}`);
         sendMailBackground({
           to: user.email,
           subject: "Verify your Doota email",
-          text: `Confirm your Doota super-admin email: ${url}\nThis finishes setting up your account.`,
+          text: mail.text,
+          html: mail.html,
         });
       },
       autoSignInAfterVerification: false,

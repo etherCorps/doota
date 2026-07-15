@@ -19,7 +19,8 @@
     "db:studio": "drizzle-kit studio",
     "gen": "wrangler types",
     "reset-admin": "node scripts/reset-admin.mjs",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "pnpm run build && wrangler deploy",
+    "email:dev": "pnpm dlx @better-svelte-email/cli dev --dir src/lib/client/email"
   },
   "devDependencies": {
     "@better-auth/passkey": "^1.6.23",
@@ -60,6 +61,8 @@
     "zod": "^4.3.6"
   },
   "dependencies": {
+    "@better-svelte-email/components": "^2.1.1",
+    "@better-svelte-email/server": "^2.1.1",
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
