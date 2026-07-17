@@ -83,37 +83,6 @@
 		{/each}
 	</div>
 
-	{#if isSuperadmin}
-		<Card.Card>
-			<Card.CardHeader>
-				<Card.CardTitle class="flex items-center gap-2 font-heading">
-					<PlusIcon class="size-4" /> Create organization
-				</Card.CardTitle>
-				<Card.CardDescription>
-					One organization per mail domain you operate. You become its owner.
-				</Card.CardDescription>
-			</Card.CardHeader>
-			<Card.CardContent>
-				<form onsubmit={createOrg} class="flex items-end gap-2">
-					<Field.Field class="flex-1">
-						<Field.Label>Domain</Field.Label>
-						<Input
-							type="text"
-							class="font-mono"
-							placeholder="acme.com"
-							bind:value={domain}
-							required
-						/>
-					</Field.Field>
-					<Button type="submit" disabled={creating}>
-						{#if creating}<Spinner class="mr-1" />{/if}
-						Create
-					</Button>
-				</form>
-			</Card.CardContent>
-		</Card.Card>
-	{/if}
-
 	<Card.Card>
 		<Card.CardHeader>
 			<Card.CardTitle class="flex items-center gap-2 font-heading">

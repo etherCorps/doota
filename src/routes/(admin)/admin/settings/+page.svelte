@@ -4,6 +4,26 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { toast } from 'svelte-sonner';
+	import { requestSuperadminEmailVerification } from '$lib/rpc/recovery-email.remote.js';
+
+	let { data } = $props();
+
+	let verifying = $state(false);
+
+	async function verifyEmail() {
+		verifying = true;
+		try {
+			const res = await requestSuperadminEmailVerification();
+			if (res.success) toast.success(res.message);
+			else toast.error(res.message);
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not send verification email.');
+		} finally {
+			verifying = false;
+		}
+	}
 </script>
 
 <div class="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 md:p-8">
@@ -11,6 +31,32 @@
 		<h1 class="font-heading text-2xl font-semibold tracking-tight">Settings</h1>
 		<p class="text-muted-foreground text-sm">Organization-wide preferences.</p>
 	</div>
+
+	{#if data.isSuperadmin && !data.emailVerified}
+		<Card.Card>
+			<Card.CardHeader>
+				<Card.CardTitle class="font-heading">Verify your email</Card.CardTitle>
+				<Card.CardDescription>
+					Your login email <span class="font-mono">{data.email}</span> is unverified. Verifying it
+					enables email-based password recovery. This is only available once a domain is active
+					(a working sending path).
+				</Card.CardDescription>
+			</Card.CardHeader>
+			<Card.CardContent>
+				{#if data.hasActiveDomain}
+					<Button onclick={verifyEmail} disabled={verifying}>
+						{#if verifying}<Spinner class="mr-1" />{/if}
+						Send verification email
+					</Button>
+				{:else}
+					<p class="text-muted-foreground text-sm">
+						Onboard a domain first — until then, recover with the
+						<code>reset-admin</code> CLI.
+					</p>
+				{/if}
+			</Card.CardContent>
+		</Card.Card>
+	{/if}
 
 	<Card.Card>
 		<Card.CardHeader>

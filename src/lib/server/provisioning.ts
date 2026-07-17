@@ -67,10 +67,18 @@ export async function provisionUser(
   // supplies the local part.
   const org = await db.query.organization.findFirst({
     where: eq(schema.organization.id, input.organizationId),
-    columns: { id: true, domain: true },
+    columns: { id: true, domain: true, status: true },
   });
   if (!org?.domain) {
     return { success: false, message: "Organization not found." };
+  }
+  // Per-domain accounts may only be created once the domain is active — a
+  // working sending path exists, so the invite mail can actually be delivered.
+  if (org.status !== "active") {
+    return {
+      success: false,
+      message: "This domain isn't active yet. Finish onboarding it before adding users.",
+    };
   }
   const email = `${username}@${org.domain}`;
 

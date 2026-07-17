@@ -29,6 +29,13 @@
       "when": 1784096426932,
       "tag": "0003_condemned_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784100000000,
+      "tag": "0004_cloudflare_source_of_truth",
+      "breakpoints": true
     }
   ]
 }

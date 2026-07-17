@@ -5,7 +5,6 @@
 	import UserChip from '$lib/components/app/user-chip.svelte';
 	import RolePreviewSwitcher from '$lib/components/app/role-preview-switcher.svelte';
 	import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
-	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
@@ -16,7 +15,6 @@
 	const nav = [
 		{ href: '/admin', label: 'Dashboard', icon: LayoutDashboardIcon },
 		{ href: '/admin/organizations', label: 'Organizations', icon: UsersIcon },
-		{ href: '/admin/domains', label: 'Domains', icon: GlobeIcon },
 		{ href: '/admin/oversight', label: 'Oversight', icon: EyeIcon, superadmin: true },
 		{ href: '/admin/settings', label: 'Settings', icon: SettingsIcon }
 	] as const;

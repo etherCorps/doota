@@ -1,20 +1,33 @@
 import { form, getRequestEvent } from '$app/server';
 import { getDiceBearURL } from '$lib/utils/dice-bear.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
-import { registerSchema } from '$lib/shared/model/auth.zod.schema.js';
+import { setupSchema } from '$lib/shared/model/auth.zod.schema.js';
 import { createAuth } from '$lib/server/auth.js';
 import { isServedDomain } from '$lib/server/org-domains.js';
 import { getDb } from '$lib/server/db';
 import { user } from '$lib/server/db/schema.js';
 import { APIError } from 'better-auth/api';
+import { SETUP_TOKEN } from '$app/env/private';
 
-export const createAdminRemoteFunction = form(
-	registerSchema,
-	async ({ name, email, password }) => {
+/**
+ * First-run genesis wizard. Email-free by design: the super-admin's trust root
+ * is deploy access (the one-time SETUP_TOKEN), never an email round-trip — at
+ * genesis no domain is onboarded, so there is no path to deliver mail.
+ *
+ * Gated by BOTH userCount === 0 AND a matching SETUP_TOKEN. TOTP is enrolled
+ * later via the onboarding secure-account step (or the CLI floor). No mail sent.
+ */
+export const setupRemoteFunction = form(
+	setupSchema,
+	async ({ name, email, password, setupToken }) => {
+		if (!SETUP_TOKEN || setupToken !== SETUP_TOKEN) {
+			return { success: false, message: 'Invalid or missing setup token.' };
+		}
+
 		const db = getDb(getRequestEvent().platform?.env.DB!);
 		// Bootstrap only: the first user is the EXTERNAL super-admin (auto-assigned
 		// the superadmin role via databaseHooks). Everyone else is provisioned by
-		// an admin under an organization.
+		// an admin under an organization. This also permanently locks /setup out.
 		const userCount = await db.$count(user);
 		if (userCount > 0) {
 			return {
@@ -75,18 +88,11 @@ export const createAdminRemoteFunction = form(
 			return { success: false, message };
 		}
 
-		// Kick off primary-email verification — the first onboarding step for the
-		// external super-admin. Best-effort: a mail failure must not fail creation.
-		await tryCatch(
-			auth.api.sendVerificationEmail({
-				body: { email, callbackURL: '/onboarding' }
-			})
-		);
-
+		// No verification email — genesis is email-free. Next: log in, then the
+		// onboarding gate forces securing the account (2FA / passkey).
 		return {
 			success: true,
-			message:
-				'Super-admin created. Check your email to verify it, then log in to finish setup (2FA / passkey).'
+			message: 'Super-admin created. Log in and secure your account (2FA / passkey) to finish setup.'
 		};
 	}
 );

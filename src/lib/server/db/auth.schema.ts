@@ -125,9 +125,13 @@ export const organization = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     metadata: text("metadata"),
     domain: text("domain").notNull().unique(),
+    // Cloudflare is the source of truth for mail wiring (DNS/DKIM/routing) —
+    // we cache only the zone id and the onboarding lifecycle status here.
+    // Live DKIM/sending state is fetched from the CF API for settings screens,
+    // never persisted. status: pending_zone | pending_nameservers | wiring |
+    // active | error.
     zoneId: text("zone_id"),
-    dkimStatus: text("dkim_status").default("pending"),
-    sendingStatus: text("sending_status").default("pending"),
+    status: text("status").default("pending_zone").notNull(),
   },
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );

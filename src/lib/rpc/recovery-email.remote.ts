@@ -1,4 +1,4 @@
-import { form, getRequestEvent } from '$app/server';
+import { command, form, getRequestEvent } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { and, eq, gt } from 'drizzle-orm';
 import { recoveryEmailSchema } from '$lib/shared/model/auth.zod.schema.js';
@@ -65,4 +65,39 @@ export const setRecoveryEmail = form(recoveryEmailSchema, async ({ recoveryEmail
 		success: true,
 		message: 'Verification link sent. Check that inbox to confirm the address.'
 	};
+});
+
+/**
+ * DEFERRED super-admin email verification. The super-admin's external email is
+ * intentionally unverified at genesis (no domain → no sending path). This action
+ * becomes usable only once a domain is `active`, so the verification mail has a
+ * real path out. Until then the CLI (reset-admin) is the recovery floor.
+ */
+export const requestSuperadminEmailVerification = command(async () => {
+	const { locals } = getRequestEvent();
+	const user = locals.user;
+	if (!user) error(401, 'Not authenticated');
+	if (user.role !== 'superadmin') error(403, 'Super-admin only');
+	if ((user as { emailVerified?: boolean }).emailVerified) {
+		return { success: false, message: 'Your email is already verified.' };
+	}
+
+	// Require a working sending path: at least one onboarded (active) domain.
+	const active = await locals.db.query.organization.findFirst({
+		where: eq(schema.organization.status, 'active'),
+		columns: { id: true }
+	});
+	if (!active) {
+		return {
+			success: false,
+			message: 'Onboard a domain first — there is no working sending path yet.'
+		};
+	}
+
+	await tryCatch(
+		locals.auth.api.sendVerificationEmail({
+			body: { email: user.email, callbackURL: '/admin' }
+		})
+	);
+	return { success: true, message: 'Verification email sent. Check your external inbox.' };
 });

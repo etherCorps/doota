@@ -8,5 +8,5 @@ export const load = async ({ locals }) => {
   }
   // Fresh deployment with no accounts → bootstrap the super-admin.
   const count = await locals.db.$count(userTable);
-  redirect(302, count === 0 ? "/create-admin" : "/login");
+  redirect(302, count === 0 ? "/setup" : "/login");
 };

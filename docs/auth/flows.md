@@ -1,26 +1,46 @@
 # Flows
 
-## Bootstrap: first admin (the external super-admin)
+## Bootstrap: first super-admin — EMAIL-FREE genesis
 
-`create-admin` (route + `create-admin.remote.ts`) exists only for the very first
-account. It refuses once any user exists (`db.$count(user) > 0`), and the
-`/create-admin` route also redirects to `/login` if a user already exists or the
-caller is already authenticated.
+At genesis **no domain is onboarded**, so Cloudflare Email Routing/Sending don't
+exist yet — there is no path to deliver mail. So genesis must not depend on
+email. **The trust root is deploy access (possession of instance secrets), not
+an email round-trip.** Two surfaces, same trust model, both gated on
+`userCount === 0`:
 
-1. Validate: the login email must be **external** — not on any served domain
-   (`isServedDomain`, which covers `MAIL_DOMAIN` and every org domain). The
-   super-admin logs in with a real external inbox, not a Doota mailbox.
-2. `internalAdapter.createUser(...)` — the create hook makes this first user
-   `superadmin`.
-3. `internalAdapter.linkAccount(...)` sets the hashed password on a `credential`
-   account. **If linking fails, the just-created user is deleted** so the
-   `userCount` guard can't wedge the bootstrap on retry.
-4. Send **primary-email** verification (`sendVerificationEmail`, callback
-   `/onboarding`). The super-admin is the only account that verifies its primary
-   address — everyone else verifies a recovery address instead.
+**CLI (the guaranteed floor — works with no web layer and no mail):**
+`pnpm reset-admin <external-email> <password> [--name "…"]`. When no super-admin
+exists it runs in **genesis** mode: creates the super-admin, links the password,
+and **enrolls TOTP** (mirrors better-auth's own storage — an encrypted secret +
+backup codes). It prints the `otpauth://` URI + backup codes to scan. No mail.
+The same command is the reset/recovery escape hatch once the account exists.
+
+**Optional web `/setup` wizard:** renders ONLY when `userCount === 0` **AND** the
+one-time `SETUP_TOKEN` (env) is presented (`/setup?token=…`). `setup.remote.ts`
+re-checks both server-side. It creates the super-admin + password (TOTP is added
+later via the onboarding secure-account step). No verification mail is sent. Once
+any user exists the wizard locks out permanently.
+
+In both paths the super-admin is created with an **external** email
+(`isServedDomain` rejects served-domain addresses) stored **unverified**
+(`email_verified = false`). If password linking fails the just-created user is
+deleted so the `userCount` guard can't wedge the bootstrap on retry.
 
 Every later account is provisioned by an admin/super-admin through the
 organization flow below.
+
+## Deferred super-admin email verification
+
+The super-admin's external email is intentionally **unverified at genesis**.
+Verifying it is an optional, super-admin-triggered action
+(`requestSuperadminEmailVerification`, surfaced on `/admin/settings`) that only
+becomes available once **at least one domain is `active`** — i.e. there is a
+working sending path to actually deliver the mail. Until then:
+
+- password reset by email no-ops for the super-admin (`sendResetPassword` only
+  targets `user.email` when `emailVerified` is true), and
+- the **CLI `reset-admin` is the recovery floor** — recovery never depends on an
+  unverified/undeliverable path.
 
 ## Onboarding gate (`hooks.server.ts` + `onboarding.ts`)
 
@@ -31,7 +51,8 @@ gate lives in `hooks.server.ts`:
   wandering back into `/onboarding`.
 - Otherwise `getOnboardingStatus(db, user)` derives the remaining steps **reading
   the gating flags fresh from D1** (never the 5-minute session cookie cache):
-  - `superadmin` → verify primary **email** + **secure account** (2FA / passkey)
+  - `superadmin` → **secure account** only (2FA / passkey). No email step — email
+    verification is deferred (see above), so genesis needs no mail path.
   - `admin` → verify **recovery email** + **secure account**
   - `member` → verify **recovery email**
   - anyone provisioned with a temp password → **set password**
@@ -47,11 +68,54 @@ gate lives in `hooks.server.ts`:
 `/onboarding` route has **no sidebar**; it renders the checklist and the relevant
 step cards.
 
+## Domain onboarding via Cloudflare (super-admin only)
+
+`/admin/domains`. Super-admin only; uses the instance token (`CF_ACCOUNT_ID` +
+`CF_API_TOKEN`, a scoped Bearer token). `domains.remote.ts` → `server/cloudflare.ts`.
+
+**Pick, don't type.** `listCloudflareZones` lists every zone on the operator's
+CF account (flagging which are already onboarded) so they choose a domain instead
+of typing it. A manual field remains for a domain **not yet on Cloudflare**. An
+optional **sending subdomain** (outbound DKIM host, e.g. `send.acme.com`) can be
+supplied at onboard time; it must sit within the domain.
+
+`onboardDomain`:
+
+1. Create the org for the domain (super-admin becomes owner) if it doesn't exist.
+2. `zoneCreate`: if the domain is **already a zone on the account → reuse it**
+   (straight to wiring, no error — this is the "already configured on Cloudflare"
+   case). Brand-new → `POST /zones`, returns pending status + assigned
+   **nameservers**, surfaced to the operator. The request is **not** blocked on
+   activation — it's async D1 state.
+3. Once the zone is `active` (checked on onboard, or by the **Refresh** button →
+   `refreshDomain` poll), wire mail **idempotently**: enable Email Routing, write
+   MX + SPF (inbound), onboard the sending domain/subdomain (DKIM + DMARC +
+   cf-bounce), and point the catch-all rule at the mail-in Worker
+   (`MAIL_IN_WORKER_NAME`). Every call is check-then-create / tolerates "already
+   exists".
+
+**DNS records** to populate (Email Sending DKIM/DMARC/return-path) are fetched
+live per domain via `domainDnsRecords` and shown on the screen — never persisted.
+For a Cloudflare-hosted zone they're created automatically; the list is there for
+operators whose DNS lives elsewhere.
+
+Subdomain **mailbox routing** (inbound `*@mail.acme.com`) is not built — Email
+Routing catch-all is zone-level (apex). The optional subdomain above is
+outbound-sending only.
+
+**Storage:** D1 holds only `domain`, `zone_id`, the org mapping, and a `status`
+enum (`pending_zone | pending_nameservers | wiring | active | error`). DNS/DKIM/
+routing state is **never persisted** — fetched live from CF for settings screens.
+The CF API is **never** touched on the inbound-mail hot path or login validation
+(those read the cached `domain→org→zone` map).
+
 ## Admin provisions a member / admin (org-centric)
 
 Admins work **through an organization**: `/admin/organizations` → pick an org →
 manage its members. An org is one mail domain; picking the org pins the domain,
-so the admin supplies only the **local part** of the new mailbox.
+so the admin supplies only the **local part** of the new mailbox. Provisioning is
+**only allowed once the domain is `active`** (a working sending path exists, so
+the invite mail can be delivered).
 
 `createUser` (`manage-users.remote.ts`) → `provisionUser`
 (`server/provisioning.ts`):

@@ -31,8 +31,16 @@ The `organization` plugin models **one organization per mail domain**
   on org create/update/delete). `isServedDomain()` / `orgForDomain()` drive
   login-domain validation, recovery-address rejection, and (future) inbound
   routing.
-- Org additional fields `dkimStatus` / `sendingStatus` exist on the table but are
-  currently managed from the Cloudflare dashboard, not surfaced in the UI.
+- **Cloudflare is the source of truth for mail wiring.** D1 stores only the
+  `domain`, `zoneId`, the org mapping and a `status` enum (`pending_zone |
+  pending_nameservers | wiring | active | error`). DNS records, routing rules,
+  Email Routing state and DKIM status are **never persisted** — fetched live from
+  the CF API for admin/settings screens only. `server/cloudflare.ts` is the ONLY
+  caller of that API and is never invoked on the inbound-mail hot path or login
+  validation (those read the cached `domain→org→zone` map).
+- Domain onboarding (`domains.remote.ts`) is **super-admin only** and the only
+  writer of CF state: idempotent `zoneCreate` / `pollZoneStatus` / `wireMail`
+  (enable routing, MX+SPF, DKIM/DMARC/cf-bounce, catch-all → mail-in Worker).
 
 ## Onboarding state (`server/onboarding.ts`)
 
@@ -97,3 +105,7 @@ sharp edge — see item 6 in [security-decisions.md](security-decisions.md).
 | `BETTER_AUTH_SECRET` | no | Session/token signing. |
 | `ORIGIN` | yes | Base URL. **Must match the dev server's port** or `/api/auth/*` 404s (Better Auth's `svelteKitHandler` gates on request origin). |
 | `MAIL_DOMAIN` | yes | The system no-reply domain; part of `isServedDomain()` alongside registered org domains. |
+| `SETUP_TOKEN` | no | One-time gate for the `/setup` genesis wizard. Unset → web wizard disabled (use the CLI). |
+| `CF_ACCOUNT_ID` | no | Cloudflare account id for domain onboarding. |
+| `CF_API_TOKEN` | no | Cloudflare **scoped API Token** (Bearer). NOT the Global API Key; no account email. Treat like the encryption DEK — Worker secret only. |
+| `MAIL_IN_WORKER_NAME` | no | Name of the deployed mail-in Worker the catch-all routing rule targets. |

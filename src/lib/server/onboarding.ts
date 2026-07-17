@@ -72,14 +72,12 @@ export async function getOnboardingStatus(
   const secured = !!fresh?.twoFactorEnabled || passkeys > 0;
   const steps: OnboardingStep[] = [];
 
-  if (role === "superadmin") {
-    steps.push({
-      id: "verify-email",
-      title: "Verify your email",
-      description: "Confirm the external address you sign in with.",
-      done: !!fresh?.emailVerified,
-    });
-  } else {
+  // The external super-admin does NOT verify email at onboarding: at genesis no
+  // domain is onboarded, so there is no sending path to deliver that mail (the
+  // bootstrap paradox). Their trust root is deploy access; email verification is
+  // a deferred, optional action once a domain has a working sending path. So the
+  // super-admin's only gate is securing the account (2FA / passkey) below.
+  if (role !== "superadmin") {
     steps.push({
       id: "verify-recovery",
       title: "Verify a recovery email",

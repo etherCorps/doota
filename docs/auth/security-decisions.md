@@ -27,6 +27,24 @@
    emailed temp value never survives onboarding. (`ponytail:` note in
    `provisionUser` — swap for a set-password magic link if plaintext-in-mail is
    ever unacceptable.)
+9. **Super-admin genesis is email-free; the trust root is deploy access.** At
+   genesis no domain is onboarded, so no mail can be delivered (the bootstrap
+   paradox). The super-admin is created with an **unverified** external email and
+   **no mail is sent**. Genesis is gated by possession of instance secrets: the
+   CLI (`reset-admin`) or the `/setup` wizard's one-time `SETUP_TOKEN` — both
+   also require `userCount === 0` and lock out afterward. Never reintroduce an
+   email step into genesis.
+10. **Super-admin email verification is deferred and its reset is gated on it.**
+    Recovery must never depend on an unverified/undeliverable path: the CLI is
+    the floor. `sendResetPassword` only targets the super-admin's `user.email`
+    once `emailVerified` is true, and the verify action itself is only offered
+    after a domain is `active` (a working sending path exists).
+11. **Cloudflare credential is a scoped API Token; CF is never on the hot path.**
+    `CF_ACCOUNT_ID` + `CF_API_TOKEN` (Bearer, not the Global API Key, no account
+    email), stored as a Worker secret like the encryption DEK. The CF API is
+    called ONLY from `server/cloudflare.ts` during super-admin domain onboarding
+    — never on inbound mail or login, which read the cached domain→org→zone map.
+    Every CF write is idempotent (check-then-create / tolerate "already exists").
 
 ## Hardening applied
 
@@ -47,7 +65,7 @@ These were found in an audit of the flows and fixed.
    endpoint returns immediately with a uniform response regardless of mail
    outcome. See `src/lib/server/mailer.ts`.
 
-3. **create-admin orphan on partial failure.** If `createUser` succeeded but
+3. **Genesis orphan on partial failure** (`setup.remote.ts`). If `createUser` succeeded but
    `linkAccount` failed, a passwordless superadmin was left behind and the
    `userCount` guard blocked all retries. **Fix:** on link failure the created
    user is deleted before returning the error.

@@ -7,6 +7,7 @@ import {
   twoFactor,
   organization,
   multiSession,
+  openAPI
 } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
@@ -124,7 +125,12 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
         let to: string | null = null;
 
         if (role === "superadmin") {
-          to = user.email; // external login email, validated external at creation
+          // Only once the super-admin has VERIFIED their external email (a
+          // deferred action, available after a domain has a working sending
+          // path). Until then recovery is the email-free CLI (reset-admin) —
+          // never an unverified, possibly-undeliverable address.
+          const emailVerified = (user as typeof user & { emailVerified?: boolean }).emailVerified;
+          if (emailVerified) to = user.email;
         } else {
           const { recoveryEmail, recoveryEmailVerified } = user as typeof user &
             UserRecovery;
@@ -215,17 +221,13 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
                 unique: true,
               },
               zoneId: { type: "string", required: false, input: false },
-              dkimStatus: {
+              // Onboarding lifecycle. CF is the source of truth for the actual
+              // DNS/DKIM/routing state; we only cache which stage we're at.
+              status: {
                 type: "string",
                 required: false,
                 input: false,
-                defaultValue: "pending",
-              },
-              sendingStatus: {
-                type: "string",
-                required: false,
-                input: false,
-                defaultValue: "pending",
+                defaultValue: "pending_zone",
               },
             },
           },
@@ -261,6 +263,7 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
       twoFactor(),
       // No TOTP after passkey login: a passkey is already two factors.
       passkey(),
+      openAPI(),
       sveltekitCookies(getRequestEvent),
     ], // sveltekitCookies must be last
   });

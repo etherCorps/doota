@@ -38,10 +38,24 @@ curl -s -X POST localhost:5173/api/auth/request-password-reset \
 # sign-in rate limit (5/min) — expect 429 on the 6th wrong attempt
 ```
 
-**Remote functions (create-admin, setRecoveryEmail) cannot be driven by curl** —
-SvelteKit's remote-form POST uses a binary wire protocol. Test those through the
-browser, or exercise the same `internalAdapter` sequence from a throwaway
-dev-only `+server.ts` (guard it with `if (!dev) error(404)` and delete it after).
+**Remote functions (setup, setRecoveryEmail, onboardDomain) cannot be driven by
+curl** — SvelteKit's remote-form POST uses a binary wire protocol. Test those
+through the browser, or exercise the same `internalAdapter` sequence from a
+throwaway dev-only `+server.ts` (guard with `if (!dev) error(404)`, delete after).
+
+**Fastest genesis for local testing** is the CLI (no browser, no mail):
+
+```bash
+pnpm reset-admin superadmin@external-test.dev 'TestPass123!' --name 'Test Super'
+# prints an otpauth:// URI + backup codes; enrolls TOTP; email stays unverified
+```
+
+The web `/setup` wizard needs `SETUP_TOKEN` set in `.env` and is opened at
+`/setup?token=<SETUP_TOKEN>` (only while `userCount === 0`).
+
+**Cloudflare onboarding** needs `CF_ACCOUNT_ID` + `CF_API_TOKEN` (scoped Bearer)
+and `MAIL_IN_WORKER_NAME`. `zoneCreate` first lists zones (read-only); a
+brand-new domain issues a real `POST /zones`, so test against a domain you own.
 
 ## Inspecting local D1
 
@@ -53,8 +67,8 @@ pnpm wrangler d1 execute doota --local --command "SELECT email, role FROM user;"
 
 Any test that creates users, verification tokens, or rate-limit rows **must
 clean up after itself.** Do not leave test accounts in the local D1 — a leftover
-user makes the create-admin bootstrap guard (`userCount > 0`) refuse to run, and
-stale rows pollute later tests.
+user makes the genesis bootstrap guard (`userCount > 0`) refuse to run (CLI and
+`/setup` both), and stale rows pollute later tests.
 
 Scope deletes to your known test emails (safer than truncating). Deleting from
 `user` cascades to `session`/`account`/`two_factor`/`passkey`/`member`;
@@ -87,10 +101,14 @@ pnpm wrangler d1 execute doota --local --command \
           (SELECT COUNT(*) FROM rate_limit) AS ratelimits;"
 ```
 
-## CLI superadmin recovery (test on local first)
+## CLI superadmin genesis + recovery (test on local first)
+
+Auto-detects mode: **genesis** if no super-admin exists (creates the account +
+enrolls TOTP), **reset** if it does.
 
 ```bash
-pnpm reset-admin admin@domain.tld <new-password>            # local
+pnpm reset-admin admin@domain.tld <new-password>            # genesis or reset (local)
 pnpm reset-admin admin@domain.tld <new-password> --remote   # production D1
 pnpm reset-admin admin@domain.tld <new-password> --clear-2fa
+pnpm reset-admin admin@domain.tld <new-password> --name "Full Name"  # genesis display name
 ```

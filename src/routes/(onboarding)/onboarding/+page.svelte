@@ -10,11 +10,13 @@
 
     const steps = $derived(data.onboarding.steps);
     const doneCount = $derived(steps.filter((s) => s.done).length);
-    const isEmailVerified = $derived(
-        data.onboarding.steps.find(
-            (s) => s.id === "verify-email" || s.id === "verify-recovery",
-        )?.done ?? false,
+    // Later steps stay locked until the email/recovery step is verified. The
+    // super-admin has NO such step (email-free genesis) — nothing to gate on, so
+    // treat the prerequisite as satisfied and unlock the remaining steps.
+    const verifyStep = $derived(
+        steps.find((s) => s.id === "verify-email" || s.id === "verify-recovery"),
     );
+    const isEmailVerified = $derived(verifyStep ? verifyStep.done : true);
 </script>
 
 <div class="flex flex-col gap-6">
@@ -66,7 +68,7 @@
     {/snippet}
 
     {#each steps as step, i (step.id)}
-        {#if !isEmailVerified && step.id !== "verify-email"}
+        {#if !isEmailVerified && step.id !== "verify-email" && step.id !== "verify-recovery"}
             <div
                 class="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 opacity-50"
             >

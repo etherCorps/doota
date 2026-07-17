@@ -6,40 +6,36 @@
 	import { DecorIcon } from '$lib/components/ui/decor-icon';
 	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
 	import { cn } from '$lib/utils/ui.js';
-	import type { HTMLAttributes } from 'svelte/elements';
-	import { createAdminRemoteFunction } from '$lib/rpc/create-admin.remote.js';
+	import { setupRemoteFunction } from '$lib/rpc/setup.remote.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { slide } from 'svelte/transition';
 	import { sineInOut } from 'svelte/easing';
 	import { toast } from 'svelte-sonner';
-	import { registerSchema } from '$lib/shared/model/auth.zod.schema';
+	import { setupSchema } from '$lib/shared/model/auth.zod.schema';
+    import { goto } from '$app/navigation';
+    import { resolve } from '$app/paths';
 
-	type AuthTwoProps = HTMLAttributes<HTMLDivElement> & {
-		class?: string;
-	};
+	// The one-time SETUP_TOKEN, validated server-side before this page rendered.
+	let { token }: { token: string } = $props();
 
-	let { class: className = '', ...restProps }: AuthTwoProps = $props();
+	let formState = $state({ isLoading: false });
 
-	let formState = $state({
-		isLoading: false
-	});
+	let { fields } = setupRemoteFunction;
+	let { result } = $derived(setupRemoteFunction);
 
-	let { fields } = createAdminRemoteFunction;
-	let { result } = $derived(createAdminRemoteFunction);
-
-	async function enhancedFormLogin({
+	async function enhancedSubmit({
 		element,
 		submit
-	}: Parameters<Parameters<typeof createAdminRemoteFunction.enhance>[0]>[0]) {
+	}: Parameters<Parameters<typeof setupRemoteFunction.enhance>[0]>[0]) {
 		formState.isLoading = true;
 		try {
 			await submit();
-			console.log('Form submitted, result:', result);
 			switch (result?.success) {
 				case true:
 					element.reset();
 					toast.success(result?.message as string);
+					goto(resolve('/login'))
 					break;
 				case false:
 					toast.error(result?.message as string);
@@ -58,10 +54,8 @@
 
 <div
 	class={cn(
-		'relative flex h-screen w-full items-center justify-center overflow-hidden px-6 md:px-8',
-		className
+		'relative flex h-screen w-full items-center justify-center overflow-hidden px-6 md:px-8'
 	)}
-	{...restProps}
 >
 	<div
 		class={cn(
@@ -80,15 +74,19 @@
 		<div class="w-full max-w-sm animate-in space-y-8">
 			<div class="flex flex-col space-y-1">
 				<h1 class="text-2xl font-bold tracking-wide">Doota</h1>
-				<p class="text-base text-muted-foreground">Create the super-admin account for this deployment.</p>
+				<p class="text-base text-muted-foreground">
+					Create the super-admin for this deployment. No email is sent — you'll secure the
+					account with 2FA or a passkey after logging in.
+				</p>
 			</div>
 
 			<div class="space-y-4">
 				<form
-					{...createAdminRemoteFunction.preflight(registerSchema).enhance(enhancedFormLogin)}
+					{...setupRemoteFunction.preflight(setupSchema).enhance(enhancedSubmit)}
 					class="space-y-2"
-					onchange={() => createAdminRemoteFunction.validate()}
+					onchange={() => setupRemoteFunction.validate()}
 				>
+					<input type="hidden" {...fields.setupToken.as('text')} value={token} />
 					<Field.Group>
 						<Field.Field>
 							<Field.Label>Name</Field.Label>
@@ -115,8 +113,11 @@
 								<InputGroupAddon align="inline-start">
 									<AtSignIcon />
 								</InputGroupAddon>
-						    </InputGroup>
-							<Field.Description>Your external email — used to log in and to recover this account. It must not be on a domain this server hosts.</Field.Description>
+							</InputGroup>
+							<Field.Description
+								>Your external email — used to log in and, once verified later, to recover
+								this account. It must not be on a domain this server hosts.</Field.Description
+							>
 							{#if fields.email.issues()?.length}
 								{#each fields.email.issues() as error (error)}
 									<Field.Error>{error.message}</Field.Error>
@@ -150,20 +151,12 @@
 								disabled={formState.isLoading || !!fields.allIssues()}
 							>
 								{#if formState.isLoading}
-									<div
-										class="inline"
-										transition:slide={{
-											axis: 'x',
-											easing: sineInOut
-										}}
-									>
+									<div class="inline" transition:slide={{ axis: 'x', easing: sineInOut }}>
 										<Spinner class="mr-1" />
 									</div>
-								{/if}
-								{#if formState.isLoading}
-									Creating your account...
+									Creating super-admin...
 								{:else}
-									Create Admin
+									Create super-admin
 								{/if}
 							</Button>
 						</Field.Field>

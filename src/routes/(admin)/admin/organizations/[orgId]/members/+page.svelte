@@ -13,17 +13,16 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import { createUser, pauseUser, removeUser } from '$lib/rpc/manage-users.remote';
-	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	let { data } = $props();
+	const org = $derived(data.org);
 
 	let addOpen = $state(false);
 	let handled: unknown;
-
 	$effect(() => {
 		const result = createUser.result;
 		if (result && result !== handled) {
@@ -51,17 +50,8 @@
 	}
 </script>
 
-<div class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 md:p-8">
-	<div class="flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<div class="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-md">
-				<GlobeIcon class="size-5" />
-			</div>
-			<div class="flex flex-col gap-0.5">
-				<h1 class="font-heading text-2xl font-semibold tracking-tight">{data.org.domain}</h1>
-				<p class="text-muted-foreground text-sm">{data.members.length} members</p>
-			</div>
-		</div>
+<div class="flex flex-col gap-3">
+	<div class="flex justify-end">
 		<Button class="gap-1.5" onclick={() => (addOpen = true)}>
 			<PlusIcon class="size-4" /> Add member
 		</Button>
@@ -130,13 +120,13 @@
 		<Dialog.Header>
 			<Dialog.Title class="font-heading">Add member</Dialog.Title>
 			<Dialog.Description>
-				A mailbox on <span class="font-mono">{data.org.domain}</span> is created and an invite with a
+				A mailbox on <span class="font-mono">{org.domain}</span> is created and an invite with a
 				temporary password is sent to their external recovery address.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<form {...createUser} class="flex flex-col gap-3 py-2">
-			<input {...createUser.fields.organizationId.as('text')} type="hidden" value={data.org.id} />
+			<input {...createUser.fields.organizationId.as('text')} type="hidden" value={org.id} />
 			<Field.Field>
 				<Field.Label>Name</Field.Label>
 				<Input {...createUser.fields.name.as('text')} placeholder="Ada Lovelace" required />
@@ -154,7 +144,7 @@
 						required
 					/>
 					<InputGroup.Addon align="inline-end">
-						<InputGroup.Text class="font-mono">@{data.org.domain}</InputGroup.Text>
+						<InputGroup.Text class="font-mono">@{org.domain}</InputGroup.Text>
 					</InputGroup.Addon>
 				</InputGroup.Root>
 				{#each createUser.fields.email.issues() ?? [] as issue (issue)}
@@ -187,12 +177,7 @@
 				{/each}
 			</Field.Field>
 			<div class="flex justify-end gap-2 pt-2">
-				<Button
-					type="button"
-					variant="ghost"
-					onclick={() => (addOpen = false)}
-					disabled={createUser.pending > 0}
-				>
+				<Button type="button" variant="ghost" onclick={() => (addOpen = false)} disabled={createUser.pending > 0}>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={createUser.pending > 0}>
