@@ -14,6 +14,7 @@ export async function sendRecoveryEmailVerification(
   ctx: AuthContext,
   userId: string,
   recoveryEmail: string,
+  from?: { name: string; email: string },
 ) {
   const token = crypto.randomUUID();
   await ctx.internalAdapter.createVerificationValue({
@@ -23,6 +24,7 @@ export async function sendRecoveryEmailVerification(
   });
   await sendMail({
     to: recoveryEmail,
+    from,
     subject: "Verify your Doota recovery email",
     text: `Confirm this address as your Doota account recovery email: ${ORIGIN}/verify-recovery-email?token=${token}\nThis link expires in 1 hour. If you didn't request this, ignore this email.`,
   });

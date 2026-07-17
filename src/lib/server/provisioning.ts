@@ -5,7 +5,7 @@ import * as schema from "./db/schema";
 import { getDiceBearURL } from "$lib/utils/dice-bear.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "./can";
-import { isServedDomain } from "./org-domains";
+import { isServedDomain, senderAddress } from "./org-domains";
 import { sendMail } from "./mailer";
 import type { Auth } from "./auth";
 
@@ -159,9 +159,12 @@ export async function provisionUser(
     expiresAt: new Date(Date.now() + RECOVERY_TOKEN_TTL_MS),
   });
 
+  // Branded from the org they're joining (its own domain when sending is live).
+  const from = await senderAddress(db, org.domain);
   await tryCatch(
     sendMail({
       to: recoveryEmail,
+      from,
       subject: "You've been invited to Doota",
       text:
         `You have a new Doota ${input.role} account.\n\n` +

@@ -2,7 +2,7 @@ import { command, form, getRequestEvent } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { and, eq, gt } from 'drizzle-orm';
 import { recoveryEmailSchema } from '$lib/shared/model/auth.zod.schema.js';
-import { isServedDomain } from '$lib/server/org-domains.js';
+import { isServedDomain, senderAddress, domainOf } from '$lib/server/org-domains.js';
 import { sendRecoveryEmailVerification } from '$lib/server/recovery-email.js';
 import * as schema from '$lib/server/db/schema.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
@@ -60,7 +60,9 @@ export const setRecoveryEmail = form(recoveryEmailSchema, async ({ recoveryEmail
 		updatedAt: new Date(now)
 	});
 
-	await sendRecoveryEmailVerification(ctx, locals.user.id, recoveryEmail);
+	// Brand from the user's own org domain when its sending path is live.
+	const from = await senderAddress(locals.db, domainOf(locals.user.email));
+	await sendRecoveryEmailVerification(ctx, locals.user.id, recoveryEmail, from);
 	return {
 		success: true,
 		message: 'Verification link sent. Check that inbox to confirm the address.'

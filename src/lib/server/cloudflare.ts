@@ -279,6 +279,90 @@ export async function createRoutingRule(
 }
 
 /**
+ * Live inbound-routing config for the org's DNS tab: whether Email Routing is on,
+ * whether subaddressing (`+`) is honored, and which subdomains have routing MX.
+ * All read live from Cloudflare — never persisted (CF is the source of truth).
+ *
+ * Subdomains are inferred from the zone's MX records that point at Cloudflare
+ * Email Routing (`*.mx.cloudflare.net`) whose name sits below the apex.
+ * ponytail: MX heuristic. If a customer runs non-CF inbound MX on a subdomain
+ * this would miss it — fine, we only manage CF-routed subdomains here.
+ */
+export type RoutingConfig = {
+  enabled: boolean;
+  supportSubaddress: boolean;
+  status?: string;
+  subdomains: string[];
+};
+
+export async function getRoutingConfig(
+  zoneId: string,
+  apex: string,
+): Promise<RoutingConfig> {
+  const c = cf();
+  const [settings, subdomains] = await Promise.all([
+    c.emailRouting.get({ zone_id: zoneId }).catch(() => null),
+    listRoutingSubdomains(zoneId, apex).catch(() => [] as string[]),
+  ]);
+  return {
+    enabled: !!settings?.enabled,
+    supportSubaddress: !!settings?.support_subaddress,
+    status: settings?.status,
+    subdomains,
+  };
+}
+
+async function listRoutingSubdomains(zoneId: string, apex: string): Promise<string[]> {
+  const names = new Set<string>();
+  const suffix = `.${apex}`;
+  for await (const rec of cf().dns.records.list({ zone_id: zoneId, type: "MX" })) {
+    const name = (rec.name ?? "").toLowerCase();
+    const content = (rec.content ?? "").toLowerCase();
+    if (name !== apex && name.endsWith(suffix) && content.endsWith("mx.cloudflare.net")) {
+      names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * Add a subdomain to the zone's Email Routing (provisions its MX/SPF so
+ * `*@sub.apex` is delivered to the same catch-all Worker). Idempotent — CF
+ * tolerates re-adding. `sub` must be a full host within the apex.
+ */
+export async function addRoutingSubdomain(zoneId: string, sub: string): Promise<void> {
+  await tolerant(() => cf().emailRouting.dns.create({ zone_id: zoneId, name: sub }));
+}
+
+/**
+ * Remove a routing subdomain by deleting its Email Routing DNS records (the
+ * per-subdomain `dns.delete` endpoint is zone-wide, so we target the records by
+ * name via the zone DNS API instead). Safe no-op if nothing matches.
+ */
+export async function removeRoutingSubdomain(zoneId: string, sub: string): Promise<void> {
+  const c = cf();
+  const ids: string[] = [];
+  for await (const rec of c.dns.records.list({ zone_id: zoneId, search: sub })) {
+    if ((rec.name ?? "").toLowerCase() === sub) ids.push(rec.id);
+  }
+  for (const id of ids) await tolerant(() => c.dns.records.delete(id, { zone_id: zoneId }));
+}
+
+/**
+ * Toggle subaddressing (plus-addressing, `user+tag@domain`) on the zone's Email
+ * Routing. No typed setter in the SDK (v7 only exposes enable/disable/get), so
+ * this uses the raw PATCH escape hatch. Endpoint confirmed against the CF API
+ * reference: PATCH /zones/{id}/email/routing { support_subaddress }.
+ * ponytail: raw path — if CF ever moves it, the toast surfaces the error and
+ * this is the one line to fix.
+ */
+export async function setSubaddressing(zoneId: string, on: boolean): Promise<void> {
+  await cf().patch(`/zones/${zoneId}/email/routing`, {
+    body: { support_subaddress: on },
+  });
+}
+
+/**
  * Run the full idempotent wire once a zone is active. Safe to re-run: every
  * step tolerates "already done". Returns the sending metadata (DKIM selector).
  */

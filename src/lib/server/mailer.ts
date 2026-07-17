@@ -1,21 +1,35 @@
 import { getRequestEvent } from "$app/server";
-import { MAIL_DOMAIN } from "$app/env/public";
 
-type Mail = { to: string; subject: string; text: string; html?: string };
+type MailFrom = { name: string; email: string };
+type Mail = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  /** Sender from an onboarded active domain (see `senderAddress`). Required to
+   *  actually send — there is no system fallback domain. */
+  from?: MailFrom;
+};
 
 /**
- * System mailer (no-reply@MAIL_DOMAIN) via the EMAIL_SENDER binding.
- * Falls back to console.log in local dev where the binding is absent.
+ * Mailer via the EMAIL_SENDER binding. Every mail must originate from an
+ * onboarded domain whose sending path is live (`senderAddress`) — there is no
+ * fallback domain. If none is active yet (fresh deploy) `from` is undefined and
+ * the send is skipped. Falls back to console.log in local dev (no binding).
  */
-export async function sendMail({ to, subject, text, html }: Mail) {
+export async function sendMail({ to, subject, text, html, from }: Mail) {
   const sender = getRequestEvent().platform?.env.EMAIL_SENDER;
   if (!sender) {
-    console.log("[mailer:dev]", { to, subject, text });
+    console.log("[mailer:dev]", { to, from, subject, text });
+    return;
+  }
+  if (!from) {
+    console.warn("[mailer] no active sending domain — mail skipped", { to, subject });
     return;
   }
   await sender.send({
     to,
-    from: { name: "Doota", email: `no-reply@${MAIL_DOMAIN}` },
+    from,
     subject,
     text,
     html: html ?? `<p>${text}</p>`,

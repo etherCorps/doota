@@ -57,7 +57,7 @@
 	}
 </script>
 
-<div class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-6 md:p-8">
 	<div class="flex flex-col gap-1">
 		<h1 class="font-heading text-2xl font-semibold tracking-tight">Dashboard</h1>
 		<p class="text-muted-foreground text-sm">
@@ -65,7 +65,7 @@
 		</p>
 	</div>
 
-	<div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+	<div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
 		{#each stats as stat (stat.label)}
 			<Card.Card>
 				<Card.CardContent class="flex items-center gap-3 py-4">

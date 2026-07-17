@@ -2,6 +2,7 @@ import { and, eq, gt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
 import { sendMail } from "./mailer";
+import { senderAddress, domainOf } from "./org-domains";
 import type { Auth } from "./auth";
 
 type AuthContext = Awaited<Auth["$context"]>;
@@ -86,8 +87,11 @@ export async function sendPasswordResetCode(
     updatedAt: new Date(now),
   });
 
+  const fromDomain = user.role === "superadmin" ? undefined : domainOf(user.email);
+  const from = await senderAddress(db, fromDomain);
   await sendMail({
     to,
+    from,
     subject: "Your Doota password reset code",
     text: `Your Doota password reset code is ${code}\nIt expires in 10 minutes. If you didn't request this, ignore this email and your password stays unchanged.`,
   });

@@ -92,7 +92,12 @@ export const removeUser = command(z.string(), async (userId) => {
   await assertCanManage(actor, userId);
   const { locals } = getRequestEvent();
   const ctx = await locals.auth.$context;
-  // FK cascade drops member/session/account rows.
+  // Don't trust FK cascade: D1 doesn't reliably enforce ON DELETE CASCADE at
+  // runtime, so purge the rows the task cares about explicitly. Sessions first
+  // (cuts live access), then org memberships, then the user + its
+  // account/twoFactor/passkey rows via the adapter.
+  await locals.db.delete(schema.session).where(eq(schema.session.userId, userId));
+  await locals.db.delete(schema.member).where(eq(schema.member.userId, userId));
   await ctx.internalAdapter.deleteUser(userId);
   return { removed: true };
 });

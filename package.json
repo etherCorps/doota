@@ -35,6 +35,7 @@
     "@sveltejs/kit": "^2.69.2",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/vite": "^4.3.2",
+    "@tanstack/table-core": "^8.21.3",
     "@types/node": "^22.19.13",
     "auth": "https://pkg.pr.new/auth@10221",
     "better-auth": "~1.6.23",

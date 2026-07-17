@@ -6,11 +6,15 @@ import * as schema from "$lib/server/db/schema.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
+  addRoutingSubdomain,
   findZone,
   getMailDnsRecords,
+  getRoutingConfig,
   inspectZoneMail,
   listZones,
   pollZoneStatus,
+  removeRoutingSubdomain,
+  setSubaddressing,
   wireMail,
   zoneCreate,
   type ZoneOnboardStatus,
@@ -289,3 +293,84 @@ export const domainDnsRecords = command(z.string(), async (orgId) => {
   if (!org?.zoneId) error(400, "No Cloudflare zone for this domain yet.");
   return getMailDnsRecords(org.zoneId, org.domain);
 });
+
+/** Fetch the org's zone (superadmin-gated). Shared by the routing commands. */
+async function orgZone(orgId: string) {
+  requireSuperadmin();
+  const { locals } = getRequestEvent();
+  const org = await locals.db.query.organization.findFirst({
+    where: eq(schema.organization.id, orgId),
+    columns: { domain: true, zoneId: true },
+  });
+  if (!org?.zoneId) error(400, "No Cloudflare zone for this domain yet.");
+  return { zoneId: org.zoneId, apex: org.domain };
+}
+
+/**
+ * Normalise a subdomain input to a full host within the apex. Accepts a bare
+ * label ("mail") or a full host ("mail.acme.com"); rejects anything outside the
+ * apex. Returns the lowercased host or null if invalid.
+ */
+function normalizeSubdomain(input: string, apex: string): string | null {
+  const raw = input.trim().toLowerCase().replace(/\.$/, "");
+  if (!raw) return null;
+  const host = raw.endsWith(`.${apex}`) || raw === apex ? raw : `${raw}.${apex}`;
+  if (host === apex) return null; // the apex is not a subdomain
+  if (!host.endsWith(`.${apex}`)) return null;
+  return DOMAIN_RE.test(host) ? host : null;
+}
+
+/**
+ * Live inbound-routing config for the org's DNS tab: Email Routing state,
+ * subaddressing flag, and configured routing subdomains. Superadmin only.
+ */
+export const mailRoutingConfig = command(z.string(), async (orgId) => {
+  const { zoneId, apex } = await orgZone(orgId);
+  return getRoutingConfig(zoneId, apex);
+});
+
+/** Add a subdomain to the org's Email Routing. Superadmin only. */
+export const addMailSubdomain = command(
+  z.object({ orgId: z.string().min(1), subdomain: z.string().min(1) }),
+  async ({ orgId, subdomain }) => {
+    const { zoneId, apex } = await orgZone(orgId);
+    const host = normalizeSubdomain(subdomain, apex);
+    if (!host) {
+      return { success: false as const, message: `Enter a subdomain within ${apex}, e.g. mail.${apex}.` };
+    }
+    try {
+      await addRoutingSubdomain(zoneId, host);
+    } catch (e) {
+      console.error("[domains:subdomain] add failed", e);
+      return { success: false as const, message: "Cloudflare rejected the subdomain. Check the zone and try again." };
+    }
+    return { success: true as const, subdomain: host };
+  },
+);
+
+/** Remove a routing subdomain from the org's Email Routing. Superadmin only. */
+export const removeMailSubdomain = command(
+  z.object({ orgId: z.string().min(1), subdomain: z.string().min(1) }),
+  async ({ orgId, subdomain }) => {
+    const { zoneId, apex } = await orgZone(orgId);
+    const host = normalizeSubdomain(subdomain, apex);
+    if (!host) error(400, "Invalid subdomain.");
+    await removeRoutingSubdomain(zoneId, host);
+    return { success: true as const };
+  },
+);
+
+/** Toggle subaddressing (`user+tag@domain`) on the org's zone. Superadmin only. */
+export const toggleSubaddressing = command(
+  z.object({ orgId: z.string().min(1), on: z.boolean() }),
+  async ({ orgId, on }) => {
+    const { zoneId } = await orgZone(orgId);
+    try {
+      await setSubaddressing(zoneId, on);
+    } catch (e) {
+      console.error("[domains:subaddress] toggle failed", e);
+      return { success: false as const, message: "Cloudflare rejected the subaddressing change." };
+    }
+    return { success: true as const, on };
+  },
+);

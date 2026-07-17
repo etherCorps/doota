@@ -17,7 +17,7 @@ import { getRequestEvent } from "$app/server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
 import { sendMailBackground } from "./mailer";
-import { isServedDomain, invalidateDomainCache } from "./org-domains";
+import { isServedDomain, invalidateDomainCache, senderAddress, domainOf } from "./org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGIN } from "$app/env/public";
 import { verificationMailTemplate } from "$lib/client/email";
@@ -141,8 +141,14 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
         // Defence in depth: never send a reset link to a served-domain inbox.
         if (db && (await isServedDomain(db, to))) return;
 
+        // Brand from the user's own org domain (members) when it's active;
+        // superadmin/system mail falls back to any active org domain.
+        const fromDomain = role === "superadmin" ? undefined : domainOf(user.email);
+        const from = db ? await senderAddress(db, fromDomain) : undefined;
+
         sendMailBackground({
           to,
+          from,
           subject: "Reset your Doota password",
           text: `Click the link to reset your Doota password: ${url}\nThis link expires in 10 minutes. It only resets your password — two-factor authentication stays intact.`,
         });

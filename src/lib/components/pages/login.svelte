@@ -4,7 +4,6 @@
 	import FingerprintIcon from '@lucide/svelte/icons/fingerprint';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { MAIL_DOMAIN } from '$app/env/public';
 	import { authClient } from '$lib/client/auth-client';
 	import { toast } from 'svelte-sonner';
 	import AuthShell from './auth-shell.svelte';
@@ -83,7 +82,7 @@
 					<InputGroup>
 						<InputGroupInput
 							type="email"
-							placeholder="you@{MAIL_DOMAIN}"
+							placeholder="you@yourdomain.com"
 							bind:value={email}
 							required
 							autocomplete="username webauthn"

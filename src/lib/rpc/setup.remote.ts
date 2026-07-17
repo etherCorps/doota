@@ -37,7 +37,7 @@ export const setupRemoteFunction = form(
 		}
 
 		// The super-admin is external: their login email must NOT be on a domain
-		// this server hosts (at bootstrap that is just the system MAIL_DOMAIN).
+		// this server hosts (at bootstrap there are no served domains yet).
 		if (await isServedDomain(db, email)) {
 			return {
 				success: false,

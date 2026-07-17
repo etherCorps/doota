@@ -1,6 +1,6 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import * as schema from "./db/schema";
-import { MAIL_DOMAIN } from "$app/env/public";
 
 /**
  * domain → organization map.
@@ -58,9 +58,9 @@ export function domainOf(addressOrDomain: string): string {
 }
 
 /**
- * True if the address/domain is on a domain this deployment serves — either a
- * registered org domain or the system `MAIL_DOMAIN` (the no-reply domain, which
- * must never be a valid recovery/external-login target either).
+ * True if the address/domain is a registered org domain — i.e. one this
+ * deployment serves. Such addresses must never be a valid recovery/external-login
+ * target (they're internal mailboxes, not reachable external inboxes).
  */
 export async function isServedDomain(
   db: DrizzleD1Database<typeof schema>,
@@ -68,8 +68,48 @@ export async function isServedDomain(
 ): Promise<boolean> {
   const domain = domainOf(addressOrDomain);
   if (!domain) return false;
-  if (domain === MAIL_DOMAIN.toLowerCase()) return true;
   return (await getMap(db)).has(domain);
+}
+
+export type MailFrom = { name: string; email: string };
+
+/**
+ * From-address for mail *about* an org. Sending must always originate from an
+ * onboarded domain whose sending path is live on Cloudflare (`status ===
+ * 'active'`) — a domain that isn't DKIM-wired gets marked spam or bounced.
+ *
+ * Resolution order:
+ *   1. the requested org's own domain, if it's active;
+ *   2. otherwise ANY active org domain (system/superadmin mail, or invites for
+ *      an org not yet active — we still need a wired domain to send from);
+ *   3. `undefined` if no domain is active yet (fresh deploy) — the caller can't
+ *      send until at least one domain is onboarded.
+ *
+ * ponytail: `localPart` defaults to `no-reply` — no real inbox to provision.
+ * Switch to a monitored mailbox once inbound routing (T3) exists.
+ */
+export async function senderAddress(
+  db: DrizzleD1Database<typeof schema>,
+  orgDomain?: string,
+  localPart = "no-reply",
+): Promise<MailFrom | undefined> {
+  const wanted = orgDomain ? domainOf(orgDomain) : "";
+  if (wanted) {
+    const org = await db.query.organization.findFirst({
+      where: eq(schema.organization.domain, wanted),
+      columns: { name: true, status: true },
+    });
+    if (org?.status === "active") {
+      return { name: org.name || "Doota", email: `${localPart}@${wanted}` };
+    }
+  }
+  // No (or inactive) specific org — send from whichever domain is live.
+  const any = await db.query.organization.findFirst({
+    where: eq(schema.organization.status, "active"),
+    columns: { name: true, domain: true },
+  });
+  if (any) return { name: any.name || "Doota", email: `${localPart}@${any.domain}` };
+  return undefined;
 }
 
 /** The org that owns a domain, or undefined. Used for member-login routing. */

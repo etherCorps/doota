@@ -1,12 +1,13 @@
 <script lang="ts">
+	import type { ColumnDef } from '@tanstack/table-core';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
-	import * as Table from '$lib/components/ui/table/index.js';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as InputGroup from '$lib/components/ui/input-group/index.js';
+	import { ButtonGroup } from '$lib/components/ui/button-group/index.js';
+	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -14,12 +15,20 @@
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import { createUser, pauseUser, removeUser } from '$lib/rpc/manage-users.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	let { data } = $props();
 	const org = $derived(data.org);
+
+	type Member = (typeof data.members)[number];
+
+	const columns: ColumnDef<Member, unknown>[] = [
+		{ accessorKey: 'name', header: 'Member', cell: ({ row }) => renderSnippet(memberCell, row.original) },
+		{ accessorKey: 'role', header: 'Role', cell: ({ row }) => renderSnippet(roleCell, row.original) },
+		{ accessorKey: 'status', header: 'Status', cell: ({ row }) => renderSnippet(statusCell, row.original) },
+		{ id: 'actions', header: '', enableSorting: false, cell: ({ row }) => renderSnippet(actionsCell, row.original) }
+	];
 
 	let addOpen = $state(false);
 	let handled: unknown;
@@ -43,12 +52,56 @@
 		await invalidateAll();
 	}
 
-	async function remove(userId: string) {
-		await removeUser(userId);
-		toast.success('User removed.');
-		await invalidateAll();
+	let confirmRemove = $state<{ id: string; name: string } | null>(null);
+	let removing = $state(false);
+
+	async function remove() {
+		if (!confirmRemove) return;
+		removing = true;
+		try {
+			await removeUser(confirmRemove.id);
+			toast.success('User removed.');
+			confirmRemove = null;
+			await invalidateAll();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not remove user.');
+		} finally {
+			removing = false;
+		}
 	}
 </script>
+
+{#snippet memberCell(m: Member)}
+	<div class="flex flex-col">
+		<span class="font-medium">{m.name}</span>
+		<span class="text-muted-foreground font-mono text-xs">{m.email}</span>
+	</div>
+{/snippet}
+
+{#snippet roleCell(m: Member)}
+	<Badge variant={m.role === 'member' ? 'secondary' : 'default'} class="capitalize">{m.role}</Badge>
+{/snippet}
+
+{#snippet statusCell(m: Member)}
+	<StatusChip status={m.status} />
+{/snippet}
+
+{#snippet actionsCell(m: Member)}
+	<ButtonGroup class="justify-end">
+		<Button variant="outline" size="sm" onclick={() => pause(m.id)}>
+			<PauseIcon class="size-3.5" />
+			{m.status === 'paused' ? 'Resume' : 'Pause'}
+		</Button>
+		<Button
+			variant="outline"
+			size="sm"
+			class="text-destructive hover:text-destructive"
+			onclick={() => (confirmRemove = { id: m.id, name: m.name })}
+		>
+			<Trash2Icon class="size-3.5" /> Remove
+		</Button>
+	</ButtonGroup>
+{/snippet}
 
 <div class="flex flex-col gap-3">
 	<div class="flex justify-end">
@@ -57,62 +110,13 @@
 		</Button>
 	</div>
 
-	<Card.Card class="overflow-hidden py-0">
-		<Table.Root>
-			<Table.Header>
-				<Table.Row>
-					<Table.Head>Member</Table.Head>
-					<Table.Head>Role</Table.Head>
-					<Table.Head>Status</Table.Head>
-					<Table.Head class="w-10"></Table.Head>
-				</Table.Row>
-			</Table.Header>
-			<Table.Body>
-				{#each data.members as member (member.id)}
-					<Table.Row>
-						<Table.Cell>
-							<div class="flex flex-col">
-								<span class="font-medium">{member.name}</span>
-								<span class="text-muted-foreground font-mono text-xs">{member.email}</span>
-							</div>
-						</Table.Cell>
-						<Table.Cell>
-							<Badge variant={member.role === 'member' ? 'secondary' : 'default'} class="capitalize">
-								{member.role}
-							</Badge>
-						</Table.Cell>
-						<Table.Cell><StatusChip status={member.status} /></Table.Cell>
-						<Table.Cell>
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button variant="ghost" size="icon" class="text-muted-foreground size-8" {...props}>
-											<MoreHorizontalIcon class="size-4" />
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content align="end">
-									<DropdownMenu.Item onSelect={() => pause(member.id)}>
-										<PauseIcon class="size-4" />
-										{member.status === 'paused' ? 'Resume login' : 'Pause login'}
-									</DropdownMenu.Item>
-									<DropdownMenu.Item variant="destructive" onSelect={() => remove(member.id)}>
-										<Trash2Icon class="size-4" /> Remove
-									</DropdownMenu.Item>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
-						</Table.Cell>
-					</Table.Row>
-				{:else}
-					<Table.Row>
-						<Table.Cell colspan={4} class="text-muted-foreground py-8 text-center text-sm">
-							No members yet. Add one to send an invite.
-						</Table.Cell>
-					</Table.Row>
-				{/each}
-			</Table.Body>
-		</Table.Root>
-	</Card.Card>
+	<DataTable
+		{columns}
+		data={data.members}
+		filterColumn="name"
+		filterPlaceholder="Search members…"
+		empty="No members yet. Add one to send an invite."
+	/>
 </div>
 
 <Dialog.Root bind:open={addOpen}>
@@ -188,3 +192,29 @@
 		</form>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root open={!!confirmRemove} onOpenChange={(o) => !o && (confirmRemove = null)}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Remove {confirmRemove?.name}?</AlertDialog.Title>
+			<AlertDialog.Description>
+				This deletes the account, its mailbox membership and all active sessions. This can't be
+				undone.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={removing}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				disabled={removing}
+				onclick={(e) => {
+					e.preventDefault();
+					remove();
+				}}
+				class="bg-destructive text-white hover:bg-destructive/90"
+			>
+				{#if removing}<Spinner class="mr-1" />{/if}
+				Remove
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

@@ -2,7 +2,6 @@
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import MailCheckIcon from '@lucide/svelte/icons/mail-check';
 	import { resolve } from '$app/paths';
-	import { MAIL_DOMAIN } from '$app/env/public';
 	import { authClient } from '$lib/client/auth-client';
 	import AuthShell from './auth-shell.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -43,7 +42,7 @@
 					<InputGroup>
 						<InputGroupInput
 							type="email"
-							placeholder="you@{MAIL_DOMAIN}"
+							placeholder="you@yourdomain.com"
 							bind:value={email}
 							required
 						/>

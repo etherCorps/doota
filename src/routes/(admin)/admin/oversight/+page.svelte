@@ -12,7 +12,7 @@
 	}));
 </script>
 
-<div class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-6 md:p-8">
 	<div class="flex flex-col gap-1">
 		<h1 class="font-heading text-2xl font-semibold tracking-tight">Oversight</h1>
 		<p class="text-muted-foreground flex items-center gap-1.5 text-sm">
