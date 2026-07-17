@@ -15,8 +15,9 @@
 4. **Generic, rate-limited responses** on forgot-password and recovery lookups.
    Never reveal whether an account or recovery address exists.
 5. **Never send login codes or reset links to a served-domain address.**
-   Enforced by `isServedDomain()` (system `MAIL_DOMAIN` + every org domain) at
-   every write and send point.
+   Enforced by `isServedDomain()` (every registered org domain) at every write
+   and send point. Outbound mail always originates from an onboarded active
+   domain (`senderAddress()`); there is no system fallback domain.
 6. **No TOTP step after a passkey login.**
 7. **The in-app password change requires code *and* current password.** The
    authenticated dialog (`reset-password.remote.ts`) proves both a mailed code
