@@ -5,6 +5,7 @@
     import PasskeyCard from "$lib/components/account/passkey-card.svelte";
     import EmailVerifyCard from "$lib/components/account/email-verify-card.svelte";
     import SetPasswordCard from "$lib/components/account/set-password-card.svelte";
+    import OnboardDomainCard from "$lib/components/account/onboard-domain-card.svelte";
 
     let { data } = $props();
 
@@ -88,7 +89,9 @@
             {:else}
                 <div class="flex flex-col gap-2">
                     {@render stepsCounter({ index: i, length: steps.length })}
-                    {#if step.id === "verify-email"}
+                    {#if step.id === "onboard-domain"}
+                        <OnboardDomainCard />
+                    {:else if step.id === "verify-email"}
                         <EmailVerifyCard email={data.account.email} />
                     {:else if step.id === "verify-recovery"}
                         <RecoveryEmailCard

@@ -1,12 +1,14 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
+import { stampOnboarded } from "./auth/escape-hatches.js";
 
 export type OnboardingStepId =
   | "verify-email"
   | "verify-recovery"
   | "secure-account"
-  | "set-password";
+  | "set-password"
+  | "onboard-domain";
 
 export type OnboardingStep = {
   id: OnboardingStepId;
@@ -72,11 +74,27 @@ export async function getOnboardingStatus(
   const secured = !!fresh?.twoFactorEnabled || passkeys > 0;
   const steps: OnboardingStep[] = [];
 
-  // The external super-admin does NOT verify email at onboarding: at genesis no
-  // domain is onboarded, so there is no sending path to deliver that mail (the
-  // bootstrap paradox). Their trust root is deploy access; email verification is
-  // a deferred, optional action once a domain has a working sending path. So the
-  // super-admin's only gate is securing the account (2FA / passkey) below.
+  // The super-admin onboards the first mail domain here: at genesis no domain is
+  // configured, so there is no sending path for any mail (the bootstrap paradox).
+  // "Done" the moment a domain exists — a pending zone (nameservers not yet
+  // delegated) still counts, so they can continue and finish DNS later rather
+  // than being walled out of /admin while nameservers propagate. Once that domain
+  // flips active, wireAndActivate auto-sends their email-verification mail.
+  if (role === "superadmin") {
+    const domains = await db.$count(schema.organization);
+    steps.push({
+      id: "onboard-domain",
+      title: "Onboard a mail domain",
+      description:
+        "Connect a Cloudflare domain so Doota can send and receive mail.",
+      done: domains > 0,
+    });
+  }
+
+  // The external super-admin does NOT verify email at onboarding: their email
+  // verification is auto-sent once a domain is active (see above), and is a
+  // non-blocking, deferred action — their trust root is deploy access, and 2FA /
+  // passkey below is the real gate. So the super-admin never has a verify step.
   if (role !== "superadmin") {
     steps.push({
       id: "verify-recovery",
@@ -116,8 +134,5 @@ export async function markOnboarded(
   db: DrizzleD1Database<typeof schema>,
   userId: string,
 ): Promise<void> {
-  await db
-    .update(schema.user)
-    .set({ onboardedAt: Date.now() })
-    .where(eq(schema.user.id, userId));
+  await stampOnboarded(db, userId);
 }

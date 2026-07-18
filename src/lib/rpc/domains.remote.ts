@@ -3,6 +3,8 @@ import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import * as schema from "$lib/server/db/schema.js";
+import { tryCatch } from "$lib/utils/try-catch.js";
+import { setOrgLifecycle } from "$lib/server/auth/escape-hatches.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
@@ -41,14 +43,6 @@ function requireSuperadmin() {
   return user;
 }
 
-async function setStatus(orgId: string, status: ZoneOnboardStatus, zoneId?: string) {
-  const { locals } = getRequestEvent();
-  await locals.db
-    .update(schema.organization)
-    .set(zoneId ? { status, zoneId } : { status })
-    .where(eq(schema.organization.id, orgId));
-}
-
 /**
  * Create the org for a domain (super-admin becomes owner) if missing, then set
  * its status/zone. ONLY called after a Cloudflare success — so the DB never
@@ -73,7 +67,7 @@ async function upsertOrg(
       })
     )?.id;
   if (!orgId) throw error(500, "Could not create the organization.");
-  await setStatus(orgId, status, zoneId);
+  await setOrgLifecycle(orgId, status, zoneId);
   return orgId;
 }
 
@@ -96,7 +90,32 @@ async function wireAndActivate(
     console.error("[domains:wire] failed", e);
     error(502, "Cloudflare wiring failed. Check the API token scopes and try again.");
   }
-  return upsertOrg(domain, "active", zoneId);
+  const orgId = await upsertOrg(domain, "active", zoneId);
+  // A domain just went live — the first working sending path now exists. If the
+  // super-admin who onboarded it hasn't verified their (external) primary email,
+  // auto-send that verification now so they never have to trigger it by hand.
+  // Best-effort: a failure here must not fail the activation. Covers both entry
+  // points, since onboardDomain and refreshDomain both route through here.
+  await autoSendSuperadminVerify();
+  return orgId;
+}
+
+/**
+ * Fire the super-admin's primary-email verification once a sending path exists.
+ * No-op unless the acting user is an unverified super-admin. better-auth's
+ * verify-email endpoint no-ops if the address is already verified, so a redundant
+ * call (e.g. activating a second domain) is harmless.
+ */
+async function autoSendSuperadminVerify() {
+  const { locals, request } = getRequestEvent();
+  const user = locals.user;
+  if (user?.role !== "superadmin" || user.emailVerified) return;
+  await tryCatch(
+    locals.auth.api.sendVerificationEmail({
+      body: { email: user.email, callbackURL: "/onboarding?verified=1" },
+      headers: request.headers,
+    }),
+  );
 }
 
 /**
@@ -205,7 +224,7 @@ export const refreshDomain = command(z.string(), async (orgId) => {
     return { status: "active" as ZoneOnboardStatus, nameServers: [] };
   }
 
-  await setStatus(org.id, zone.status);
+  await setOrgLifecycle(org.id, zone.status);
   return { status: zone.status, nameServers: zone.nameServers };
 });
 
@@ -269,11 +288,11 @@ export const updateOrgProfile = command(
       const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
       if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
     }
-    const { locals } = getRequestEvent();
-    await locals.db
-      .update(schema.organization)
-      .set({ name, logo: logo || null })
-      .where(eq(schema.organization.id, orgId));
+    const { locals, request } = getRequestEvent();
+    await locals.auth.api.updateOrganization({
+      body: { organizationId: orgId, data: { name, logo: logo || null } },
+      headers: request.headers,
+    });
     return { success: true as const };
   },
 );

@@ -71,7 +71,7 @@ export async function isServedDomain(
   return (await getMap(db)).has(domain);
 }
 
-export type MailFrom = { name: string; email: string };
+export type MailFrom = { name: string; email: string; logo?: string | null };
 
 /**
  * From-address for mail *about* an org. Sending must always originate from an
@@ -97,18 +97,18 @@ export async function senderAddress(
   if (wanted) {
     const org = await db.query.organization.findFirst({
       where: eq(schema.organization.domain, wanted),
-      columns: { name: true, status: true },
+      columns: { name: true, status: true, logo: true },
     });
     if (org?.status === "active") {
-      return { name: org.name || "Doota", email: `${localPart}@${wanted}` };
+      return { name: org.name || "Doota", email: `${localPart}@${wanted}`, logo: org.logo };
     }
   }
   // No (or inactive) specific org — send from whichever domain is live.
   const any = await db.query.organization.findFirst({
     where: eq(schema.organization.status, "active"),
-    columns: { name: true, domain: true },
+    columns: { name: true, domain: true, logo: true },
   });
-  if (any) return { name: any.name || "Doota", email: `${localPart}@${any.domain}` };
+  if (any) return { name: any.name || "Doota", email: `${localPart}@${any.domain}`, logo: any.logo };
   return undefined;
 }
 

@@ -12,8 +12,7 @@ import {
 export const requestPasswordResetCode = command(async () => {
 	const { locals } = getRequestEvent();
 	if (!locals.user) error(401, 'Not authenticated');
-	const ctx = await locals.auth.$context;
-	return sendPasswordResetCode(ctx, locals.db, locals.user);
+	return sendPasswordResetCode(locals.db, locals.user);
 });
 
 const confirmSchema = z.object({
@@ -29,7 +28,7 @@ export const confirmPasswordReset = form(
 		const { locals, request } = getRequestEvent();
 		if (!locals.user) error(401, 'Not authenticated');
 
-		const ok = await confirmPasswordResetCode(locals.db, locals.user.id, code);
+		const ok = await confirmPasswordResetCode(locals.user.id, code);
 		if (!ok) return { success: false, message: 'Invalid or expired code.' };
 
 		const { error: changeError } = await tryCatch(

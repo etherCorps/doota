@@ -7,6 +7,7 @@ import { Email } from "$lib/shared/model/utils.zod.schema.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "$lib/server/can.js";
 import { actorOrgAdminOf, provisionUser } from "$lib/server/provisioning.js";
+import { purgeUserMemberships } from "$lib/server/auth/escape-hatches.js";
 
 const ADMIN_ROLES = ["admin", "superadmin"];
 
@@ -58,31 +59,28 @@ const createSchema = z.object({
 
 export const createUser = form(createSchema, async (input) => {
   const actor = requireAdmin();
-  const { locals } = getRequestEvent();
-  const ctx = await locals.auth.$context;
-  return provisionUser(ctx, locals.db, actor, input);
+  return provisionUser(actor, input);
 });
 
 export const pauseUser = command(z.string(), async (userId) => {
   const actor = requireAdmin();
   await assertCanManage(actor, userId);
-  const { locals } = getRequestEvent();
+  const { locals, request } = getRequestEvent();
 
   const target = await locals.db.query.user.findFirst({
     where: eq(schema.user.id, userId),
     columns: { banned: true },
   });
   const paused = !target?.banned;
-  await locals.db
-    .update(schema.user)
-    .set({ banned: paused })
-    .where(eq(schema.user.id, userId));
-  // Cut live access immediately when pausing (the ban check would otherwise
-  // only bite after the 5-min session cookie cache expires).
   if (paused) {
+    await locals.auth.api.banUser({ body: { userId }, headers: request.headers });
+    // Cut live access immediately (the ban check would otherwise only bite after
+    // the 5-min session cookie cache expires).
     await tryCatch(
-      locals.db.delete(schema.session).where(eq(schema.session.userId, userId)),
+      locals.auth.api.revokeUserSessions({ body: { userId }, headers: request.headers }),
     );
+  } else {
+    await locals.auth.api.unbanUser({ body: { userId }, headers: request.headers });
   }
   return { paused };
 });
@@ -90,14 +88,11 @@ export const pauseUser = command(z.string(), async (userId) => {
 export const removeUser = command(z.string(), async (userId) => {
   const actor = requireAdmin();
   await assertCanManage(actor, userId);
-  const { locals } = getRequestEvent();
-  const ctx = await locals.auth.$context;
-  // Don't trust FK cascade: D1 doesn't reliably enforce ON DELETE CASCADE at
-  // runtime, so purge the rows the task cares about explicitly. Sessions first
-  // (cuts live access), then org memberships, then the user + its
-  // account/twoFactor/passkey rows via the adapter.
-  await locals.db.delete(schema.session).where(eq(schema.session.userId, userId));
-  await locals.db.delete(schema.member).where(eq(schema.member.userId, userId));
-  await ctx.internalAdapter.deleteUser(userId);
+  const { locals, request } = getRequestEvent();
+  // admin.removeUser deletes the user + its sessions/accounts/2FA/passkey, but
+  // NOT the org plugin's member rows (and D1 cascade is unreliable) — purge those
+  // first, then remove the user.
+  await purgeUserMemberships(userId);
+  await locals.auth.api.removeUser({ body: { userId }, headers: request.headers });
   return { removed: true };
 });

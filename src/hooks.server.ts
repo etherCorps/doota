@@ -27,11 +27,28 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
   event.locals.db = db;
   event.locals.auth = auth;
 
-  const session = await auth.api.getSession({ headers: event.request.headers });
+  let session = await auth.api.getSession({ headers: event.request.headers });
 
   if (session) {
     event.locals.session = session.session;
     event.locals.user = session.user;
+
+    // A just-completed mail verification wrote fresh flags to D1, but the 5-min
+    // session cookie cache still holds the stale user. `?verified=1` (set on every
+    // verification landing) forces one uncached read + cookie rewrite so the new
+    // emailVerified / recoveryEmailVerified is live immediately, for all users.
+    // ponytail: harmless if spoofed — costs the caller one extra own-session read.
+    if (event.url.searchParams.has("verified")) {
+      const fresh = await auth.api.getSession({
+        headers: event.request.headers,
+        query: { disableCookieCache: true },
+      });
+      if (fresh) {
+        session = fresh;
+        event.locals.session = fresh.session;
+        event.locals.user = fresh.user;
+      }
+    }
 
     const { user } = session;
     const p = event.url.pathname;

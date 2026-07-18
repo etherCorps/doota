@@ -8,8 +8,10 @@
     "build": "vite build",
     "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
     "prepare": "svelte-kit sync || echo ''",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "node scripts/check-auth-boundary.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "auth:schema": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
@@ -19,8 +21,7 @@
     "db:studio": "drizzle-kit studio",
     "gen": "wrangler types",
     "reset-admin": "node scripts/reset-admin.mjs",
-    "deploy": "pnpm run build && wrangler deploy",
-    "email:dev": "pnpm dlx @better-svelte-email/cli dev --dir src/lib/client/email"
+    "deploy": "pnpm run build && wrangler deploy"
   },
   "devDependencies": {
     "@better-auth/passkey": "^1.6.23",
@@ -60,12 +61,12 @@
     "vaul-svelte": "1.0.0-next.7",
     "vite": "^7.3.2",
     "vite-plugin-devtools-json": "^1.0.0",
+    "vitest": "^4.1.8",
     "wrangler": "^4.110.0",
     "zod": "^4.3.6"
   },
   "dependencies": {
-    "@better-svelte-email/components": "^2.1.1",
-    "@better-svelte-email/server": "^2.1.1",
+    "@ethercorps/un-jinja": "^1.0.0",
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",

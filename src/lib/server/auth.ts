@@ -20,7 +20,7 @@ import { sendMailBackground } from "./mailer";
 import { isServedDomain, invalidateDomainCache, senderAddress, domainOf } from "./org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGIN } from "$app/env/public";
-import { verificationMailTemplate } from "$lib/client/email";
+import { renderEmail } from "./email";
 
 // Instance roles (admin plugin). Separate from org membership roles
 // (owner/admin/member), which the organization plugin manages per-membership.
@@ -90,12 +90,14 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
       // external inbox). Mailbox users verify a recovery address instead — their
       // primary email is an unreadable Doota inbox — so we never send here for them.
       sendVerificationEmail: async ({ user, url }) => {
-        console.log(`Verification email link: ${url}`);
-        const mail = await verificationMailTemplate({ verificationLink: url });
-        console.log(`Sending verification link: ${url}: \n${mail.html}`);
+        // Superadmin primary-email verify: no specific org, so brand/send from
+        // any active domain (same rule as the reset link below).
+        const from = db ? await senderAddress(db) : undefined;
+        const mail = renderEmail("verify-email", { from, verifyLink: url });
         sendMailBackground({
           to: user.email,
-          subject: "Verify your Doota email",
+          from,
+          subject: mail.subject,
           text: mail.text,
           html: mail.html,
         });
@@ -146,11 +148,13 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
         const fromDomain = role === "superadmin" ? undefined : domainOf(user.email);
         const from = db ? await senderAddress(db, fromDomain) : undefined;
 
+        const mail = renderEmail("reset-link", { from, resetLink: url });
         sendMailBackground({
           to,
           from,
-          subject: "Reset your Doota password",
-          text: `Click the link to reset your Doota password: ${url}\nThis link expires in 10 minutes. It only resets your password — two-factor authentication stays intact.`,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
         });
       },
     },

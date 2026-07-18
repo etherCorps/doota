@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { getRequestEvent } from "$app/server";
 import { ORIGIN } from "$app/env/public";
 import * as schema from "./db/schema";
 import { getDiceBearURL } from "$lib/utils/dice-bear.js";
@@ -7,9 +8,9 @@ import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "./can";
 import { isServedDomain, senderAddress } from "./org-domains";
 import { sendMail } from "./mailer";
-import type { Auth } from "./auth";
+import { renderEmail } from "./email";
+import { tokenStore, setUserAuthFlags } from "./auth/escape-hatches.js";
 
-type AuthContext = Awaited<Auth["$context"]>;
 type Db = DrizzleD1Database<typeof schema>;
 
 const RECOVERY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — matches invite lifetime
@@ -55,11 +56,11 @@ function tempPassword(): string {
  * admin of the target org only.
  */
 export async function provisionUser(
-  ctx: AuthContext,
-  db: Db,
   actor: Actor,
   input: ProvisionInput,
 ): Promise<{ success: boolean; message: string }> {
+  const { locals, request } = getRequestEvent();
+  const db = locals.db;
   const username = input.email.trim().toLowerCase();
   const recoveryEmail = input.recoveryEmail.trim().toLowerCase();
 
@@ -105,76 +106,72 @@ export async function provisionUser(
   }
 
   const password = tempPassword();
-  const { error: createError, data: createdUser } = await tryCatch(
-    ctx.internalAdapter.createUser({
-      email,
-      name: input.name,
-      role: input.role,
-      recoveryEmail,
-      mustChangePassword: true,
-      image: getDiceBearURL({ seed: email }),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+  // admin.createUser is atomic (user + credential account in one call), so the
+  // old create/link/rollback dance is gone. recoveryEmail (input:true) rides in
+  // `data` so the user.create hook re-validates it; mustChangePassword is
+  // input:false, so it's stamped separately below.
+  const { error: createError, data: created } = await tryCatch(
+    locals.auth.api.createUser({
+      body: {
+        email,
+        password,
+        name: input.name,
+        role: input.role, // instance role: member | admin
+        data: {
+          recoveryEmail,
+          image: getDiceBearURL({ seed: email }),
+        },
+      },
+      headers: request.headers,
     }),
   );
-  if (createError || !createdUser) {
+  if (createError || !created?.user) {
     return {
       success: false,
       message: "Could not create the account — that email may already be in use.",
     };
   }
+  const userId = created.user.id;
 
-  // Password lives on the credential account. On failure roll the user back so a
-  // retry isn't blocked by an orphaned, passwordless account.
-  const { error: linkError } = await tryCatch(
-    ctx.internalAdapter.linkAccount({
-      providerId: "credential",
-      accountId: createdUser.id,
-      userId: createdUser.id,
-      password: await ctx.password.hash(password),
+  await setUserAuthFlags(userId, { mustChangePassword: true });
+
+  const { error: memberError } = await tryCatch(
+    locals.auth.api.addMember({
+      body: {
+        userId,
+        organizationId: org.id,
+        role: input.role === "admin" ? "admin" : "member",
+      },
+      headers: request.headers,
     }),
   );
-  if (linkError) {
-    await tryCatch(ctx.internalAdapter.deleteUser(createdUser.id));
+  if (memberError) {
     return {
       success: false,
-      message: "Could not set the initial password. Please try again.",
+      message: "Account created but could not be added to the organization.",
     };
   }
-
-  await db.insert(schema.member).values({
-    id: crypto.randomUUID(),
-    organizationId: org.id,
-    userId: createdUser.id,
-    role: input.role === "admin" ? "admin" : "member",
-    createdAt: new Date(),
-  });
 
   // One invite mail: temp password + recovery-verification link (same namespaced
   // token the verify-recovery-email route consumes).
   const token = crypto.randomUUID();
-  await ctx.internalAdapter.createVerificationValue({
-    identifier: `recovery-email:${token}`,
-    value: JSON.stringify({ userId: createdUser.id, email: recoveryEmail }),
-    expiresAt: new Date(Date.now() + RECOVERY_TOKEN_TTL_MS),
-  });
+  await tokenStore.issue(
+    `recovery-email:${token}`,
+    JSON.stringify({ userId, email: recoveryEmail }),
+    RECOVERY_TOKEN_TTL_MS,
+  );
 
   // Branded from the org they're joining (its own domain when sending is live).
   const from = await senderAddress(db, org.domain);
+  const mail = renderEmail("invite", {
+    from,
+    mailbox: email,
+    tempPassword: password,
+    loginLink: `${ORIGIN}/login`,
+    recoveryLink: `${ORIGIN}/verify-recovery-email?token=${token}`,
+  });
   await tryCatch(
-    sendMail({
-      to: recoveryEmail,
-      from,
-      subject: "You've been invited to Doota",
-      text:
-        `You have a new Doota ${input.role} account.\n\n` +
-        `Sign in at ${ORIGIN}/login\n` +
-        `  Email:    ${email}\n` +
-        `  Password: ${password}\n\n` +
-        `You'll be asked to set your own password and finish setup after signing in.\n` +
-        `Confirm this recovery address: ${ORIGIN}/verify-recovery-email?token=${token}\n` +
-        `This invite expires in 24 hours.`,
-    }),
+    sendMail({ to: recoveryEmail, from, subject: mail.subject, text: mail.text, html: mail.html }),
   );
 
   return {

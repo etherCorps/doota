@@ -2,7 +2,7 @@ import { form, getRequestEvent } from '$app/server';
 import { getDiceBearURL } from '$lib/utils/dice-bear.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
 import { setupSchema } from '$lib/shared/model/auth.zod.schema.js';
-import { createAuth } from '$lib/server/auth.js';
+import { createGenesisSuperadmin } from '$lib/server/auth/escape-hatches.js';
 import { isServedDomain } from '$lib/server/org-domains.js';
 import { getDb } from '$lib/server/db';
 import { user } from '$lib/server/db/schema.js';
@@ -45,46 +45,23 @@ export const setupRemoteFunction = form(
 			};
 		}
 
-		const auth = createAuth(db);
-		const authCtx = await auth.$context;
-		const internalAdapter = authCtx.internalAdapter;
-
-		const { error: createError, data: createdUser } = await tryCatch(
-			internalAdapter.createUser({
-				email,
+		// Genesis account creation (createUser + password + rollback) is the one
+		// sanctioned escape hatch — see createGenesisSuperadmin. Role is forced to
+		// superadmin by the user.create databaseHook (first user).
+		const { error: createError } = await tryCatch(
+			createGenesisSuperadmin({
 				name,
-				image: getDiceBearURL({ seed: email }),
-				createdAt: new Date(),
-				updatedAt: new Date()
+				email,
+				password,
+				image: getDiceBearURL({ seed: email })
 			})
 		);
 
-		if (createError || !createdUser) {
+		if (createError) {
 			const message =
 				createError instanceof APIError
 					? (createError.body?.message as string)
 					: 'Unable to create the super-admin. Check the server logs and try again.';
-			return { success: false, message };
-		}
-
-		// Password lives on the credential account, not the user row. If this
-		// fails we must remove the just-created user, otherwise the userCount
-		// guard wedges the bootstrap on retry (orphaned, passwordless admin).
-		const { error: linkError } = await tryCatch(
-			internalAdapter.linkAccount({
-				providerId: 'credential',
-				accountId: createdUser.id,
-				userId: createdUser.id,
-				password: await authCtx.password.hash(password)
-			})
-		);
-
-		if (linkError) {
-			await tryCatch(internalAdapter.deleteUser(createdUser.id));
-			const message =
-				linkError instanceof APIError
-					? (linkError.body?.message as string)
-					: 'Unable to set the super-admin password. The partial account was rolled back — please try again.';
 			return { success: false, message };
 		}
 

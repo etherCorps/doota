@@ -1,16 +1,12 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
-	import { onboardDomain, linkDomain, listCloudflareZones } from '$lib/rpc/domains.remote.js';
+	import DomainOnboarder from '$lib/components/admin/domain-onboarder.svelte';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -26,83 +22,7 @@
 	};
 	const chip = (s: string) => STATUS[s] ?? 'pending';
 
-	// --- Onboarding (superadmin) --------------------------------------------
-	type Zone = { id: string; name: string; active: boolean; onboarded: boolean; configured: boolean };
 	let addOpen = $state(false);
-	let zones = $state<Zone[] | null>(null);
-	let loadingZones = $state(false);
-	let zonesError = $state(false);
-	let busy = $state<string | null>(null);
-	let subFor = $state<string | null>(null);
-	let subValue = $state('');
-	let manualDomain = $state('');
-	let manualSub = $state('');
-	let nameservers = $state<{ domain: string; ns: string[] } | null>(null);
-
-	const available = $derived((zones ?? []).filter((z) => !z.onboarded));
-
-	onMount(() => {
-		if (data.canCreate) loadZones();
-	});
-
-	async function loadZones() {
-		loadingZones = true;
-		zonesError = false;
-		try {
-			zones = await listCloudflareZones();
-		} catch {
-			zonesError = true;
-			zones = [];
-		} finally {
-			loadingZones = false;
-		}
-	}
-
-	async function onboard(domain: string, sendingSubdomain?: string) {
-		const d = domain.trim().toLowerCase();
-		if (!d) return;
-		busy = d;
-		nameservers = null;
-		try {
-			const res = await onboardDomain({ domain: d, sendingSubdomain });
-			if (!res.success) {
-				toast.error(res.message ?? 'Could not onboard domain.');
-				return;
-			}
-			if (res.status === 'active') {
-				toast.success(`${d} is active — mail is wired.`);
-			} else {
-				toast.success(`${d} added. Delegate the nameservers, then Refresh in its DNS tab.`);
-				if (res.nameServers?.length) nameservers = { domain: d, ns: res.nameServers };
-			}
-			manualDomain = '';
-			manualSub = '';
-			subFor = null;
-			subValue = '';
-			await Promise.all([invalidateAll(), loadZones()]);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Onboarding failed.');
-		} finally {
-			busy = null;
-		}
-	}
-
-	async function link(domain: string) {
-		busy = domain;
-		try {
-			const res = await linkDomain(domain);
-			if (!res.success) {
-				toast.error(res.message ?? 'Could not link domain.');
-				return;
-			}
-			toast.success(`${domain} linked — synced from Cloudflare.`);
-			await Promise.all([invalidateAll(), loadZones()]);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Link failed.');
-		} finally {
-			busy = null;
-		}
-	}
 </script>
 
 <div class="flex w-full flex-col gap-6 p-6 md:p-8">
@@ -192,93 +112,6 @@
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="flex flex-col gap-4">
-			<!-- Cloudflare zones -->
-			<div class="space-y-2">
-				{#if loadingZones}
-					<div class="text-muted-foreground flex items-center gap-2 py-3 text-sm">
-						<Spinner /> Loading zones…
-					</div>
-				{:else if zonesError}
-					<p class="text-muted-foreground text-sm">
-						Couldn't reach Cloudflare. Check <code>CF_ACCOUNT_ID</code> / <code>CF_API_TOKEN</code>.
-						<Button variant="link" class="px-1" onclick={loadZones}>Retry</Button>
-					</p>
-				{:else if available.length === 0}
-					<p class="text-muted-foreground text-sm">
-						Every zone on the account is already onboarded. Add a new one below.
-					</p>
-				{:else}
-					{#each available as z (z.id)}
-						<div class="flex flex-col gap-2 rounded-lg border p-3">
-							<div class="flex items-center gap-3">
-								<span class="font-mono text-sm font-medium">{z.name}</span>
-								{#if z.configured}
-									<StatusChip status="active" />
-									<span class="text-muted-foreground text-xs">Already set up on Cloudflare</span>
-								{:else}
-									<StatusChip status={z.active ? 'active' : 'pending'} />
-								{/if}
-								<div class="ml-auto flex items-center gap-2">
-									{#if z.configured}
-										<Button size="sm" disabled={busy === z.name} onclick={() => link(z.name)}>
-											{#if busy === z.name}<Spinner class="mr-1" />{/if}
-											Link
-										</Button>
-									{:else}
-										<Button
-											variant="ghost"
-											size="sm"
-											onclick={() => {
-												subFor = subFor === z.name ? null : z.name;
-												subValue = '';
-											}}
-										>
-											Sending subdomain
-										</Button>
-										<Button
-											size="sm"
-											disabled={busy === z.name}
-											onclick={() => onboard(z.name, subFor === z.name ? subValue || undefined : undefined)}
-										>
-											{#if busy === z.name}<Spinner class="mr-1" />{/if}
-											Onboard
-										</Button>
-									{/if}
-								</div>
-							</div>
-							{#if subFor === z.name && !z.configured}
-								<Input class="font-mono" placeholder="send.{z.name} (optional outbound DKIM host)" bind:value={subValue} />
-							{/if}
-						</div>
-					{/each}
-				{/if}
-			</div>
-
-			<!-- Manual add -->
-			<div class="space-y-2 border-t pt-4">
-				<p class="text-sm font-medium">Add a new domain</p>
-				<Input class="font-mono" placeholder="acme.com" bind:value={manualDomain} />
-				<Input class="font-mono" placeholder="send.acme.com (optional sending subdomain)" bind:value={manualSub} />
-				<Button
-					class="w-full"
-					disabled={!manualDomain.trim() || busy === manualDomain.trim().toLowerCase()}
-					onclick={() => onboard(manualDomain, manualSub.trim() || undefined)}
-				>
-					{#if busy === manualDomain.trim().toLowerCase()}<Spinner class="mr-1" />{/if}
-					Onboard
-				</Button>
-			</div>
-
-			{#if nameservers}
-				<div class="bg-muted/40 space-y-1 rounded-lg border p-3">
-					<p class="text-sm font-medium">Delegate {nameservers.domain}</p>
-					<p class="text-muted-foreground text-xs">Point the domain's nameservers at:</p>
-					{#each nameservers.ns as ns (ns)}
-						<code class="block font-mono text-xs">{ns}</code>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		<DomainOnboarder onChange={() => invalidateAll()} />
 	</Dialog.Content>
 </Dialog.Root>

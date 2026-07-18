@@ -1,9 +1,8 @@
 import { form, getRequestEvent } from '$app/server';
 import { error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { Password } from '$lib/shared/model/utils.zod.schema.js';
-import * as schema from '$lib/server/db/schema.js';
+import { setUserAuthFlags } from '$lib/server/auth/escape-hatches.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
 
 const changePasswordSchema = z.object({
@@ -33,10 +32,7 @@ export const changeInitialPassword = form(
 			};
 		}
 
-		await locals.db
-			.update(schema.user)
-			.set({ mustChangePassword: false })
-			.where(eq(schema.user.id, locals.user.id));
+		await setUserAuthFlags(locals.user.id, { mustChangePassword: false });
 
 		return { success: true, message: 'Password updated.' };
 	}

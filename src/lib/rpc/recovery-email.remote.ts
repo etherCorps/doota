@@ -1,9 +1,10 @@
 import { command, form, getRequestEvent } from '$app/server';
 import { error } from '@sveltejs/kit';
-import { and, eq, gt } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { recoveryEmailSchema } from '$lib/shared/model/auth.zod.schema.js';
 import { isServedDomain, senderAddress, domainOf } from '$lib/server/org-domains.js';
 import { sendRecoveryEmailVerification } from '$lib/server/recovery-email.js';
+import { tokenStore } from '$lib/server/auth/escape-hatches.js';
 import * as schema from '$lib/server/db/schema.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
 
@@ -14,7 +15,7 @@ import { tryCatch } from '$lib/utils/try-catch.js';
 const THROTTLE_WINDOW_MS = 60_000;
 
 export const setRecoveryEmail = form(recoveryEmailSchema, async ({ recoveryEmail }) => {
-	const { locals } = getRequestEvent();
+	const { locals, request } = getRequestEvent();
 	if (!locals.user) error(401, 'Not authenticated');
 
 	if (await isServedDomain(locals.db, recoveryEmail)) {
@@ -25,44 +26,28 @@ export const setRecoveryEmail = form(recoveryEmailSchema, async ({ recoveryEmail
 	}
 
 	const throttleId = `recovery-email-throttle:${locals.user.id}`;
-	const now = Date.now();
-	const recent = await locals.db.query.verification.findFirst({
-		where: and(
-			eq(schema.verification.identifier, throttleId),
-			gt(schema.verification.expiresAt, new Date(now))
-		)
-	});
-	if (recent) {
+	if (await tokenStore.peek(throttleId)) {
 		return {
 			success: false,
 			message: 'Please wait a minute before requesting another verification email.'
 		};
 	}
 
-	const ctx = await locals.auth.$context;
+	// Self-update through auth.api: the user.update databaseHook re-asserts the
+	// external-address rule and resets recoveryEmailVerified/At for the new address.
 	const { error: updateError } = await tryCatch(
-		ctx.internalAdapter.updateUser(locals.user.id, {
-			recoveryEmail,
-			recoveryEmailVerified: false,
-			recoveryEmailVerifiedAt: null
-		})
+		locals.auth.api.updateUser({ body: { recoveryEmail }, headers: request.headers })
 	);
 	if (updateError) {
 		return { success: false, message: 'Unable to update recovery email.' };
 	}
 
-	await locals.db.insert(schema.verification).values({
-		id: crypto.randomUUID(),
-		identifier: throttleId,
-		value: '1',
-		expiresAt: new Date(now + THROTTLE_WINDOW_MS),
-		createdAt: new Date(now),
-		updatedAt: new Date(now)
-	});
+	// Throttle marker only after a successful update (mirrors prior ordering).
+	await tokenStore.issue(throttleId, '1', THROTTLE_WINDOW_MS);
 
 	// Brand from the user's own org domain when its sending path is live.
 	const from = await senderAddress(locals.db, domainOf(locals.user.email));
-	await sendRecoveryEmailVerification(ctx, locals.user.id, recoveryEmail, from);
+	await sendRecoveryEmailVerification(locals.user.id, recoveryEmail, from);
 	return {
 		success: true,
 		message: 'Verification link sent. Check that inbox to confirm the address.'
@@ -98,7 +83,7 @@ export const requestSuperadminEmailVerification = command(async () => {
 
 	await tryCatch(
 		locals.auth.api.sendVerificationEmail({
-			body: { email: user.email, callbackURL: '/admin' }
+			body: { email: user.email, callbackURL: '/admin?verified=1' }
 		})
 	);
 	return { success: true, message: 'Verification email sent. Check your external inbox.' };

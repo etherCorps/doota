@@ -13,7 +13,7 @@
 		sending = true;
 		const { error } = await authClient.sendVerificationEmail({
 			email,
-			callbackURL: '/onboarding'
+			callbackURL: '/onboarding?verified=1'
 		});
 		sending = false;
 		if (error) {

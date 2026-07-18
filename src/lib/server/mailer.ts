@@ -1,6 +1,6 @@
 import { getRequestEvent } from "$app/server";
 
-type MailFrom = { name: string; email: string };
+type MailFrom = { name: string; email: string; logo?: string | null };
 type Mail = {
   to: string;
   subject: string;

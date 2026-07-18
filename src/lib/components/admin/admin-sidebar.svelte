@@ -7,7 +7,6 @@
 	import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import EyeIcon from '@lucide/svelte/icons/eye';
-	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import MailIcon from '@lucide/svelte/icons/mail';
 
 	let { user }: { user: { name: string; email: string; role: string } } = $props();
@@ -15,8 +14,7 @@
 	const nav = [
 		{ href: '/admin', label: 'Dashboard', icon: LayoutDashboardIcon },
 		{ href: '/admin/organizations', label: 'Organizations', icon: UsersIcon },
-		{ href: '/admin/oversight', label: 'Oversight', icon: EyeIcon, superadmin: true },
-		{ href: '/admin/settings', label: 'Settings', icon: SettingsIcon }
+		{ href: '/admin/oversight', label: 'Oversight', icon: EyeIcon, superadmin: true }
 	] as const;
 
 	const items = $derived(

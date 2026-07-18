@@ -20,5 +20,24 @@ export const load = async ({ locals }) => {
         inArray(schema.member.role, ["owner", "admin"]),
       ),
     );
-  return { orgs };
+
+  // Deferred super-admin email verify: only offer it to an unverified
+  // super-admin once a domain is active (there is a real sending path).
+  const isSuperadmin = user.role === "superadmin";
+  let hasActiveDomain = false;
+  if (isSuperadmin && !user.emailVerified) {
+    const active = await locals.db.query.organization.findFirst({
+      where: eq(schema.organization.status, "active"),
+      columns: { id: true },
+    });
+    hasActiveDomain = !!active;
+  }
+
+  return {
+    orgs,
+    isSuperadmin,
+    emailVerified: !!user.emailVerified,
+    email: user.email,
+    hasActiveDomain,
+  };
 };

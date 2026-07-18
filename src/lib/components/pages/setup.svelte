@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { DecorIcon } from '$lib/components/ui/decor-icon';
 	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
+    import * as Alert from "$lib/components/ui/alert/index.js";
 	import { cn } from '$lib/utils/ui.js';
 	import { setupRemoteFunction } from '$lib/rpc/setup.remote.js';
 	import * as Field from '$lib/components/ui/field/index.js';
@@ -15,6 +16,7 @@
 	import { setupSchema } from '$lib/shared/model/auth.zod.schema';
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
+    import InfoIcon from '@lucide/svelte/icons/info';
 
 	// The one-time SETUP_TOKEN, validated server-side before this page rendered.
 	let { token }: { token: string } = $props();
@@ -71,13 +73,16 @@
 		<DecorIcon position="top-left" />
 		<DecorIcon position="bottom-right" />
 
-		<div class="w-full max-w-sm animate-in space-y-8">
+		<div class="w-full max-w-sm animate-in space-y-4">
 			<div class="flex flex-col space-y-1">
 				<h1 class="text-2xl font-bold tracking-wide">Doota</h1>
 				<p class="text-base text-muted-foreground">
-					Create the super-admin for this deployment. No email is sent — you'll secure the
-					account with 2FA or a passkey after logging in.
+					Create the super admin.
 				</p>
+				<Alert.Root class="mt-1">
+                    <InfoIcon />
+                    <Alert.Title>You'll secure the account with 2FA or a passkey after logging in.</Alert.Title>
+				</Alert.Root>
 			</div>
 
 			<div class="space-y-4">
@@ -114,15 +119,16 @@
 									<AtSignIcon />
 								</InputGroupAddon>
 							</InputGroup>
-							<Field.Description
-								>Your external email — used to log in and, once verified later, to recover
-								this account. It must not be on a domain this server hosts.</Field.Description
-							>
 							{#if fields.email.issues()?.length}
 								{#each fields.email.issues() as error (error)}
 									<Field.Error>{error.message}</Field.Error>
 								{/each}
 							{/if}
+							<Alert.Root>
+                    <InfoIcon />
+                    <Alert.Title>Your email — used to log in and, once verified later, to recover
+								this account. It must not be on a mail hosted this server service.</Alert.Title>
+							</Alert.Root>
 						</Field.Field>
 						<Field.Field>
 							<Field.Label>Password</Field.Label>

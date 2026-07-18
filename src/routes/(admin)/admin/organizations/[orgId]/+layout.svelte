@@ -18,8 +18,9 @@
 
 	const base = $derived(`${resolve('/admin/organizations')}/${data.org.id}`);
 	const tabs = [
-		{ slug: 'dns', label: 'DNS' },
 		{ slug: 'members', label: 'Members' },
+		{ slug: 'subdomains', label: 'Subdomains' },
+		{ slug: 'dns', label: 'DNS' },
 		{ slug: 'settings', label: 'Settings' }
 	];
 	const current = $derived(page.url.pathname.split('/').pop());
