@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json", // Added
+  "name": "doota-landing",
+  "pages_build_output_dir": "build",
+  "compatibility_flags": ["nodejs_als"],
+  "compatibility_date": "2026-06-16"
+}
