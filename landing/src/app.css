@@ -79,11 +79,73 @@ body {
 	animation: rise 0.55s var(--ease-out) both;
 }
 
+/* Hero: faint crosshair grid, borrowed from the app login screen */
+.hero-grid {
+	background-image:
+		linear-gradient(to right, var(--color-line) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--color-line) 1px, transparent 1px);
+	background-size: 44px 44px;
+	-webkit-mask-image: radial-gradient(ellipse 78% 62% at 50% 32%, #000 28%, transparent 76%);
+	mask-image: radial-gradient(ellipse 78% 62% at 50% 32%, #000 28%, transparent 76%);
+	opacity: 0.6;
+}
+
+/* Hero color field: slow drift. --dx/--dy/--dur set per blob */
+@keyframes drift {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(var(--dx, 20px), var(--dy, -16px), 0);
+	}
+}
+.blob {
+	animation: drift var(--dur, 20s) ease-in-out infinite;
+	will-change: transform;
+}
+
+/* Thread mockup: live typing indicator */
+@keyframes typing {
+	0%,
+	60%,
+	100% {
+		opacity: 0.3;
+		transform: translateY(0);
+	}
+	30% {
+		opacity: 1;
+		transform: translateY(-2px);
+	}
+}
+.typing-dot {
+	animation: typing 1.4s var(--ease-out) infinite;
+}
+
+/* Delivery ticks: gentle periodic pop */
+@keyframes tick-pop {
+	0%,
+	82%,
+	100% {
+		transform: scale(1);
+	}
+	90% {
+		transform: scale(1.2);
+	}
+}
+.tick {
+	transform-origin: center;
+	animation: tick-pop 3.6s var(--ease-out) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;
 	}
-	.msg {
+	.msg,
+	.blob,
+	.typing-dot,
+	.tick {
 		animation: none;
 	}
 }
