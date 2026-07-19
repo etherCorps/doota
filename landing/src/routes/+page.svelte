@@ -75,7 +75,7 @@
 <div class="min-h-screen bg-paper font-body text-ink antialiased">
 	<!-- Nav -->
 	<header
-		class="sticky top-0 z-20 border-b border-line/70 bg-paper/85 backdrop-blur supports-[backdrop-filter]:bg-paper/70"
+		class="sticky top-0 z-20 border-b border-line/70 bg-paper/85 backdrop-blur supports-backdrop-filter:bg-paper/70"
 	>
 		<nav class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-8">
 			<a href={resolve('/')} class="flex items-center" aria-label="Doota home">
@@ -136,7 +136,7 @@
 				</span>
 
 				<h1
-					class="mt-6 font-display text-4xl font-extrabold leading-[1.02] tracking-tight [overflow-wrap:anywhere] sm:text-6xl"
+					class="mt-6 font-display text-4xl font-extrabold leading-[1.02] tracking-tight wrap-anywhere sm:text-6xl"
 				>
 					Own your email.<br />
 					<span class="text-accent">Every byte of it.</span>
