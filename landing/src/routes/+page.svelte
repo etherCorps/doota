@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import Logo from '$lib/Logo.svelte';
 	import Icon from '$lib/Icon.svelte';
 	import { reveal } from '$lib/reveal';
@@ -165,7 +166,7 @@
 	/>
 	<meta property="og:type" content="website" />
 	<!-- ponytail: relative path works for most scrapers; swap to an absolute URL once the domain is known -->
-	<meta property="og:image" content="/og.png" />
+	<meta property="og:image" content="{page.url.host}/og.png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
 	<meta name="twitter:card" content="summary_large_image" />

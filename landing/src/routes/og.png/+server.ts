@@ -23,10 +23,10 @@ export const GET: RequestHandler = async ({ params }) => {
 			height: 630,
 			width: 1200,
 			fonts: resolvedFonts,
-			// Aggressive Caching for static built files
-			// headers: {
-			// 	'Cache-Control': 'public, immutable, max-age=31536000'
-			// }
+			headers: {
+				'Cache-Control': 'public, immutable, max-age=31536000'
+      },
+      format: 'png'
 		}
 	);
 };
