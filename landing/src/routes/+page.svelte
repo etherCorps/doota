@@ -164,12 +164,12 @@
 		content="An email app you run yourself. Every conversation reads like a chat, on your own address. Open source, coming soon."
 	/>
 	<meta property="og:type" content="website" />
-	<!-- ponytail: relative path works for most scrapers; swap to an absolute URL once the domain is known -->
+	<!-- ponytail: absolute URLs (required by some scrapers); update if the domain changes -->
 	<meta property="og:image" content="https://doota.dev/og.png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
 	<meta name="twitter:card" content="summary_large_image" />
-	<meta name="twitter:image" content="/og.png" />
+	<meta name="twitter:image" content="https://doota.dev/og.png" />
 </svelte:head>
 
 <div class="min-h-screen bg-paper font-body text-ink antialiased">
