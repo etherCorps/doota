@@ -23,7 +23,7 @@
 		}
 	}
 
-	const stack = ['Workers', 'D1', 'R2', 'Queues', 'Email Routing'];
+	const stack = ['Workers', 'D1', 'R2', 'KV', 'Queues', 'Email Routing'];
 
 	const capabilities = [
 		{
@@ -190,7 +190,7 @@
 						>P</span
 					>
 					<div class="leading-tight">
-						<p class="text-sm font-semibold text-ink">Priya Menon</p>
+						<p class="text-sm font-semibold text-ink">Shivam Meena</p>
 						<p class="text-xs text-faint">3 messages · Product</p>
 					</div>
 					<span class="ml-auto text-xs text-faint">Today</span>
@@ -215,7 +215,7 @@
 				</div>
 
 				<div class="msg mt-4 flex items-center gap-2 rounded-2xl border border-line bg-raised px-3.5 py-2.5" style="animation-delay:520ms">
-					<span class="text-sm text-faint">Reply to Priya…</span>
+					<span class="text-sm text-faint">Reply to Shivam…</span>
 					<span class="ml-auto grid h-7 w-7 place-items-center rounded-full bg-accent text-white">
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z" />
