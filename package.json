@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "auth:schema": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
-    "db:push": "drizzle-kit push",
+    "db:push": "drizzle-kit push && node scripts/apply-virtual-tables.mjs",
+    "db:push:remote": "drizzle-kit push && node scripts/apply-virtual-tables.mjs --remote",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:local": "wrangler d1 migrations apply doota --local",
@@ -70,6 +71,7 @@
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "postal-mime": "^2.7.5",
     "runed": "^0.37.1",
     "uqr": "^0.1.3"
   }
