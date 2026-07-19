@@ -57,7 +57,7 @@
 			>
 		</div>
 		<div style="display:flex;margin-top:24px;max-width:820px;font-size:30px;line-height:1.3;color:#9aa1ad">
-			An email app you run yourself. Every conversation reads like a chat.
+			Email as a conversation.
 		</div>
 	</div>
 
