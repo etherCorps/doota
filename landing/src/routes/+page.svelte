@@ -202,12 +202,12 @@
 					</div>
 					<div class="msg max-w-[82%] self-end rounded-2xl rounded-tr-md bg-accent px-3.5 py-2.5 text-white" style="animation-delay:220ms">
 						<p class="text-sm">Sending now — scheduled it for 9:00 so it lands first thing.</p>
-						<span class="mt-1 flex items-center justify-end gap-1 text-[11px] text-white/80">
+						<!-- <span class="mt-1 flex items-center justify-end gap-1 text-[11px] text-white/80">
 							9:00
 							<svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Delivered">
 								<path d="M1 5.5 4.5 9 10 2" /><path d="M6 8.5 6.6 9 12 2" />
 							</svg>
-						</span>
+						</span> -->
 					</div>
 					<div class="msg max-w-[70%] self-start rounded-2xl rounded-tl-md bg-raised px-3.5 py-2.5" style="animation-delay:380ms">
 						<p class="text-sm text-ink">Perfect, thank you 🙌</p>
