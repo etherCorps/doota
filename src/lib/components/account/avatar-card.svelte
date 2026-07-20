@@ -36,6 +36,7 @@
 
 <AvatarCropper
 	bind:open
+	image={current}
 	onsaved={(img) => {
 		override = img;
 		invalidateAll();

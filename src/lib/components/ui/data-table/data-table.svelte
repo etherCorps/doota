@@ -10,7 +10,7 @@
 		getPaginationRowModel,
 		getSortedRowModel
 	} from '@tanstack/table-core';
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { createSvelteTable } from './data-table.svelte.js';
 	import FlexRender from './flex-render.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
@@ -28,6 +28,8 @@
 		filterPlaceholder?: string;
 		pageSize?: number;
 		empty?: string;
+		/** Rendered on the search row, right-aligned (e.g. an "Add" button). */
+		actions?: Snippet;
 	};
 	let {
 		columns,
@@ -35,7 +37,8 @@
 		filterColumn,
 		filterPlaceholder = 'Search…',
 		pageSize = 10,
-		empty = 'No results.'
+		empty = 'No results.',
+		actions
 	}: Props = $props();
 
 	let sorting = $state<SortingState>([]);
@@ -76,13 +79,20 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	{#if searchCol}
-		<Input
-			class="max-w-xs"
-			placeholder={filterPlaceholder}
-			value={(searchCol.getFilterValue() as string) ?? ''}
-			oninput={(e) => searchCol.setFilterValue(e.currentTarget.value)}
-		/>
+	{#if searchCol || actions}
+		<div class="flex items-center justify-between gap-2">
+			{#if searchCol}
+				<Input
+					class="max-w-xs"
+					placeholder={filterPlaceholder}
+					value={(searchCol.getFilterValue() as string) ?? ''}
+					oninput={(e) => searchCol.setFilterValue(e.currentTarget.value)}
+				/>
+			{:else}
+				<div></div>
+			{/if}
+			{@render actions?.()}
+		</div>
 	{/if}
 
 	<div class="rounded-lg border">

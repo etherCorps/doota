@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import UploadIcon from '@lucide/svelte/icons/upload';
@@ -7,8 +8,9 @@
 	// slider to zoom, then export the canvas as a webp blob and upload. No lib.
 	let {
 		open = $bindable(false),
+		image = null,
 		onsaved
-	}: { open?: boolean; onsaved?: (image: string) => void } = $props();
+	}: { open?: boolean; image?: string | null; onsaved?: (image: string) => void } = $props();
 
 	const SIZE = 256;
 	let canvas = $state<HTMLCanvasElement>();
@@ -39,13 +41,15 @@
 		const f = (e.target as HTMLInputElement).files?.[0];
 		if (!f) return;
 		const im = new Image();
-		im.onload = () => {
+		im.onload = async () => {
 			img = im;
 			minScale = Math.max(SIZE / im.width, SIZE / im.height);
 			scale = minScale;
 			tx = (SIZE - im.width * scale) / 2;
 			ty = (SIZE - im.height * scale) / 2;
 			hasImage = true;
+			// Canvas is behind {#if hasImage} — wait for it to mount before drawing.
+			await tick();
 			render();
 		};
 		im.src = URL.createObjectURL(f);
@@ -134,6 +138,21 @@
 				/>
 				<button type="button" class="text-muted-foreground hover:text-foreground text-xs" onclick={() => fileInput?.click()}>
 					Choose a different image
+				</button>
+			{:else if image}
+				<!-- Current photo as context; picking a file swaps to the cropper. -->
+				<button
+					type="button"
+					class="group relative size-64 overflow-hidden rounded-full border"
+					onclick={() => fileInput?.click()}
+				>
+					<img src={image} alt="Current photo" class="size-full object-cover" />
+					<span
+						class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100"
+					>
+						<UploadIcon class="size-6" />
+						<span class="text-sm">Choose new image</span>
+					</span>
 				</button>
 			{:else}
 				<button

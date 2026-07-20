@@ -3,15 +3,15 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { folders, labels } from '$lib/mock/index.js';
 	import MailboxSwitcher from './mailbox-switcher.svelte';
 	import UserChip from './user-chip.svelte';
 	import BrandMark from './brand-mark.svelte';
 	import RolePreviewSwitcher from './role-preview-switcher.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
-	import FileIcon from '@lucide/svelte/icons/file';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import SendIcon from '@lucide/svelte/icons/send';
+	import ClockIcon from '@lucide/svelte/icons/clock';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -25,20 +25,22 @@
 		onCompose: () => void;
 	} = $props();
 
-	const icons = {
-		inbox: InboxIcon,
-		file: FileIcon,
-		send: SendIcon,
-		archive: ArchiveIcon,
-		'shield-alert': ShieldAlertIcon,
-		trash: Trash2Icon
-	};
+	// The real folder set, matching the mail view's FOLDERS (drafts/scheduled are
+	// virtual client folders; the rest are thread placements).
+	const FOLDERS = [
+		{ id: 'inbox', name: 'Inbox', icon: InboxIcon },
+		{ id: 'sent', name: 'Sent', icon: SendIcon },
+		{ id: 'drafts', name: 'Drafts', icon: FileTextIcon },
+		{ id: 'scheduled', name: 'Scheduled', icon: ClockIcon },
+		{ id: 'archived', name: 'Archive', icon: ArchiveIcon },
+		{ id: 'spam', name: 'Spam', icon: ShieldAlertIcon },
+		{ id: 'trash', name: 'Trash', icon: Trash2Icon }
+	] as const;
 
 	// Active folder comes from the ?folder= param; inbox is the default view.
 	const activeFolder = $derived(page.url.searchParams.get('folder') ?? 'inbox');
 
 	const folderHref = (id: string) => `${resolve('/app')}?folder=${id}`;
-	const labelHref = (id: string) => `${resolve('/app')}?label=${id}`;
 </script>
 
 <Sidebar.Root>
@@ -62,37 +64,14 @@
 			<Sidebar.GroupLabel>Folders</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
-					{#each folders as folder (folder.id)}
-						{@const Icon = icons[folder.icon]}
+					{#each FOLDERS as folder (folder.id)}
+						{@const Icon = folder.icon}
 						<Sidebar.MenuItem>
 							<Sidebar.MenuButton isActive={activeFolder === folder.id}>
 								{#snippet child({ props })}
 									<a href={folderHref(folder.id)} {...props}>
 										<Icon class="size-4" />
 										<span>{folder.name}</span>
-									</a>
-								{/snippet}
-							</Sidebar.MenuButton>
-							{#if folder.count}
-								<Sidebar.MenuBadge>{folder.count}</Sidebar.MenuBadge>
-							{/if}
-						</Sidebar.MenuItem>
-					{/each}
-				</Sidebar.Menu>
-			</Sidebar.GroupContent>
-		</Sidebar.Group>
-
-		<Sidebar.Group>
-			<Sidebar.GroupLabel>Labels</Sidebar.GroupLabel>
-			<Sidebar.GroupContent>
-				<Sidebar.Menu>
-					{#each labels as label (label.id)}
-						<Sidebar.MenuItem>
-							<Sidebar.MenuButton>
-								{#snippet child({ props })}
-									<a href={labelHref(label.id)} {...props}>
-										<span class="size-2.5 rounded-full" style="background:{label.color}"></span>
-										<span>{label.name}</span>
 									</a>
 								{/snippet}
 							</Sidebar.MenuButton>

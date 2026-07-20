@@ -43,13 +43,18 @@ async function assertMailboxAccess(mailboxId: string) {
   if (!box) error(404, "Mailbox not found");
 
   const hasGrant = (await accessibleMailboxIds(locals.db, user.id)).includes(mailboxId);
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
-  const orgRead = can(
-    { id: user.id, role: user.role, orgAdminOf },
-    "read",
-    { type: "mailbox", ownerId: "", organizationId: box.orgId },
-  );
-  if (!hasGrant && !orgRead) error(403, "You can't read this mailbox.");
+  // Only fall back to the org-admin read check when there's no grant — otherwise
+  // a plain member (never an org admin) trips a spurious can() deny on every
+  // thread list/open. A grant is already sufficient.
+  if (!hasGrant) {
+    const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+    const orgRead = can(
+      { id: user.id, role: user.role, orgAdminOf },
+      "read",
+      { type: "mailbox", ownerId: "", organizationId: box.orgId },
+    );
+    if (!orgRead) error(403, "You can't read this mailbox.");
+  }
   return { box, hasGrant };
 }
 
@@ -63,16 +68,28 @@ async function assertMailboxGrant(mailboxId: string) {
 
 const PLACEMENTS = ["inbox", "archived", "spam", "trash", "sent"] as const;
 
+// Kept local: a remote-function module may export ONLY remote functions.
+const PAGE_SIZE = 30;
+
 export const mailboxThreads = query(
   z.object({
     mailboxId: z.string().min(1),
     placement: z.enum(PLACEMENTS).default("inbox"),
+    offset: z.number().int().min(0).default(0),
   }),
-  async ({ mailboxId, placement }) => {
+  async ({ mailboxId, placement, offset }) => {
     const { hasGrant } = await assertMailboxAccess(mailboxId);
     const { locals } = getRequestEvent();
     const ck = await contentKey();
-    return listThreads(locals.db, { mailboxId, placement, ck, includeCollab: hasGrant });
+    return listThreads(locals.db, {
+      mailboxId,
+      placement,
+      ck,
+      limit: PAGE_SIZE,
+      offset,
+      includeCollab: hasGrant,
+      userId: locals.user!.id,
+    });
   },
 );
 
@@ -83,24 +100,43 @@ export const openThread = query(
     const { locals } = getRequestEvent();
     const ck = await contentKey();
     // Notes/events are included ONLY for grant holders (not org-admin readers).
-    const dto = await getThread(locals.db, { mailboxId, threadId, ck, includeCollab: hasGrant });
+    const dto = await getThread(locals.db, {
+      mailboxId,
+      threadId,
+      ck,
+      includeCollab: hasGrant,
+      userId: locals.user!.id,
+    });
     if (!dto) error(404, "Thread not found in this mailbox");
     return dto;
   },
 );
 
-/** Mark a thread read for this mailbox (clears the unread dot). */
+/**
+ * Mark a thread read for the CURRENT USER in this mailbox (clears their unread
+ * dot only — a shared mailbox tracks read state per person). Upsert on
+ * (user, thread, mailbox). Requires an actual grant: triage is a member action,
+ * an org-admin oversight reader doesn't mutate mailbox state.
+ */
 export const markThreadRead = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
-    await assertMailboxAccess(mailboxId);
+    const box = await assertMailboxGrant(mailboxId);
     const { locals } = getRequestEvent();
+    // Thread must actually be in this mailbox (guards a bad threadId).
+    const state = await locals.db.query.threadState.findFirst({
+      where: and(eq(schema.threadState.threadId, threadId), eq(schema.threadState.mailboxId, mailboxId)),
+      columns: { id: true },
+    });
+    if (!state) error(404, "Thread is not in this mailbox.");
+    const now = new Date();
     await locals.db
-      .update(mail.threadState)
-      .set({ lastReadAt: new Date() })
-      .where(
-        and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)),
-      );
+      .insert(mail.threadRead)
+      .values({ orgId: box.orgId, userId: locals.user!.id, threadId, mailboxId, lastReadAt: now })
+      .onConflictDoUpdate({
+        target: [mail.threadRead.userId, mail.threadRead.threadId, mail.threadRead.mailboxId],
+        set: { lastReadAt: now },
+      });
     return { ok: true as const };
   },
 );
@@ -113,7 +149,7 @@ export const moveThread = command(
     placement: z.enum(PLACEMENTS),
   }),
   async ({ mailboxId, threadId, placement }) => {
-    const box = await assertMailboxAccess(mailboxId);
+    const box = await assertMailboxGrant(mailboxId);
     const { locals, locals: { user } } = getRequestEvent();
     const prev = await locals.db.query.threadState.findFirst({
       where: and(eq(schema.threadState.threadId, threadId), eq(schema.threadState.mailboxId, mailboxId)),
@@ -128,7 +164,7 @@ export const moveThread = command(
     // Quiet system event on shared mailboxes only (Task 5); no-op otherwise.
     if (prev && user) {
       await emitPlacementEvent(locals.db, {
-        orgId: box.box.orgId,
+        orgId: box.orgId,
         threadId,
         mailboxId,
         actorUserId: user.id,
@@ -144,7 +180,7 @@ export const moveThread = command(
 export const starThread = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), starred: z.boolean() }),
   async ({ mailboxId, threadId, starred }) => {
-    await assertMailboxAccess(mailboxId);
+    await assertMailboxGrant(mailboxId);
     const { locals } = getRequestEvent();
     await locals.db
       .update(mail.threadState)

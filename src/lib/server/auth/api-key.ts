@@ -8,8 +8,13 @@
  * runs the SAME can() send-capability check as an interactive session — there is
  * no parallel permission path. Only the SHA-256 of the secret is stored; the
  * plaintext is returned once at creation and never again.
+ *
+ * SCOPE: these keys are SEND-ONLY. The single bearer-authenticated endpoint is
+ * POST /api/send (verifyApiKey is imported nowhere else); every other surface
+ * requires an interactive session or a distinct secret (e.g. CRON_SECRET). A key
+ * grants no account, admin, or read access — only enqueuing outbound mail.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "../db/schema.js";
 import { apiKey } from "../db/mail.schema.js";
@@ -77,6 +82,52 @@ export async function verifyApiKey(db: Db, presented: string): Promise<ApiKeyAct
   if (!row) return null;
   await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.id));
   return { keyId: row.id, userId: row.userId, orgId: row.orgId, mailboxId: row.mailboxId };
+}
+
+/** A key row for display — NEVER includes the hash or secret. */
+export type ApiKeySummary = {
+  id: string;
+  name: string | null;
+  prefix: string;
+  mailboxId: string | null;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+  createdAt: number;
+};
+
+/** A user's own keys, newest first (metadata only — no secret material). */
+export async function listApiKeys(db: Db, userId: string): Promise<ApiKeySummary[]> {
+  const rows = await db.query.apiKey.findMany({
+    where: eq(apiKey.userId, userId),
+    orderBy: desc(apiKey.createdAt),
+    columns: {
+      id: true,
+      name: true,
+      prefix: true,
+      mailboxId: true,
+      lastUsedAt: true,
+      revokedAt: true,
+      createdAt: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    prefix: r.prefix,
+    mailboxId: r.mailboxId,
+    lastUsedAt: r.lastUsedAt ? r.lastUsedAt.getTime() : null,
+    revokedAt: r.revokedAt ? r.revokedAt.getTime() : null,
+    createdAt: r.createdAt.getTime(),
+  }));
+}
+
+/** The user id that owns a key, or null — for an ownership check before revoke. */
+export async function apiKeyOwner(db: Db, keyId: string): Promise<string | null> {
+  const row = await db.query.apiKey.findFirst({
+    where: eq(apiKey.id, keyId),
+    columns: { userId: true },
+  });
+  return row?.userId ?? null;
 }
 
 /** Revoke a key (soft — keeps the audit row). */

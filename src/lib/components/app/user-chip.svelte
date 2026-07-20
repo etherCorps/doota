@@ -59,7 +59,7 @@
 			</div>
 		</DropdownMenu.Label>
 		<DropdownMenu.Separator />
-		<DropdownMenu.Item onSelect={() => goto(resolve('/account/security'))}>
+		<DropdownMenu.Item onSelect={() => goto(resolve('/account'))}>
 			<SettingsIcon class="size-4" /> Account settings
 		</DropdownMenu.Item>
 		<DropdownMenu.Item onSelect={logout}>

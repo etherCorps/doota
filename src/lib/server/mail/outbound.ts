@@ -58,7 +58,7 @@ export type SendRequest = {
 // wherever it currently sits (Part D).
 const OUTBOUND_PLACEMENT: PlacementPolicy = { newThread: "sent", unarchiveOnReply: false };
 
-const DEFAULT_UNDO_SECONDS = 30;
+const DEFAULT_UNDO_SECONDS = 10;
 // Cloudflare Queues cap delivery delay at 12h; beyond that the cron sweep enqueues.
 const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
 

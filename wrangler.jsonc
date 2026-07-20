@@ -7,8 +7,10 @@
 		"nodejs_compat"
 	],
 	// Wrapper entry: re-exports the SvelteKit fetch handler (adapter-cloudflare's
-	// _worker.js) and adds the merged mail-in email() + queue() handlers, so inbound
-	// mail runs in this one Worker (MAIL_IN_WORKER_NAME points here).
+	// _worker.js). This Worker serves the app and PRODUCES to the mail queues; the
+	// asynchronous mail handlers (email/queue/scheduled) live in the standalone
+	// `doota-mail` Worker (wrangler.mail.jsonc), which owns the queue consumers,
+	// the Email Routing catch-all, and the cron sweep.
 	"main": "worker.entry.js",
 	"assets": {
 		"binding": "ASSETS",
@@ -20,6 +22,9 @@
 			"bucket_name": "doota-mail-raw",
 		},
 	],
+	// The app only PRODUCES to the mail queues (send.remote / draft send enqueue to
+	// MAIL_OUT_QUEUE). The CONSUMERS + cron trigger live in the `doota-mail` Worker
+	// (wrangler.mail.jsonc) — a queue can bind to only one consumer Worker.
 	"queues": {
 		"producers": [
 			{
@@ -31,23 +36,6 @@
 				"queue": "doota-mail-outbound",
 			},
 		],
-		"consumers": [
-			{
-				"queue": "doota-mail-inbound",
-				"max_batch_size": 10,
-				"max_retries": 5,
-			},
-			{
-				"queue": "doota-mail-outbound",
-				"max_batch_size": 10,
-				"max_retries": 5,
-			},
-		],
-	},
-	// Sweep scheduled sends whose hold has elapsed but that were never enqueued
-	// (send_at beyond the queue's 12h max delay). See worker.entry.js scheduled().
-	"triggers": {
-		"crons": ["*/5 * * * *"],
 	},
 	"send_email": [
 		{

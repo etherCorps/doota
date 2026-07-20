@@ -103,21 +103,20 @@
 	</ButtonGroup>
 {/snippet}
 
-<div class="flex flex-col gap-3">
-	<div class="flex justify-end">
-		<Button class="gap-1.5" onclick={() => (addOpen = true)}>
-			<PlusIcon class="size-4" /> Add member
-		</Button>
-	</div>
+{#snippet addAction()}
+	<Button class="gap-1.5" onclick={() => (addOpen = true)}>
+		<PlusIcon class="size-4" /> Add member
+	</Button>
+{/snippet}
 
-	<DataTable
-		{columns}
-		data={data.members}
-		filterColumn="name"
-		filterPlaceholder="Search members…"
-		empty="No members yet. Add one to send an invite."
-	/>
-</div>
+<DataTable
+	{columns}
+	data={data.members}
+	filterColumn="name"
+	filterPlaceholder="Search members…"
+	empty="No members yet. Add one to send an invite."
+	actions={addAction}
+/>
 
 <Dialog.Root bind:open={addOpen}>
 	<Dialog.Content class="sm:max-w-md">

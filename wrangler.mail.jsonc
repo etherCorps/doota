@@ -1,0 +1,66 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Standalone mail Worker. Owns the email(), queue() and scheduled() handlers
+	// the app Worker (wrangler.jsonc, name "doota") does NOT provide. Deploy with
+	// `pnpm run deploy:mail`. Its name is the value MAIL_IN_WORKER_NAME must hold
+	// so the Email Routing catch-all rule (domains.remote.ts) points here.
+	"name": "doota-mail",
+	"compatibility_date": "2026-04-28",
+	"compatibility_flags": ["nodejs_als", "nodejs_compat"],
+	"main": "src/mail-worker.ts",
+	"r2_buckets": [
+		{
+			"binding": "MAIL_RAW",
+			"bucket_name": "doota-mail-raw",
+		},
+	],
+	"queues": {
+		// Producers: the inbound handler enqueues to MAIL_QUEUE; the cron sweep and
+		// consumer retries enqueue to MAIL_OUT_QUEUE.
+		"producers": [
+			{
+				"binding": "MAIL_QUEUE",
+				"queue": "doota-mail-inbound",
+			},
+			{
+				"binding": "MAIL_OUT_QUEUE",
+				"queue": "doota-mail-outbound",
+			},
+		],
+		// Consumers live HERE (a queue has exactly one consumer Worker), moved off
+		// the app Worker which had no queue() handler to service them.
+		"consumers": [
+			{
+				"queue": "doota-mail-inbound",
+				"max_batch_size": 10,
+				"max_retries": 5,
+			},
+			{
+				"queue": "doota-mail-outbound",
+				"max_batch_size": 10,
+				"max_retries": 5,
+			},
+		],
+	},
+	// The 5-min sweep for scheduled sends beyond the queue's 12h max delay + stale
+	// draft GC. Moved off the app Worker (which had no scheduled() handler).
+	"triggers": {
+		"crons": ["*/5 * * * *"],
+	},
+	// Outbound send binding (Cloudflare Email Service). Same binding the provider
+	// seam expects; DKIM/return-path are set by the binding from the sending zone.
+	"send_email": [
+		{
+			"name": "EMAIL_SENDER",
+			"remote": true,
+		},
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "doota",
+			"database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
+			"migrations_dir": "drizzle",
+		},
+	],
+}

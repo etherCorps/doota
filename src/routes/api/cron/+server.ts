@@ -4,10 +4,11 @@ import { runScheduledSweeps } from "$lib/server/mail/cron.js";
 import type { OutboundEnv } from "$lib/server/mail/outbound.js";
 
 /**
- * Cron target. The 5-min Cloudflare cron trigger has no fetch context under
- * adapter-cloudflare, so wire it to hit this endpoint (scheduled() → fetch, or an
- * external scheduler) with `Authorization: Bearer $CRON_SECRET`. Runs the shared
- * maintenance sweeps. Secret-gated so it isn't publicly callable.
+ * Cron BACKUP endpoint. The primary schedule is the `doota-mail` Worker's native
+ * scheduled() handler (wrangler.mail.jsonc). This secret-gated endpoint runs the
+ * SAME maintenance sweeps and exists as a manual/external-scheduler fallback
+ * (`Authorization: Bearer $CRON_SECRET`), e.g. to force a sweep without waiting
+ * for the 5-min tick. Not publicly callable.
  */
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const env = platform?.env;

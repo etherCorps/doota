@@ -25,7 +25,7 @@ async function requireMailboxActor(mailboxId: string) {
 
   const box = await locals.db.query.mailbox.findFirst({
     where: eq(schema.mailbox.id, mailboxId),
-    columns: { id: true, orgId: true, isActive: true },
+    columns: { id: true, orgId: true, isActive: true, isPersonal: true },
   });
   if (!box) error(404, "Mailbox not found");
 
@@ -55,6 +55,12 @@ export const generateAlias = command(
   z.object({ mailboxId: z.string().min(1), label: z.string().trim().max(120).optional() }),
   async ({ mailboxId, label }) => {
     const box = await requireMailboxActor(mailboxId);
+    // Hide-my-email is a PERSONAL privacy feature. A shared mailbox (support@)
+    // has many senders and no single owner, so a revocable per-person forwarding
+    // alias is meaningless there and would leak/confuse routing. Personal only.
+    if (!box.isPersonal) {
+      error(400, "Aliases are only available on personal mailboxes.");
+    }
     const { locals } = getRequestEvent();
     const org = await locals.db.query.organization.findFirst({
       where: eq(schema.organization.id, box.orgId),

@@ -67,7 +67,11 @@ async function resolveThreadId(
   const subjectNorm = normalizeSubject(parsed.subject);
   if (subjectNorm) {
     const since = new Date((parsed.sentAt ?? Date.now()) - SUBJECT_FALLBACK_WINDOW_MS);
-    const recent = await db.query.thread.findFirst({
+    // Candidate threads with the same normalized subject in the window, newest
+    // first. Subject alone is too weak to merge on (two unrelated "Re: invoice"
+    // threads would collapse), so we ALSO require a shared participant — the new
+    // message and the candidate thread must have an address in common.
+    const candidates = await db.query.thread.findMany({
       where: and(
         eq(schema.thread.orgId, orgId),
         eq(schema.thread.subjectNormalized, subjectNorm),
@@ -75,8 +79,14 @@ async function resolveThreadId(
       ),
       orderBy: desc(schema.thread.lastMessageAt),
       columns: { id: true },
+      limit: 10,
     });
-    if (recent) return recent.id;
+    if (candidates.length) {
+      const wanted = participantsOf(parsed);
+      for (const c of candidates) {
+        if (await threadSharesParticipant(db, c.id, wanted)) return c.id;
+      }
+    }
   }
 
   const created = await db
@@ -171,6 +181,44 @@ export async function materializeMessage(
   await writeAttachments(db, row.id, parsed);
   await indexContent(db, row.id, orgId, parsed, deps);
   return { messageId: row.id, threadId: row.threadId };
+}
+
+/** Lowercased address set of a message: from + to + cc. */
+function participantsOf(parsed: ParsedMessage): Set<string> {
+  const set = new Set<string>();
+  if (parsed.from) set.add(parsed.from.trim().toLowerCase());
+  for (const a of parsed.to ?? []) if (a) set.add(a.trim().toLowerCase());
+  for (const a of parsed.cc ?? []) if (a) set.add(a.trim().toLowerCase());
+  return set;
+}
+
+/** True if any message in the thread shares an address with `wanted`. */
+async function threadSharesParticipant(
+  db: Db,
+  threadId: string,
+  wanted: Set<string>,
+): Promise<boolean> {
+  if (wanted.size === 0) return false;
+  const msgs = await db.query.message.findMany({
+    where: eq(schema.message.threadId, threadId),
+    columns: { fromAddr: true, toAddrs: true, ccAddrs: true },
+  });
+  for (const m of msgs) {
+    if (m.fromAddr && wanted.has(m.fromAddr.trim().toLowerCase())) return true;
+    for (const a of jsonAddrs(m.toAddrs)) if (wanted.has(a)) return true;
+    for (const a of jsonAddrs(m.ccAddrs)) if (wanted.has(a)) return true;
+  }
+  return false;
+}
+
+function jsonAddrs(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map((s) => String(s).trim().toLowerCase()) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function bumpThread(db: Db, threadId: string, sentAt: number | null): Promise<void> {

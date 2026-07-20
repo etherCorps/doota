@@ -46,13 +46,22 @@ function preview(text: string | null, n = 140): string | null {
 /** Threads in a mailbox at a placement (inbox/archived/…), newest first. */
 export async function listThreads(
   db: Db,
-  input: { mailboxId: string; placement: string; ck: ContentKey; limit?: number; includeCollab?: boolean },
+  input: {
+    mailboxId: string;
+    placement: string;
+    ck: ContentKey;
+    limit?: number;
+    /** Page offset for infinite scroll (rows to skip). */
+    offset?: number;
+    includeCollab?: boolean;
+    /** Whose unread state to compute. Absent (no session) → everything unread. */
+    userId?: string;
+  },
 ): Promise<ThreadSummary[]> {
   const states = await db
     .select({
       threadId: schema.threadState.threadId,
       isStarred: schema.threadState.isStarred,
-      lastReadAt: schema.threadState.lastReadAt,
       assigneeUserId: schema.threadState.assigneeUserId,
     })
     .from(schema.threadState)
@@ -64,7 +73,25 @@ export async function listThreads(
       ),
     )
     .orderBy(desc(schema.thread.lastMessageAt))
-    .limit(input.limit ?? 50);
+    .limit(input.limit ?? 30)
+    .offset(input.offset ?? 0);
+
+  // Per-USER read cursors for these threads (shared-mailbox unread is per person,
+  // not per mailbox). One indexed read for the page, keyed to this user.
+  const readByThread = new Map<string, number>();
+  if (input.userId && states.length) {
+    const reads = await db
+      .select({ threadId: schema.threadRead.threadId, lastReadAt: schema.threadRead.lastReadAt })
+      .from(schema.threadRead)
+      .where(
+        and(
+          eq(schema.threadRead.userId, input.userId),
+          eq(schema.threadRead.mailboxId, input.mailboxId),
+          inArray(schema.threadRead.threadId, states.map((s) => s.threadId)),
+        ),
+      );
+    for (const r of reads) if (r.lastReadAt) readByThread.set(r.threadId, r.lastReadAt.getTime());
+  }
 
   // Latest message per thread for subject + snippet. N+1 is fine for a list page;
   // ponytail: swap for a window function if a mailbox ever holds huge threads.
@@ -85,6 +112,7 @@ export async function listThreads(
       decryptContent(input.ck, latest?.bodyStrippedEnc),
     ]);
     const lastMessageAt = latest?.sentAt ? latest.sentAt.getTime() : null;
+    const lastReadAt = readByThread.get(s.threadId);
     out.push({
       threadId: s.threadId,
       subject,
@@ -92,7 +120,7 @@ export async function listThreads(
       from: latest?.fromAddr ?? null,
       lastMessageAt,
       isStarred: s.isStarred,
-      unread: !s.lastReadAt || (lastMessageAt != null && s.lastReadAt.getTime() < lastMessageAt),
+      unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),
       hasNotes: input.includeCollab ? await threadHasNotes(db, s.threadId, input.mailboxId) : false,
       assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
     });
@@ -103,7 +131,7 @@ export async function listThreads(
 /** Full thread DTO for a mailbox: timeline items + this mailbox's triage. */
 export async function getThread(
   db: Db,
-  input: { threadId: string; mailboxId: string; ck: ContentKey; includeCollab?: boolean },
+  input: { threadId: string; mailboxId: string; ck: ContentKey; includeCollab?: boolean; userId?: string },
 ): Promise<ThreadDTO | null> {
   const state = await db.query.threadState.findFirst({
     where: and(
@@ -113,6 +141,21 @@ export async function getThread(
     columns: { placement: true, isStarred: true, assigneeUserId: true },
   });
   if (!state) return null; // not delivered to this mailbox
+
+  // This user's read cursor for the thread — per-message isRead is derived from
+  // it (sent_at <= cursor), so read state is per person, not per mailbox.
+  let readCursor: number | null = null;
+  if (input.userId) {
+    const r = await db.query.threadRead.findFirst({
+      where: and(
+        eq(schema.threadRead.userId, input.userId),
+        eq(schema.threadRead.threadId, input.threadId),
+        eq(schema.threadRead.mailboxId, input.mailboxId),
+      ),
+      columns: { lastReadAt: true },
+    });
+    readCursor = r?.lastReadAt ? r.lastReadAt.getTime() : null;
+  }
 
   const messages = await db.query.message.findMany({
     where: eq(schema.message.threadId, input.threadId),
@@ -185,6 +228,8 @@ export async function getThread(
     ]);
     if (subject == null) subject = subj;
     const d = deliveryByMsg.get(m.id);
+    const sentAt = m.sentAt ? m.sentAt.getTime() : null;
+    const isRead = readCursor != null && sentAt != null && sentAt <= readCursor;
     const dto: MessageDTO = {
       type: "external_message",
       id: m.id,
@@ -194,14 +239,14 @@ export async function getThread(
       to: safeJsonArray(m.toAddrs),
       cc: safeJsonArray(m.ccAddrs),
       replyTo: m.replyTo,
-      sentAt: m.sentAt ? m.sentAt.getTime() : null,
+      sentAt,
       contentKind: m.contentKind === "bubble" ? "bubble" : "card",
       subject: subj,
       bodyStripped: stripped,
       bodyFull: full,
       bodyHtml: html,
       keywords: safeJsonArray(d?.keywords),
-      isRead: d?.isRead ?? false,
+      isRead,
       viaAlias: d?.viaAliasId ? (aliasAddr.get(d.viaAliasId) ?? null) : null,
       viaAliasId: d?.viaAliasId ?? null,
       attachments: (attByMsg.get(m.id) ?? []).map((a) => ({

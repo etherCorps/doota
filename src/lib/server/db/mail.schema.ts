@@ -270,6 +270,47 @@ export const threadState = sqliteTable(
   ],
 );
 
+/**
+ * Per-USER read cursor for a thread within a mailbox. Distinct from
+ * thread_state (which is per-mailbox triage shared by the whole team): in a
+ * shared mailbox each teammate must have their OWN unread state, so one person
+ * opening a thread doesn't clear the unread dot for everyone. Keyed
+ * (user, thread, mailbox); last_read_at is compared against a message's sent_at
+ * to derive read/unread. thread_state.last_read_at is left in place but is no
+ * longer the authority for unread.
+ */
+export const threadRead = sqliteTable(
+  "thread_read",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => thread.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    lastReadAt: integer("last_read_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("thread_read_user_thread_mailbox_uidx").on(
+      t.userId,
+      t.threadId,
+      t.mailboxId,
+    ),
+    index("thread_read_user_mailbox_idx").on(t.userId, t.mailboxId),
+  ],
+);
+
 export const label = sqliteTable(
   "label",
   {
@@ -406,8 +447,9 @@ export const systemEvent = sqliteTable(
  * its cancellable/failable window, so undo can restore an editable draft; then
  * GC'd. A draft never appears in the thread timeline — it is composer state.
  *
- * Per-user: two people with send access to support@ each get their OWN drafts
- * (created_by_user_id + a unique-per-user scope), never shared.
+ * Per-user: two people with send access to support@ each get their OWN drafts.
+ * Every row is owned via created_by_user_id and keyed by its own id; ownership
+ * is enforced in app code (ownDraftRow) — a draft is never shared.
  *
  * Content (subject/body) is encrypted at rest with the same crypto.ts as
  * messages — a draft is user content. Recipient sets + attachment refs are JSON

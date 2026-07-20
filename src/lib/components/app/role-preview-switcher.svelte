@@ -6,8 +6,8 @@
 	import { PersistedState } from 'runed';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import type { Role } from '$lib/mock/index.js';
 
+	type Role = 'member' | 'admin' | 'superadmin';
 	const roles: Role[] = ['member', 'admin', 'superadmin'];
 	const preview = new PersistedState<Role>('doota:preview-role', 'admin');
 

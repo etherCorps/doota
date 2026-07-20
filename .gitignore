@@ -25,3 +25,5 @@ vite.config.ts.timestamp-*
 /worker-configuration.d.ts
 # SQLite
 *.db
+
+.dev.vars

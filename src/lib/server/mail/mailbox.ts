@@ -43,20 +43,24 @@ export async function upsertMailbox(
   return row.id;
 }
 
-/** Grant a user access to a mailbox. Idempotent on (user_id, mailbox_id). */
+/**
+ * Grant a user access to a mailbox. Idempotent on (user_id, mailbox_id): a
+ * repeat grant UPDATES the capability flags (so a manager toggle actually
+ * takes), rather than silently no-oping.
+ */
 export async function grantAccess(
   db: Db,
   input: { userId: string; mailboxId: string; canManage?: boolean; canSend?: boolean },
 ): Promise<void> {
+  const canManage = input.canManage ?? false;
+  const canSend = input.canSend ?? true;
   await db
     .insert(mail.mailboxAccess)
-    .values({
-      userId: input.userId,
-      mailboxId: input.mailboxId,
-      canManage: input.canManage ?? false,
-      canSend: input.canSend ?? true,
-    })
-    .onConflictDoNothing();
+    .values({ userId: input.userId, mailboxId: input.mailboxId, canManage, canSend })
+    .onConflictDoUpdate({
+      target: [mail.mailboxAccess.userId, mail.mailboxAccess.mailboxId],
+      set: { canManage, canSend },
+    });
 }
 
 /**

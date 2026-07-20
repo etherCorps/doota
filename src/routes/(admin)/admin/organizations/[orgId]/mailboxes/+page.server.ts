@@ -16,5 +16,27 @@ export const load = async ({ locals, params }) => {
     .where(eq(schema.mailbox.orgId, params.orgId))
     .orderBy(schema.mailbox.address);
 
-  return { mailboxes };
+  // Org members — the pool that can be granted access to a shared mailbox.
+  const members = await locals.db
+    .select({
+      id: schema.user.id,
+      name: schema.user.name,
+      email: schema.user.email,
+    })
+    .from(schema.member)
+    .innerJoin(schema.user, eq(schema.member.userId, schema.user.id))
+    .where(eq(schema.member.organizationId, params.orgId));
+
+  // Current access grants across the org's mailboxes → drives the toggles.
+  const grants = await locals.db
+    .select({
+      mailboxId: schema.mailboxAccess.mailboxId,
+      userId: schema.mailboxAccess.userId,
+      canManage: schema.mailboxAccess.canManage,
+    })
+    .from(schema.mailboxAccess)
+    .innerJoin(schema.mailbox, eq(schema.mailbox.id, schema.mailboxAccess.mailboxId))
+    .where(eq(schema.mailbox.orgId, params.orgId));
+
+  return { mailboxes, members, grants };
 };

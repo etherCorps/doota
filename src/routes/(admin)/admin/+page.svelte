@@ -2,18 +2,12 @@
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import MailIcon from '@lucide/svelte/icons/mail';
-	import PlusIcon from '@lucide/svelte/icons/plus';
-	import { invalidateAll } from '$app/navigation';
-	import { authClient } from '$lib/client/auth-client';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { requestSuperadminEmailVerification } from '$lib/rpc/recovery-email.remote.js';
-	import { users, mailboxes } from '$lib/mock/index.js';
-    import { resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 
 	let { data } = $props();
 	const isSuperadmin = $derived(data.user.role === 'superadmin');
@@ -33,45 +27,12 @@
 		}
 	}
 
-	// Overview stats. Domains come from the real org list; users/mailboxes are mock
-	// until the mailbox milestone lands.
+	// Overview stats — all real, scoped to the orgs the actor administers.
 	const stats = $derived([
 		{ label: 'Domains', value: data.orgs.length, icon: GlobeIcon },
-		{ label: 'Users', value: users.length, icon: UsersIcon },
-		{ label: 'Mailboxes', value: mailboxes.length, icon: MailIcon }
+		{ label: 'Users', value: data.userCount, icon: UsersIcon },
+		{ label: 'Mailboxes', value: data.mailboxCount, icon: MailIcon }
 	]);
-
-	let domain = $state('');
-	let creating = $state(false);
-
-	function slugify(d: string) {
-		return d
-			.trim()
-			.toLowerCase()
-			.replace(/[^a-z0-9.]/g, '')
-			.replace(/\./g, '-');
-	}
-
-	async function createOrg(e: SubmitEvent) {
-		e.preventDefault();
-		const d = domain.trim().toLowerCase();
-		if (!d) return;
-		creating = true;
-		// `domain` is a server additionalField; the client types don't infer it,
-		// so cast the payload. The server validates domain (required/unique/format).
-		const payload = { name: d, slug: slugify(d), domain: d };
-		const { error } = await authClient.organization.create(
-			payload as unknown as Parameters<typeof authClient.organization.create>[0]
-		);
-		creating = false;
-		if (error) {
-			toast.error(error.message ?? 'Could not create organization.');
-			return;
-		}
-		domain = '';
-		toast.success(`Organization ${d} created.`);
-		await invalidateAll();
-	}
 </script>
 
 <div class="flex w-full flex-col gap-6 p-6 md:p-8">
@@ -153,7 +114,9 @@
 				</ul>
 			{:else}
 				<p class="text-muted-foreground text-sm">
-					No organizations yet.{isSuperadmin ? ' Create one above.' : ''}
+					No organizations yet.{#if isSuperadmin}
+						<a href={resolve('/admin/organizations')} class="text-foreground underline">Onboard a domain</a> to create one.
+					{/if}
 				</p>
 			{/if}
 		</Card.CardContent>

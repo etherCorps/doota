@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
@@ -26,6 +27,7 @@
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById } from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '$lib/server/mail/identities';
 	import type { MessageDTO } from '$lib/server/mail/mail-thread-contract';
+	import type { ThreadSummary } from '$lib/server/mail/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -78,12 +80,64 @@
 		goto(`?${sp}`, { keepFocus: true, noScroll: true });
 	}
 
-	const threadsQ = $derived(mailboxId && !isVirtual ? mailboxThreads({ mailboxId, placement: placement as never }) : null);
 	const threadQ = $derived(mailboxId && threadId && !isVirtual ? openThread({ mailboxId, threadId }) : null);
+	// Open-thread pane renders from `.current` so a refresh() updates in place
+	// instead of blanking (which read like a full reload).
+	const openDto = $derived(threadQ?.current ?? null);
+
+	// Thread list — infinite scroll. Pages accumulate into `items`; the next page
+	// loads when the list nears the bottom, and the list resets when the mailbox
+	// or folder changes. Common actions patch `items` in place (no refetch/flash).
+	const PAGE = 30;
+	let items = $state<ThreadSummary[]>([]);
+	let nextOffset = $state(0);
+	let reachedEnd = $state(false);
+	let loadingList = $state(false);
+
+	async function loadThreads(reset: boolean) {
+		if (!mailboxId || isVirtual || loadingList) return;
+		if (!reset && reachedEnd) return;
+		loadingList = true;
+		try {
+			const offset = reset ? 0 : nextOffset;
+			const page = await mailboxThreads({ mailboxId, placement: placement as never, offset });
+			items = reset ? page : [...items, ...page];
+			nextOffset = offset + page.length;
+			reachedEnd = page.length < PAGE;
+		} finally {
+			loadingList = false;
+		}
+	}
+
+	// Reset + load page 0 when mailbox/folder changes. `untrack` keeps the loader's
+	// own state writes from retriggering this effect.
+	$effect(() => {
+		const mb = mailboxId,
+			virt = isVirtual;
+		void placement;
+		untrack(() => {
+			if (mb && !virt) loadThreads(true);
+			else {
+				items = [];
+				nextOffset = 0;
+				reachedEnd = false;
+			}
+		});
+	});
+
+	function onListScroll(e: Event) {
+		const el = e.currentTarget as HTMLElement;
+		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadThreads(false);
+	}
+
+	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
+	function patchItem(id: string, patch: Partial<ThreadSummary>) {
+		items = items.map((t) => (t.threadId === id ? { ...t, ...patch } : t));
+	}
 
 	async function refresh() {
 		await threadQ?.refresh();
-		await threadsQ?.refresh();
+		await loadThreads(true);
 	}
 
 	// Collaboration layer (Task 5). Members drive "is this a shared mailbox?" —
@@ -103,8 +157,10 @@
 	}
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
-		await assignThread({ mailboxId, threadId, assigneeUserId: userId });
-		await refresh();
+		const id = threadId;
+		await assignThread({ mailboxId, threadId: id, assigneeUserId: userId });
+		patchItem(id, { assigneeUserId: userId });
+		await threadQ?.refresh();
 	}
 	async function removeNote(noteId: string) {
 		await deleteNoteById({ noteId });
@@ -125,21 +181,25 @@
 		nav({ thread: id });
 		if (mailboxId) {
 			await markThreadRead({ mailboxId, threadId: id });
-			await threadsQ?.refresh();
+			patchItem(id, { unread: false });
 		}
 	}
 
 	// Triage: move to a placement (archive/spam/trash/inbox), then leave the thread.
 	async function move(placement: string) {
 		if (!mailboxId || !threadId) return;
-		await moveThread({ mailboxId, threadId, placement: placement as never });
+		const id = threadId;
+		await moveThread({ mailboxId, threadId: id, placement: placement as never });
 		nav({ thread: null });
-		await threadsQ?.refresh();
+		// The thread left this folder — drop it from the list without a refetch.
+		items = items.filter((t) => t.threadId !== id);
 	}
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
-		await starThread({ mailboxId, threadId, starred: !current });
-		await refresh();
+		const id = threadId;
+		await starThread({ mailboxId, threadId: id, starred: !current });
+		patchItem(id, { isStarred: !current });
+		await threadQ?.refresh();
 	}
 
 	// Reply context (computed from the loaded thread).
@@ -195,6 +255,13 @@
 		panelNonce++;
 		panelOpen = true;
 	}
+	function composeNew() {
+		if (!mailboxId) return;
+		panelResumeId = undefined;
+		panelPrefill = { kind: 'new', mailboxId };
+		panelNonce++;
+		panelOpen = true;
+	}
 	async function cancelScheduled(submissionId: string) {
 		await undoDraftById({ submissionId });
 		await scheduledSends().refresh();
@@ -241,7 +308,7 @@
 			{/if}
 		</div>
 
-		<ScrollArea class="flex-1">
+		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
 			{#if placement === 'drafts'}
 				{#await myDrafts() then drafts}
 					{#if drafts.length}
@@ -253,7 +320,13 @@
 							</button>
 						{/each}
 					{:else}
-						<EmptyState icon={FileTextIcon} title="No drafts" description="Messages you start and close are saved here." />
+						<EmptyState icon={FileTextIcon} title="No drafts" description="Messages you start and close are saved here.">
+							{#snippet action()}
+								<Button size="sm" class="gap-1.5" onclick={composeNew}>
+									<PencilIcon class="size-3.5" /> New message
+								</Button>
+							{/snippet}
+						</EmptyState>
 					{/if}
 				{/await}
 			{:else if placement === 'scheduled'}
@@ -273,10 +346,9 @@
 						<EmptyState icon={ClockIcon} title="Nothing scheduled" description="Schedule a send and it will appear here until it goes out." />
 					{/if}
 				{/await}
-			{:else if threadsQ}
-				{#await threadsQ then list}
-					{#if applyAssignFilter(list).length}
-						{#each applyAssignFilter(list) as t (t.threadId)}
+			{:else if mailboxId && !isVirtual}
+					{#if applyAssignFilter(items).length}
+						{#each applyAssignFilter(items) as t (t.threadId)}
 							<button type="button" onclick={() => selectThread(t.threadId)} class="flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition-colors {threadId === t.threadId ? 'bg-accent' : 'hover:bg-muted/60'}">
 								<div class="flex items-center gap-2">
 									{#if t.unread}<span class="bg-brand size-2 shrink-0 rounded-full"></span>{/if}
@@ -290,19 +362,27 @@
 								<span class="text-muted-foreground line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 							</button>
 						{/each}
-					{:else}
-						<EmptyState icon={InboxIcon} title="Nothing here" description="This folder is empty." />
+						{#if loadingList}
+							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
+						{/if}
+					{:else if !loadingList}
+						<EmptyState icon={InboxIcon} title="Nothing here" description="This folder is empty.">
+							{#snippet action()}
+								<Button size="sm" class="gap-1.5" onclick={composeNew}>
+									<PencilIcon class="size-3.5" /> Compose
+								</Button>
+							{/snippet}
+						</EmptyState>
 					{/if}
-				{/await}
 			{/if}
-		</ScrollArea>
+		</div>
 	</div>
 
 	<!-- Conversation -->
 	<div class="min-w-0 flex-1 flex-col {threadId ? 'flex' : 'hidden md:flex'}">
 		{#if threadId && threadQ}
-			{#await threadQ then thread}
-				{#if thread}
+			{#if openDto}
+				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const ctx = replyCtx(msgs)}
 					<div class="flex h-12 items-center gap-2 border-b px-3 md:px-4">
@@ -481,8 +561,7 @@
 							{/key}
 						{/if}
 					{/if}
-				{/if}
-			{/await}
+			{/if}
 		{:else}
 			<EmptyState icon={MessagesSquareIcon} title="No conversation selected" description="Pick a thread from the list to read it here, or compose a new message." />
 		{/if}

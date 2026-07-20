@@ -1,11 +1,12 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
+	import type { Component, Snippet } from 'svelte';
 
 	let {
 		icon: Icon,
 		title,
-		description
-	}: { icon: Component; title: string; description: string } = $props();
+		description,
+		action
+	}: { icon: Component; title: string; description: string; action?: Snippet } = $props();
 </script>
 
 <div class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
@@ -16,4 +17,7 @@
 		<p class="font-heading text-base font-semibold">{title}</p>
 		<p class="text-muted-foreground max-w-xs text-sm">{description}</p>
 	</div>
+	{#if action}
+		<div class="mt-1">{@render action()}</div>
+	{/if}
 </div>

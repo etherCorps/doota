@@ -307,10 +307,11 @@ async function loadAttachments(
 }
 
 /**
- * Roll the submission status up from its recipients: any sent → the send
- * succeeded (bounces flip individual recipients later); all delivered/dropped
- * (internal-only or fully suppressed) → sent; nothing sent and all failed →
- * failed.
+ * Roll the submission status up from its recipients: any sent/delivered → the
+ * send succeeded (bounces flip individual recipients later). Nothing sent, but
+ * every recipient reached a non-failed terminal state (internal-only, or fully
+ * suppressed/dropped) → still `sent` — a deliberate drop is not a failure. Only
+ * an actual failure with nothing delivered rolls up to `failed`.
  */
 async function rollup(db: Db, submissionId: string): Promise<void> {
   const rows = await db.query.submissionRecipient.findMany({
@@ -318,6 +319,7 @@ async function rollup(db: Db, submissionId: string): Promise<void> {
     columns: { status: true },
   });
   const anySent = rows.some((r) => r.status === "sent" || r.status === "delivered");
-  const status = anySent ? "sent" : "failed";
+  const anyFailed = rows.some((r) => r.status === "failed");
+  const status = anySent || (rows.length > 0 && !anyFailed) ? "sent" : "failed";
   await db.update(mail.submission).set({ status }).where(eq(mail.submission.id, submissionId));
 }

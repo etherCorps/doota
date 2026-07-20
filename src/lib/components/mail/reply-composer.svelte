@@ -53,7 +53,7 @@
 	// Offer reply-all only when it would actually add recipients.
 	const canReplyAll = $derived(toAll.length + ccAll.length > to.length);
 
-	const UNDO_SECONDS = 30;
+	const UNDO_SECONDS = 10;
 
 	let sendMailboxId = $state('');
 	let aliasId = $state<string | null | undefined>(undefined);

@@ -41,7 +41,7 @@
 		resumeDraftId = undefined
 	}: { open?: boolean; prefill?: Prefill; resumeDraftId?: string } = $props();
 
-	const UNDO_SECONDS = 30;
+	const UNDO_SECONDS = 10;
 	const title = $derived(
 		resumeDraftId ? 'Draft' : prefill?.kind === 'forward' ? 'Forward' : 'New message'
 	);
