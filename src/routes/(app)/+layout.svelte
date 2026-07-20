@@ -7,16 +7,16 @@
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import { onMount } from 'svelte';
+	import { compose } from '$lib/client/compose.svelte.js';
 
 	let { data, children } = $props();
 
 	// Persist the sidebar collapsed state across navigations/reloads (runed).
 	const sidebarOpen = new PersistedState('doota:sidebar-open', true);
-	let composeOpen = $state(false);
 
 	// ⌘K → "Compose" dispatches this; and a bare `c` composes (Gmail-style).
 	onMount(() => {
-		const openCompose = () => (composeOpen = true);
+		const openCompose = () => compose.start();
 		window.addEventListener('doota:compose', openCompose);
 		return () => window.removeEventListener('doota:compose', openCompose);
 	});
@@ -24,18 +24,18 @@
 		if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement;
 		if (t?.closest('input, textarea, [contenteditable="true"]')) return;
-		composeOpen = true;
+		compose.start();
 	}
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
-	<AppSidebar user={data.user} onCompose={() => (composeOpen = true)} />
+	<AppSidebar user={data.user} onCompose={() => compose.start()} />
 	<Sidebar.Inset class="flex h-svh flex-col overflow-hidden">
 		<TopBar>
 			{#snippet action()}
-				<Button size="sm" class="gap-1.5" onclick={() => (composeOpen = true)}>
+				<Button size="sm" class="gap-1.5" onclick={() => compose.start()}>
 					<PenLineIcon class="size-4" /> Compose
 				</Button>
 			{/snippet}
@@ -48,4 +48,10 @@
 	</Sidebar.Inset>
 </Sidebar.Provider>
 
-<ComposePanel bind:open={composeOpen} />
+{#key compose.nonce}
+	<ComposePanel
+		bind:open={compose.open}
+		prefill={compose.prefill as never}
+		resumeDraftId={compose.resumeDraftId}
+	/>
+{/key}

@@ -9,7 +9,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
-	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
+	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
@@ -229,38 +229,27 @@
 		return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	}
 
-	// Compose panel (Forward / resume Draft).
-	let panelOpen = $state(false);
-	let panelPrefill = $state<Record<string, unknown> | undefined>(undefined);
-	let panelResumeId = $state<string | undefined>(undefined);
-	let panelNonce = $state(0);
-
+	// Compose (Forward / resume Draft / new) routes through the shared controller;
+	// the single ComposePanel is mounted in the (app) layout.
 	function forward(parent: MessageDTO, subject: string | null) {
 		if (!mailboxId) return;
-		panelResumeId = undefined;
-		panelPrefill = {
-			kind: 'forward',
-			mailboxId,
-			threadId,
-			inReplyToMessageId: parent.messageIdHeader,
-			subject: `Fwd: ${subject ?? ''}`.trim(),
-			body: `\n\n---------- Forwarded message ----------\nFrom: ${parent.from ?? ''}\n\n${parent.bodyFull ?? parent.bodyStripped ?? ''}`
-		};
-		panelNonce++;
-		panelOpen = true;
+		compose.start({
+			prefill: {
+				kind: 'forward',
+				mailboxId,
+				threadId,
+				inReplyToMessageId: parent.messageIdHeader,
+				subject: `Fwd: ${subject ?? ''}`.trim(),
+				body: `\n\n---------- Forwarded message ----------\nFrom: ${parent.from ?? ''}\n\n${parent.bodyFull ?? parent.bodyStripped ?? ''}`
+			}
+		});
 	}
 	function openDraft(id: string) {
-		panelPrefill = undefined;
-		panelResumeId = id;
-		panelNonce++;
-		panelOpen = true;
+		compose.start({ resumeDraftId: id });
 	}
 	function composeNew() {
 		if (!mailboxId) return;
-		panelResumeId = undefined;
-		panelPrefill = { kind: 'new', mailboxId };
-		panelNonce++;
-		panelOpen = true;
+		compose.start({ prefill: { kind: 'new', mailboxId } });
 	}
 	async function cancelScheduled(submissionId: string) {
 		await undoDraftById({ submissionId });
@@ -567,7 +556,3 @@
 		{/if}
 	</div>
 </div>
-
-{#key panelNonce}
-	<ComposePanel bind:open={panelOpen} prefill={panelPrefill as never} resumeDraftId={panelResumeId} />
-{/key}
