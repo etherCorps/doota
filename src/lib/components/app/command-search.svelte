@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { folders, threads, participant } from '$lib/mock/index.js';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -26,6 +27,13 @@
 	<Command.Input placeholder="Search mail, people, folders…" />
 	<Command.List>
 		<Command.Empty>No results found.</Command.Empty>
+		<Command.Group heading="Actions">
+			<Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('doota:compose')))}>
+				<PenLineIcon class="text-muted-foreground size-4" />
+				Compose message
+			</Command.Item>
+		</Command.Group>
+		<Command.Separator />
 		<Command.Group heading="Folders">
 			{#each folders as folder (folder.id)}
 				<Command.Item onSelect={() => run(() => goto(`${resolve('/app')}?folder=${folder.id}`))}>

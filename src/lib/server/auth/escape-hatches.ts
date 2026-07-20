@@ -183,16 +183,19 @@ export async function setUserAuthFlags(
 }
 
 /**
- * ESCAPE HATCH — stamp onboardedAt from the request hook (hooks.server), which
- * runs before a request event/`$context` is retrievable. Takes db explicitly so
- * it works there. Raw write is safe: an onboardedAt-only update triggers no
- * user.update side effect (the hook reacts only to a recoveryEmail change).
+ * ESCAPE HATCH — stamp onboardedAt via the internal adapter so the session's
+ * cached user (KV secondary storage + cookie cache) is refreshed in lockstep
+ * (updateUser → refreshUserSessions). A raw D1 write would leave the KV session
+ * snapshot reporting onboardedAt=null, defeating the request-hook fast path.
+ *
+ * Takes the auth instance explicitly rather than via getRequestEvent: the caller
+ * is the request hook, and `$context` resolves independent of the request event.
+ * An onboardedAt-only update triggers no user.update side effect (the hook reacts
+ * only to a recoveryEmail change).
  */
-export async function stampOnboarded(db: Db, userId: string): Promise<void> {
-  await db
-    .update(schema.user)
-    .set({ onboardedAt: Date.now() })
-    .where(eq(schema.user.id, userId));
+export async function stampOnboarded(auth: Auth, userId: string): Promise<void> {
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.updateUser(userId, { onboardedAt: Date.now() });
 }
 
 /**

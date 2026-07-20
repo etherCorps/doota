@@ -19,6 +19,7 @@
 	const base = $derived(`${resolve('/admin/organizations')}/${data.org.id}`);
 	const tabs = [
 		{ slug: 'members', label: 'Members' },
+		{ slug: 'mailboxes', label: 'Mailboxes' },
 		{ slug: 'subdomains', label: 'Subdomains' },
 		{ slug: 'dns', label: 'DNS' },
 		{ slug: 'settings', label: 'Settings' }

@@ -7,13 +7,12 @@ import { getDiceBearURL } from "$lib/utils/dice-bear.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "./can";
 import { isServedDomain, senderAddress } from "./org-domains";
-import { sendMail } from "./mailer";
+import { sendMail, sendMailBackground } from "./mailer";
 import { renderEmail } from "./email";
-import { tokenStore, setUserAuthFlags } from "./auth/escape-hatches.js";
+import { setUserAuthFlags } from "./auth/escape-hatches.js";
+import { ensurePersonalMailbox } from "./mail/mailbox.js";
 
 type Db = DrizzleD1Database<typeof schema>;
-
-const RECOVERY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — matches invite lifetime
 
 export type ProvisionInput = {
   name: string;
@@ -152,26 +151,33 @@ export async function provisionUser(
     };
   }
 
-  // One invite mail: temp password + recovery-verification link (same namespaced
-  // token the verify-recovery-email route consumes).
-  const token = crypto.randomUUID();
-  await tokenStore.issue(
-    `recovery-email:${token}`,
-    JSON.stringify({ userId, email: recoveryEmail }),
-    RECOVERY_TOKEN_TTL_MS,
+  // The address moves off the implied user.email into a mailbox row — the single
+  // source of truth for "what address is this person". Idempotent, so a retried
+  // provision converges. Failure here is non-fatal to the invite (the mailbox is
+  // reconcilable), but log it.
+  const { error: mailboxError } = await tryCatch(
+    ensurePersonalMailbox(db, {
+      orgId: org.id,
+      userId,
+      address: email,
+      displayName: input.name,
+    }),
   );
+  if (mailboxError) console.error("[provision] personal mailbox failed", mailboxError);
 
-  // Branded from the org they're joining (its own domain when sending is live).
+  // One invite mail: temp password only. No recovery-verification link — the
+  // invite is delivered ONLY to the external recovery address, so a successful
+  // first login (with these creds) is itself proof of control, and the
+  // session-create hook auto-verifies the recovery email then.
   const from = await senderAddress(db, org.domain);
   const mail = renderEmail("invite", {
     from,
     mailbox: email,
     tempPassword: password,
-    loginLink: `${ORIGIN}/login`,
-    recoveryLink: `${ORIGIN}/verify-recovery-email?token=${token}`,
+    loginLink: `${ORIGIN}/login?email=${email}&password=${password}`,
   });
   await tryCatch(
-    sendMail({ to: recoveryEmail, from, subject: mail.subject, text: mail.text, html: mail.html }),
+    sendMailBackground({ to: recoveryEmail, from, subject: mail.subject, text: mail.text, html: mail.html }),
   );
 
   return {

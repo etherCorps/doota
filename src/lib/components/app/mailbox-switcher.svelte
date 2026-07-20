@@ -1,12 +1,28 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { myMailboxes } from '$lib/mock/index.js';
+	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import MailIcon from '@lucide/svelte/icons/mail';
 
-	let active = $state(myMailboxes[0]);
+	type Box = { id: string; address: string; displayName: string | null };
+	let mailboxes = $state<Box[]>([]);
+	onMount(async () => {
+		mailboxes = await myMailboxes();
+	});
+
+	const activeId = $derived(page.url.searchParams.get('mailbox') ?? mailboxes[0]?.id ?? null);
+	const active = $derived(mailboxes.find((m) => m.id === activeId) ?? mailboxes[0]);
+
+	function pick(id: string) {
+		// Switch mailbox on the mail route; reset the open thread.
+		goto(`${resolve('/app')}?mailbox=${id}`, { keepFocus: true });
+	}
 </script>
 
 <DropdownMenu.Root>
@@ -19,8 +35,8 @@
 					<MailIcon class="size-4" />
 				</div>
 				<div class="grid flex-1 text-left leading-tight">
-					<span class="truncate text-sm font-medium">{active.label}</span>
-					<span class="text-muted-foreground truncate font-mono text-xs">{active.address}</span>
+					<span class="truncate text-sm font-medium">{active?.displayName ?? 'Mailbox'}</span>
+					<span class="text-muted-foreground truncate font-mono text-xs">{active?.address ?? '…'}</span>
 				</div>
 				<ChevronsUpDownIcon class="text-muted-foreground ml-auto size-4" />
 			</Sidebar.MenuButton>
@@ -28,13 +44,13 @@
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Content class="w-64" align="start" sideOffset={8}>
 		<DropdownMenu.Label class="text-muted-foreground text-xs">Mailboxes</DropdownMenu.Label>
-		{#each myMailboxes as mailbox (mailbox.id)}
-			<DropdownMenu.Item onSelect={() => (active = mailbox)}>
+		{#each mailboxes as mailbox (mailbox.id)}
+			<DropdownMenu.Item onSelect={() => pick(mailbox.id)}>
 				<div class="grid flex-1 leading-tight">
-					<span class="text-sm">{mailbox.label}</span>
+					<span class="text-sm">{mailbox.displayName ?? mailbox.address}</span>
 					<span class="text-muted-foreground font-mono text-xs">{mailbox.address}</span>
 				</div>
-				{#if active.id === mailbox.id}<CheckIcon class="size-4" />{/if}
+				{#if activeId === mailbox.id}<CheckIcon class="size-4" />{/if}
 			</DropdownMenu.Item>
 		{/each}
 	</DropdownMenu.Content>

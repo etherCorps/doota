@@ -70,8 +70,8 @@ step cards.
 
 ## Domain onboarding via Cloudflare (super-admin only)
 
-`/admin/domains`. Super-admin only; uses the instance token (`CF_ACCOUNT_ID` +
-`CF_API_TOKEN`, a scoped Bearer token). `domains.remote.ts` → `server/cloudflare.ts`.
+`/admin/domains`. Super-admin only; uses the instance token (`APP_CLOUDFLARE_ACCOUNT_ID` +
+`APP_CLOUDFLARE_API_TOKEN`, a scoped Bearer token). `domains.remote.ts` → `server/cloudflare.ts`.
 
 **Pick, don't type.** `listCloudflareZones` lists every zone on the operator's
 CF account (flagging which are already onboarded) so they choose a domain instead

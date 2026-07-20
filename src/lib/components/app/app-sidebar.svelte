@@ -6,6 +6,7 @@
 	import { folders, labels } from '$lib/mock/index.js';
 	import MailboxSwitcher from './mailbox-switcher.svelte';
 	import UserChip from './user-chip.svelte';
+	import BrandMark from './brand-mark.svelte';
 	import RolePreviewSwitcher from './role-preview-switcher.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -20,7 +21,7 @@
 		user,
 		onCompose
 	}: {
-		user: { name: string; email: string; role: string };
+		user: { name: string; email: string; role: string; image?: string | null };
 		onCompose: () => void;
 	} = $props();
 
@@ -43,9 +44,7 @@
 <Sidebar.Root>
 	<Sidebar.Header class="gap-2">
 		<div class="flex items-center gap-2 px-2 pt-1">
-			<div class="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-md font-heading text-base font-bold">
-				D
-			</div>
+			<BrandMark size={26} />
 			<span class="font-heading text-lg font-semibold tracking-tight">Doota</span>
 		</div>
 		<Sidebar.Menu>
@@ -127,7 +126,7 @@
 		<RolePreviewSwitcher />
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
-				<UserChip name={user.name} email={user.email} role={user.role} />
+				<UserChip name={user.name} email={user.email} role={user.role} image={user.image} />
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
 	</Sidebar.Footer>

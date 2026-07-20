@@ -41,7 +41,7 @@
     once `emailVerified` is true, and the verify action itself is only offered
     after a domain is `active` (a working sending path exists).
 11. **Cloudflare credential is a scoped API Token; CF is never on the hot path.**
-    `CF_ACCOUNT_ID` + `CF_API_TOKEN` (Bearer, not the Global API Key, no account
+    `APP_CLOUDFLARE_ACCOUNT_ID` + `APP_CLOUDFLARE_API_TOKEN` (Bearer, not the Global API Key, no account
     email), stored as a Worker secret like the encryption DEK. The CF API is
     called ONLY from `server/cloudflare.ts` during super-admin domain onboarding
     — never on inbound mail or login, which read the cached domain→org→zone map.

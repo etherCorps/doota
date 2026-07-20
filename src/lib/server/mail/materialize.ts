@@ -1,0 +1,306 @@
+import { and, desc, eq, gt } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
+import * as schema from "../db/schema";
+import * as mail from "../db/mail.schema";
+import { encryptContent, type ContentKey } from "./crypto";
+import { indexMessage, tokensFor } from "./search";
+import {
+  deriveContentKind,
+  normalizeSubject,
+  resolveParentMessageId,
+  stripHtmlTags,
+  stripQuotesText,
+} from "./mail-thread-contract";
+
+type Db = DrizzleD1Database<typeof schema>;
+
+/** Provider-agnostic parsed message — the consumer builds this from postal-mime. */
+export type ParsedMessage = {
+  messageIdHeader: string;
+  inReplyTo: string | null;
+  references: string | null;
+  from: string | null;
+  /** Original visible recipients + Reply-To — for reply-all reconstruction. */
+  to?: string[];
+  cc?: string[];
+  replyTo?: string | null;
+  subject: string | null;
+  sentAt: number | null;
+  text: string | null;
+  html: string | null;
+  r2RawKey: string | null;
+  attachments: {
+    partId: string | null;
+    filename: string | null;
+    contentType: string | null;
+    size: number | null;
+    r2Key: string | null;
+  }[];
+};
+
+export type MaterializeDeps = { ck: ContentKey; searchKeyB64: string };
+
+const SUBJECT_FALLBACK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7d — weak, bounded
+
+/**
+ * Find or create the thread for a message. In-Reply-To / References win; a
+ * normalized-subject match in the same org within a 7-day window is the weak
+ * fallback only when headers give nothing. Cleartext metadata — no decryption.
+ */
+async function resolveThreadId(
+  db: Db,
+  orgId: string,
+  parsed: ParsedMessage,
+): Promise<string> {
+  const parentMsgId = resolveParentMessageId(parsed.inReplyTo, parsed.references);
+  if (parentMsgId) {
+    const parent = await db.query.message.findFirst({
+      where: and(
+        eq(schema.message.orgId, orgId),
+        eq(schema.message.messageIdHeader, parentMsgId),
+      ),
+      columns: { threadId: true },
+    });
+    if (parent) return parent.threadId;
+  }
+
+  const subjectNorm = normalizeSubject(parsed.subject);
+  if (subjectNorm) {
+    const since = new Date((parsed.sentAt ?? Date.now()) - SUBJECT_FALLBACK_WINDOW_MS);
+    const recent = await db.query.thread.findFirst({
+      where: and(
+        eq(schema.thread.orgId, orgId),
+        eq(schema.thread.subjectNormalized, subjectNorm),
+        gt(schema.thread.lastMessageAt, since),
+      ),
+      orderBy: desc(schema.thread.lastMessageAt),
+      columns: { id: true },
+    });
+    if (recent) return recent.id;
+  }
+
+  const created = await db
+    .insert(mail.thread)
+    .values({
+      orgId,
+      subjectNormalized: subjectNorm || null,
+      lastMessageAt: parsed.sentAt ? new Date(parsed.sentAt) : new Date(),
+    })
+    .returning({ id: mail.thread.id });
+  return created[0].id;
+}
+
+/**
+ * Upsert the shared, immutable message (deduped by org_id + message_id_header).
+ * First writer creates it; later recipients of the same email reuse it. Returns
+ * the message id + its thread id. Idempotent: a redelivered job that hits an
+ * existing row reuses it and re-runs attachments/search harmlessly.
+ */
+export async function materializeMessage(
+  db: Db,
+  orgId: string,
+  parsed: ParsedMessage,
+  deps: MaterializeDeps,
+): Promise<{ messageId: string; threadId: string }> {
+  const existing = await db.query.message.findFirst({
+    where: and(
+      eq(schema.message.orgId, orgId),
+      eq(schema.message.messageIdHeader, parsed.messageIdHeader),
+    ),
+    columns: { id: true, threadId: true },
+  });
+  if (existing) {
+    // Converge attachments + search on re-run without duplicating the message.
+    await writeAttachments(db, existing.id, parsed);
+    await indexContent(db, existing.id, orgId, parsed, deps);
+    return { messageId: existing.id, threadId: existing.threadId };
+  }
+
+  const threadId = await resolveThreadId(db, orgId, parsed);
+  const strippedText = parsed.text ? stripQuotesText(parsed.text) : "";
+  const bodyFull = parsed.text ?? (parsed.html ? stripHtmlTags(parsed.html) : null);
+  const contentKind = deriveContentKind({
+    strippedText,
+    hasAttachments: parsed.attachments.length > 0,
+    htmlLength: parsed.html?.length ?? 0,
+  });
+
+  const [subjectEnc, strippedEnc, fullEnc, htmlEnc] = await Promise.all([
+    encryptContent(deps.ck, parsed.subject),
+    encryptContent(deps.ck, strippedText || bodyFull),
+    encryptContent(deps.ck, bodyFull),
+    encryptContent(deps.ck, parsed.html),
+  ]);
+
+  const inserted = await db
+    .insert(mail.message)
+    .values({
+      orgId,
+      threadId,
+      messageIdHeader: parsed.messageIdHeader,
+      inReplyTo: parsed.inReplyTo,
+      references: parsed.references,
+      fromAddr: parsed.from,
+      toAddrs: JSON.stringify(parsed.to ?? []),
+      ccAddrs: JSON.stringify(parsed.cc ?? []),
+      replyTo: parsed.replyTo,
+      sentAt: parsed.sentAt ? new Date(parsed.sentAt) : null,
+      r2RawKey: parsed.r2RawKey,
+      itemType: "external_message",
+      contentKind,
+      subjectEnc,
+      bodyStrippedEnc: strippedEnc,
+      bodyFullEnc: fullEnc,
+      bodyHtmlEnc: htmlEnc,
+    })
+    .onConflictDoNothing()
+    .returning({ id: mail.message.id, threadId: mail.message.threadId });
+
+  // Lost a create race with a concurrent recipient — read the winner's row.
+  const row =
+    inserted[0] ??
+    (await db.query.message.findFirst({
+      where: and(
+        eq(schema.message.orgId, orgId),
+        eq(schema.message.messageIdHeader, parsed.messageIdHeader),
+      ),
+      columns: { id: true, threadId: true },
+    }))!;
+
+  await bumpThread(db, row.threadId, parsed.sentAt);
+  await writeAttachments(db, row.id, parsed);
+  await indexContent(db, row.id, orgId, parsed, deps);
+  return { messageId: row.id, threadId: row.threadId };
+}
+
+async function bumpThread(db: Db, threadId: string, sentAt: number | null): Promise<void> {
+  await db
+    .update(mail.thread)
+    .set({ lastMessageAt: new Date(sentAt ?? Date.now()) })
+    .where(eq(mail.thread.id, threadId));
+}
+
+async function writeAttachments(db: Db, messageId: string, parsed: ParsedMessage): Promise<void> {
+  if (parsed.attachments.length === 0) return;
+  // Clear + re-insert: attachments are derived from the canonical raw, so a
+  // re-run replaces cleanly (no natural unique key on part metadata).
+  await db.delete(mail.attachment).where(eq(mail.attachment.messageId, messageId));
+  await db.insert(mail.attachment).values(
+    parsed.attachments.map((a) => ({
+      messageId,
+      partId: a.partId,
+      filename: a.filename,
+      contentType: a.contentType,
+      size: a.size,
+      r2Key: a.r2Key,
+    })),
+  );
+}
+
+async function indexContent(
+  db: Db,
+  messageId: string,
+  orgId: string,
+  parsed: ParsedMessage,
+  deps: MaterializeDeps,
+): Promise<void> {
+  const tokens = await tokensFor(deps.searchKeyB64, [
+    parsed.subject ?? "",
+    parsed.text ?? "",
+    parsed.html ? stripHtmlTags(parsed.html) : "",
+  ]);
+  await indexMessage(db, { messageId, orgId, tokens });
+}
+
+/**
+ * Placement policy for the mailbox's thread_state. Inbound (default): a new
+ * thread lands in `inbox`, and a reply un-archives an archived thread. Outbound
+ * (sender's copy): a new thread lands in `sent`, and a reply must NOT yank the
+ * thread out of wherever it currently sits (don't drag an inbox thread to sent).
+ */
+export type PlacementPolicy = { newThread: string; unarchiveOnReply: boolean };
+const INBOUND_PLACEMENT: PlacementPolicy = { newThread: "inbox", unarchiveOnReply: true };
+
+/**
+ * Write one recipient's delivery + ensure a thread_state for its mailbox. BCC
+ * lives ONLY as a delivery row (never back into the shared message headers).
+ * Idempotent on (message_id, mailbox_id, role). Placement follows `policy`
+ * (default: inbound — new→inbox, un-archive on reply).
+ */
+export async function materializeDelivery(
+  db: Db,
+  input: {
+    orgId: string;
+    messageId: string;
+    threadId: string;
+    mailboxId: string;
+    role: "to" | "cc" | "bcc" | "from";
+    viaAliasId: string | null;
+    subaddressTag: string | null;
+    sentAt: number | null;
+    placement?: PlacementPolicy;
+  },
+): Promise<void> {
+  await db
+    .insert(mail.delivery)
+    .values({
+      orgId: input.orgId,
+      messageId: input.messageId,
+      mailboxId: input.mailboxId,
+      role: input.role,
+      viaAliasId: input.viaAliasId,
+      subaddressTag: input.subaddressTag,
+    })
+    .onConflictDoNothing();
+
+  if (input.viaAliasId) {
+    await db
+      .update(mail.alias)
+      .set({ lastUsedAt: new Date(input.sentAt ?? Date.now()) })
+      .where(eq(mail.alias.id, input.viaAliasId));
+  }
+
+  await ensureThreadState(
+    db,
+    input.orgId,
+    input.threadId,
+    input.mailboxId,
+    input.placement ?? INBOUND_PLACEMENT,
+  );
+}
+
+/**
+ * Ensure a thread_state exists for (thread, mailbox). A new one takes
+ * policy.newThread. An existing archived one is pulled back to inbox only when
+ * policy.unarchiveOnReply (inbound). spam/trash are always respected — a reply
+ * doesn't resurrect what the user deliberately killed — and an outbound reply
+ * never moves the thread at all.
+ */
+async function ensureThreadState(
+  db: Db,
+  orgId: string,
+  threadId: string,
+  mailboxId: string,
+  policy: PlacementPolicy,
+): Promise<void> {
+  const existing = await db.query.threadState.findFirst({
+    where: and(
+      eq(schema.threadState.threadId, threadId),
+      eq(schema.threadState.mailboxId, mailboxId),
+    ),
+    columns: { id: true, placement: true },
+  });
+  if (!existing) {
+    await db
+      .insert(mail.threadState)
+      .values({ orgId, threadId, mailboxId, placement: policy.newThread })
+      .onConflictDoNothing();
+    return;
+  }
+  if (policy.unarchiveOnReply && existing.placement === "archived") {
+    await db
+      .update(mail.threadState)
+      .set({ placement: "inbox" })
+      .where(eq(mail.threadState.id, existing.id));
+  }
+}

@@ -9,7 +9,12 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 
-	let { name, email, role }: { name: string; email: string; role: string } = $props();
+	let {
+		name,
+		email,
+		role,
+		image = null
+	}: { name: string; email: string; role: string; image?: string | null } = $props();
 
 	const initials = $derived(
 		name
@@ -35,6 +40,7 @@
 				{...props}
 			>
 				<Avatar.Root class="size-8 rounded-md">
+					{#if image}<Avatar.Image src={image} alt={name} class="rounded-md" />{/if}
 					<Avatar.Fallback class="rounded-md text-xs">{initials}</Avatar.Fallback>
 				</Avatar.Root>
 				<div class="grid flex-1 text-left leading-tight">

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
+import type { Auth } from "./auth.js";
 import { stampOnboarded } from "./auth/escape-hatches.js";
 
 export type OnboardingStepId =
@@ -130,9 +131,6 @@ export async function getOnboardingStatus(
 }
 
 /** Stamps onboardedAt so future requests take the fast path. Idempotent. */
-export async function markOnboarded(
-  db: DrizzleD1Database<typeof schema>,
-  userId: string,
-): Promise<void> {
-  await stampOnboarded(db, userId);
+export async function markOnboarded(auth: Auth, userId: string): Promise<void> {
+  await stampOnboarded(auth, userId);
 }

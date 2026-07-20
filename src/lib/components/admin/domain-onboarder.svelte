@@ -96,7 +96,7 @@
 			</div>
 		{:else if zonesError}
 			<p class="text-muted-foreground text-sm">
-				Couldn't reach Cloudflare. Check <code>CF_ACCOUNT_ID</code> / <code>CF_API_TOKEN</code>.
+				Couldn't reach Cloudflare. Check <code>APP_CLOUDFLARE_ACCOUNT_ID</code> / <code>APP_CLOUDFLARE_API_TOKEN</code>.
 				<Button variant="link" class="px-1" onclick={loadZones}>Retry</Button>
 			</p>
 		{:else if available.length === 0}

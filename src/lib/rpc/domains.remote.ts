@@ -6,6 +6,12 @@ import * as schema from "$lib/server/db/schema.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { setOrgLifecycle } from "$lib/server/auth/escape-hatches.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import {
+  mirrorSubaddressing,
+  mirrorRoutingSubdomains,
+  currentRoutingSubdomains,
+  mirrorReturnPathDomain,
+} from "$lib/server/mail/mirror.js";
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
   addRoutingSubdomain,
@@ -84,13 +90,19 @@ async function wireAndActivate(
   if (!MAIL_IN_WORKER_NAME) {
     error(500, "MAIL_IN_WORKER_NAME is not configured; cannot wire the catch-all route.");
   }
+  let sending: { returnPathDomain?: string } = {};
   try {
-    await wireMail(zoneId, MAIL_IN_WORKER_NAME, sendingSubdomain);
+    sending = await wireMail(zoneId, MAIL_IN_WORKER_NAME, sendingSubdomain);
   } catch (e) {
     console.error("[domains:wire] failed", e);
     error(502, "Cloudflare wiring failed. Check the API token scopes and try again.");
   }
   const orgId = await upsertOrg(domain, "active", zoneId);
+  // Mirror the bounce/return-path subdomain to D1 (outbound envelope + inbound
+  // DSN recognition read it off the hot path). Best-effort — CF stays truth.
+  if (sending.returnPathDomain) {
+    await tryCatch(mirrorReturnPathDomain(getRequestEvent().locals.db, orgId, sending.returnPathDomain));
+  }
   // A domain just went live — the first working sending path now exists. If the
   // super-admin who onboarded it hasn't verified their (external) primary email,
   // auto-send that verification now so they never have to trigger it by hand.
@@ -345,7 +357,13 @@ function normalizeSubdomain(input: string, apex: string): string | null {
  */
 export const mailRoutingConfig = command(z.string(), async (orgId) => {
   const { zoneId, apex } = await orgZone(orgId);
-  return getRoutingConfig(zoneId, apex);
+  const config = await getRoutingConfig(zoneId, apex);
+  // Reconcile-on-view: refresh the D1 mirror from CF truth so a direct dashboard
+  // edit self-heals and the inbound hot path stays accurate.
+  const { locals } = getRequestEvent();
+  await mirrorSubaddressing(locals.db, orgId, config.supportSubaddress);
+  await mirrorRoutingSubdomains(locals.db, orgId, config.subdomains);
+  return config;
 });
 
 /** Add a subdomain to the org's Email Routing. Superadmin only. */
@@ -363,6 +381,10 @@ export const addMailSubdomain = command(
       console.error("[domains:subdomain] add failed", e);
       return { success: false as const, message: "Cloudflare rejected the subdomain. Check the zone and try again." };
     }
+    // Write-through: CF accepted it, mirror into D1 for the resolver.
+    const { locals } = getRequestEvent();
+    const next = [...(await currentRoutingSubdomains(locals.db, orgId)), host];
+    await mirrorRoutingSubdomains(locals.db, orgId, next);
     return { success: true as const, subdomain: host };
   },
 );
@@ -375,6 +397,10 @@ export const removeMailSubdomain = command(
     const host = normalizeSubdomain(subdomain, apex);
     if (!host) error(400, "Invalid subdomain.");
     await removeRoutingSubdomain(zoneId, host);
+    // Write-through: drop it from the D1 mirror too.
+    const { locals } = getRequestEvent();
+    const next = (await currentRoutingSubdomains(locals.db, orgId)).filter((h) => h !== host);
+    await mirrorRoutingSubdomains(locals.db, orgId, next);
     return { success: true as const };
   },
 );
@@ -390,6 +416,9 @@ export const toggleSubaddressing = command(
       console.error("[domains:subaddress] toggle failed", e);
       return { success: false as const, message: "Cloudflare rejected the subaddressing change." };
     }
+    // Write-through: mirror the flag into D1 for the resolver.
+    const { locals } = getRequestEvent();
+    await mirrorSubaddressing(locals.db, orgId, on);
     return { success: true as const, on };
   },
 );

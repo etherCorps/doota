@@ -13,9 +13,10 @@
 	import * as InputOTP from '$lib/components/ui/input-otp/index.js';
 	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { page } from '$app/state';
 
-	let email = $state('');
-	let password = $state('');
+	let email = $state(page?.url.searchParams.get('email') ?? '');
+	let password = $state(page?.url.searchParams.get('password') ?? '');
 	let code = $state('');
 	let step = $state<'credentials' | 'totp'>('credentials');
 	let useBackup = $state(false);

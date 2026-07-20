@@ -1,5 +1,5 @@
 import Cloudflare from "cloudflare";
-import { CF_ACCOUNT_ID, CF_API_TOKEN } from "$app/env/private";
+import { APP_CLOUDFLARE_ACCOUNT_ID, APP_CLOUDFLARE_API_TOKEN } from "$app/env/private";
 
 /**
  * Cloudflare is the source of truth for all mail wiring. This module is the ONLY
@@ -21,13 +21,13 @@ export type ZoneOnboardStatus =
 let client: Cloudflare | undefined;
 
 export function cf(): Cloudflare {
-  if (!CF_API_TOKEN || !CF_ACCOUNT_ID) {
+  if (!APP_CLOUDFLARE_API_TOKEN || !APP_CLOUDFLARE_ACCOUNT_ID) {
     throw new Error(
-      "Cloudflare is not configured. Set CF_API_TOKEN and CF_ACCOUNT_ID (scoped API token).",
+      "Cloudflare is not configured. Set APP_CLOUDFLARE_API_TOKEN and APP_CLOUDFLARE_ACCOUNT_ID (scoped API token).",
     );
   }
   // Bearer token only — apiEmail/global key is intentionally not passed.
-  return (client ??= new Cloudflare({ apiToken: CF_API_TOKEN }));
+  return (client ??= new Cloudflare({ apiToken: APP_CLOUDFLARE_API_TOKEN }));
 }
 
 /**
@@ -98,14 +98,14 @@ function toZoneRef(z: {
 export async function zoneCreate(domain: string): Promise<ZoneRef> {
   const c = cf();
   const existing = await c.zones.list({
-    account: { id: CF_ACCOUNT_ID },
+    account: { id: APP_CLOUDFLARE_ACCOUNT_ID },
     name: domain,
   });
   const found = existing.result?.[0];
   if (found) return toZoneRef(found);
 
   const created = await c.zones.create({
-    account: { id: CF_ACCOUNT_ID },
+    account: { id: APP_CLOUDFLARE_ACCOUNT_ID },
     name: domain,
     type: "full",
   });
@@ -120,7 +120,7 @@ export async function pollZoneStatus(zoneId: string): Promise<ZoneRef> {
 
 /** Find an existing zone by name WITHOUT creating one (for the Link path). */
 export async function findZone(domain: string): Promise<ZoneRef | undefined> {
-  const res = await cf().zones.list({ account: { id: CF_ACCOUNT_ID }, name: domain });
+  const res = await cf().zones.list({ account: { id: APP_CLOUDFLARE_ACCOUNT_ID }, name: domain });
   const found = res.result?.[0];
   return found ? toZoneRef(found) : undefined;
 }
@@ -130,7 +130,7 @@ export async function findZone(domain: string): Promise<ZoneRef | undefined> {
  * domain" onboarding picker (no manual typing). Super-admin/settings only.
  */
 export async function listZones(): Promise<ZoneRef[]> {
-  const res = await cf().zones.list({ account: { id: CF_ACCOUNT_ID } });
+  const res = await cf().zones.list({ account: { id: APP_CLOUDFLARE_ACCOUNT_ID } });
   return (res.result ?? []).map((z) => toZoneRef(z));
 }
 

@@ -13,6 +13,8 @@ export const load = async ({ locals }) => {
 
   return {
     user: {
+      name: user.name,
+      image: user.image ?? null,
       email: user.email,
       role: user.role,
       twoFactorEnabled: user.twoFactorEnabled ?? false,

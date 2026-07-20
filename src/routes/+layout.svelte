@@ -10,6 +10,6 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <Toaster richColors closeButton position="top-right" />
-<ModeWatcher defaultTheme="light" defaultMode="light" />
+<ModeWatcher defaultTheme="dark" defaultMode="system" />
 
 {@render children()}

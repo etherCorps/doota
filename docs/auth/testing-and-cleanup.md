@@ -53,7 +53,7 @@ pnpm reset-admin superadmin@external-test.dev 'TestPass123!' --name 'Test Super'
 The web `/setup` wizard needs `SETUP_TOKEN` set in `.env` and is opened at
 `/setup?token=<SETUP_TOKEN>` (only while `userCount === 0`).
 
-**Cloudflare onboarding** needs `CF_ACCOUNT_ID` + `CF_API_TOKEN` (scoped Bearer)
+**Cloudflare onboarding** needs `APP_CLOUDFLARE_ACCOUNT_ID` + `APP_CLOUDFLARE_API_TOKEN` (scoped Bearer)
 and `MAIL_IN_WORKER_NAME`. `zoneCreate` first lists zones (read-only); a
 brand-new domain issues a real `POST /zones`, so test against a domain you own.
 

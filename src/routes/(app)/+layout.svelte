@@ -4,15 +4,31 @@
 	import { PersistedState } from 'runed';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
 	import TopBar from '$lib/components/app/top-bar.svelte';
-	import ComposeDialog from '$lib/components/mail/compose-dialog.svelte';
+	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
+	import { onMount } from 'svelte';
 
 	let { data, children } = $props();
 
 	// Persist the sidebar collapsed state across navigations/reloads (runed).
 	const sidebarOpen = new PersistedState('doota:sidebar-open', true);
 	let composeOpen = $state(false);
+
+	// ⌘K → "Compose" dispatches this; and a bare `c` composes (Gmail-style).
+	onMount(() => {
+		const openCompose = () => (composeOpen = true);
+		window.addEventListener('doota:compose', openCompose);
+		return () => window.removeEventListener('doota:compose', openCompose);
+	});
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return;
+		const t = e.target as HTMLElement;
+		if (t?.closest('input, textarea, [contenteditable="true"]')) return;
+		composeOpen = true;
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
 	<AppSidebar user={data.user} onCompose={() => (composeOpen = true)} />
@@ -30,4 +46,4 @@
 	</Sidebar.Inset>
 </Sidebar.Provider>
 
-<ComposeDialog bind:open={composeOpen} />
+<ComposePanel bind:open={composeOpen} />

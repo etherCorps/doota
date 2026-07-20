@@ -3,6 +3,7 @@
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import AvatarCard from '$lib/components/account/avatar-card.svelte';
 	import RecoveryEmailCard from '$lib/components/account/recovery-email-card.svelte';
 	import TwoFactorCard from '$lib/components/account/two-factor-card.svelte';
 	import PasskeyCard from '$lib/components/account/passkey-card.svelte';
@@ -37,6 +38,8 @@
 			</Card.CardHeader>
 		</Card.Card>
 	{/if}
+
+	<AvatarCard name={data.user.name} image={data.user.image} />
 
 	<RecoveryEmailCard
 		recoveryEmail={data.user.recoveryEmail}

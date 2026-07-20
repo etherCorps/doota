@@ -106,13 +106,12 @@ describe("setUserAuthFlags", () => {
 });
 
 describe("stampOnboarded", () => {
-  it("sets onboardedAt on the user row (raw write, no ctx needed)", async () => {
-    const f = fakeDb();
-    await stampOnboarded(f.db as never, "u1");
-    expect(f.update).toHaveBeenCalledWith(schema.user);
-    expect(f.set).toHaveBeenCalledWith(
-      expect.objectContaining({ onboardedAt: expect.any(Number) }),
-    );
+  it("sets onboardedAt via the internal adapter (keeps cached sessions coherent)", async () => {
+    const { ctx, internalAdapter } = fakeCtx();
+    await stampOnboarded({ $context: Promise.resolve(ctx) } as never, "u1");
+    expect(internalAdapter.updateUser).toHaveBeenCalledWith("u1", {
+      onboardedAt: expect.any(Number),
+    });
   });
 });
 
