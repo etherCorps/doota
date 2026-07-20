@@ -40,7 +40,9 @@
 				</Button>
 			{/snippet}
 		</TopBar>
-		<div class="min-h-0 flex-1 overflow-hidden">
+		<!-- overflow-y-auto (not hidden): the mail view is h-full and scrolls its own
+		     panes, but document-flow pages like /account must scroll here. -->
+		<div class="min-h-0 flex-1 overflow-y-auto">
 			{@render children()}
 		</div>
 	</Sidebar.Inset>

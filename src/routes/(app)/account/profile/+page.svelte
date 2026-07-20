@@ -1,92 +1,67 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { untrack } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
+	import { authClient } from '$lib/client/auth-client';
 	import AvatarCard from '$lib/components/account/avatar-card.svelte';
-	import { Badge } from '$lib/components/ui/badge';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Field from '$lib/components/ui/field/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import UserIcon from '@lucide/svelte/icons/user';
-	import AtSignIcon from '@lucide/svelte/icons/at-sign';
-	import ShieldIcon from '@lucide/svelte/icons/shield';
-	import CalendarIcon from '@lucide/svelte/icons/calendar';
-	import LifeBuoyIcon from '@lucide/svelte/icons/life-buoy';
 
 	let { data } = $props();
 
-	const roleLabel: Record<string, string> = {
-		member: 'Member',
-		admin: 'Admin',
-		superadmin: 'Super admin'
-	};
+	// Editable copy seeded once; the form owns it thereafter.
+	let name = $state(untrack(() => data.user.name));
+	let saving = $state(false);
+	const dirty = $derived(name.trim().length > 0 && name.trim() !== data.user.name);
 
 	function fmtDate(ms: number | null): string {
 		return ms
 			? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
 			: '—';
 	}
+
+	async function save() {
+		saving = true;
+		const { error } = await authClient.updateUser({ name: name.trim() });
+		saving = false;
+		if (error) {
+			toast.error(error.message ?? 'Could not update your name.');
+			return;
+		}
+		toast.success('Profile updated.');
+		await invalidateAll();
+	}
 </script>
 
 <div class="flex flex-col gap-6">
-<AvatarCard name={data.user.name} image={data.user.image} />
+	<AvatarCard name={data.user.name} image={data.user.image} />
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<UserIcon class="size-4" /> Profile details
-		</Card.CardTitle>
-		<Card.CardDescription>
-			Your identity across Doota. Your mailbox address is your login; recovery and security live in
-			the Security tab.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent>
-		<dl class="divide-y">
-			<div class="flex items-center justify-between gap-4 py-3">
-				<dt class="text-muted-foreground flex items-center gap-2 text-sm">
-					<UserIcon class="size-4" /> Name
-				</dt>
-				<dd class="text-sm font-medium">{data.user.name}</dd>
+	<Card.Card>
+		<Card.CardHeader>
+			<Card.CardTitle class="flex items-center gap-2">
+				<UserIcon class="size-4" /> Display name
+			</Card.CardTitle>
+			<Card.CardDescription>
+				Shown as your sender name on outgoing mail. Your login address and security settings live in
+				the Security tab.
+			</Card.CardDescription>
+		</Card.CardHeader>
+		<Card.CardContent class="flex flex-col gap-4">
+			<Field.Field>
+				<Field.Label>Name</Field.Label>
+				<Input bind:value={name} placeholder="Ada Lovelace" autocomplete="name" />
+			</Field.Field>
+			<div class="flex items-center justify-between gap-4">
+				<span class="text-muted-foreground text-xs">Member since {fmtDate(data.user.createdAt)}</span>
+				<Button disabled={!dirty || saving} onclick={save}>
+					{#if saving}<Spinner class="mr-1" />{/if}
+					Save
+				</Button>
 			</div>
-
-			<div class="flex items-center justify-between gap-4 py-3">
-				<dt class="text-muted-foreground flex items-center gap-2 text-sm">
-					<AtSignIcon class="size-4" /> Mailbox address
-				</dt>
-				<dd class="font-mono text-sm">{data.user.email}</dd>
-			</div>
-
-			<div class="flex items-center justify-between gap-4 py-3">
-				<dt class="text-muted-foreground flex items-center gap-2 text-sm">
-					<ShieldIcon class="size-4" /> Role
-				</dt>
-				<dd>
-					<Badge variant={data.user.role === 'member' ? 'secondary' : 'default'}>
-						{roleLabel[data.user.role] ?? data.user.role}
-					</Badge>
-				</dd>
-			</div>
-
-			<div class="flex items-center justify-between gap-4 py-3">
-				<dt class="text-muted-foreground flex items-center gap-2 text-sm">
-					<LifeBuoyIcon class="size-4" /> Recovery email
-				</dt>
-				<dd class="flex items-center gap-2">
-					{#if data.user.recoveryEmail}
-						<span class="font-mono text-sm">{data.user.recoveryEmail}</span>
-						<Badge variant={data.user.recoveryEmailVerified ? 'default' : 'destructive'}>
-							{data.user.recoveryEmailVerified ? 'Verified' : 'Unverified'}
-						</Badge>
-					{:else}
-						<a href={resolve('/account') + '/security'} class="text-sm underline">Add one</a>
-					{/if}
-				</dd>
-			</div>
-
-			<div class="flex items-center justify-between gap-4 py-3">
-				<dt class="text-muted-foreground flex items-center gap-2 text-sm">
-					<CalendarIcon class="size-4" /> Member since
-				</dt>
-				<dd class="text-sm">{fmtDate(data.user.createdAt)}</dd>
-			</div>
-		</dl>
-	</Card.CardContent>
-</Card.Card>
+		</Card.CardContent>
+	</Card.Card>
 </div>
