@@ -10,5 +10,12 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260615.1"
   }
 }

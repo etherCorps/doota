@@ -146,7 +146,7 @@
 					class="group relative size-64 overflow-hidden rounded-full border"
 					onclick={() => fileInput?.click()}
 				>
-					<img src={image} alt="Current photo" class="size-full object-cover" />
+					<img src={image} alt="Current avatar" class="size-full object-cover" />
 					<span
 						class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100"
 					>

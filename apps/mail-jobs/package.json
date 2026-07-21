@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "gen": "wrangler types",
-    "check": "wrangler deploy --dry-run --outdir .wrangler/dry"
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@doota/db": "workspace:*",
@@ -15,6 +15,8 @@
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.110.0",
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260615.1"
   }
 }

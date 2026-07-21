@@ -48,7 +48,13 @@
 	let localPart = $state('');
 	let displayName = $state('');
 	let isService = $state(false);
-	let host = $state(data.mailHosts[0]);
+	// Defaulted when the add dialog opens — kept out of the initializer so it
+	// doesn't capture only the initial `data`.
+	let host = $state('');
+	const openAdd = () => {
+		host = data.mailHosts[0];
+		addOpen = true;
+	};
 	let saving = $state(false);
 
 	// mailboxId → number of members with any grant (drives the access count column).
@@ -133,7 +139,7 @@
 <div class="flex flex-col gap-4">
 	<PageHeader title="Mailboxes" description="Team, service, and individual addresses on {org.domain}.">
 		{#snippet action()}
-			<Button class="gap-1.5" onclick={() => (addOpen = true)}>
+			<Button class="gap-1.5" onclick={openAdd}>
 				<PlusIcon class="size-4" /> Add mailbox
 			</Button>
 		{/snippet}

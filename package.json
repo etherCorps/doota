@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "pnpm --filter doota dev",
     "build": "pnpm --filter doota build",
-    "check": "pnpm --filter doota check",
+    "check": "pnpm -r --if-present check",
     "test": "pnpm --filter doota test",
     "deploy": "pnpm --filter doota deploy",
     "deploy:mail-in": "pnpm --filter @doota/mail-in deploy",

@@ -14,5 +14,13 @@
   },
   "peerDependencies": {
     "@sveltejs/kit": "^2.69.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260615.1",
+    "@sveltejs/kit": "^2.69.2"
   }
 }
