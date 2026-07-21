@@ -1,72 +1,85 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "doota",
-	"compatibility_date": "2026-04-28",
-	"compatibility_flags": [
-		"nodejs_als",
-		"nodejs_compat"
-	],
-	// Wrapper entry: re-exports the SvelteKit fetch handler (adapter-cloudflare's
-	// _worker.js). This Worker serves the app and PRODUCES to the mail queues; the
-	// asynchronous mail handlers (email/queue/scheduled) live in the standalone
-	// `doota-mail` Worker (wrangler.mail.jsonc), which owns the queue consumers,
-	// the Email Routing catch-all, and the cron sweep.
-	"main": "worker.entry.js",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".svelte-kit/cloudflare",
-	},
-	"r2_buckets": [
-		{
-			"binding": "MAIL_RAW",
-			"bucket_name": "doota-mail-raw",
-		},
-	],
-	// The app only PRODUCES to the mail queues (send.remote / draft send enqueue to
-	// MAIL_OUT_QUEUE). The CONSUMERS + cron trigger live in the `doota-mail` Worker
-	// (wrangler.mail.jsonc) — a queue can bind to only one consumer Worker.
-	"queues": {
-		"producers": [
-			{
-				"binding": "MAIL_QUEUE",
-				"queue": "doota-mail-inbound",
-			},
-			{
-				"binding": "MAIL_OUT_QUEUE",
-				"queue": "doota-mail-outbound",
-			},
-		],
-	},
-	"send_email": [
-		{
-			"name": "EMAIL_SENDER",
-			"remote": true
-		}
-	],
-	"workers_dev": true,
-	"preview_urls": true,
-	"routes": [
-		{
-			"custom_domain": true,
-			"pattern": "doota.ethercorps.io",
-		},
-	],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "doota",
-			"database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
-			"migrations_dir": "drizzle",
-		},
-	],
-	// Better Auth secondary storage: a fast read cache in front of D1 for sessions
-	// + verification values (see src/lib/server/auth/kv-secondary-storage.ts). Local
-	// dev simulates this by binding name; before deploying, create the namespace
-	// (`wrangler kv namespace create AUTH_KV`) and paste the returned id below.
-	"kv_namespaces": [
-		{
-			"binding": "AUTH_KV",
-			"id": "9f20318e054a4f56a03e594eedd32c60"
-		},
-	],
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "doota",
+  "compatibility_date": "2026-04-28",
+  "compatibility_flags": ["nodejs_als", "nodejs_compat"],
+  // Wrapper entry: re-exports the SvelteKit fetch handler (adapter-cloudflare's
+  // _worker.js). This Worker serves the app and PRODUCES to the mail queues; the
+  // asynchronous mail handlers (email/queue/scheduled) live in the standalone
+  // `doota-mail` Worker (wrangler.mail.jsonc), which owns the queue consumers,
+  // the Email Routing catch-all, and the cron sweep.
+  "main": "./.svelte-kit/cloudflare/_worker.js",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare",
+  },
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "r2_buckets": [
+    {
+      "binding": "MAIL_RAW",
+      "bucket_name": "doota-mail-raw",
+      "remote": true,
+    },
+  ],
+  // The app only PRODUCES to the mail queues (send.remote / draft send enqueue to
+  // MAIL_OUT_QUEUE). The CONSUMERS + cron trigger live in the `doota-mail` Worker
+  // (wrangler.mail.jsonc) — a queue can bind to only one consumer Worker.
+  "queues": {
+    "producers": [
+      {
+        "binding": "MAIL_QUEUE",
+        "queue": "doota-mail-inbound",
+      },
+      {
+        "binding": "MAIL_OUT_QUEUE",
+        "queue": "doota-mail-outbound",
+      },
+    ],
+  },
+  "send_email": [
+    {
+      "name": "EMAIL_SENDER",
+      "remote": true,
+    },
+  ],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    {
+      "custom_domain": true,
+      "pattern": "doota.ethercorps.io",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "doota",
+      "database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
+      "migrations_dir": "drizzle",
+    },
+  ],
+  // Better Auth secondary storage: a fast read cache in front of D1 for sessions
+  // + verification values (see src/lib/server/auth/kv-secondary-storage.ts). Local
+  // dev simulates this by binding name; before deploying, create the namespace
+  // (`wrangler kv namespace create AUTH_KV`) and paste the returned id below.
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_KV",
+      "id": "9f20318e054a4f56a03e594eedd32c60",
+    },
+  ],
 }
