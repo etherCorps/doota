@@ -233,16 +233,19 @@ async function writeAttachments(db: Db, messageId: string, parsed: ParsedMessage
   // Clear + re-insert: attachments are derived from the canonical raw, so a
   // re-run replaces cleanly (no natural unique key on part metadata).
   await db.delete(mail.attachment).where(eq(mail.attachment.messageId, messageId));
-  await db.insert(mail.attachment).values(
-    parsed.attachments.map((a) => ({
-      messageId,
-      partId: a.partId,
-      filename: a.filename,
-      contentType: a.contentType,
-      size: a.size,
-      r2Key: a.r2Key,
-    })),
-  );
+  const rows = parsed.attachments.map((a) => ({
+    messageId,
+    partId: a.partId,
+    filename: a.filename,
+    contentType: a.contentType,
+    size: a.size,
+    r2Key: a.r2Key,
+  }));
+  // D1 caps bound parameters at 100/statement; 7 cols → chunk at 10 rows (70
+  // params) so a message with many attachments doesn't overflow in one INSERT.
+  for (let i = 0; i < rows.length; i += 10) {
+    await db.insert(mail.attachment).values(rows.slice(i, i + 10));
+  }
 }
 
 async function indexContent(

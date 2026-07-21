@@ -97,11 +97,20 @@ class CloudflareProvider implements MailProvider {
             }
           : {}),
       });
-      const providerMessageId = res.messageId;
-      // The binding returns a Cloudflare RPC stub; dispose it once we've read the
-      // id, or the runtime warns ("An RPC stub was not disposed properly").
-      (res as { [Symbol.dispose]?: () => void })[Symbol.dispose]?.();
-      return { providerMessageId };
+      // EMAIL_SENDER may be a REMOTE binding, so `res` is an RPC stub at runtime
+      // even though the static type says POJO. Await the id off it, then dispose
+      // the stub — supporting EITHER disposal symbol (remote stubs can expose
+      // asyncDispose, and `Symbol.dispose?.()` alone silently no-ops those) — or
+      // the runtime warns ("An RPC stub was not disposed properly"). The finally
+      // guarantees disposal even if the read throws. Local POJO binding: no-op.
+      try {
+        return { providerMessageId: await res.messageId };
+      } finally {
+        const d = res as { [Symbol.dispose]?(): void; [Symbol.asyncDispose]?(): Promise<void> };
+        const asyncDispose = d[Symbol.asyncDispose];
+        if (asyncDispose) await asyncDispose.call(d);
+        else d[Symbol.dispose]?.();
+      }
     } catch (e) {
       // ponytail: the binding surfaces little structure today; treat as soft
       // (retryable) unless the message clearly reads as a permanent rejection.
