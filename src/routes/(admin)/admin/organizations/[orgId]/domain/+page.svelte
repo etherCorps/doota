@@ -19,6 +19,7 @@
 		removeMailSubdomain,
 		toggleSubaddressing
 	} from '$lib/rpc/domains.remote.js';
+	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -145,7 +146,12 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-4">
+	<PageHeader
+		title="Domain"
+		description="Mail routing status and DNS for {org.domain}, plus inbound subdomain routing and plus-addressing."
+	/>
+
 	<!-- Mail routing / DNS -->
 	<Card.Card>
 		<Card.CardHeader class="flex-row items-center justify-between gap-2">

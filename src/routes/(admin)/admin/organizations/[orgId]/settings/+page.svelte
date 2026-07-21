@@ -7,6 +7,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import { updateOrgProfile } from '$lib/rpc/domains.remote.js';
 
 	let { data } = $props();
@@ -31,14 +32,13 @@
 	}
 </script>
 
-<Card.Card class="max-w-2xl">
-	<Card.CardHeader>
-		<Card.CardTitle class="font-heading">Organization profile</Card.CardTitle>
-		<Card.CardDescription>
-			Display name and logo. A verified logo improves mail branding (BIMI) in inboxes.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="space-y-4">
+<div class="flex flex-col gap-4">
+	<PageHeader
+		title="Settings"
+		description="Organization profile — the display name and logo. A verified logo improves mail branding (BIMI) in inboxes."
+	/>
+	<Card.Card class="max-w-2xl">
+		<Card.CardContent class="space-y-4 pt-6">
 		<Field.Field>
 			<Field.Label>Domain</Field.Label>
 			<Input value={org.domain} readonly class="font-mono" />
@@ -62,4 +62,5 @@
 			</Button>
 		</div>
 	</Card.CardContent>
-</Card.Card>
+	</Card.Card>
+</div>
