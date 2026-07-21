@@ -5,6 +5,6 @@ onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - '@better-auth/root'
 packages:
-  - '.'          # <--- This includes the root project
+  - 'apps/*'
   - 'landing'
   - 'workers/*'

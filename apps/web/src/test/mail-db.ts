@@ -5,8 +5,8 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "$lib/server/db/schema";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const MIG_DIR = join(root, "drizzle");
+// Migrations live at the workspace root (../../.. from apps/web/src/test → root).
+const MIG_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "drizzle");
 
 /**
  * In-memory SQLite (libsql) with the real drizzle migrations applied — so

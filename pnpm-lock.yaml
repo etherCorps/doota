@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  apps/web:
     dependencies:
       '@ethercorps/un-jinja':
         specifier: ^1.0.0
@@ -203,7 +205,7 @@ importers:
     dependencies:
       doota:
         specifier: workspace:*
-        version: link:../..
+        version: link:../../apps/web
     devDependencies:
       wrangler:
         specifier: ^4.110.0
@@ -213,7 +215,7 @@ importers:
     dependencies:
       doota:
         specifier: workspace:*
-        version: link:../..
+        version: link:../../apps/web
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.4)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.8.0)(kysely@0.28.17)(pg@8.20.0)
@@ -2228,7 +2230,7 @@ packages:
     engines: {node: '>=12'}
 
   auth@https://pkg.pr.new/auth@10221:
-    resolution: {integrity: sha512-QyzQF3fekMGmmSyoBK66lAtSZP0bnrWVxmhvcxorgn7r1yt9iM8X+nPXw+IPHyt0hMhWE0NsUMAWQB/fsVI85g==, tarball: https://pkg.pr.new/auth@10221}
+    resolution: {tarball: https://pkg.pr.new/auth@10221}
     version: 1.6.23
     hasBin: true
 
@@ -3850,18 +3852,6 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
@@ -4849,7 +4839,7 @@ snapshots:
   '@libsql/isomorphic-ws@0.1.5':
     dependencies:
       '@types/ws': 8.18.1
-      ws: 8.20.0
+      ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -7203,8 +7193,6 @@ snapshots:
 
   wrappy@1.0.2:
     optional: true
-
-  ws@8.20.0: {}
 
   ws@8.21.0: {}
 

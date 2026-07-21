@@ -69,7 +69,8 @@
       "binding": "DB",
       "database_name": "doota",
       "database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
-      "migrations_dir": "drizzle",
+      // Migrations live at the workspace root (shared with the mail Workers).
+      "migrations_dir": "../../drizzle",
     },
   ],
   // Better Auth secondary storage: a fast read cache in front of D1 for sessions
