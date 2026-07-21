@@ -15,9 +15,12 @@ import { handleQueue } from "@doota/mail-core/queue-consumer";
  * `wrangler secret put <NAME>` from this dir; .dev.vars for local).
  */
 export default {
-  // Bucket-first, accept-and-enqueue (see inbound-worker.ts).
-  async email(message, env, ctx): Promise<void> {
-    ctx.waitUntil(handleEmail(message, env));
+  // Bucket-first, accept-and-enqueue (see inbound-worker.ts). Awaited (not
+  // waitUntil): the work is fast (R2 put + queue send) and MUST finish before we
+  // accept — a failed enqueue then rejects the message so Email Routing retries,
+  // instead of silently dropping mail we already told the sender we took.
+  async email(message, env): Promise<void> {
+    await handleEmail(message, env);
   },
   // Only the inbound queue lands here now.
   async queue(batch, env): Promise<void> {
