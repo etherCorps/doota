@@ -20,6 +20,7 @@ export async function loadMailboxDetail(db: Db, mailboxId: string, dek: string |
       displayName: true,
       isActive: true,
       isPersonal: true,
+      isService: true,
       createdAt: true,
     },
   });

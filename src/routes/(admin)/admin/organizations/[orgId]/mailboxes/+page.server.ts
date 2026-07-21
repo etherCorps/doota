@@ -11,6 +11,7 @@ export const load = async ({ locals, params }) => {
       displayName: schema.mailbox.displayName,
       isActive: schema.mailbox.isActive,
       isPersonal: schema.mailbox.isPersonal,
+      isService: schema.mailbox.isService,
     })
     .from(schema.mailbox)
     .where(eq(schema.mailbox.orgId, params.orgId))

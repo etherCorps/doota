@@ -35,20 +35,28 @@ async function sha256Hex(input: string): Promise<string> {
 /** The identity a valid key authenticates as, plus any mailbox restriction. */
 export type ApiKeyActor = {
   keyId: string;
-  userId: string;
+  /** Legacy human owner; null for service keys (they authorize the mailbox). */
+  userId: string | null;
   orgId: string;
-  /** When set, the key may only send as this mailbox. */
+  /** The mailbox the key sends as. Required (non-null) for service keys. */
   mailboxId: string | null;
+  /** Service keys send AS the mailbox directly — no per-user grant is consulted. */
+  isService: boolean;
 };
 
+/* Legacy per-user key creation removed — programmatic send is now a
+ * service-mailbox concern (admins issue keys against service mailboxes). Existing
+ * user-tied keys keep working via the userId path in verifyApiKey / resolveSender. */
+
 /**
- * Mint a key. Returns the PLAINTEXT secret exactly once — only its hash is
- * persisted, so it cannot be recovered later. Caller has already authorized this
- * (org-admin / mailbox manager) through can().
+ * Mint a SERVICE key against a service mailbox. Returns the PLAINTEXT secret once
+ * — only its hash is persisted. The key sends as the mailbox itself (no owning
+ * user), so it survives staff turnover; `createdByUserId` is audit only. The
+ * caller has already authorized this (org-admin) through can().
  */
-export async function createApiKey(
+export async function createServiceApiKey(
   db: Db,
-  input: { orgId: string; userId: string; mailboxId?: string | null; name?: string },
+  input: { orgId: string; mailboxId: string; createdByUserId: string; name?: string },
 ): Promise<{ id: string; key: string; prefix: string }> {
   const secret = `dk_${hex(crypto.getRandomValues(new Uint8Array(KEY_BYTES)).buffer)}`;
   const keyHash = await sha256Hex(secret);
@@ -57,8 +65,10 @@ export async function createApiKey(
     .insert(apiKey)
     .values({
       orgId: input.orgId,
-      userId: input.userId,
-      mailboxId: input.mailboxId ?? null,
+      userId: null,
+      createdByUserId: input.createdByUserId,
+      mailboxId: input.mailboxId,
+      isService: true,
       name: input.name ?? null,
       keyHash,
       prefix,
@@ -77,11 +87,17 @@ export async function verifyApiKey(db: Db, presented: string): Promise<ApiKeyAct
   const keyHash = await sha256Hex(secret);
   const row = await db.query.apiKey.findFirst({
     where: and(eq(apiKey.keyHash, keyHash), isNull(apiKey.revokedAt)),
-    columns: { id: true, userId: true, orgId: true, mailboxId: true },
+    columns: { id: true, userId: true, orgId: true, mailboxId: true, isService: true },
   });
   if (!row) return null;
   await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.id));
-  return { keyId: row.id, userId: row.userId, orgId: row.orgId, mailboxId: row.mailboxId };
+  return {
+    keyId: row.id,
+    userId: row.userId,
+    orgId: row.orgId,
+    mailboxId: row.mailboxId,
+    isService: row.isService,
+  };
 }
 
 /** A key row for display — NEVER includes the hash or secret. */
@@ -119,6 +135,44 @@ export async function listApiKeys(db: Db, userId: string): Promise<ApiKeySummary
     revokedAt: r.revokedAt ? r.revokedAt.getTime() : null,
     createdAt: r.createdAt.getTime(),
   }));
+}
+
+/** Service keys issued against a mailbox, newest first (admin management view). */
+export async function listApiKeysForMailbox(db: Db, mailboxId: string): Promise<ApiKeySummary[]> {
+  const rows = await db.query.apiKey.findMany({
+    where: and(eq(apiKey.mailboxId, mailboxId), eq(apiKey.isService, true)),
+    orderBy: desc(apiKey.createdAt),
+    columns: {
+      id: true,
+      name: true,
+      prefix: true,
+      mailboxId: true,
+      lastUsedAt: true,
+      revokedAt: true,
+      createdAt: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    prefix: r.prefix,
+    mailboxId: r.mailboxId,
+    lastUsedAt: r.lastUsedAt ? r.lastUsedAt.getTime() : null,
+    revokedAt: r.revokedAt ? r.revokedAt.getTime() : null,
+    createdAt: r.createdAt.getTime(),
+  }));
+}
+
+/** The mailbox + org a key belongs to — for an authorization check before revoke. */
+export async function apiKeyMailbox(
+  db: Db,
+  keyId: string,
+): Promise<{ mailboxId: string | null; orgId: string; isService: boolean } | null> {
+  const row = await db.query.apiKey.findFirst({
+    where: eq(apiKey.id, keyId),
+    columns: { mailboxId: true, orgId: true, isService: true },
+  });
+  return row ?? null;
 }
 
 /** The user id that owns a key, or null — for an ownership check before revoke. */

@@ -12,6 +12,12 @@ import {
   accessibleMailboxIds,
   manageGrantUserIds,
 } from "$lib/server/mail/mailbox.js";
+import {
+  createServiceApiKey,
+  listApiKeysForMailbox,
+  revokeApiKey,
+  apiKeyMailbox,
+} from "$lib/server/auth/api-key.js";
 import { inArray } from "drizzle-orm";
 
 /**
@@ -65,7 +71,7 @@ async function assertManageMailbox(mailboxId: string) {
   const { locals } = getRequestEvent();
   const box = await locals.db.query.mailbox.findFirst({
     where: eq(schema.mailbox.id, mailboxId),
-    columns: { id: true, orgId: true, isPersonal: true },
+    columns: { id: true, orgId: true, isPersonal: true, isService: true },
   });
   if (!box) error(404, "Mailbox not found");
   const a = await actor();
@@ -131,14 +137,16 @@ export const myManagedMailboxIds = query(async () => {
   return rows.map((r) => r.mailboxId);
 });
 
-/** Create a shared mailbox (e.g. support@) on the org's apex domain. */
+/** Create a shared or service mailbox on the org's apex domain. Service
+ * mailboxes are non-human sending identities that API keys are issued against. */
 export const createSharedMailbox = command(
   z.object({
     orgId: z.string().min(1),
     localPart: z.string().trim().toLowerCase().min(1).max(64),
     displayName: z.string().trim().max(120).optional(),
+    isService: z.boolean().optional(),
   }),
-  async ({ orgId, localPart, displayName }) => {
+  async ({ orgId, localPart, displayName, isService }) => {
     await assertManageOrg(orgId);
     if (!LOCAL_RE.test(localPart)) {
       return { success: false as const, message: "Enter a valid mailbox name, e.g. support." };
@@ -151,6 +159,7 @@ export const createSharedMailbox = command(
       address,
       displayName: displayName ?? null,
       isPersonal: false,
+      isService: isService ?? false,
     });
     return { success: true as const, id, address };
   },
@@ -235,3 +244,40 @@ export const revokeMailboxAccess = command(
     return { success: true as const };
   },
 );
+
+// ---- Service-mailbox API keys (admin-issued) --------------------------------
+
+/** Issue a send-only API key against a SERVICE mailbox. Admin/manager only; the
+ * key authorizes the mailbox directly (no owning user). Secret shown once. */
+export const createServiceKey = command(
+  z.object({ mailboxId: z.string().min(1), name: z.string().trim().max(80).optional() }),
+  async ({ mailboxId, name }) => {
+    const box = await assertManageMailbox(mailboxId);
+    if (!box.isService) error(400, "API keys can only be issued for service mailboxes.");
+    const { locals } = getRequestEvent();
+    const created = await createServiceApiKey(locals.db, {
+      orgId: box.orgId,
+      mailboxId,
+      createdByUserId: locals.user!.id,
+      name: name?.trim() || undefined,
+    });
+    return { id: created.id, key: created.key, prefix: created.prefix };
+  },
+);
+
+/** List the service keys issued against a mailbox (metadata only). */
+export const listServiceKeys = query(z.string().min(1), async (mailboxId) => {
+  await assertManageMailbox(mailboxId);
+  const { locals } = getRequestEvent();
+  return listApiKeysForMailbox(locals.db, mailboxId);
+});
+
+/** Revoke a service key — the actor must manage the key's mailbox. */
+export const revokeServiceKey = command(z.object({ keyId: z.string().min(1) }), async ({ keyId }) => {
+  const { locals } = getRequestEvent();
+  const km = await apiKeyMailbox(locals.db, keyId);
+  if (!km?.mailboxId) error(404, "Key not found");
+  await assertManageMailbox(km.mailboxId);
+  await revokeApiKey(locals.db, keyId);
+  return { ok: true as const };
+});

@@ -12,13 +12,20 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
 		renameMailbox,
 		deactivateMailbox,
 		grantMailboxAccess,
-		revokeMailboxAccess
+		revokeMailboxAccess,
+		listServiceKeys,
+		createServiceKey,
+		revokeServiceKey
 	} from '$lib/rpc/mailbox.remote';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 
 	type Member = { id: string; name: string; email: string };
 	let {
@@ -34,6 +41,7 @@
 			displayName: string | null;
 			isActive: boolean;
 			isPersonal: boolean;
+			isService: boolean;
 			createdAt: number | null;
 		};
 		members: Member[];
@@ -129,6 +137,45 @@
 			minute: '2-digit'
 		});
 	}
+	const fmtDate = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString() : '—');
+
+	// --- Service keys (service mailboxes only) ----------------------------------
+	const keysQ = $derived(mb.isService ? listServiceKeys(mb.id) : null);
+	let keyDialogOpen = $state(false);
+	let keyName = $state('');
+	let creatingKey = $state(false);
+	let newSecret = $state<string | null>(null);
+
+	async function createKey() {
+		creatingKey = true;
+		try {
+			const res = await createServiceKey({ mailboxId: mb.id, name: keyName || undefined });
+			newSecret = res.key;
+			keyName = '';
+			await keysQ?.refresh();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not create the key.');
+		} finally {
+			creatingKey = false;
+		}
+	}
+	async function revokeKey(keyId: string) {
+		try {
+			await revokeServiceKey({ keyId });
+			toast.success('Key revoked.');
+			await keysQ?.refresh();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not revoke the key.');
+		}
+	}
+	async function copySecret(text: string) {
+		await navigator.clipboard.writeText(text);
+		toast.success('Copied to clipboard.');
+	}
+	function closeKeyDialog() {
+		keyDialogOpen = false;
+		newSecret = null;
+	}
 </script>
 
 {#snippet memberCell(u: Member)}
@@ -183,6 +230,7 @@
 		<div class="flex flex-wrap items-center gap-3">
 			<h1 class="font-heading text-2xl font-semibold tracking-tight">{mb.address}</h1>
 			<Badge variant={mb.isActive ? 'default' : 'outline'}>{mb.isActive ? 'active' : 'inactive'}</Badge>
+			{#if mb.isService}<Badge variant="secondary">service</Badge>{/if}
 		</div>
 	</div>
 
@@ -190,6 +238,7 @@
 		<Tabs.List>
 			<Tabs.Trigger value="settings">Settings</Tabs.Trigger>
 			<Tabs.Trigger value="access">Access <Badge variant="secondary" class="ml-1.5 tabular-nums">{grantsMap.size}</Badge></Tabs.Trigger>
+			{#if mb.isService}<Tabs.Trigger value="keys">API keys</Tabs.Trigger>{/if}
 			<Tabs.Trigger value="activity">Activity</Tabs.Trigger>
 		</Tabs.List>
 
@@ -255,6 +304,58 @@
 			</Card.Card>
 		</Tabs.Content>
 
+		{#if mb.isService}
+			<Tabs.Content value="keys" class="mt-4">
+				<Card.Card>
+					<Card.CardHeader>
+						<Card.CardTitle class="font-heading">API keys</Card.CardTitle>
+						<Card.CardDescription>
+							Send-only bearer keys for <span class="font-mono">POST /api/send</span>. Each authorizes
+							sending as <span class="font-mono">{mb.address}</span> — no human owner, so it survives
+							staff changes. The secret is shown once.
+						</Card.CardDescription>
+						<Card.CardAction>
+							<Button size="sm" variant="outline" onclick={() => (keyDialogOpen = true)}>New key</Button>
+						</Card.CardAction>
+					</Card.CardHeader>
+					<Card.CardContent>
+						{#if keysQ?.current}
+							{@const keys = keysQ.current}
+							{#if keys.length}
+								<ul class="flex flex-col divide-y">
+									{#each keys as k (k.id)}
+										<li class="flex items-center gap-3 py-2.5">
+											<div class="flex min-w-0 flex-1 flex-col">
+												<span class="truncate text-sm font-medium">{k.name || 'Untitled key'}</span>
+												<span class="text-muted-foreground truncate font-mono text-xs">
+													{k.prefix}… · created {fmtDate(k.createdAt)}
+													{#if k.lastUsedAt} · used {fmtDate(k.lastUsedAt)}{/if}
+												</span>
+											</div>
+											{#if k.revokedAt}
+												<Badge variant="outline">Revoked</Badge>
+											{:else}
+												<Button size="sm" variant="outline" class="text-destructive hover:text-destructive" onclick={() => revokeKey(k.id)}>
+													Revoke
+												</Button>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="text-muted-foreground text-sm">No API keys yet. Create one to send programmatically.</p>
+							{/if}
+						{:else}
+							<div class="flex flex-col gap-3">
+								<Skeleton class="h-10 w-full rounded-md" />
+								<Skeleton class="h-10 w-full rounded-md" />
+							</div>
+						{/if}
+					</Card.CardContent>
+				</Card.Card>
+			</Tabs.Content>
+		{/if}
+
 		<Tabs.Content value="activity" class="mt-4">
 			<Card.Card>
 				<Card.CardHeader>
@@ -298,3 +399,44 @@
 		</Tabs.Content>
 	</Tabs.Root>
 </div>
+
+<Dialog.Root open={keyDialogOpen} onOpenChange={(o) => !o && closeKeyDialog()}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title class="font-heading">{newSecret ? 'Copy your key' : 'New API key'}</Dialog.Title>
+			<Dialog.Description>
+				{#if newSecret}
+					This is the only time the secret is shown. Store it somewhere safe.
+				{:else}
+					A send-only bearer key that sends as <span class="font-mono">{mb.address}</span>.
+				{/if}
+			</Dialog.Description>
+		</Dialog.Header>
+
+		{#if newSecret}
+			<div class="flex items-center gap-2 py-2">
+				<Input readonly value={newSecret} class="font-mono text-xs" />
+				<Button size="icon" variant="outline" onclick={() => copySecret(newSecret!)}>
+					<CopyIcon class="size-4" />
+				</Button>
+			</div>
+			<div class="flex justify-end">
+				<Button onclick={closeKeyDialog}>Done</Button>
+			</div>
+		{:else}
+			<div class="flex flex-col gap-3 py-2">
+				<Field.Field>
+					<Field.Label>Name (optional)</Field.Label>
+					<Input bind:value={keyName} placeholder="CI deploy bot" autocomplete="off" />
+				</Field.Field>
+				<div class="flex justify-end gap-2 pt-1">
+					<Button type="button" variant="ghost" onclick={closeKeyDialog} disabled={creatingKey}>Cancel</Button>
+					<Button type="button" onclick={createKey} disabled={creatingKey}>
+						{#if creatingKey}<Spinner class="mr-1" />{/if}
+						Create key
+					</Button>
+				</div>
+			</div>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>

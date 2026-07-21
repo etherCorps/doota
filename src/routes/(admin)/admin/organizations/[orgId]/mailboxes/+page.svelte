@@ -9,11 +9,13 @@
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
 	import { generateAlias } from '$lib/rpc/alias.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import BotIcon from '@lucide/svelte/icons/bot';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -33,6 +35,7 @@
 	let addOpen = $state(false);
 	let localPart = $state('');
 	let displayName = $state('');
+	let isService = $state(false);
 	let saving = $state(false);
 
 	// mailboxId → number of members with any grant (drives the access count column).
@@ -61,12 +64,13 @@
 	async function createMailbox() {
 		saving = true;
 		try {
-			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName });
+			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName, isService });
 			if (res.success) {
 				toast.success(`Created ${res.address}`);
 				addOpen = false;
 				localPart = '';
 				displayName = '';
+				isService = false;
 				await invalidateAll();
 			} else {
 				toast.error(res.message);
@@ -89,7 +93,14 @@
 </script>
 
 {#snippet addressCell(mb: Mailbox)}
-	<span class="font-mono">{mb.address}</span>
+	<span class="flex items-center gap-2">
+		<span class="font-mono">{mb.address}</span>
+		{#if mb.isService}
+			<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+				<BotIcon class="size-3" /> service
+			</span>
+		{/if}
+	</span>
 {/snippet}
 
 {#snippet accessCell(mb: Mailbox)}
@@ -197,6 +208,15 @@
 				<Field.Label>Display name (optional)</Field.Label>
 				<Input bind:value={displayName} placeholder="Support" autocomplete="off" />
 			</Field.Field>
+			<label class="flex items-start gap-3 rounded-md border p-3">
+				<Switch checked={isService} onCheckedChange={(v) => (isService = v)} aria-label="Service mailbox" />
+				<span class="flex flex-col gap-0.5">
+					<span class="text-sm font-medium">Service mailbox</span>
+					<span class="text-muted-foreground text-xs">
+						A non-human sending identity for automation. Admins issue API keys against it (e.g. noreply@, notifications@).
+					</span>
+				</span>
+			</label>
 			<div class="flex justify-end gap-2 pt-2">
 				<Button type="button" variant="ghost" onclick={() => (addOpen = false)} disabled={saving}>
 					Cancel

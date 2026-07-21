@@ -1,7 +1,7 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { bearerFromHeaders, verifyApiKey } from "$lib/server/auth/api-key.js";
 import { enqueueSend, type OutboundEnv } from "$lib/server/mail/outbound.js";
-import { resolveSender } from "$lib/server/mail/resolver";
+import { resolveSender, resolveServiceSender } from "$lib/server/mail/resolver";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
@@ -39,7 +39,16 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   };
 
   const fromAliasId = typeof body.fromAliasId === "string" ? body.fromAliasId : null;
-  const sender = await resolveSender(locals.db, actor.userId, mailboxId, fromAliasId);
+  // Service keys authorize the mailbox directly; legacy keys act as their user.
+  let sender;
+  if (actor.isService) {
+    sender = await resolveServiceSender(locals.db, mailboxId, fromAliasId);
+  } else if (actor.userId) {
+    sender = await resolveSender(locals.db, actor.userId, mailboxId, fromAliasId);
+  } else {
+    error(401, "This key is no longer valid.");
+  }
+  const createdByUserId = actor.isService ? null : actor.userId;
 
   const asAddrs = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
@@ -51,7 +60,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const res = await enqueueSend(locals.db, outbound, {
     orgId: sender.orgId,
     mailboxId,
-    createdByUserId: actor.userId,
+    createdByUserId,
     fromAddress: sender.fromAddress,
     fromName: sender.fromName,
     fromAliasId: sender.fromAliasId,
