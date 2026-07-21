@@ -11,6 +11,7 @@ import { sendGrantUserIds } from "./mailbox";
 import { buildQuotedText, buildQuotedHtml } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
+import { extractInlineImages } from "./inline-images";
 import type { OutboundJob } from "./outbound";
 
 /**
@@ -28,7 +29,6 @@ export type OutboundConsumerEnv = {
   MAIL_DEK: string;
   MAIL_SEARCH_KEY: string;
   EMAIL_SENDER?: SendEmail;
-  RESEND_API_KEY?: string;
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
 };
 
@@ -54,6 +54,20 @@ export async function handleOutboundQueue(batch: QueueBatch, env: OutboundConsum
       m.retry({ delaySeconds: BACKOFF_BASE_SECONDS });
     }
   }
+}
+
+/**
+ * Process a single submission NOW, in-process, without the queue — used by the
+ * app worker's synchronous delivery bridge (deliver-bridge.ts) while the
+ * doota-mail queue consumer isn't wired in dev. `ack`/`retry` are no-ops: soft
+ * failures simply aren't retried (the real queue does that once enabled).
+ * Idempotent with the queue path, so enabling the consumer later can't double-send.
+ */
+export async function deliverSubmissionNow(env: OutboundConsumerEnv, submissionId: string): Promise<void> {
+  await handleOutboundQueue(
+    { messages: [{ body: { submissionId }, ack() {}, retry() {} }] },
+    env,
+  );
 }
 
 /**
@@ -87,8 +101,11 @@ export async function processSubmission(
     .set({ status: "sending", attempts: sub.attempts + 1 })
     .where(eq(mail.submission.id, sub.id));
 
+  console.log(`[mail:out] processing ${sub.id} from=${sub.envelopeFrom} attempt=${sub.attempts + 1}`);
+
   // ---- Preflight (Part B.7) — any failure is permanent, no retry ----
   const fail = async (reason: string) => {
+    console.warn(`[mail:out] FAILED ${sub.id}: ${reason}`);
     await db.update(mail.submission).set({ status: "failed", lastError: reason }).where(eq(mail.submission.id, sub.id));
     await db
       .update(mail.submissionRecipient)
@@ -168,6 +185,8 @@ export async function processSubmission(
     external.push({ id: r.id, address: r.address, role: r.role });
   }
 
+  console.log(`[mail:out] ${sub.id} recipients: ${external.length} external, ${recipients.length - external.length} internal/skipped`);
+
   // ---- Rate limit (Part G) — external volume only ----
   if (external.length > 0) {
     const rl = await chargeSend(db, sub.mailboxId, external.length);
@@ -176,15 +195,23 @@ export async function processSubmission(
 
   // ---- Send external via provider, chunked at 50 (Part B.4) ----
   if (external.length > 0) {
-    const provider = selectProvider({ EMAIL_SENDER: env.EMAIL_SENDER, RESEND_API_KEY: env.RESEND_API_KEY });
+    const provider = selectProvider({ EMAIL_SENDER: env.EMAIL_SENDER });
     if (!provider) return fail("no mail provider configured");
 
     const subject = (await decryptContent(ck, message.subjectEnc)) ?? "";
-    const { text, html } = await buildBody(db, env, ck, message);
+    const built = await buildBody(db, env, ck, message);
+    const { text } = built;
+    // Pasted/inserted images are base64 data: URIs in the html — providers strip
+    // those, so convert them to inline CID attachments and rewrite the src.
+    const { html, images } = extractInlineImages(built.html);
+    const dataUrisInSource = (built.html?.match(/data:image\//g) ?? []).length;
+    console.log(
+      `[mail:out] ${sub.id} body: htmlLen=${built.html?.length ?? 0} dataImgs=${dataUrisInSource} inlined=${images.length}`,
+    );
     const headers: Record<string, string> = { "Message-ID": message.messageIdHeader };
     if (message.inReplyTo) headers["In-Reply-To"] = message.inReplyTo;
     if (message.references) headers["References"] = message.references;
-    const attachments = await loadAttachments(db, env, sub.messageId);
+    const attachments = [...((await loadAttachments(db, env, sub.messageId)) ?? []), ...images];
     const from = { name: message.fromAddr ?? undefined, email: sub.envelopeFrom };
 
     for (let i = 0; i < external.length; i += CHUNK) {
@@ -196,12 +223,15 @@ export async function processSubmission(
         bcc: chunk.filter((r) => r.role === "bcc").map((r) => r.address),
         subject,
         text,
-        html,
+        html: html ?? undefined,
         headers,
         attachments,
       };
+      const dests = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])];
+      console.log(`[mail:out] ${sub.id} → ${provider.name} sending to ${dests.join(", ")}`);
       try {
         const res = await provider.send(email);
+        console.log(`[mail:out] ${sub.id} sent via ${provider.name} msgid=${res.providerMessageId}`);
         const ids = chunk.map((r) => r.id);
         await db
           .update(mail.submissionRecipient)
@@ -215,9 +245,12 @@ export async function processSubmission(
           sub.providerMessageId = res.providerMessageId;
         }
       } catch (e) {
-        if (e instanceof ProviderSendError && !e.permanent) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const soft = e instanceof ProviderSendError && !e.permanent;
+        console.error(`[mail:out] ${sub.id} provider ${provider.name} error (${soft ? "soft" : "permanent"}): ${msg}`);
+        if (soft) {
           // Soft: give up after the cap, else retry the whole job with backoff.
-          if (sub.attempts + 1 >= MAX_ATTEMPTS) return fail(`send failed after retries: ${e.message}`);
+          if (sub.attempts + 1 >= MAX_ATTEMPTS) return fail(`send failed after retries: ${(e as Error).message}`);
           throw e; // bubbles to handleOutboundQueue → m.retry with backoff
         }
         // Permanent: these recipients fail; keep going with the rest.

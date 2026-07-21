@@ -13,8 +13,6 @@ declare global {
   interface Env {
     MAIL_DEK: string;
     MAIL_SEARCH_KEY: string;
-    /** Optional Resend fallback provider key (secret; unset = Cloudflare only). */
-    RESEND_API_KEY?: string;
     /** Bearer secret the cron trigger presents to POST /api/cron. */
     CRON_SECRET?: string;
   }

@@ -3,6 +3,7 @@ import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { importKey } from "$lib/server/mail/crypto.js";
 import type { OutboundEnv } from "$lib/server/mail/outbound.js";
+import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { listSendIdentities } from "$lib/server/mail/identities.js";
 import { suggestRecipients } from "$lib/server/mail/contacts.js";
 import {
@@ -147,11 +148,17 @@ export const sendDraftById = command(
   async ({ draftId, sendAt, undoSeconds }) => {
     const user = requireUser();
     const { locals } = getRequestEvent();
-    return sendDraft(locals.db, outboundEnv(), await contentKey(), user.id, {
+    const res = await sendDraft(locals.db, outboundEnv(), await contentKey(), user.id, {
       draftId,
       sendAt: sendAt ?? null,
       undoSeconds: undoSeconds ?? undefined,
     });
+    // Bridge: drain in-process (queue consumer isn't running). Skip future sends.
+    const undo = undoSeconds ?? 10;
+    if (!sendAt || sendAt <= Date.now() + undo * 1000) {
+      deliverInBackground(res.submissionId, undo);
+    }
+    return res;
   },
 );
 
