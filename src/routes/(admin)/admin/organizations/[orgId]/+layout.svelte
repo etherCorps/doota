@@ -2,8 +2,8 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
+	import TabNav from '$lib/components/admin/tab-nav.svelte';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
-	import { cn } from '$lib/utils/ui.js';
 
 	let { data, children } = $props();
 
@@ -17,14 +17,17 @@
 	const chip = $derived(STATUS_CHIP[data.org.status] ?? 'pending');
 
 	const base = $derived(`${resolve('/admin/organizations')}/${data.org.id}`);
-	const tabs = [
-		{ slug: 'members', label: 'Members' },
-		{ slug: 'mailboxes', label: 'Mailboxes' },
-		{ slug: 'subdomains', label: 'Subdomains' },
-		{ slug: 'dns', label: 'DNS' },
-		{ slug: 'settings', label: 'Settings' }
-	];
-	const current = $derived(page.url.pathname.split('/').pop());
+	// First path segment after the org base ('' = the overview index).
+	const rel = $derived(page.url.pathname.slice(base.length).replace(/^\//, '').split('/')[0]);
+	const tabs = $derived(
+		[
+			{ key: '', label: 'Overview' },
+			{ key: 'members', label: 'Members' },
+			{ key: 'mailboxes', label: 'Mailboxes' },
+			{ key: 'domain', label: 'Domain' },
+			{ key: 'settings', label: 'Settings' }
+		].map((t) => ({ href: t.key ? `${base}/${t.key}` : base, label: t.label, active: rel === t.key }))
+	);
 </script>
 
 <div class="flex w-full flex-col gap-6 p-6 md:p-8">
@@ -45,23 +48,7 @@
 		</div>
 	</div>
 
-	<nav class="border-b">
-		<div class="-mb-px flex gap-1">
-			{#each tabs as t (t.slug)}
-				<a
-					href="{base}/{t.slug}"
-					class={cn(
-						'border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-						current === t.slug
-							? 'border-primary text-foreground'
-							: 'text-muted-foreground hover:text-foreground border-transparent'
-					)}
-				>
-					{t.label}
-				</a>
-			{/each}
-		</div>
-	</nav>
+	<TabNav {tabs} />
 
 	{@render children()}
 </div>
