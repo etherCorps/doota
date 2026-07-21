@@ -15,6 +15,7 @@
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
 	import { generateAlias } from '$lib/rpc/alias.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import BotIcon from '@lucide/svelte/icons/bot';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -94,7 +95,11 @@
 {#snippet addressCell(mb: Mailbox)}
 	<span class="flex items-center gap-2">
 		<span class="font-mono">{mb.address}</span>
-		{#if mb.isService}<Badge variant="secondary" class="text-[10px]">service</Badge>{/if}
+		{#if mb.isService}
+			<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+				<BotIcon class="size-3" /> service
+			</span>
+		{/if}
 	</span>
 {/snippet}
 
