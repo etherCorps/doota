@@ -1,0 +1,46 @@
+{
+  "name": "@doota/mail-core",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "//": "The mail pipeline: inbound parse/materialize, outbound submission/provider send, drafts, collab, cron sweeps, crypto. Consumed by apps/web and the workers/* (mail-in, mail-jobs) via subpath imports (@doota/mail-core/inbound-worker, ...). The SvelteKit-coupled dev bridge stays in apps/web.",
+  "exports": {
+    "./bounce": "./src/bounce.ts",
+    "./collab": "./src/collab.ts",
+    "./contacts": "./src/contacts.ts",
+    "./cron": "./src/cron.ts",
+    "./crypto": "./src/crypto.ts",
+    "./drafts": "./src/drafts.ts",
+    "./identities": "./src/identities.ts",
+    "./inbound-worker": "./src/inbound-worker.ts",
+    "./inline-images": "./src/inline-images.ts",
+    "./mail-thread-contract": "./src/mail-thread-contract.ts",
+    "./mailbox": "./src/mailbox.ts",
+    "./mailbox-detail": "./src/mailbox-detail.ts",
+    "./materialize": "./src/materialize.ts",
+    "./mirror": "./src/mirror.ts",
+    "./notes": "./src/notes.ts",
+    "./outbound": "./src/outbound.ts",
+    "./outbound-consumer": "./src/outbound-consumer.ts",
+    "./queue-consumer": "./src/queue-consumer.ts",
+    "./read": "./src/read.ts",
+    "./resolver": "./src/resolver.ts",
+    "./search": "./src/search.ts"
+  },
+  "dependencies": {
+    "@doota/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postal-mime": "^2.7.5"
+  },
+  "peerDependencies": {
+    "@sveltejs/kit": "^2.69.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260615.1",
+    "@sveltejs/kit": "^2.69.2"
+  }
+}

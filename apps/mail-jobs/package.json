@@ -1,0 +1,22 @@
+{
+  "name": "@doota/mail-jobs",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "gen": "wrangler types",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doota/db": "workspace:*",
+    "@doota/mail-core": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0",
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260615.1"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "//": "Shared base for the non-SvelteKit workspace members (packages/*, the Workers). apps/web + apps/landing keep their own SvelteKit-generated tsconfig.",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  }
+}

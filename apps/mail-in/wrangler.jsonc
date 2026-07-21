@@ -1,0 +1,40 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Inbound mail Worker. KEEP this name — the Email Routing catch-all rule
+  // (domains.remote.ts → MAIL_IN_WORKER_NAME) points at it. Owns email() +
+  // the inbound-queue consumer only; outbound + cron are in doota-mail-jobs.
+  "name": "doota-mail",
+  "compatibility_date": "2026-04-28",
+  "compatibility_flags": ["nodejs_als", "nodejs_compat"],
+  "main": "src/index.ts",
+  "r2_buckets": [
+    {
+      "binding": "MAIL_RAW",
+      "bucket_name": "doota-mail-raw",
+    },
+  ],
+  "queues": {
+    // email() enqueues to MAIL_QUEUE; this Worker also consumes it.
+    "producers": [
+      {
+        "binding": "MAIL_QUEUE",
+        "queue": "doota-mail-inbound",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "doota-mail-inbound",
+        "max_batch_size": 10,
+        "max_retries": 5,
+      },
+    ],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "doota",
+      "database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
+      "migrations_dir": "../../drizzle",
+    },
+  ],
+}
