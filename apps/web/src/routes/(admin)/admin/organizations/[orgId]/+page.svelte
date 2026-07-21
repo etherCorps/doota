@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
+	import DeliveryChart from '$lib/components/admin/delivery-chart.svelte';
+	import { zoneAnalytics, zoneUsage } from '$lib/rpc/cf-insights.remote';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import BotIcon from '@lucide/svelte/icons/bot';
@@ -38,6 +42,43 @@
 		{ label: 'Individual', value: data.counts.personal, icon: UserIcon, href: `${base}/mailboxes` },
 		{ label: 'Aliases', value: data.counts.aliases, icon: ShuffleIcon, href: `${base}/mailboxes` }
 	]);
+
+	// Live email-delivery snapshot (7d) — lazy, once, best-effort (a CF hiccup
+	// must not break the overview). Deep-dive lives on the Insights tab.
+	let mail = $state<{ rows: Awaited<ReturnType<typeof zoneAnalytics>>; usage: Awaited<ReturnType<typeof zoneUsage>> } | null>(null);
+	let mailLoading = $state(false);
+
+	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
+	// fetch rejects, hanging the tab).
+	onMount(() => {
+		if (!org.zoneId) return;
+		mailLoading = true;
+		Promise.all([zoneAnalytics({ orgId: org.id, days: 7 }), zoneUsage(org.id)])
+			.then(([rows, usage]) => (mail = { rows, usage }))
+			.catch(() => {})
+			.finally(() => (mailLoading = false));
+	});
+
+	const isFail = (s: string) => /fail|bounce|drop|reject/i.test(s);
+	const mailStats = $derived.by(() => {
+		let delivered = 0,
+			total = 0;
+		for (const r of mail?.rows ?? []) {
+			total += r.count;
+			if (r.status === 'delivered') delivered += r.count;
+		}
+		return { delivered, rate: total ? Math.round((delivered / total) * 100) : null };
+	});
+	const mailChart = $derived.by(() => {
+		const m = new Map<string, { delivered: number; failed: number }>();
+		for (const r of mail?.rows ?? []) {
+			const d = m.get(r.date) ?? { delivered: 0, failed: 0 };
+			if (r.status === 'delivered') d.delivered += r.count;
+			else if (isFail(r.status)) d.failed += r.count;
+			m.set(r.date, d);
+		}
+		return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, ...v }));
+	});
 </script>
 
 <div class="flex flex-col gap-6">
@@ -86,4 +127,47 @@
 			</a>
 		{/each}
 	</div>
+
+	<!-- Email delivery snapshot (live) -->
+	{#if org.zoneId}
+		<Card.Card>
+			<Card.CardContent class="flex flex-col gap-4 py-5">
+				<div class="flex items-center justify-between gap-2">
+					<div class="flex flex-col gap-0.5">
+						<span class="text-sm font-medium">Email delivery</span>
+						<span class="text-muted-foreground text-xs">Last 7 days · live from Cloudflare</span>
+					</div>
+					<Button variant="ghost" size="sm" class="gap-1.5" href="{base}/insights">
+						Insights <ArrowRightIcon class="size-3.5" />
+					</Button>
+				</div>
+
+				{#if mailLoading && !mail}
+					<div class="text-muted-foreground flex items-center gap-2 py-6 text-sm">
+						<Spinner /> Loading…
+					</div>
+				{:else if mail}
+					<div class="grid grid-cols-3 gap-3">
+						<div>
+							<div class="text-muted-foreground text-xs">Sent today</div>
+							<div class="mt-0.5 text-xl font-semibold tabular-nums">{mail.usage.today.toLocaleString()}</div>
+						</div>
+						<div>
+							<div class="text-muted-foreground text-xs">Delivered (7d)</div>
+							<div class="mt-0.5 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+								{mailStats.delivered.toLocaleString()}
+							</div>
+						</div>
+						<div>
+							<div class="text-muted-foreground text-xs">Delivery rate</div>
+							<div class="mt-0.5 text-xl font-semibold tabular-nums">{mailStats.rate === null ? '—' : `${mailStats.rate}%`}</div>
+						</div>
+					</div>
+					{#if mailChart.length}
+						<DeliveryChart data={mailChart} class="aspect-[5/1] w-full" />
+					{/if}
+				{/if}
+			</Card.CardContent>
+		</Card.Card>
+	{/if}
 </div>

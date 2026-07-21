@@ -24,6 +24,8 @@
 			{ key: '', label: 'Overview' },
 			{ key: 'members', label: 'Members' },
 			{ key: 'mailboxes', label: 'Mailboxes' },
+			{ key: 'suppressions', label: 'Suppressions' },
+			{ key: 'insights', label: 'Insights' },
 			{ key: 'domain', label: 'Domain' },
 			{ key: 'settings', label: 'Settings' }
 		].map((t) => ({ href: t.key ? `${base}/${t.key}` : base, label: t.label, active: rel === t.key }))

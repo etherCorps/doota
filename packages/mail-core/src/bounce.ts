@@ -158,15 +158,25 @@ export async function applyBounce(
   return { matchedSubmission: submissionId, suppressed };
 }
 
-/** Upsert a suppression, bumping last_seen_at on repeat. */
-async function suppress(db: Db, orgId: string, address: string, reason: string): Promise<void> {
+/** Upsert a suppression, bumping last_seen_at on repeat. Exported so manual
+ * (admin-added) suppressions go through the same upsert as automatic ones. */
+export async function suppress(db: Db, orgId: string, address: string, reason: string): Promise<void> {
   await db
     .insert(mail.suppression)
-    .values({ orgId, address, reason })
+    .values({ orgId, address: address.trim().toLowerCase(), reason })
     .onConflictDoUpdate({
       target: [mail.suppression.orgId, mail.suppression.address],
       set: { lastSeenAt: new Date(), reason },
     });
+}
+
+/** Remove a suppression (manual un-suppress). Returns whether a row was deleted. */
+export async function unsuppress(db: Db, orgId: string, address: string): Promise<boolean> {
+  const deleted = await db
+    .delete(mail.suppression)
+    .where(and(eq(mail.suppression.orgId, orgId), eq(mail.suppression.address, address.trim().toLowerCase())))
+    .returning({ id: mail.suppression.id });
+  return deleted.length > 0;
 }
 
 /** Move the submission status to `candidate` only if it's worse than current. */

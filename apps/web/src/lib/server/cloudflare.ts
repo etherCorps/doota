@@ -357,6 +357,261 @@ export async function setSubaddressing(zoneId: string, on: boolean): Promise<voi
   });
 }
 
+// ---- Zone observability: analytics · email logs · audit logs ----------------
+//
+// All read-only, LIVE from Cloudflare (never persisted). To respect Cloudflare's
+// API rate limit (~1200 req / 5 min per token; the GraphQL Analytics API has its
+// own per-minute ceiling) these go through a tiny per-isolate TTL cache so an
+// admin refreshing a dashboard collapses to at most one upstream call per TTL
+// window per zone+view. Best-effort: any upstream/GraphQL error degrades to an
+// empty result (the UI shows "no data") rather than 500ing the page.
+//
+// ponytail: in-memory per-isolate cache — resets on isolate recycle and isn't
+// shared across colos. Fine for an internal admin panel (few viewers). If you
+// ever expose these widely and start hitting CF limits, back this with KV/D1.
+
+const _obsCache = new Map<string, { exp: number; val: unknown }>();
+
+async function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = _obsCache.get(key);
+  if (hit && hit.exp > now) return hit.val as T;
+  const val = await fn();
+  _obsCache.set(key, { exp: now + ttlMs, val });
+  return val;
+}
+
+/**
+ * GraphQL Analytics API. Not exposed by the SDK's typed surface (and its raw
+ * request unwraps the REST `result` envelope, which /graphql doesn't use), so
+ * this posts directly with the same scoped Bearer token. Returns `data` or null.
+ * The token must carry the "Analytics Read" permission for these datasets.
+ */
+async function cfGraphql<T>(query: string, variables: Record<string, unknown>): Promise<T | null> {
+  try {
+    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${APP_CLOUDFLARE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const j = (await r.json()) as { data?: T; errors?: Array<{ message?: string }> };
+    // GraphQL can return PARTIAL data alongside per-field errors — surface the
+    // errors but keep whatever data came back (a bad field must not blank the view).
+    if (j.errors?.length) console.warn("[cf:graphql]", r.status, j.errors.map((e) => e.message).join("; "));
+    if (!r.ok && !j.data) return null;
+    return j.data ?? null;
+  } catch (e) {
+    console.error("[cf:graphql] request failed", e);
+    return null;
+  }
+}
+
+/** Coerce an unknown CF value to a display string (fields are sometimes objects,
+ * lists, or numbers rather than the plain strings the schema implies). */
+function str(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") return v.trim() || null;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(str).filter(Boolean).join(", ") || null;
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return str(o.email ?? o.address ?? o.value ?? o.name ?? o.text);
+  }
+  return null;
+}
+
+export type EmailAnalyticsRow = { date: string; status: string; count: number };
+
+const ANALYTICS_Q = `query($zoneTag:string!,$start:Date!,$end:Date!){
+  viewer{ zones(filter:{zoneTag:$zoneTag}){
+    emailSendingAdaptiveGroups(filter:{date_geq:$start,date_leq:$end},limit:1000,orderBy:[date_ASC]){
+      count dimensions{ date status }
+    }
+  }}
+}`;
+
+/** Cloudflare's email analytics window maxes at 4w3d (31d), measured to the
+ * request instant — so a 31-day span overflows by the current time-of-day and is
+ * rejected (quota error). Cap at 30 for headroom. */
+const MAX_DAYS = 30;
+const clampDays = (days: number) => Math.min(Math.max(Math.round(days), 1), MAX_DAYS);
+
+/**
+ * Aggregated outbound sending counts over the last `days`, grouped by day +
+ * status (delivered / deliveryFailed / …). Clamped to Cloudflare's 31-day window.
+ */
+export async function zoneEmailAnalytics(zoneId: string, days = 7): Promise<EmailAnalyticsRow[]> {
+  const d = clampDays(days);
+  return memo(`analytics:${zoneId}:${d}`, 300_000, async () => {
+    const iso = (x: Date) => x.toISOString().slice(0, 10);
+    const data = await cfGraphql<{
+      viewer: { zones: { emailSendingAdaptiveGroups: { count: number; dimensions: { date: string; status: string } }[] }[] };
+    }>(ANALYTICS_Q, { zoneTag: zoneId, start: iso(new Date(Date.now() - d * 864e5)), end: iso(new Date()) });
+    const rows = data?.viewer?.zones?.[0]?.emailSendingAdaptiveGroups ?? [];
+    return rows.map((r) => ({ date: r.dimensions.date, status: r.dimensions.status, count: r.count }));
+  });
+}
+
+/** Per-zone sends TODAY, summed from the analytics dataset (per-domain context
+ * for the org overview). The account-wide daily limit lives in accountSendLimits. */
+export async function zoneSendUsage(zoneId: string): Promise<{ today: number }> {
+  return memo(`usage:${zoneId}`, 300_000, async () => {
+    const rows = await zoneEmailAnalytics(zoneId, MAX_DAYS);
+    const today = new Date().toISOString().slice(0, 10);
+    let day = 0;
+    for (const r of rows) if (r.date === today) day += r.count;
+    return { today: day };
+  });
+}
+
+export type SendLimits = {
+  /** Emails allowed per `unit` window; null if Cloudflare didn't return it. */
+  dailyLimit: number | null;
+  unit: string | null;
+  /** Sent in the current window. */
+  sent: number | null;
+  overQuota: boolean;
+  /** When the window resets (ISO). */
+  resetsAt: string | null;
+};
+
+/**
+ * The account's LIVE sending limit + usage, straight from Cloudflare
+ * (`GET /accounts/{id}/email/sending/limits`). The daily quota is dynamic
+ * (scales with reputation), so it's read live — never hardcoded. Account-scoped
+ * (superadmin/dashboard). Unknown fields degrade to null, not a fabricated value.
+ */
+export async function accountSendLimits(): Promise<SendLimits> {
+  return memo("acct-limits", 60_000, async () => {
+    const unknown: SendLimits = { dailyLimit: null, unit: null, sent: null, overQuota: false, resetsAt: null };
+    try {
+      const r = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${APP_CLOUDFLARE_ACCOUNT_ID}/email/sending/limits`,
+        { headers: { Authorization: `Bearer ${APP_CLOUDFLARE_API_TOKEN}` } },
+      );
+      const j = (await r.json()) as {
+        result?: { quota?: { value?: number; unit?: string }; usage?: { sent?: number; over_quota?: boolean; resets_at?: string } };
+      };
+      if (!r.ok || !j.result) return unknown;
+      const { quota, usage } = j.result;
+      return {
+        dailyLimit: typeof quota?.value === "number" ? quota.value : null,
+        unit: quota?.unit ?? null,
+        sent: typeof usage?.sent === "number" ? usage.sent : null,
+        overQuota: !!usage?.over_quota,
+        resetsAt: usage?.resets_at ?? null,
+      };
+    } catch (e) {
+      console.error("[cf:limits] request failed", e);
+      return unknown;
+    }
+  });
+}
+
+export type EmailEvent = {
+  datetime: string | null;
+  to: string | null;
+  from: string | null;
+  subject: string | null;
+  status: string | null;
+  errorCause: string | null;
+  dkim: string | null;
+  dmarc: string | null;
+  spf: string | null;
+};
+
+// Individual-event dataset — recipient is `to` (a scalar); `envelopeTo` is a
+// GROUP dimension and comes back as an object on this dataset. Confirmed fields.
+const EVENTS_Q = `query($zoneTag:string!,$start:Time!,$end:Time!){
+  viewer{ zones(filter:{zoneTag:$zoneTag}){
+    emailSendingAdaptive(filter:{datetime_geq:$start,datetime_leq:$end},limit:100,orderBy:[datetime_DESC]){
+      datetime to from subject status errorCause dkim dmarc spf
+    }
+  }}
+}`;
+
+/** Individual outbound email events over the last `days` (up to 100, adaptively
+ * sampled by Cloudflare) — the per-message delivery log. Every field is coerced
+ * to a display string; CF returns some as objects/lists. */
+export async function zoneEmailEvents(zoneId: string, days = 1): Promise<EmailEvent[]> {
+  const d = clampDays(days);
+  return memo(`events:${zoneId}:${d}`, 60_000, async () => {
+    const data = await cfGraphql<{ viewer: { zones: { emailSendingAdaptive: Record<string, unknown>[] }[] } }>(
+      EVENTS_Q,
+      { zoneTag: zoneId, start: new Date(Date.now() - d * 864e5).toISOString(), end: new Date().toISOString() },
+    );
+    const rows = data?.viewer?.zones?.[0]?.emailSendingAdaptive ?? [];
+    return rows.map((e) => ({
+      datetime: str(e.datetime),
+      to: str(e.to),
+      from: str(e.from),
+      subject: str(e.subject),
+      status: str(e.status),
+      errorCause: str(e.errorCause),
+      dkim: str(e.dkim),
+      dmarc: str(e.dmarc),
+      spf: str(e.spf),
+    }));
+  });
+}
+
+export type AuditEntry = {
+  id: string;
+  when: string | null;
+  action: string | null;
+  ok: boolean;
+  actor: string | null;
+  resource: string | null;
+};
+
+/**
+ * Recent account audit-log entries scoped to this zone (who changed what, when).
+ * Account-scoped endpoint filtered by `zone.name` — Cloudflare's audit log is
+ * per-account but every entry carries the zone it touched. Fields are read
+ * tolerantly (v1/v2 differ on timestamp + shape) and coerced to display strings.
+ */
+export async function zoneAuditLogs(zoneName: string, days = 30): Promise<AuditEntry[]> {
+  const d = clampDays(days);
+  return memo(`audit:${zoneName}:${d}`, 60_000, async () => {
+    try {
+      const params = new URLSearchParams({
+        since: new Date(Date.now() - d * 864e5).toISOString(),
+        before: new Date().toISOString(),
+        per_page: "50",
+        "zone.name": zoneName,
+      });
+      const r = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${APP_CLOUDFLARE_ACCOUNT_ID}/audit_logs?${params}`,
+        { headers: { Authorization: `Bearer ${APP_CLOUDFLARE_API_TOKEN}` } },
+      );
+      const j = (await r.json()) as { result?: Record<string, unknown>[]; errors?: Array<{ message?: string }> };
+      if (!r.ok) {
+        console.warn("[cf:audit]", r.status, j.errors?.map((e) => e.message).join("; "));
+        return [];
+      }
+      return (j.result ?? []).map((e, i) => {
+        const action = e.action as Record<string, unknown> | undefined;
+        const actor = e.actor as Record<string, unknown> | undefined;
+        const resource = e.resource as Record<string, unknown> | undefined;
+        return {
+          id: str(e.id) ?? String(i),
+          when: str(e.when ?? e.created_at ?? e.timestamp),
+          action: str(action?.type ?? e.action),
+          ok: action?.result !== false,
+          actor: str(actor?.email ?? actor?.type ?? e.actor),
+          resource: str(resource?.type ?? resource?.id ?? e.resource),
+        };
+      });
+    } catch (e) {
+      console.error("[cf:audit] request failed", e);
+      return [];
+    }
+  });
+}
+
 /**
  * Run the full idempotent wire once a zone is active. Safe to re-run: every
  * step tolerates "already done". Returns the sending metadata (DKIM selector).
