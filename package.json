@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "//": "Workspace root. No app code lives here — the SvelteKit app is apps/web (package name 'doota'), the landing site is landing, the mail Workers are workers/*. These scripts just orchestrate the member packages via pnpm --filter.",
+  "//": "Workspace root. No app code lives here — every deployable is under apps/ (web = SvelteKit app pkg 'doota', landing, mail-in, mail-jobs); shared libs under packages/ (@doota/db, @doota/mail-core). These scripts just orchestrate the member packages via pnpm --filter.",
   "scripts": {
     "dev": "pnpm --filter doota dev",
     "build": "pnpm --filter doota build",
