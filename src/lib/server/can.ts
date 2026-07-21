@@ -25,6 +25,8 @@ export type Target = {
   organizationId?: string;
   /** user ids explicitly granted sender rights (shared mailboxes) */
   grantedSenderIds?: string[];
+  /** user ids granted manager rights on this mailbox (can_manage grants) */
+  grantedManagerIds?: string[];
 };
 
 export type Actor = {
@@ -65,6 +67,12 @@ function decide(user: Actor, action: Action, target: Target): boolean {
     target.organizationId &&
     user.orgAdminOf?.includes(target.organizationId)
   ) {
+    return true;
+  }
+
+  // Mailbox-scoped manager: a can_manage grant lets a member administer THAT
+  // mailbox (rename, access, activate) without being an org admin.
+  if (action === "manage" && (target.grantedManagerIds?.includes(user.id) ?? false)) {
     return true;
   }
 

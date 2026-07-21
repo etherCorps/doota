@@ -26,12 +26,12 @@ export const variables = defineEnvVars({
   },
   // Cloudflare credential: a SCOPED API Token (Bearer), never the Global API
   // Key. Store as a Worker secret. No account email / global key.
-  CF_ACCOUNT_ID: {
+  APP_CLOUDFLARE_ACCOUNT_ID: {
     public: false,
     required: false,
     type: 'string'
   },
-  CF_API_TOKEN: {
+  APP_CLOUDFLARE_API_TOKEN: {
     public: false,
     required: false,
     type: 'string'

@@ -105,6 +105,6 @@ sharp edge — see item 6 in [security-decisions.md](security-decisions.md).
 | `BETTER_AUTH_SECRET` | no | Session/token signing. |
 | `ORIGIN` | yes | Base URL. **Must match the dev server's port** or `/api/auth/*` 404s (Better Auth's `svelteKitHandler` gates on request origin). |
 | `SETUP_TOKEN` | no | One-time gate for the `/setup` genesis wizard. Unset → web wizard disabled (use the CLI). |
-| `CF_ACCOUNT_ID` | no | Cloudflare account id for domain onboarding. |
-| `CF_API_TOKEN` | no | Cloudflare **scoped API Token** (Bearer). NOT the Global API Key; no account email. Treat like the encryption DEK — Worker secret only. |
+| `APP_CLOUDFLARE_ACCOUNT_ID` | no | Cloudflare account id for domain onboarding. |
+| `APP_CLOUDFLARE_API_TOKEN` | no | Cloudflare **scoped API Token** (Bearer). NOT the Global API Key; no account email. Treat like the encryption DEK — Worker secret only. |
 | `MAIL_IN_WORKER_NAME` | no | Name of the deployed mail-in Worker the catch-all routing rule targets. |

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "$lib/server/db/schema.js";
 
 // Super-admin "view all orgs" is an aggregate over the orgs they OWN — resolved
@@ -21,6 +21,24 @@ export const load = async ({ locals }) => {
       ),
     );
 
+  // Real overview counts scoped to the orgs the actor administers (distinct
+  // members + mailboxes), replacing the earlier mock stats.
+  const orgIds = orgs.map((o) => o.id);
+  let userCount = 0;
+  let mailboxCount = 0;
+  if (orgIds.length) {
+    const [u] = await locals.db
+      .select({ n: sql<number>`count(distinct ${schema.member.userId})` })
+      .from(schema.member)
+      .where(inArray(schema.member.organizationId, orgIds));
+    userCount = Number(u?.n ?? 0);
+    const [m] = await locals.db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.mailbox)
+      .where(inArray(schema.mailbox.orgId, orgIds));
+    mailboxCount = Number(m?.n ?? 0);
+  }
+
   // Deferred super-admin email verify: only offer it to an unverified
   // super-admin once a domain is active (there is a real sending path).
   const isSuperadmin = user.role === "superadmin";
@@ -39,5 +57,7 @@ export const load = async ({ locals }) => {
     emailVerified: !!user.emailVerified,
     email: user.email,
     hasActiveDomain,
+    userCount,
+    mailboxCount,
   };
 };

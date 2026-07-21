@@ -22,7 +22,7 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 
   const db = drizzle(env.DB, { schema });
 
-  const auth = createAuth(db);
+  const auth = createAuth(db, env.AUTH_KV);
 
   event.locals.db = db;
   event.locals.auth = auth;
@@ -64,7 +64,7 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
       } else {
         const status = await getOnboardingStatus(db, user);
         if (status.complete) {
-          await markOnboarded(db, user.id);
+          await markOnboarded(auth, user.id);
           // Rewrite the session cookie cache so onboardedAt is reflected NOW.
           // Without this the cache (~5 min) still reports onboardedAt = null and
           // every request re-derives status; refetching fresh makes the server

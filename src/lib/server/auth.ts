@@ -14,6 +14,7 @@ import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
 import { APIError } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { getRequestEvent } from "$app/server";
+import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
 import { sendMailBackground } from "./mailer";
@@ -21,6 +22,7 @@ import { isServedDomain, invalidateDomainCache, senderAddress, domainOf } from "
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGIN } from "$app/env/public";
 import { renderEmail } from "./email";
+import { kvSecondaryStorage } from "./auth/kv-secondary-storage.js";
 
 // Instance roles (admin plugin). Separate from org membership roles
 // (owner/admin/member), which the organization plugin manages per-membership.
@@ -55,8 +57,14 @@ async function assertNotServedDomain(
   }
 }
 
-function buildAuth(db?: DrizzleD1Database<typeof schema>) {
+function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
   return betterAuth({
+    // Cloudflare KV as a fast, edge-local read cache in front of D1. D1 stays the
+    // source of truth (storeSessionInDatabase / verification.storeInDatabase
+    // below): sessions + verification values are dual-written, reads hit KV first
+    // and fall back to D1, and consume/revoke are enforced on D1. Absent (CLI
+    // schema-gen has no binding) → plain database-only mode.
+    secondaryStorage: kv ? kvSecondaryStorage(kv) : undefined,
     user: {
       modelName: "user",
       additionalFields: {
@@ -193,6 +201,29 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
           },
         },
       },
+      session: {
+        create: {
+          // A successful credential login proves the user controls the address
+          // the temp password was delivered to — their EXTERNAL recovery email
+          // (provisioning mails it there and nowhere else). So we verify the
+          // recovery address on first login instead of sending a separate
+          // confirmation link. Idempotent: once verified this is a no-op, and
+          // superadmins have no recoveryEmail so they're never touched.
+          after: async (session, context) => {
+            if (!db || !context) return;
+            const u = await db.query.user.findFirst({
+              where: eq(schema.user.id, session.userId),
+              columns: { recoveryEmail: true, recoveryEmailVerified: true },
+            });
+            if (u?.recoveryEmail && !u.recoveryEmailVerified) {
+              await context.context.internalAdapter.updateUser(session.userId, {
+                recoveryEmailVerified: true,
+                recoveryEmailVerifiedAt: Date.now(),
+              });
+            }
+          },
+        },
+      },
     },
     rateLimit: {
       enabled: true,
@@ -207,6 +238,16 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>) {
     },
     session: {
       cookieCache: { enabled: true, maxAge: 60 * 5 },
+      // Keep D1 authoritative for sessions; KV is only a read cache in front of
+      // it. Revocation (logout / password reset) deletes from D1 and KV, so a
+      // revoked session can't outlive KV's propagation window in the DB of record.
+      storeSessionInDatabase: true,
+    },
+    verification: {
+      // Same: verification values (email-verify links, our namespaced recovery /
+      // reset / throttle tokens) stay in D1 so single-use consume is enforced
+      // there and tokenStore.peek's direct D1 read still sees them; KV just caches.
+      storeInDatabase: true,
     },
     plugins: [
       admin({
@@ -283,8 +324,8 @@ export type Auth = ReturnType<typeof buildAuth>;
 
 let auth: Auth | undefined;
 
-export function createAuth(db: DrizzleD1Database<typeof schema>) {
-  return (auth ??= buildAuth(db));
+export function createAuth(db: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
+  return (auth ??= buildAuth(db, kv));
 }
 
 /**

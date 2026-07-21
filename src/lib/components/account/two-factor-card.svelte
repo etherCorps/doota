@@ -1,5 +1,7 @@
 <script lang="ts">
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import Lock from '@lucide/svelte/icons/lock';
 	import { invalidateAll } from '$app/navigation';
@@ -53,6 +55,18 @@
 		await navigator.clipboard.writeText(backupCodes.join('\n'));
 		toast.success('Backup codes copied to clipboard.');
 	}
+
+	function downloadBackupCodes() {
+		const blob = new Blob([`Doota backup codes — ${email}\n\n${backupCodes.join('\n')}\n`], {
+			type: 'text/plain'
+		});
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'doota-backup-codes.txt';
+		a.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <Card.Card>
@@ -70,46 +84,68 @@
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col gap-4">
 		{#if enabled}
-			<p class="text-muted-foreground text-sm">
-				Enabled. Keep your backup codes safe — they are the recovery path if you lose your
-				authenticator.
-			</p>
+			<div class="flex items-start gap-3 rounded-lg border p-4">
+				<div class="bg-muted text-foreground flex size-9 shrink-0 items-center justify-center rounded-full">
+					<ShieldCheckIcon class="size-5" />
+				</div>
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">Two-factor authentication is on</p>
+					<p class="text-muted-foreground text-sm">
+						Keep your backup codes safe — they're the recovery path if you lose your authenticator.
+					</p>
+				</div>
+			</div>
 		{:else if totpUri}
-			<Field.Field>
-				<Field.Label>1. Add to your authenticator app</Field.Label>
-				<!-- <code class="bg-muted/50 rounded-md border p-3 text-xs break-all">{totpUri}</code> -->
-				{@html renderSVG(totpUri)}
-			</Field.Field>
-			<Field.Field>
-				<Field.Label>2. Store your backup codes</Field.Label>
-				<Field.Description>
-					They will not be shown again. Each works once, in place of an authenticator code.
-				</Field.Description>
-				<div class="grid grid-cols-2 gap-1 rounded-md border p-3 font-mono text-xs">
+			<!-- Step 1 — scan -->
+			<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+				<div class="[&_svg]:size-40 [&_svg]:block shrink-0 self-start rounded-lg border bg-white p-2.5">
+					{@html renderSVG(totpUri)}
+				</div>
+				<div class="space-y-1">
+					<p class="text-sm font-medium">1 · Scan with your authenticator</p>
+					<p class="text-muted-foreground text-sm">
+						Open your authenticator app (1Password, Authy, Google Authenticator) and scan this QR
+						code to add Doota.
+					</p>
+				</div>
+			</div>
+
+			<!-- Step 2 — backup codes -->
+			<div class="space-y-2 border-t pt-4">
+				<p class="text-sm font-medium">2 · Save your backup codes</p>
+				<p class="text-muted-foreground text-xs">
+					Shown only once. Each code works one time, in place of an authenticator code.
+				</p>
+				<div class="bg-muted/30 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border p-3 font-mono text-xs">
 					{#each backupCodes as bc (bc)}
 						<span>{bc}</span>
 					{/each}
 				</div>
-				<Button variant="outline" size="sm" class="self-start" onclick={copyBackupCodes}>
-					<CopyIcon /> Copy codes
-				</Button>
-			</Field.Field>
-			<form onsubmit={confirmTotp} class="flex flex-col gap-3">
-				<Field.Field>
-					<Field.Label>3. Enter a code to confirm</Field.Label>
-					<InputOTP.Root maxlength={6} bind:value={totpCode}>
-						{#snippet children({ cells })}
-							<InputOTP.Group>
-								{#each cells as cell (cell)}
-									<InputOTP.Slot {cell} />
-								{/each}
-							</InputOTP.Group>
-						{/snippet}
-					</InputOTP.Root>
-				</Field.Field>
-				<Button type="submit" class="self-start" disabled={totpLoading}>
+				<div class="flex gap-2">
+					<Button variant="outline" size="sm" onclick={copyBackupCodes}>
+						<CopyIcon /> Copy
+					</Button>
+					<Button variant="outline" size="sm" onclick={downloadBackupCodes}>
+						<DownloadIcon /> Download
+					</Button>
+				</div>
+			</div>
+
+			<!-- Step 3 — confirm -->
+			<form onsubmit={confirmTotp} class="space-y-3 border-t pt-4">
+				<p class="text-sm font-medium">3 · Enter the 6-digit code to finish</p>
+				<InputOTP.Root maxlength={6} bind:value={totpCode}>
+					{#snippet children({ cells })}
+						<InputOTP.Group>
+							{#each cells as cell (cell)}
+								<InputOTP.Slot {cell} />
+							{/each}
+						</InputOTP.Group>
+					{/snippet}
+				</InputOTP.Root>
+				<Button type="submit" class="self-start" disabled={totpLoading || totpCode.length < 6}>
 					{#if totpLoading}<Spinner class="mr-1" />{/if}
-					Confirm & enable
+					Confirm &amp; enable
 				</Button>
 			</form>
 		{:else}

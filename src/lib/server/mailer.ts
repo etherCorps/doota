@@ -50,4 +50,5 @@ export function sendMailBackground(mail: Mail) {
   );
   const ctx = getRequestEvent().platform?.ctx;
   if (ctx) ctx.waitUntil(promise);
+  return Promise.resolve()
 }

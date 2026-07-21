@@ -21,8 +21,13 @@
     "db:migrate:remote": "wrangler d1 migrations apply doota --remote",
     "db:studio": "drizzle-kit studio",
     "gen": "wrangler types",
+    "gen:mail": "wrangler types -c wrangler.mail.jsonc",
     "reset-admin": "node scripts/reset-admin.mjs",
-    "deploy": "pnpm run build && wrangler deploy"
+    "seed:dummy": "node scripts/seed-dummy.mjs",
+    "dev:mail": "wrangler dev -c wrangler.mail.jsonc",
+    "deploy": "pnpm run build && wrangler deploy",
+    "deploy:mail": "wrangler deploy -c wrangler.mail.jsonc",
+    "deploy:all": "pnpm run deploy && pnpm run deploy:mail"
   },
   "devDependencies": {
     "@better-auth/passkey": "^1.6.23",
@@ -71,6 +76,11 @@
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@tiptap/core": "^3.28.0",
+    "@tiptap/extension-image": "^3.28.0",
+    "@tiptap/extension-placeholder": "^3.28.0",
+    "@tiptap/pm": "^3.28.0",
+    "@tiptap/starter-kit": "^3.28.0",
     "postal-mime": "^2.7.5",
     "runed": "^0.37.1",
     "uqr": "^0.1.3"

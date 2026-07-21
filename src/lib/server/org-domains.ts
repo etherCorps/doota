@@ -21,9 +21,24 @@ import * as schema from "./db/schema";
  */
 export type ServedOrg = { id: string; domain: string };
 
+/**
+ * An org's routing facts, keyed in the cache by EVERY host that routes to it —
+ * the apex plus each configured routing subdomain. `subaddressing` and the
+ * subdomain list are the D1 mirror of Cloudflare Email Routing (write-through
+ * from domains.remote.ts); CF stays source of truth, this is the read-replica
+ * the inbound hot path uses so it never calls the CF API.
+ */
+export type OrgRouting = {
+  id: string;
+  /** the apex domain (org identity) */
+  domain: string;
+  subaddressing: boolean;
+};
+
 const TTL_MS = 30_000;
 
-let cache: Map<string, ServedOrg> | null = null;
+// host (apex OR routing subdomain) → org routing facts.
+let cache: Map<string, OrgRouting> | null = null;
 let loadedAt = 0;
 
 export function invalidateDomainCache() {
@@ -31,23 +46,58 @@ export function invalidateDomainCache() {
   loadedAt = 0;
 }
 
+function parseHosts(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((h): h is string => typeof h === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 async function getMap(
   db: DrizzleD1Database<typeof schema>,
-): Promise<Map<string, ServedOrg>> {
+): Promise<Map<string, OrgRouting>> {
   const now = Date.now();
   if (cache && now - loadedAt < TTL_MS) return cache;
 
   const rows = await db
-    .select({ id: schema.organization.id, domain: schema.organization.domain })
-    .from(schema.organization);
+    .select({
+      id: schema.organization.id,
+      domain: schema.organization.domain,
+      subaddressing: schema.orgMailSettings.subaddressingEnabled,
+      subdomains: schema.orgMailSettings.routingSubdomains,
+    })
+    .from(schema.organization)
+    .leftJoin(
+      schema.orgMailSettings,
+      eq(schema.orgMailSettings.orgId, schema.organization.id),
+    );
 
-  const map = new Map<string, ServedOrg>();
+  const map = new Map<string, OrgRouting>();
   for (const row of rows) {
-    if (row.domain) map.set(row.domain.toLowerCase(), { id: row.id, domain: row.domain });
+    if (!row.domain) continue;
+    const org: OrgRouting = {
+      id: row.id,
+      domain: row.domain.toLowerCase(),
+      subaddressing: !!row.subaddressing,
+    };
+    // Index the apex and every configured routing subdomain to the same org.
+    map.set(org.domain, org);
+    for (const host of parseHosts(row.subdomains)) map.set(host.toLowerCase(), org);
   }
   cache = map;
   loadedAt = now;
   return map;
+}
+
+/** Org routing facts for a host (apex or routing subdomain), or undefined. */
+export async function routingForHost(
+  db: DrizzleD1Database<typeof schema>,
+  addressOrHost: string,
+): Promise<OrgRouting | undefined> {
+  return (await getMap(db)).get(domainOf(addressOrHost));
 }
 
 /** Lowercased domain part of an email, or the input if it has no `@`. */
@@ -117,5 +167,6 @@ export async function orgForDomain(
   db: DrizzleD1Database<typeof schema>,
   addressOrDomain: string,
 ): Promise<ServedOrg | undefined> {
-  return (await getMap(db)).get(domainOf(addressOrDomain));
+  const org = (await getMap(db)).get(domainOf(addressOrDomain));
+  return org && { id: org.id, domain: org.domain };
 }
