@@ -1,6 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { onboardingHome } from "$lib/server/onboarding.js";
-import { user as userTable } from "$lib/server/db/schema.js";
+import { user as userTable } from "@doota/db/schema";
 import { SETUP_TOKEN } from "$app/env/private";
 
 /**

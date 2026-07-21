@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema";
+import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { importKey, encryptContent, decryptContent } from "$lib/server/mail/crypto";
-import { createNote, editNote, softDeleteNote, listNotes } from "$lib/server/mail/notes";
-import { assignThread, listSystemEvents, isSharedMailbox } from "$lib/server/mail/collab";
-import { searchNotes } from "$lib/server/mail/search";
-import { getThread } from "$lib/server/mail/read";
-import { createDraft, sendDraft } from "$lib/server/mail/drafts";
+import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
+import { createNote, editNote, softDeleteNote, listNotes } from "@doota/mail-core/notes";
+import { assignThread, listSystemEvents, isSharedMailbox } from "@doota/mail-core/collab";
+import { searchNotes } from "@doota/mail-core/search";
+import { getThread } from "@doota/mail-core/read";
+import { createDraft, sendDraft } from "@doota/mail-core/drafts";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
 const ORG = "org1";

@@ -1,5 +1,5 @@
 import { render } from "@ethercorps/un-jinja";
-import type { MailFrom } from "../org-domains";
+import type { MailFrom } from "@doota/db/org-domains";
 import layout from "./templates/_layout.html?raw";
 import verifyEmail from "./templates/verify-email.html?raw";
 import resetLink from "./templates/reset-link.html?raw";

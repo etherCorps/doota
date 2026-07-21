@@ -1,0 +1,18 @@
+{
+  "name": "@doota/mail-core",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "//": "The mail pipeline: inbound parse/materialize, outbound submission/provider send, drafts, collab, cron sweeps, crypto. Consumed by apps/web and the workers/* (mail-in, mail-jobs) via subpath imports (@doota/mail-core/inbound-worker, ...). The SvelteKit-coupled dev bridge stays in apps/web.",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@doota/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postal-mime": "^2.7.5"
+  },
+  "peerDependencies": {
+    "@sveltejs/kit": "^2.69.2"
+  }
+}

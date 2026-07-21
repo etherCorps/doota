@@ -1,7 +1,7 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { bearerFromHeaders, verifyApiKey } from "$lib/server/auth/api-key.js";
-import { enqueueSend, type OutboundEnv } from "$lib/server/mail/outbound.js";
-import { resolveSender, resolveServiceSender } from "$lib/server/mail/resolver";
+import { enqueueSend, type OutboundEnv } from "@doota/mail-core/outbound";
+import { resolveSender, resolveServiceSender } from "@doota/mail-core/resolver";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST

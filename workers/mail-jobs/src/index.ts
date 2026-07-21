@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/d1";
-import * as schema from "doota/server/db/schema";
-import { handleOutboundQueue, type OutboundConsumerEnv } from "doota/server/mail/outbound-consumer";
-import { runScheduledSweeps } from "doota/server/mail/cron";
-import { type OutboundEnv, type OutboundJob } from "doota/server/mail/outbound";
+import * as schema from "@doota/db/schema";
+import { handleOutboundQueue, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
+import { runScheduledSweeps } from "@doota/mail-core/cron";
+import { type OutboundEnv, type OutboundJob } from "@doota/mail-core/outbound";
 
 /**
  * Outbound + maintenance Worker (`doota-mail-jobs`). Split out of the inbound

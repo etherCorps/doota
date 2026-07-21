@@ -1,8 +1,8 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import type * as schema from "./db/schema";
+import type * as schema from "@doota/db/schema";
 import { sendMail } from "./mailer";
 import { renderEmail } from "./email";
-import { senderAddress, domainOf } from "./org-domains";
+import { senderAddress, domainOf } from "@doota/db/org-domains";
 import { tokenStore, throttleAllows } from "./auth/escape-hatches.js";
 
 type Db = DrizzleD1Database<typeof schema>;

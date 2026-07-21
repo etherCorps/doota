@@ -1,7 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 import { desc, inArray } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import { importKey, decryptContent } from "$lib/server/mail/crypto.js";
+import * as schema from "@doota/db/schema";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
 
 /**
  * Super-admin oversight: read-only recent mail across every org. Content is

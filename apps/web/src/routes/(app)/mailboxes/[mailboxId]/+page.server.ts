@@ -1,5 +1,5 @@
 import { error, redirect } from "@sveltejs/kit";
-import { loadMailboxDetail, isMailboxManager } from "$lib/server/mail/mailbox-detail.js";
+import { loadMailboxDetail, isMailboxManager } from "@doota/mail-core/mailbox-detail";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 
 // Manager-facing mailbox management. Unlike the admin route, this is reachable by

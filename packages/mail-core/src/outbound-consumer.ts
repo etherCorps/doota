@@ -1,9 +1,9 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
-import * as mail from "../db/mail.schema";
-import { can, type Actor } from "../can";
-import { routingForHost } from "../org-domains";
+import * as schema from "@doota/db/schema";
+import * as mail from "@doota/db/mail.schema";
+import { can, type Actor } from "@doota/db/can";
+import { routingForHost } from "@doota/db/org-domains";
 import { importKey, decryptContent, type ContentKey } from "./crypto";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";

@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
+import * as schema from "@doota/db/schema";
 // Writes go through the `mail.*` alias, NOT the aggregated `schema.` namespace,
 // so the auth-boundary guard (which matches `.insert/.update/.delete(schema.…)`)
 // never trips — these are app-owned tables, freely writable.
-import * as mail from "../db/mail.schema";
+import * as mail from "@doota/db/mail.schema";
 import { currentRoutingSubdomains } from "./mirror";
 
 type Db = DrizzleD1Database<typeof schema>;

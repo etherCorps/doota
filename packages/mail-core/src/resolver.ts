@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
-import { domainOf, routingForHost } from "../org-domains";
+import * as schema from "@doota/db/schema";
+import { domainOf, routingForHost } from "@doota/db/org-domains";
 import { sendGrantUserIds } from "./mailbox";
 import { error } from "@sveltejs/kit";
-import { can } from "../can";
+import { can } from "@doota/db/can";
 
 type Db = DrizzleD1Database<typeof schema>;
 

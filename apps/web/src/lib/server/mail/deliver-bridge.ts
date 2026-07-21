@@ -1,5 +1,5 @@
 import { getRequestEvent } from "$app/server";
-import { deliverSubmissionNow, type OutboundConsumerEnv } from "./outbound-consumer";
+import { deliverSubmissionNow, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
 
 /**
  * TEMPORARY synchronous delivery bridge. The outbound queue's consumer lives in

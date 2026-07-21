@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 // Access + org context come from the parent layout (superadmin / org-admin).
 // Mutations re-gate through can() in the mailbox remote functions.

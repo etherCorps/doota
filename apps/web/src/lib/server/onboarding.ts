@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "./db/schema";
+import * as schema from "@doota/db/schema";
 import type { Auth } from "./auth.js";
 import { stampOnboarded } from "./auth/escape-hatches.js";
 

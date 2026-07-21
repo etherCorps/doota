@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 // Organizations == mail domains. Superadmins see every org (they onboard them);
 // admins/owners see only the ones they manage. This is the entry point for both

@@ -14,8 +14,8 @@
 		undoDraftById,
 		detachDraftAttachment
 	} from '$lib/rpc/draft.remote';
-	import type { SendIdentity } from '$lib/server/mail/identities';
-	import type { AttachmentRef } from '$lib/server/mail/drafts';
+	import type { SendIdentity } from '@doota/mail-core/identities';
+	import type { AttachmentRef } from '@doota/mail-core/drafts';
 
 	// Inline reply docked at the bottom of an open thread — the primary compose
 	// surface, and the one that should feel like a chat input. Replies default

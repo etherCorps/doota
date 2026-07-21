@@ -1,5 +1,5 @@
-import { handleEmail, type InboundJob, type MailEnv } from "doota/server/mail/inbound-worker";
-import { handleQueue } from "doota/server/mail/queue-consumer";
+import { handleEmail, type InboundJob, type MailEnv } from "@doota/mail-core/inbound-worker";
+import { handleQueue } from "@doota/mail-core/queue-consumer";
 
 /**
  * Inbound mail Worker (`doota-mail`). Owns the two handlers the app Worker does

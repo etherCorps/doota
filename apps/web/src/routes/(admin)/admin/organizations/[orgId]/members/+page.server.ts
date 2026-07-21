@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 function statusOf(u: {
   banned?: boolean | null;

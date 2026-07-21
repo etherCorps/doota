@@ -3,9 +3,9 @@ import { getDiceBearURL } from '$lib/utils/dice-bear.js';
 import { tryCatch } from '$lib/utils/try-catch.js';
 import { setupSchema } from '$lib/shared/model/auth.zod.schema.js';
 import { createGenesisSuperadmin } from '$lib/server/auth/escape-hatches.js';
-import { isServedDomain } from '$lib/server/org-domains.js';
-import { getDb } from '$lib/server/db';
-import { user } from '$lib/server/db/schema.js';
+import { isServedDomain } from '@doota/db/org-domains';
+import { getDb } from '@doota/db';
+import { user } from '@doota/db/schema';
 import { APIError } from 'better-auth/api';
 import { SETUP_TOKEN } from '$app/env/private';
 

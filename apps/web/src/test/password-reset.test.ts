@@ -9,7 +9,7 @@ vi.mock("$lib/server/auth/escape-hatches.js", () => ({
   },
   throttleAllows: vi.fn(),
 }));
-vi.mock("$lib/server/org-domains.js", () => ({
+vi.mock("@doota/db/org-domains", () => ({
   senderAddress: vi.fn(async () => ({ name: "Doota", email: "no-reply@acme.com" })),
   domainOf: vi.fn((e: string) => e.split("@")[1]),
 }));

@@ -2,9 +2,9 @@ import { command, query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import * as mail from "$lib/server/db/mail.schema.js";
-import { can } from "$lib/server/can.js";
+import * as schema from "@doota/db/schema";
+import * as mail from "@doota/db/mail.schema";
+import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import {
   upsertMailbox,
@@ -12,7 +12,7 @@ import {
   accessibleMailboxIds,
   manageGrantUserIds,
   addressHosts,
-} from "$lib/server/mail/mailbox.js";
+} from "@doota/mail-core/mailbox";
 import {
   createServiceApiKey,
   listApiKeysForMailbox,

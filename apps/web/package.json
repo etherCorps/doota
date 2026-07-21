@@ -3,10 +3,6 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "//exports": "Subpath so the workers/* packages import the app's shared server logic (mail pipeline, db schema) without reaching across package roots. App code itself keeps using the $lib alias.",
-  "exports": {
-    "./server/*": "./src/lib/server/*.ts"
-  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -72,6 +68,8 @@
     "zod": "^4.3.6"
   },
   "dependencies": {
+    "@doota/db": "workspace:*",
+    "@doota/mail-core": "workspace:*",
     "@ethercorps/un-jinja": "^1.0.0",
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",

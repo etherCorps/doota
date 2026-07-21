@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 // Super-admin "view all orgs" is an aggregate over the orgs they OWN — resolved
 // through membership (owner/admin role), NOT a non-member override.

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";
-import * as schema from "../db/schema";
+import * as schema from "@doota/db/schema";
 import { importKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";

@@ -2,10 +2,10 @@ import { command, form, getRequestEvent } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { recoveryEmailSchema } from '$lib/shared/model/auth.zod.schema.js';
-import { isServedDomain, senderAddress, domainOf } from '$lib/server/org-domains.js';
+import { isServedDomain, senderAddress, domainOf } from '@doota/db/org-domains';
 import { sendRecoveryEmailVerification } from '$lib/server/recovery-email.js';
 import { tokenStore } from '$lib/server/auth/escape-hatches.js';
-import * as schema from '$lib/server/db/schema.js';
+import * as schema from '@doota/db/schema';
 import { tryCatch } from '$lib/utils/try-catch.js';
 
 // One verification email per user per minute. This endpoint sends mail to an

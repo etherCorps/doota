@@ -7,10 +7,10 @@ import {
   stripQuotesHtml,
   stripHtmlTags,
   deriveContentKind,
-} from "$lib/server/mail/mail-thread-contract";
-import { importKey, encryptContent, decryptContent } from "$lib/server/mail/crypto";
-import { tokensFor } from "$lib/server/mail/search";
-import { deriveRole, baseAddress } from "$lib/server/mail/queue-consumer";
+} from "@doota/mail-core/mail-thread-contract";
+import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
+import { tokensFor } from "@doota/mail-core/search";
+import { deriveRole, baseAddress } from "@doota/mail-core/queue-consumer";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef"); // 32 bytes
 

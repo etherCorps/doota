@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema";
+import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { invalidateDomainCache } from "$lib/server/org-domains";
-import { resolveRecipient } from "$lib/server/mail/resolver";
+import { invalidateDomainCache } from "@doota/db/org-domains";
+import { resolveRecipient } from "@doota/mail-core/resolver";
 import {
   materializeMessage,
   materializeDelivery,
   type ParsedMessage,
-} from "$lib/server/mail/materialize";
-import { importKey } from "$lib/server/mail/crypto";
+} from "@doota/mail-core/materialize";
+import { importKey } from "@doota/mail-core/crypto";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
 const ORG = "org1";

@@ -2,7 +2,7 @@ import { command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { setOrgLifecycle } from "$lib/server/auth/escape-hatches.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
@@ -11,7 +11,7 @@ import {
   mirrorRoutingSubdomains,
   currentRoutingSubdomains,
   mirrorReturnPathDomain,
-} from "$lib/server/mail/mirror.js";
+} from "@doota/mail-core/mirror";
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
   addRoutingSubdomain,

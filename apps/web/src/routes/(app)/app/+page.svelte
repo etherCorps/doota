@@ -27,9 +27,9 @@
 		deleteNoteById
 	} from '$lib/rpc/thread.remote';
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById } from '$lib/rpc/draft.remote';
-	import type { SendIdentity } from '$lib/server/mail/identities';
-	import type { MessageDTO } from '$lib/server/mail/mail-thread-contract';
-	import type { ThreadSummary } from '$lib/server/mail/read';
+	import type { SendIdentity } from '@doota/mail-core/identities';
+	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
+	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';

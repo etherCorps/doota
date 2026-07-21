@@ -2,7 +2,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { Auth } from "$lib/server/auth.js";
 
 type SessionData = Auth["$Infer"]["Session"];
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import type { OnboardingStatus } from "$lib/server/onboarding.js";
 
 // See https://svelte.dev/docs/kit/types#app.d.ts

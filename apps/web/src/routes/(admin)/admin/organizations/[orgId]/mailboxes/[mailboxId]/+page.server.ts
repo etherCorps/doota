@@ -1,5 +1,5 @@
 import { error, redirect } from "@sveltejs/kit";
-import { loadMailboxDetail } from "$lib/server/mail/mailbox-detail.js";
+import { loadMailboxDetail } from "@doota/mail-core/mailbox-detail";
 
 // Detail/management view for a single shared mailbox. Access is already gated by
 // the org [orgId] layout (superadmin or org-admin). Personal mailboxes have no

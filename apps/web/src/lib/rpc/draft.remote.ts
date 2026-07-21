@@ -1,11 +1,11 @@
 import { command, query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
-import { importKey } from "$lib/server/mail/crypto.js";
-import type { OutboundEnv } from "$lib/server/mail/outbound.js";
+import { importKey } from "@doota/mail-core/crypto";
+import type { OutboundEnv } from "@doota/mail-core/outbound";
 import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
-import { listSendIdentities } from "$lib/server/mail/identities.js";
-import { suggestRecipients } from "$lib/server/mail/contacts.js";
+import { listSendIdentities } from "@doota/mail-core/identities";
+import { suggestRecipients } from "@doota/mail-core/contacts";
 import {
   createDraft,
   saveDraft,
@@ -16,7 +16,7 @@ import {
   sendDraft,
   undoDraftSend,
   listScheduled,
-} from "$lib/server/mail/drafts.js";
+} from "@doota/mail-core/drafts";
 
 /**
  * Compose surfaces (Part C/D). Drafts are per-user; each function re-derives the

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
-import { can } from "../can";
+import * as schema from "@doota/db/schema";
+import { can } from "@doota/db/can";
 
 type Db = DrizzleD1Database<typeof schema>;
 

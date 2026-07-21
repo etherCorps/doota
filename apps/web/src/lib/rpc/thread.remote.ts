@@ -2,15 +2,15 @@ import { query, command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import * as mail from "$lib/server/db/mail.schema.js";
-import { can } from "$lib/server/can.js";
+import * as schema from "@doota/db/schema";
+import * as mail from "@doota/db/mail.schema";
+import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { accessibleMailboxIds } from "$lib/server/mail/mailbox.js";
-import { importKey } from "$lib/server/mail/crypto.js";
-import { listThreads, getThread } from "$lib/server/mail/read.js";
-import { createNote, editNote, softDeleteNote } from "$lib/server/mail/notes.js";
-import { assignThread as doAssign, emitPlacementEvent } from "$lib/server/mail/collab.js";
+import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { importKey } from "@doota/mail-core/crypto";
+import { listThreads, getThread } from "@doota/mail-core/read";
+import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
+import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
 
 /**
  * Mailbox read paths. Access resolves through can() + mailbox_access grants —

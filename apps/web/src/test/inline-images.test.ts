@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractInlineImages } from "../lib/server/mail/inline-images";
+import { extractInlineImages } from "@doota/mail-core/inline-images";
 
 // 1x1 transparent PNG.
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

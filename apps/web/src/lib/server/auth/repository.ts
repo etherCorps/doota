@@ -7,7 +7,7 @@
  */
 import { eq } from "drizzle-orm";
 import { getRequestEvent } from "$app/server";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 /** Minimal user fields used to validate a recovery-email token. */
 export async function getUserForRecovery(

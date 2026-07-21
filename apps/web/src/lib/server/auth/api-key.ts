@@ -16,8 +16,8 @@
  */
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema.js";
-import { apiKey } from "../db/mail.schema.js";
+import * as schema from "@doota/db/schema";
+import { apiKey } from "@doota/db/mail.schema";
 
 type Db = DrizzleD1Database<typeof schema>;
 

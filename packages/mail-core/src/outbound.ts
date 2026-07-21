@@ -1,8 +1,8 @@
 import { and, eq, lte } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
-import * as mail from "../db/mail.schema";
-import { domainOf } from "../org-domains";
+import * as schema from "@doota/db/schema";
+import * as mail from "@doota/db/mail.schema";
+import { domainOf } from "@doota/db/org-domains";
 import { importKey } from "./crypto";
 import {
   materializeMessage,

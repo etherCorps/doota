@@ -6,5 +6,6 @@ onlyBuiltDependencies:
   - '@better-auth/root'
 packages:
   - 'apps/*'
+  - 'packages/*'
   - 'landing'
   - 'workers/*'

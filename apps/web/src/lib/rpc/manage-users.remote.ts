@@ -2,10 +2,10 @@ import { command, form, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import { Email } from "$lib/shared/model/utils.zod.schema.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
-import { can, type Actor } from "$lib/server/can.js";
+import { can, type Actor } from "@doota/db/can";
 import { actorOrgAdminOf, provisionUser } from "$lib/server/provisioning.js";
 import { purgeUserMemberships } from "$lib/server/auth/escape-hatches.js";
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema";
+import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { importKey, decryptContent } from "$lib/server/mail/crypto";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import {
   createDraft,
   saveDraft,
@@ -12,13 +12,13 @@ import {
   sendDraft,
   undoDraftSend,
   MAX_ATTACHMENT_BYTES,
-} from "$lib/server/mail/drafts";
-import { listSendIdentities } from "$lib/server/mail/identities";
-import { listScheduled, sweepStaleDrafts } from "$lib/server/mail/drafts";
-import * as mail from "$lib/server/db/mail.schema";
-import { suggestRecipients } from "$lib/server/mail/contacts";
-import { getThread } from "$lib/server/mail/read";
-import { encryptContent } from "$lib/server/mail/crypto";
+} from "@doota/mail-core/drafts";
+import { listSendIdentities } from "@doota/mail-core/identities";
+import { listScheduled, sweepStaleDrafts } from "@doota/mail-core/drafts";
+import * as mail from "@doota/db/mail.schema";
+import { suggestRecipients } from "@doota/mail-core/contacts";
+import { getThread } from "@doota/mail-core/read";
+import { encryptContent } from "@doota/mail-core/crypto";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
 const ORG = "org1";

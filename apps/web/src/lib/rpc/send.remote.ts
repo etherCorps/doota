@@ -2,12 +2,12 @@ import { command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import { can } from "$lib/server/can.js";
-import { sendGrantUserIds } from "$lib/server/mail/mailbox.js";
-import { enqueueSend, cancelSend, type OutboundEnv } from "$lib/server/mail/outbound.js";
+import * as schema from "@doota/db/schema";
+import { can } from "@doota/db/can";
+import { sendGrantUserIds } from "@doota/mail-core/mailbox";
+import { enqueueSend, cancelSend, type OutboundEnv } from "@doota/mail-core/outbound";
 import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
-import { resolveSender } from "$lib/server/mail/resolver";
+import { resolveSender } from "@doota/mail-core/resolver";
 
 /**
  * Send trigger surfaces (Part I). App-session sends go through these remote

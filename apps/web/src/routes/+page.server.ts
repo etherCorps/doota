@@ -1,5 +1,5 @@
 import { redirect } from "@sveltejs/kit";
-import { user as userTable } from "$lib/server/db/schema.js";
+import { user as userTable } from "@doota/db/schema";
 
 export const load = async ({ locals }) => {
   if (locals.user) {

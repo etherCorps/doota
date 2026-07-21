@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "$lib/server/db/schema";
+import * as schema from "@doota/db/schema";
 
 // Migrations live at the workspace root (../../.. from apps/web/src/test → root).
 const MIG_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "drizzle");

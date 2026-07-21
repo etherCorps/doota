@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import { fakeCtx, fakeDb, installEvent, clearEvent } from "./fakes";
 
 // invalidateDomainCache is a module-cache clear with real deps we don't want to
 // load; mock it so setOrgLifecycle's call is observable (guards finding F1).
-vi.mock("$lib/server/org-domains.js", () => ({ invalidateDomainCache: vi.fn() }));
+vi.mock("@doota/db/org-domains", () => ({ invalidateDomainCache: vi.fn() }));
 
-import { invalidateDomainCache } from "$lib/server/org-domains.js";
+import { invalidateDomainCache } from "@doota/db/org-domains";
 import {
   tokenStore,
   throttleAllows,

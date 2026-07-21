@@ -1,5 +1,5 @@
 import { and, count, eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 // Org overview — at-a-glance counts + domain status (from the layout). Access is
 // gated by the [orgId] layout (superadmin / org-admin).

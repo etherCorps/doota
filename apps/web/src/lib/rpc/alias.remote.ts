@@ -2,15 +2,15 @@ import { command, query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import { can } from "$lib/server/can.js";
+import * as schema from "@doota/db/schema";
+import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import {
   accessibleMailboxIds,
   createRandomAlias,
   setAliasEnabled,
   deleteAlias as deleteAliasRow,
-} from "$lib/server/mail/mailbox.js";
+} from "@doota/mail-core/mailbox";
 
 /**
  * Hide-my-email alias management. An actor may manage a mailbox's aliases if

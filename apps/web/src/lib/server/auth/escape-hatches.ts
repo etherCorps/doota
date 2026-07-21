@@ -14,8 +14,8 @@
 import { and, eq, gt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { getRequestEvent } from "$app/server";
-import * as schema from "$lib/server/db/schema.js";
-import { invalidateDomainCache } from "$lib/server/org-domains.js";
+import * as schema from "@doota/db/schema";
+import { invalidateDomainCache } from "@doota/db/org-domains";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import type { Auth } from "$lib/server/auth.js";
 import type { ZoneOnboardStatus } from "$lib/server/cloudflare.js";

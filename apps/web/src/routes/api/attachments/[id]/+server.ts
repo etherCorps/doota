@@ -1,9 +1,9 @@
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import { can } from "$lib/server/can.js";
+import * as schema from "@doota/db/schema";
+import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { accessibleMailboxIds } from "$lib/server/mail/mailbox.js";
+import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 
 /**
  * Serve a message attachment's bytes from R2. Access mirrors thread read: the

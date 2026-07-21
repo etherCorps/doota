@@ -2,15 +2,15 @@ import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { getRequestEvent } from "$app/server";
 import { ORIGIN } from "$app/env/public";
-import * as schema from "./db/schema";
+import * as schema from "@doota/db/schema";
 import { getDiceBearURL } from "$lib/utils/dice-bear.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
-import { can, type Actor } from "./can";
-import { isServedDomain, senderAddress } from "./org-domains";
+import { can, type Actor } from "@doota/db/can";
+import { isServedDomain, senderAddress } from "@doota/db/org-domains";
 import { sendMail, sendMailBackground } from "./mailer";
 import { renderEmail } from "./email";
 import { setUserAuthFlags } from "./auth/escape-hatches.js";
-import { ensurePersonalMailbox, addressHosts } from "./mail/mailbox.js";
+import { ensurePersonalMailbox, addressHosts } from "@doota/mail-core/mailbox";
 
 type Db = DrizzleD1Database<typeof schema>;
 

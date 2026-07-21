@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { error } from "@sveltejs/kit";
-import * as schema from "../db/schema";
-import * as mail from "../db/mail.schema";
+import * as schema from "@doota/db/schema";
+import * as mail from "@doota/db/mail.schema";
 import { grantedUserIds } from "./mailbox";
 
 type Db = DrizzleD1Database<typeof schema>;

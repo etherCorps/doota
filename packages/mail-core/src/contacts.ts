@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
+import * as schema from "@doota/db/schema";
 import { accessibleMailboxIds } from "./mailbox";
 
 type Db = DrizzleD1Database<typeof schema>;

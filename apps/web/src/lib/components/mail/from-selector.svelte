@@ -4,7 +4,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
-	import type { SendIdentity } from '$lib/server/mail/identities';
+	import type { SendIdentity } from '@doota/mail-core/identities';
 
 	// The identity picker that makes hide-my-email usable end to end. Addresses
 	// render in JetBrains Mono (font-mono) per the design system; an unavailable

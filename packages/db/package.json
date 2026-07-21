@@ -1,0 +1,14 @@
+{
+  "name": "@doota/db",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "//": "Data layer: drizzle schema (app + mail + auth), the D1 client, and the schema-level access helpers (can, org-domains). Leaf package — depends only on drizzle. Consumed by apps/web and @doota/mail-core via subpath imports (@doota/db/schema, @doota/db/can, ...).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2"
+  }
+}

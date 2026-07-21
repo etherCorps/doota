@@ -3,7 +3,7 @@ import { building } from "$app/env";
 import { createAuth } from "$lib/server/auth.js";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { drizzle } from "drizzle-orm/d1";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import {
   getOnboardingStatus,
   markOnboarded,

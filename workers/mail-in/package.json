@@ -10,7 +10,7 @@
     "check": "wrangler deploy --dry-run --outdir .wrangler/dry"
   },
   "dependencies": {
-    "doota": "workspace:*"
+    "@doota/mail-core": "workspace:*"
   },
   "devDependencies": {
     "wrangler": "^4.110.0"

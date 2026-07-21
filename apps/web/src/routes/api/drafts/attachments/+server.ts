@@ -1,10 +1,10 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
-import type { OutboundEnv } from "$lib/server/mail/outbound.js";
+import type { OutboundEnv } from "@doota/mail-core/outbound";
 import {
   stageDraftAttachment,
   readDraftAttachment,
   MAX_ATTACHMENT_BYTES,
-} from "$lib/server/mail/drafts.js";
+} from "@doota/mail-core/drafts";
 
 /**
  * Private attachment preview — streams a draft attachment to its OWNER for

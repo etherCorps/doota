@@ -1,7 +1,7 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { bearerFromHeaders } from "$lib/server/auth/api-key.js";
-import { runScheduledSweeps } from "$lib/server/mail/cron.js";
-import type { OutboundEnv } from "$lib/server/mail/outbound.js";
+import { runScheduledSweeps } from "@doota/mail-core/cron";
+import type { OutboundEnv } from "@doota/mail-core/outbound";
 
 /**
  * Cron BACKUP endpoint. The primary schedule is the `doota-mail` Worker's native

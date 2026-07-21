@@ -13,6 +13,11 @@ export default defineConfig({
       { find: "$app/env/private", replacement: r("./src/test/stubs/app-env-private.ts") },
       { find: "$app/env/public", replacement: r("./src/test/stubs/app-env-public.ts") },
       { find: /^\$lib\/(.*)$/, replacement: r("./src/lib/$1") },
+      // Workspace packages resolved to source so the node test env transforms
+      // their .ts directly (mirrors the package exports maps).
+      { find: /^@doota\/db\/(.*)$/, replacement: r("../../packages/db/src/$1") },
+      { find: "@doota/db", replacement: r("../../packages/db/src/index.ts") },
+      { find: /^@doota\/mail-core\/(.*)$/, replacement: r("../../packages/mail-core/src/$1") },
     ],
   },
   test: {

@@ -1,8 +1,8 @@
 import { error, redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { addressHosts } from "$lib/server/mail/mailbox.js";
+import { addressHosts } from "@doota/mail-core/mailbox";
 
 // Shared org context + access gate for every org sub-route (DNS / members /
 // settings). Children inherit `org` via merged layout data.

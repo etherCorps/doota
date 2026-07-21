@@ -34,8 +34,8 @@
 		detachDraftAttachment,
 		draftById
 	} from '$lib/rpc/draft.remote';
-	import type { SendIdentity } from '$lib/server/mail/identities';
-	import type { AttachmentRef } from '$lib/server/mail/drafts';
+	import type { SendIdentity } from '@doota/mail-core/identities';
+	import type { AttachmentRef } from '@doota/mail-core/drafts';
 
 	type Prefill = {
 		kind?: 'new' | 'forward';

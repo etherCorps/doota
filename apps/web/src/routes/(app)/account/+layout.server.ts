@@ -1,6 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
+import * as schema from "@doota/db/schema";
 
 // Shared account context for every /account sub-page (Profile / Security / Mail /
 // Developer). The tab nav + the "second factor required" gate live in the layout,

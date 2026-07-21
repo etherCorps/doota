@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema";
+import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { invalidateDomainCache } from "$lib/server/org-domains";
-import { importKey } from "$lib/server/mail/crypto";
-import { enqueueSend, cancelSend, sweepDueSubmissions } from "$lib/server/mail/outbound";
-import { processSubmission } from "$lib/server/mail/outbound-consumer";
-import { parseBounce, looksLikeBounce, applyBounce } from "$lib/server/mail/bounce";
+import { invalidateDomainCache } from "@doota/db/org-domains";
+import { importKey } from "@doota/mail-core/crypto";
+import { enqueueSend, cancelSend, sweepDueSubmissions } from "@doota/mail-core/outbound";
+import { processSubmission } from "@doota/mail-core/outbound-consumer";
+import { parseBounce, looksLikeBounce, applyBounce } from "@doota/mail-core/bounce";
 import {
   buildQuotedText,
   buildQuotedHtml,
   threadingHeaders,
   mintMessageId,
   tickForStatus,
-} from "$lib/server/mail/mail-thread-contract";
+} from "@doota/mail-core/mail-thread-contract";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
 const ORG = "org1";

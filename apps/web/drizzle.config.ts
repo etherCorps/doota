@@ -3,7 +3,7 @@ import { defineConfig } from 'drizzle-kit';
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
 
 export default defineConfig({
-	schema: './src/lib/server/db/schema.ts',
+	schema: '../../packages/db/src/schema.ts',
 	// Migrations live at the workspace root (shared with the mail Workers).
 	out: '../../drizzle',
 	dialect: 'sqlite',

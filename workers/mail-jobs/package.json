@@ -10,7 +10,8 @@
     "check": "wrangler deploy --dry-run --outdir .wrangler/dry"
   },
   "dependencies": {
-    "doota": "workspace:*",
+    "@doota/db": "workspace:*",
+    "@doota/mail-core": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

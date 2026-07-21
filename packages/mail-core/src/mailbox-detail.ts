@@ -1,6 +1,6 @@
 import { and, count, desc, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema.js";
+import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "./crypto.js";
 
 type Db = DrizzleD1Database<typeof schema>;

@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import * as schema from "../db/schema";
+import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
 import { listNotes, threadHasNotes } from "./notes";
 import { listSystemEvents } from "./collab";

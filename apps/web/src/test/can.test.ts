@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { can, type Actor, type Target } from "$lib/server/can.js";
+import { can, type Actor, type Target } from "@doota/db/can";
 
 // can() logs denials; silence it so test output stays clean.
 beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));

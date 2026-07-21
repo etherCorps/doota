@@ -2,10 +2,10 @@ import { query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { desc, inArray } from "drizzle-orm";
-import * as schema from "$lib/server/db/schema.js";
-import { importKey, decryptContent } from "$lib/server/mail/crypto.js";
-import { searchMailbox } from "$lib/server/mail/search.js";
-import { accessibleMailboxIds } from "$lib/server/mail/mailbox.js";
+import * as schema from "@doota/db/schema";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { searchMailbox } from "@doota/mail-core/search";
+import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 
 /**
  * Mail search (command palette). Blind-token FTS over the user's OWN mailboxes
