@@ -6,7 +6,12 @@ import * as schema from "$lib/server/db/schema.js";
 import * as mail from "$lib/server/db/mail.schema.js";
 import { can } from "$lib/server/can.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { upsertMailbox, grantAccess, accessibleMailboxIds } from "$lib/server/mail/mailbox.js";
+import {
+  upsertMailbox,
+  grantAccess,
+  accessibleMailboxIds,
+  manageGrantUserIds,
+} from "$lib/server/mail/mailbox.js";
 import { inArray } from "drizzle-orm";
 
 /**
@@ -43,13 +48,39 @@ async function activeOrg(orgId: string) {
   return org;
 }
 
-/** Assert the actor may manage mailboxes in `orgId`. */
+/** Assert the actor may manage mailboxes in `orgId` (org-admin / superadmin). */
 async function assertManageOrg(orgId: string) {
   const a = await actor();
   if (!can(a, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
     error(403, "You don't manage mailboxes for this organization.");
   }
   return a;
+}
+
+/**
+ * Assert the actor may manage THIS mailbox — org-admin/superadmin OR a
+ * can_manage grant on the mailbox itself. Returns the box for follow-up checks.
+ */
+async function assertManageMailbox(mailboxId: string) {
+  const { locals } = getRequestEvent();
+  const box = await locals.db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, mailboxId),
+    columns: { id: true, orgId: true, isPersonal: true },
+  });
+  if (!box) error(404, "Mailbox not found");
+  const a = await actor();
+  const grantedManagerIds = await manageGrantUserIds(locals.db, mailboxId);
+  if (
+    !can(a, "manage", {
+      type: "mailbox",
+      ownerId: "",
+      organizationId: box.orgId,
+      grantedManagerIds,
+    })
+  ) {
+    error(403, "You don't manage this mailbox.");
+  }
+  return box;
 }
 
 export const listMailboxes = query(z.string(), async (orgId) => {
@@ -83,6 +114,23 @@ export const myMailboxes = query(async () => {
   });
 });
 
+/** Mailbox ids the current user manages (can_manage grants) — drives the "Manage
+ * mailbox" affordance in the mail client. */
+export const myManagedMailboxIds = query(async () => {
+  const user = requireUser();
+  const { locals } = getRequestEvent();
+  const rows = await locals.db
+    .select({ mailboxId: schema.mailboxAccess.mailboxId })
+    .from(schema.mailboxAccess)
+    .where(
+      and(
+        eq(schema.mailboxAccess.userId, user.id),
+        eq(schema.mailboxAccess.canManage, true),
+      ),
+    );
+  return rows.map((r) => r.mailboxId);
+});
+
 /** Create a shared mailbox (e.g. support@) on the org's apex domain. */
 export const createSharedMailbox = command(
   z.object({
@@ -112,12 +160,7 @@ export const renameMailbox = command(
   z.object({ mailboxId: z.string().min(1), displayName: z.string().trim().max(120) }),
   async ({ mailboxId, displayName }) => {
     const { locals } = getRequestEvent();
-    const box = await locals.db.query.mailbox.findFirst({
-      where: eq(schema.mailbox.id, mailboxId),
-      columns: { orgId: true },
-    });
-    if (!box) error(404, "Mailbox not found");
-    await assertManageOrg(box.orgId);
+    await assertManageMailbox(mailboxId);
     await locals.db.update(mail.mailbox).set({ displayName }).where(eq(mail.mailbox.id, mailboxId));
     return { success: true as const };
   },
@@ -127,13 +170,8 @@ export const deactivateMailbox = command(
   z.object({ mailboxId: z.string().min(1), active: z.boolean() }),
   async ({ mailboxId, active }) => {
     const { locals } = getRequestEvent();
-    const box = await locals.db.query.mailbox.findFirst({
-      where: eq(schema.mailbox.id, mailboxId),
-      columns: { orgId: true, isPersonal: true },
-    });
-    if (!box) error(404, "Mailbox not found");
+    const box = await assertManageMailbox(mailboxId);
     if (box.isPersonal) error(400, "Personal mailboxes can't be deactivated here.");
-    await assertManageOrg(box.orgId);
     await locals.db
       .update(mail.mailbox)
       .set({ isActive: active })
@@ -147,15 +185,11 @@ export const grantMailboxAccess = command(
     mailboxId: z.string().min(1),
     userId: z.string().min(1),
     canManage: z.boolean().optional(),
+    canSend: z.boolean().optional(),
   }),
-  async ({ mailboxId, userId, canManage }) => {
+  async ({ mailboxId, userId, canManage, canSend }) => {
     const { locals } = getRequestEvent();
-    const box = await locals.db.query.mailbox.findFirst({
-      where: eq(schema.mailbox.id, mailboxId),
-      columns: { orgId: true },
-    });
-    if (!box) error(404, "Mailbox not found");
-    await assertManageOrg(box.orgId);
+    const box = await assertManageMailbox(mailboxId);
     // The grantee must be a member of the same org.
     const membership = await locals.db.query.member.findFirst({
       where: and(
@@ -165,7 +199,21 @@ export const grantMailboxAccess = command(
       columns: { id: true },
     });
     if (!membership) error(400, "That user isn't a member of this organization.");
-    await grantAccess(locals.db, { userId, mailboxId, canManage: canManage ?? false });
+    // Merge with the existing grant so toggling one capability doesn't reset the
+    // other (grantAccess writes both columns on upsert).
+    const existing = await locals.db.query.mailboxAccess.findFirst({
+      where: and(
+        eq(schema.mailboxAccess.userId, userId),
+        eq(schema.mailboxAccess.mailboxId, mailboxId),
+      ),
+      columns: { canManage: true, canSend: true },
+    });
+    await grantAccess(locals.db, {
+      userId,
+      mailboxId,
+      canManage: canManage ?? existing?.canManage ?? false,
+      canSend: canSend ?? existing?.canSend ?? true,
+    });
     return { success: true as const };
   },
 );
@@ -174,13 +222,8 @@ export const revokeMailboxAccess = command(
   z.object({ mailboxId: z.string().min(1), userId: z.string().min(1) }),
   async ({ mailboxId, userId }) => {
     const { locals } = getRequestEvent();
-    const box = await locals.db.query.mailbox.findFirst({
-      where: eq(schema.mailbox.id, mailboxId),
-      columns: { orgId: true, isPersonal: true },
-    });
-    if (!box) error(404, "Mailbox not found");
+    const box = await assertManageMailbox(mailboxId);
     if (box.isPersonal) error(400, "Can't revoke access to a personal mailbox.");
-    await assertManageOrg(box.orgId);
     await locals.db
       .delete(mail.mailboxAccess)
       .where(

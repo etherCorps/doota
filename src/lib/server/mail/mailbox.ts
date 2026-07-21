@@ -119,6 +119,44 @@ export async function sendGrantUserIds(db: Db, mailboxId: string): Promise<strin
   return rows.map((r) => r.userId);
 }
 
+/**
+ * User ids who may MANAGE a mailbox (canManage grants only) — feeds can()'s
+ * grantedManagerIds so a mailbox manager can administer THAT mailbox without
+ * being an org admin.
+ */
+export async function manageGrantUserIds(db: Db, mailboxId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: schema.mailboxAccess.userId })
+    .from(schema.mailboxAccess)
+    .where(
+      and(
+        eq(schema.mailboxAccess.mailboxId, mailboxId),
+        eq(schema.mailboxAccess.canManage, true),
+      ),
+    );
+  return rows.map((r) => r.userId);
+}
+
+/** Mailbox ids in an org that the user manages (canManage grants). */
+export async function managedMailboxIds(
+  db: Db,
+  userId: string,
+  orgId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ mailboxId: schema.mailboxAccess.mailboxId })
+    .from(schema.mailboxAccess)
+    .innerJoin(schema.mailbox, eq(schema.mailbox.id, schema.mailboxAccess.mailboxId))
+    .where(
+      and(
+        eq(schema.mailboxAccess.userId, userId),
+        eq(schema.mailboxAccess.canManage, true),
+        eq(schema.mailbox.orgId, orgId),
+      ),
+    );
+  return rows.map((r) => r.mailboxId);
+}
+
 const ALIAS_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"; // no ambiguous 0/o/1/l
 function randomLocal(len = 12): string {
   const bytes = crypto.getRandomValues(new Uint8Array(len));

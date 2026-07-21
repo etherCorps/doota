@@ -1,31 +1,23 @@
 <script lang="ts">
 	import type { ColumnDef } from '@tanstack/table-core';
 	import { invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as InputGroup from '$lib/components/ui/input-group/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import * as Table from '$lib/components/ui/table/index.js';
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
-	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
-	import {
-		createSharedMailbox,
-		deactivateMailbox,
-		grantMailboxAccess,
-		revokeMailboxAccess
-	} from '$lib/rpc/mailbox.remote';
+	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
 	import { generateAlias } from '$lib/rpc/alias.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-	import UsersIcon from '@lucide/svelte/icons/users';
-	import SearchIcon from '@lucide/svelte/icons/search';
 
 	let { data } = $props();
 	const org = $derived(data.org);
+	const manageBase = $derived(`${resolve('/admin/organizations')}/${org.id}/mailboxes`);
 
 	type Mailbox = (typeof data.mailboxes)[number];
 
@@ -43,33 +35,16 @@
 	let displayName = $state('');
 	let saving = $state(false);
 
-	// Which shared mailbox's access dialog is open, and per-toggle busy state.
-	let accessFor = $state<{ id: string; address: string } | null>(null);
-	let busyUser = $state<string | null>(null);
-	let memberQuery = $state('');
-
-	// Members filtered by the dialog's search box (name or email).
-	const filteredMembers = $derived.by(() => {
-		const q = memberQuery.trim().toLowerCase();
-		if (!q) return data.members;
-		return data.members.filter(
-			(m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
-		);
-	});
-
-	// mailboxId → (userId → canManage) from the current grants (recomputed on load).
-	const grantsByMailbox = $derived.by(() => {
-		const map = new Map<string, Map<string, boolean>>();
+	// mailboxId → number of members with any grant (drives the access count column).
+	const accessCountByMailbox = $derived.by(() => {
+		const map = new Map<string, Set<string>>();
 		for (const g of data.grants) {
-			const inner = map.get(g.mailboxId) ?? new Map<string, boolean>();
-			inner.set(g.userId, g.canManage);
-			map.set(g.mailboxId, inner);
+			const set = map.get(g.mailboxId) ?? new Set<string>();
+			set.add(g.userId);
+			map.set(g.mailboxId, set);
 		}
 		return map;
 	});
-	const currentGrants = $derived(
-		accessFor ? (grantsByMailbox.get(accessFor.id) ?? new Map<string, boolean>()) : new Map<string, boolean>()
-	);
 
 	const sharedColumns: ColumnDef<Mailbox, unknown>[] = [
 		{ accessorKey: 'address', header: 'Address', cell: ({ row }) => renderSnippet(addressCell, row.original) },
@@ -103,49 +78,12 @@
 		}
 	}
 
-	async function toggleActive(id: string, active: boolean) {
-		try {
-			await deactivateMailbox({ mailboxId: id, active });
-			toast.success(active ? 'Mailbox activated.' : 'Mailbox deactivated.');
-			await invalidateAll();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update the mailbox.');
-		}
-	}
-
 	async function makeAlias(id: string) {
 		try {
 			const res = await generateAlias({ mailboxId: id });
 			toast.success(`Alias created: ${res.address}`);
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Could not create an alias.');
-		}
-	}
-
-	async function setAccess(userId: string, granted: boolean) {
-		if (!accessFor) return;
-		busyUser = userId;
-		try {
-			if (granted) await grantMailboxAccess({ mailboxId: accessFor.id, userId });
-			else await revokeMailboxAccess({ mailboxId: accessFor.id, userId });
-			await invalidateAll();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update access.');
-		} finally {
-			busyUser = null;
-		}
-	}
-
-	async function setManage(userId: string, canManage: boolean) {
-		if (!accessFor) return;
-		busyUser = userId;
-		try {
-			await grantMailboxAccess({ mailboxId: accessFor.id, userId, canManage });
-			await invalidateAll();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update access.');
-		} finally {
-			busyUser = null;
 		}
 	}
 </script>
@@ -155,7 +93,7 @@
 {/snippet}
 
 {#snippet accessCell(mb: Mailbox)}
-	{@const n = grantsByMailbox.get(mb.id)?.size ?? 0}
+	{@const n = accessCountByMailbox.get(mb.id)?.size ?? 0}
 	<span class="text-muted-foreground">{n} {n === 1 ? 'member' : 'members'}</span>
 {/snippet}
 
@@ -164,18 +102,8 @@
 {/snippet}
 
 {#snippet sharedActionsCell(mb: Mailbox)}
-	<div class="flex justify-end gap-2">
-		<Button
-			variant="outline"
-			size="sm"
-			class="gap-1.5"
-			onclick={() => (accessFor = { id: mb.id, address: mb.address })}
-		>
-			<UsersIcon class="size-3.5" /> Manage access
-		</Button>
-		<Button variant="outline" size="sm" onclick={() => toggleActive(mb.id, !mb.isActive)}>
-			{mb.isActive ? 'Deactivate' : 'Activate'}
-		</Button>
+	<div class="flex justify-end">
+		<Button variant="outline" size="sm" href="{manageBase}/{mb.id}">Manage</Button>
 	</div>
 {/snippet}
 
@@ -278,80 +206,6 @@
 					Create
 				</Button>
 			</div>
-		</div>
-	</Dialog.Content>
-</Dialog.Root>
-
-<Dialog.Root open={!!accessFor} onOpenChange={(o) => !o && ((accessFor = null), (memberQuery = ''))}>
-	<Dialog.Content class="sm:max-w-xl">
-		<Dialog.Header>
-			<Dialog.Title class="font-heading">Manage access</Dialog.Title>
-			<Dialog.Description>
-				Who can read and send as <span class="font-mono">{accessFor?.address}</span>. Managers can
-				also administer the mailbox.
-			</Dialog.Description>
-		</Dialog.Header>
-
-		<div class="relative">
-			<SearchIcon class="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
-			<Input bind:value={memberQuery} placeholder="Search members by name or email…" class="pl-8" />
-		</div>
-
-		<ScrollArea class="max-h-96 rounded-md border">
-			<Table.Root>
-				<Table.Header>
-					<Table.Row>
-						<Table.Head>Member</Table.Head>
-						<Table.Head class="w-24 text-center">Access</Table.Head>
-						<Table.Head class="w-28 text-center">Manager</Table.Head>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each filteredMembers as m (m.id)}
-						{@const granted = currentGrants.has(m.id)}
-						{@const canManage = currentGrants.get(m.id) ?? false}
-						<Table.Row>
-							<Table.Cell>
-								<div class="flex min-w-0 flex-col">
-									<span class="truncate text-sm font-medium">{m.name}</span>
-									<span class="text-muted-foreground truncate font-mono text-xs">{m.email}</span>
-								</div>
-							</Table.Cell>
-							<Table.Cell class="text-center">
-								<Switch
-									checked={granted}
-									disabled={busyUser === m.id}
-									onCheckedChange={(v) => setAccess(m.id, v)}
-									aria-label="Access"
-								/>
-							</Table.Cell>
-							<Table.Cell class="text-center">
-								{#if granted}
-									<Switch
-										checked={canManage}
-										disabled={busyUser === m.id}
-										onCheckedChange={(v) => setManage(m.id, v)}
-										aria-label="Manager"
-									/>
-								{:else}
-									<span class="text-muted-foreground text-xs">—</span>
-								{/if}
-							</Table.Cell>
-						</Table.Row>
-					{:else}
-						<Table.Row>
-							<Table.Cell colspan={3} class="text-muted-foreground py-6 text-center text-sm">
-								{data.members.length ? 'No members match your search.' : 'No members in this organization yet.'}
-							</Table.Cell>
-						</Table.Row>
-					{/each}
-				</Table.Body>
-			</Table.Root>
-		</ScrollArea>
-
-		<div class="flex items-center justify-between pt-2">
-			<span class="text-muted-foreground text-xs">{currentGrants.size} with access</span>
-			<Button type="button" variant="ghost" onclick={() => ((accessFor = null), (memberQuery = ''))}>Done</Button>
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
