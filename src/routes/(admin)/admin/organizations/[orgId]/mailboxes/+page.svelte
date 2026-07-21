@@ -10,6 +10,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
+	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
+	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
@@ -125,36 +127,38 @@
 	</div>
 {/snippet}
 
-<div class="flex flex-col gap-6">
-	<section class="flex flex-col gap-3">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<!-- Segmented filter -->
-			<div class="bg-muted/50 inline-flex rounded-lg border p-0.5">
-				{#each segments as s (s.key)}
-					<button
-						type="button"
-						class="rounded-md px-3 py-1 text-sm font-medium transition-colors {filter === s.key
-							? 'bg-background shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'}"
-						onclick={() => (filter = s.key)}
-					>
-						{s.label}
-						<span class="text-muted-foreground ml-1 text-xs tabular-nums">{s.n}</span>
-					</button>
-				{/each}
-			</div>
+<div class="flex flex-col gap-4">
+	<PageHeader title="Mailboxes" description="Team, service, and individual addresses on {org.domain}.">
+		{#snippet action()}
 			<Button class="gap-1.5" onclick={() => (addOpen = true)}>
 				<PlusIcon class="size-4" /> Add mailbox
 			</Button>
-		</div>
-		<DataTable
-			{columns}
-			data={filtered}
-			filterColumn="address"
-			filterPlaceholder="Search mailboxes…"
-			empty="No mailboxes in this view."
-		/>
-	</section>
+		{/snippet}
+	</PageHeader>
+
+	<ToggleGroup.Root
+		type="single"
+		variant="outline"
+		size="sm"
+		value={filter}
+		onValueChange={(v) => v && (filter = v as Filter)}
+		class="justify-start"
+	>
+		{#each segments as s (s.key)}
+			<ToggleGroup.Item value={s.key} class="gap-1.5">
+				{s.label}
+				<span class="text-muted-foreground text-xs tabular-nums">{s.n}</span>
+			</ToggleGroup.Item>
+		{/each}
+	</ToggleGroup.Root>
+
+	<DataTable
+		{columns}
+		data={filtered}
+		filterColumn="address"
+		filterPlaceholder="Search mailboxes…"
+		empty="No mailboxes in this view."
+	/>
 </div>
 
 <Dialog.Root bind:open={addOpen}>

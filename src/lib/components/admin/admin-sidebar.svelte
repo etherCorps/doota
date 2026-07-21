@@ -9,7 +9,7 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import MailIcon from '@lucide/svelte/icons/mail';
 
-	let { user }: { user: { name: string; email: string; role: string, image: string } } = $props();
+	let { user }: { user: { name: string; email: string; role: string; image?: string | null } } = $props();
 
 	const nav = [
 		{ href: '/admin', label: 'Dashboard', icon: LayoutDashboardIcon },

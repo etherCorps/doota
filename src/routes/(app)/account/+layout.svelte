@@ -5,12 +5,9 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Avatar from '$lib/components/ui/avatar/index.js';
 	import { Badge } from '$lib/components/ui/badge';
-	import UserIcon from '@lucide/svelte/icons/user';
-	import ShieldIcon from '@lucide/svelte/icons/shield';
+	import TabNav from '$lib/components/admin/tab-nav.svelte';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
-	import MailIcon from '@lucide/svelte/icons/mail';
-	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import LifeBuoyIcon from '@lucide/svelte/icons/life-buoy';
 
 	let { data, children } = $props();
@@ -36,13 +33,15 @@
 	);
 
 	const base = resolve('/account');
-	const TABS = [
-		{ slug: 'profile', label: 'Profile', icon: UserIcon },
-		{ slug: 'security', label: 'Security', icon: ShieldIcon },
-		{ slug: 'mail', label: 'Mail', icon: MailIcon },
-		{ slug: 'developer', label: 'Developer', icon: KeyRoundIcon }
-	];
 	const current = $derived(page.url.pathname.split('/').filter(Boolean).pop());
+	const tabs = $derived(
+		[
+			{ slug: 'profile', label: 'Profile' },
+			{ slug: 'security', label: 'Security' },
+			{ slug: 'mail', label: 'Mail' },
+			{ slug: 'developer', label: 'Developer' }
+		].map((t) => ({ href: `${base}/${t.slug}`, label: t.label, active: current === t.slug }))
+	);
 </script>
 
 <div class="flex w-full flex-col">
@@ -104,32 +103,10 @@
 		</Card.Card>
 	{/if}
 
-	<div class="flex flex-col gap-6 md:flex-row md:gap-10">
-		<!-- Nav: horizontal tab strip on mobile, vertical rail on desktop. -->
-		<nav class="md:w-52 md:shrink-0">
-			<div class="flex gap-1 border-b md:flex-col md:gap-0.5 md:border-b-0">
-				{#each TABS as t (t.slug)}
-					<a
-						href="{base}/{t.slug}"
-						class={cn(
-							'flex items-center gap-2 text-sm font-medium transition-colors',
-							// mobile underline tabs / desktop pill rail
-							'-mb-px border-b-2 px-3 py-2 md:mb-0 md:rounded-md md:border-b-0 md:px-3 md:py-2',
-							current === t.slug
-								? 'border-primary text-foreground md:bg-muted md:border-transparent'
-								: 'text-muted-foreground hover:text-foreground hover:md:bg-muted/60 border-transparent'
-						)}
-					>
-						<t.icon class="size-4 shrink-0" />
-						<span class="hidden sm:inline">{t.label}</span>
-					</a>
-				{/each}
-			</div>
-		</nav>
+	<TabNav {tabs} />
 
-		<div class="min-w-0 max-w-2xl flex-1">
-			{@render children()}
-		</div>
+	<div class="min-w-0 max-w-2xl">
+		{@render children()}
 	</div>
 	</div>
 </div>

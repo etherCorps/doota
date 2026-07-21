@@ -13,6 +13,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
+	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import { createUser, pauseUser, removeUser } from '$lib/rpc/manage-users.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PauseIcon from '@lucide/svelte/icons/pause';
@@ -103,20 +104,22 @@
 	</ButtonGroup>
 {/snippet}
 
-{#snippet addAction()}
-	<Button class="gap-1.5" onclick={() => (addOpen = true)}>
-		<PlusIcon class="size-4" /> Add member
-	</Button>
-{/snippet}
-
-<DataTable
-	{columns}
-	data={data.members}
-	filterColumn="name"
-	filterPlaceholder="Search members…"
-	empty="No members yet. Add one to send an invite."
-	actions={addAction}
-/>
+<div class="flex flex-col gap-4">
+	<PageHeader title="Members" description="People with access to {org.domain}. Adding one provisions a mailbox and sends an invite.">
+		{#snippet action()}
+			<Button class="gap-1.5" onclick={() => (addOpen = true)}>
+				<PlusIcon class="size-4" /> Add member
+			</Button>
+		{/snippet}
+	</PageHeader>
+	<DataTable
+		{columns}
+		data={data.members}
+		filterColumn="name"
+		filterPlaceholder="Search members…"
+		empty="No members yet. Add one to send an invite."
+	/>
+</div>
 
 <Dialog.Root bind:open={addOpen}>
 	<Dialog.Content class="sm:max-w-md">
