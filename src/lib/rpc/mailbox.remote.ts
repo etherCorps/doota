@@ -11,6 +11,7 @@ import {
   grantAccess,
   accessibleMailboxIds,
   manageGrantUserIds,
+  addressHosts,
 } from "$lib/server/mail/mailbox.js";
 import {
   createServiceApiKey,
@@ -121,39 +122,52 @@ export const myMailboxes = query(async () => {
 });
 
 /** Mailbox ids the current user manages (can_manage grants) — drives the "Manage
- * mailbox" affordance in the mail client. */
+ * mailbox" affordance in the mail client. Personal mailboxes are excluded: the
+ * owner holds can_manage on their own box, but it has no management surface (the
+ * detail route 404s on personal), so it must not show a Manage link. */
 export const myManagedMailboxIds = query(async () => {
   const user = requireUser();
   const { locals } = getRequestEvent();
   const rows = await locals.db
     .select({ mailboxId: schema.mailboxAccess.mailboxId })
     .from(schema.mailboxAccess)
+    .innerJoin(schema.mailbox, eq(schema.mailbox.id, schema.mailboxAccess.mailboxId))
     .where(
       and(
         eq(schema.mailboxAccess.userId, user.id),
         eq(schema.mailboxAccess.canManage, true),
+        eq(schema.mailbox.isPersonal, false),
       ),
     );
   return rows.map((r) => r.mailboxId);
 });
 
-/** Create a shared or service mailbox on the org's apex domain. Service
- * mailboxes are non-human sending identities that API keys are issued against. */
+/** Create a shared or service mailbox on the org's apex domain or a configured
+ * routing subdomain. Service mailboxes are non-human sending identities that API
+ * keys are issued against. */
 export const createSharedMailbox = command(
   z.object({
     orgId: z.string().min(1),
     localPart: z.string().trim().toLowerCase().min(1).max(64),
     displayName: z.string().trim().max(120).optional(),
     isService: z.boolean().optional(),
+    /** Host for the address; the apex when omitted. Must be the apex or a
+     * configured routing subdomain of this org. */
+    host: z.string().trim().toLowerCase().optional(),
   }),
-  async ({ orgId, localPart, displayName, isService }) => {
+  async ({ orgId, localPart, displayName, isService, host }) => {
     await assertManageOrg(orgId);
     if (!LOCAL_RE.test(localPart)) {
       return { success: false as const, message: "Enter a valid mailbox name, e.g. support." };
     }
     const org = await activeOrg(orgId);
-    const address = `${localPart}@${org.domain}`;
     const { locals } = getRequestEvent();
+    const hosts = await addressHosts(locals.db, orgId, org.domain);
+    const chosenHost = host ?? hosts[0];
+    if (!hosts.includes(chosenHost)) {
+      return { success: false as const, message: `${chosenHost} isn't a configured domain for this org.` };
+    }
+    const address = `${localPart}@${chosenHost}`;
     const id = await upsertMailbox(locals.db, {
       orgId,
       address,

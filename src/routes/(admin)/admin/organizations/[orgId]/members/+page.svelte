@@ -14,6 +14,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import PageHeader from '$lib/components/admin/page-header.svelte';
+	import HostSelect from '$lib/components/admin/host-select.svelte';
 	import { createUser, pauseUser, removeUser } from '$lib/rpc/manage-users.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PauseIcon from '@lucide/svelte/icons/pause';
@@ -32,6 +33,7 @@
 	];
 
 	let addOpen = $state(false);
+	let host = $derived(data.mailHosts[0]);
 	let handled: unknown;
 	$effect(() => {
 		const result = createUser.result;
@@ -150,9 +152,10 @@
 						required
 					/>
 					<InputGroup.Addon align="inline-end">
-						<InputGroup.Text class="font-mono">@{org.domain}</InputGroup.Text>
+						<HostSelect hosts={data.mailHosts} bind:value={host} />
 					</InputGroup.Addon>
 				</InputGroup.Root>
+				<input type="hidden" name="host" value={host} />
 				{#each createUser.fields.email.issues() ?? [] as issue (issue)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}

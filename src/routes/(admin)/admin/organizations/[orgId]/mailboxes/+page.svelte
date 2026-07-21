@@ -12,6 +12,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
 	import PageHeader from '$lib/components/admin/page-header.svelte';
+	import HostSelect from '$lib/components/admin/host-select.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
@@ -47,6 +48,7 @@
 	let localPart = $state('');
 	let displayName = $state('');
 	let isService = $state(false);
+	let host = $state(data.mailHosts[0]);
 	let saving = $state(false);
 
 	// mailboxId → number of members with any grant (drives the access count column).
@@ -71,13 +73,14 @@
 	async function createMailbox() {
 		saving = true;
 		try {
-			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName, isService });
+			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName, isService, host });
 			if (res.success) {
 				toast.success(`Created ${res.address}`);
 				addOpen = false;
 				localPart = '';
 				displayName = '';
 				isService = false;
+				host = data.mailHosts[0];
 				await invalidateAll();
 			} else {
 				toast.error(res.message);
@@ -177,7 +180,7 @@
 				<InputGroup.Root>
 					<InputGroup.Input bind:value={localPart} placeholder="support" autocomplete="off" />
 					<InputGroup.Addon align="inline-end">
-						<InputGroup.Text class="font-mono">@{org.domain}</InputGroup.Text>
+						<HostSelect hosts={data.mailHosts} bind:value={host} />
 					</InputGroup.Addon>
 				</InputGroup.Root>
 			</Field.Field>

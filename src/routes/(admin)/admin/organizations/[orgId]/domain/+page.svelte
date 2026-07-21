@@ -1,3 +1,11 @@
+<script module lang="ts">
+	type DnsRecord = { type: string; name: string; content: string; priority?: number; ttl?: number; proxied?: boolean };
+	// Session-lived cache so revisiting the Domain tab doesn't re-hit the Cloudflare
+	// API each mount. 3-min TTL; survives navigation (module scope), cleared on reload.
+	const DNS_TTL_MS = 3 * 60 * 1000;
+	const dnsCache = new Map<string, { at: number; rows: DnsRecord[] }>();
+</script>
+
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -41,9 +49,10 @@
 	let refreshing = $state(false);
 	let nameservers = $state<string[] | null>(null);
 	let dnsLoading = $state(false);
-	let dnsRecords = $state<
-		{ category: string; type: string; name: string; value: string; priority?: number }[]
-	>([]);
+	let dnsRecords = $state<DnsRecord[]>([]);
+	let dnsOpen = $state<Record<string, boolean>>({});
+	const dnsKey = (r: DnsRecord) => r.type + r.name + r.content;
+	const toggleDns = (k: string) => (dnsOpen = { ...dnsOpen, [k]: !dnsOpen[k] });
 
 	// --- Inbound routing (subdomains) -------------------------------------------
 	type Routing = { enabled: boolean; supportSubaddress: boolean; status?: string; subdomains: string[] };
@@ -56,13 +65,19 @@
 
 	onMount(async () => {
 		if (org.zoneId) {
-			dnsLoading = true;
-			try {
-				dnsRecords = await domainDnsRecords(org.id);
-			} catch (err) {
-				toast.error(err instanceof Error ? err.message : 'Could not load DNS records.');
-			} finally {
-				dnsLoading = false;
+			const cached = dnsCache.get(org.id);
+			if (cached && Date.now() - cached.at < DNS_TTL_MS) {
+				dnsRecords = cached.rows;
+			} else {
+				dnsLoading = true;
+				try {
+					dnsRecords = await domainDnsRecords(org.id);
+					dnsCache.set(org.id, { at: Date.now(), rows: dnsRecords });
+				} catch (err) {
+					toast.error(err instanceof Error ? err.message : 'Could not load DNS records.');
+				} finally {
+					dnsLoading = false;
+				}
 			}
 		}
 		if (ready) {
@@ -186,29 +201,41 @@
 					<Spinner /> Loading records…
 				</div>
 			{:else if dnsRecords.length === 0}
-				<p class="text-muted-foreground text-sm">
-					No records to populate — Cloudflare-hosted DNS manages them automatically.
-				</p>
+				<p class="text-muted-foreground text-sm">No DNS records in this zone.</p>
 			{:else}
 				<p class="text-muted-foreground text-xs">
-					Add these at your DNS provider if the zone isn't Cloudflare-hosted:
+					Published records for {org.domain} — the apex and every subdomain, live from Cloudflare.
 				</p>
 				<Table.Root>
 					<Table.Header>
 						<Table.Row>
 							<Table.Head class="w-20">Type</Table.Head>
 							<Table.Head>Name</Table.Head>
-							<Table.Head>Value</Table.Head>
-							<Table.Head class="w-20 text-right">Priority</Table.Head>
+							<Table.Head>Content</Table.Head>
+							<Table.Head class="w-16 text-right">Priority</Table.Head>
+							<Table.Head class="w-16 text-right">TTL</Table.Head>
+							<Table.Head class="w-20 text-center">Proxied</Table.Head>
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each dnsRecords as r (r.type + r.name + r.value)}
+						{#each dnsRecords as r (dnsKey(r))}
+							{@const open = dnsOpen[dnsKey(r)]}
 							<Table.Row>
 								<Table.Cell class="font-mono">{r.type}</Table.Cell>
-								<Table.Cell class="font-mono break-all">{r.name}</Table.Cell>
-								<Table.Cell class="font-mono break-all">{r.value}</Table.Cell>
+								<Table.Cell class="max-w-[14rem] truncate font-mono" title={r.name}>{r.name}</Table.Cell>
+								<Table.Cell class="font-mono">
+									<button
+										type="button"
+										class="hover:text-foreground block max-w-lg cursor-pointer text-left {open ? 'break-all whitespace-normal' : 'truncate'}"
+										title={open ? 'Click to collapse' : r.content}
+										onclick={() => toggleDns(dnsKey(r))}
+									>{r.content}</button>
+								</Table.Cell>
 								<Table.Cell class="text-right">{r.priority ?? '—'}</Table.Cell>
+								<Table.Cell class="text-right tabular-nums">{r.ttl === 1 ? 'Auto' : (r.ttl ?? '—')}</Table.Cell>
+								<Table.Cell class="text-center">
+									{#if r.proxied}<StatusChip status="active" />{:else}<span class="text-muted-foreground">—</span>{/if}
+								</Table.Cell>
 							</Table.Row>
 						{/each}
 					</Table.Body>

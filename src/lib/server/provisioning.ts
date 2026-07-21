@@ -10,7 +10,7 @@ import { isServedDomain, senderAddress } from "./org-domains";
 import { sendMail, sendMailBackground } from "./mailer";
 import { renderEmail } from "./email";
 import { setUserAuthFlags } from "./auth/escape-hatches.js";
-import { ensurePersonalMailbox } from "./mail/mailbox.js";
+import { ensurePersonalMailbox, addressHosts } from "./mail/mailbox.js";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -21,6 +21,9 @@ export type ProvisionInput = {
   recoveryEmail: string;
   role: "member" | "admin";
   organizationId: string;
+  /** Host for the address; the apex when omitted. Must be the apex or a
+   * configured routing subdomain of the org. */
+  host?: string;
 };
 
 /** Org ids where the actor is owner/admin — the orgs they may provision into. */
@@ -80,7 +83,12 @@ export async function provisionUser(
       message: "This domain isn't active yet. Finish onboarding it before adding users.",
     };
   }
-  const email = `${username}@${org.domain}`;
+  const hosts = await addressHosts(db, org.id, org.domain);
+  const host = input.host?.trim().toLowerCase() || hosts[0];
+  if (!hosts.includes(host)) {
+    return { success: false, message: `${host} isn't a configured domain for this org.` };
+  }
+  const email = `${username}@${host}`;
 
   // Recovery address must be external — a served-domain recovery recreates the
   // "can't read your mailbox until you're logged in" deadlock.

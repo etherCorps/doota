@@ -32,12 +32,13 @@
 		{ accessorKey: 'name', header: 'Organization', cell: ({ row }) => renderSnippet(nameCell, row.original) },
 		{ accessorKey: 'domain', header: 'Domain', cell: ({ row }) => renderSnippet(domainCell, row.original) },
 		{ accessorKey: 'status', header: 'Status', cell: ({ row }) => renderSnippet(statusCell, row.original) },
-		{ accessorKey: 'members', header: 'Members', cell: ({ row }) => renderSnippet(membersCell, row.original) }
+		{ accessorKey: 'members', header: 'Members', cell: ({ row }) => renderSnippet(membersCell, row.original) },
+		{ id: 'go', header: '', enableSorting: false, cell: () => renderSnippet(goCell) }
 	];
 </script>
 
 {#snippet nameCell(org: Org)}
-	<a href={orgHref(org.id)} class="flex items-center gap-3">
+	<a href={orgHref(org.id)} class="flex items-center gap-3 hover:underline">
 		<div class="bg-muted text-muted-foreground flex size-8 items-center justify-center overflow-hidden rounded-md">
 			{#if org.logo}
 				<img src={org.logo} alt="" class="size-full object-cover" />
@@ -46,8 +47,13 @@
 			{/if}
 		</div>
 		<span class="font-medium">{org.name}</span>
-		<ChevronRightIcon class="text-muted-foreground size-4" />
 	</a>
+{/snippet}
+
+{#snippet goCell()}
+	<div class="flex justify-end">
+		<ChevronRightIcon class="text-muted-foreground size-4" />
+	</div>
 {/snippet}
 
 {#snippet domainCell(org: Org)}
@@ -84,6 +90,7 @@
 			filterColumn="name"
 			filterPlaceholder="Search organizations…"
 			empty="No organizations match your search."
+			rowHref={(o) => orgHref(o.id)}
 		/>
 	{:else}
 		<Card.Card>
@@ -111,8 +118,8 @@
 		<Dialog.Header>
 			<Dialog.Title class="font-heading">Add organization</Dialog.Title>
 			<Dialog.Description>
-				Pick a domain from your Cloudflare account, or add a new one. Active zones wire mail
-				immediately; new zones return nameservers to delegate first.
+				Pick a domain from your Cloudflare account. Active zones wire mail immediately; pending
+				zones return nameservers to delegate first.
 			</Dialog.Description>
 		</Dialog.Header>
 
