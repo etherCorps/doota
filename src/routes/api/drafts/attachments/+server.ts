@@ -1,6 +1,35 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import type { OutboundEnv } from "$lib/server/mail/outbound.js";
-import { stageDraftAttachment, MAX_ATTACHMENT_BYTES } from "$lib/server/mail/drafts.js";
+import {
+  stageDraftAttachment,
+  readDraftAttachment,
+  MAX_ATTACHMENT_BYTES,
+} from "$lib/server/mail/drafts.js";
+
+/**
+ * Private attachment preview — streams a draft attachment to its OWNER for
+ * compose-time thumbnails. Auth-gated; never a public URL.
+ * GET /api/drafts/attachments?draftId=…&key=…
+ */
+export const GET: RequestHandler = async ({ url, locals, platform }) => {
+  if (!locals.user) error(401, "Not authenticated");
+  const env = platform?.env;
+  if (!env?.MAIL_RAW) error(500, "Storage is not configured.");
+  const draftId = url.searchParams.get("draftId");
+  const key = url.searchParams.get("key");
+  if (!draftId || !key) error(400, "draftId and key are required");
+
+  const att = await readDraftAttachment(locals.db, { MAIL_RAW: env.MAIL_RAW }, draftId, locals.user.id, key);
+  if (!att) error(404, "Attachment not found");
+  const disposition = url.searchParams.get("download") ? "attachment" : "inline";
+  return new Response(att.body, {
+    headers: {
+      "content-type": att.contentType,
+      "cache-control": "private, max-age=300",
+      "content-disposition": `${disposition}; filename="${att.filename.replace(/"/g, "")}"`,
+    },
+  });
+};
 
 /**
  * Draft attachment upload (Part C). Multipart POST: `draftId` + `file`. Auth is

@@ -416,6 +416,26 @@ export async function stageDraftAttachment(
 }
 
 /** Remove a staged attachment (deletes both the ref and the R2 object). */
+/**
+ * Read a draft attachment's bytes for its OWNER only — powers compose-time
+ * thumbnails. Never public: ownership is checked (ownDraftRow) and the key must
+ * belong to the draft's attachment list. Returns null when absent.
+ */
+export async function readDraftAttachment(
+  db: Db,
+  env: { MAIL_RAW: R2Bucket },
+  draftId: string,
+  userId: string,
+  r2Key: string,
+): Promise<{ body: ReadableStream; contentType: string; filename: string } | null> {
+  const row = await ownDraftRow(db, draftId, userId);
+  const ref = jsonArray<AttachmentRef>(row.attachments).find((a) => a.r2Key === r2Key);
+  if (!ref) return null;
+  const obj = await env.MAIL_RAW.get(r2Key);
+  if (!obj) return null;
+  return { body: obj.body, contentType: ref.contentType, filename: ref.filename };
+}
+
 export async function removeDraftAttachment(
   db: Db,
   env: OutboundEnv,

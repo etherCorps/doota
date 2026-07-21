@@ -1,17 +1,29 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import { onMount } from 'svelte';
 	import FromSelector from './from-selector.svelte';
 	import RecipientInput from './recipient-input.svelte';
-	import RichEditor from './rich-editor.svelte';
+	import TiptapEditor from './tiptap-editor.svelte';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import Undo2Icon from '@lucide/svelte/icons/undo-2';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
+	import FileIcon from '@lucide/svelte/icons/file';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import FileArchiveIcon from '@lucide/svelte/icons/file-archive';
+	import FileSpreadsheetIcon from '@lucide/svelte/icons/file-spreadsheet';
+	import FileVideoIcon from '@lucide/svelte/icons/file-video';
+	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
+	import ClockIcon from '@lucide/svelte/icons/clock';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
-	import ClockIcon from '@lucide/svelte/icons/clock';
+	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import {
 		sendIdentities,
 		startDraft,
@@ -62,20 +74,23 @@
 	let attachments = $state<AttachmentRef[]>([]);
 	let editorKey = $state(0);
 	let minimized = $state(false);
+	let maximized = $state(false);
 	let fileInput = $state<HTMLInputElement>();
 
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
 	let phase = $state<'editing' | 'sending' | 'sent'>('editing');
+	// Full-screen centered overlay vs the docked bottom-right popup.
+	const bigMode = $derived(maximized && !minimized && phase !== 'sent');
 	let sentSubmissionId = $state<string | null>(null);
 	let undoLeft = $state(0);
 	let uploading = $state(false);
+	let saved = $state(false);
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	let undoTimer: ReturnType<typeof setInterval> | undefined;
 
 	onMount(async () => {
 		identities = await sendIdentities();
-		// Resume an existing draft (from the Drafts list).
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
 			draftId = d.id;
@@ -113,6 +128,7 @@
 
 	function scheduleSave() {
 		if (phase !== 'editing') return;
+		saved = false;
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, 800);
 	}
@@ -153,8 +169,10 @@
 			body,
 			fromAliasId: aliasId ?? null
 		});
-		if (res.ok) clientRevision = res.clientRevision;
-		else {
+		if (res.ok) {
+			clientRevision = res.clientRevision;
+			saved = true;
+		} else {
 			const d = res.draft;
 			clientRevision = d.clientRevision;
 			to = d.to;
@@ -166,10 +184,7 @@
 		}
 	}
 
-	async function onFiles(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const files = [...(input.files ?? [])];
-		input.value = '';
+	async function uploadFiles(files: File[]) {
 		if (!files.length) return;
 		const id = await ensureDraft();
 		if (!id) return;
@@ -185,6 +200,29 @@
 		} finally {
 			uploading = false;
 		}
+	}
+	function onFiles(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const files = [...(input.files ?? [])];
+		input.value = '';
+		uploadFiles(files);
+	}
+
+	// Drag-and-drop files anywhere on the composer → upload as attachments.
+	let dragging = $state(false);
+	function onDragOver(e: DragEvent) {
+		if (!e.dataTransfer?.types.includes('Files')) return;
+		e.preventDefault();
+		dragging = true;
+	}
+	function onDragLeave(e: DragEvent) {
+		if (!(e.currentTarget as Node).contains(e.relatedTarget as Node)) dragging = false;
+	}
+	function onDrop(e: DragEvent) {
+		if (!e.dataTransfer?.types.includes('Files')) return;
+		e.preventDefault();
+		dragging = false;
+		uploadFiles([...e.dataTransfer.files]);
 	}
 
 	async function removeAttachment(r2Key: string) {
@@ -203,7 +241,6 @@
 		}
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
 		const res = await sendDraftById({ draftId, sendAt, undoSeconds: UNDO_SECONDS });
-		// A far-future scheduled send has no live undo — manage it from Scheduled.
 		if (sendAt && sendAt > Date.now() + UNDO_SECONDS * 1000) {
 			reset();
 			open = false;
@@ -249,7 +286,7 @@
 		}
 	}
 
-	// Header X: close but KEEP the draft (it's autosaved — find it in Drafts later).
+	// Esc / X / overlay: close but KEEP the draft (autosaved — find it in Drafts).
 	async function close() {
 		clearTimeout(saveTimer);
 		await flushSave();
@@ -276,43 +313,175 @@
 		attachments = [];
 		showCc = false;
 		minimized = false;
+		maximized = false;
+		saved = false;
 		scheduleAt = '';
 		showSchedule = false;
 		editorKey++;
 	}
 
 	const fmtSize = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
+	// Click an attachment → images preview in a lightbox, everything else downloads.
+	let preview = $state<AttachmentRef | null>(null);
+	const isImage = (a: AttachmentRef) => a.contentType.startsWith('image/');
+	const ext = (a: AttachmentRef) => (a.filename.split('.').pop() ?? 'file').toUpperCase().slice(0, 4);
+
+	// Color-coded file-type tile (icon + tint) for non-image attachments.
+	function fileMeta(a: AttachmentRef): { icon: typeof FileIcon; bg: string; fg: string } {
+		const e = (a.filename.split('.').pop() ?? '').toLowerCase();
+		const t = a.contentType;
+		if (t.includes('pdf') || e === 'pdf')
+			return { icon: FileTextIcon, bg: 'bg-red-500/10', fg: 'text-red-600 dark:text-red-400' };
+		if (['zip', 'rar', '7z', 'gz', 'tar'].includes(e))
+			return { icon: FileArchiveIcon, bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' };
+		if (['doc', 'docx'].includes(e))
+			return { icon: FileTextIcon, bg: 'bg-blue-500/10', fg: 'text-blue-600 dark:text-blue-400' };
+		if (['xls', 'xlsx', 'csv'].includes(e))
+			return { icon: FileSpreadsheetIcon, bg: 'bg-emerald-500/10', fg: 'text-emerald-600 dark:text-emerald-400' };
+		if (['ppt', 'pptx'].includes(e))
+			return { icon: FileTextIcon, bg: 'bg-orange-500/10', fg: 'text-orange-600 dark:text-orange-400' };
+		if (t.startsWith('video/'))
+			return { icon: FileVideoIcon, bg: 'bg-pink-500/10', fg: 'text-pink-600 dark:text-pink-400' };
+		if (t.startsWith('audio/'))
+			return { icon: FileAudioIcon, bg: 'bg-teal-500/10', fg: 'text-teal-600 dark:text-teal-400' };
+		return { icon: FileIcon, bg: 'bg-muted', fg: 'text-muted-foreground' };
+	}
+	// Private, owner-only preview (streamed from R2 by the API) — never a public URL.
+	const previewUrl = (a: AttachmentRef) =>
+		draftId ? `/api/drafts/attachments?draftId=${draftId}&key=${encodeURIComponent(a.r2Key)}` : '';
+	function downloadAttachment(a: AttachmentRef) {
+		const link = document.createElement('a');
+		link.href = `${previewUrl(a)}&download=1`;
+		link.download = a.filename;
+		link.click();
+	}
+	function openAttachment(a: AttachmentRef) {
+		if (isImage(a)) preview = a;
+		else downloadAttachment(a);
+	}
+
+	// Compact recipient names for the minimized bar.
+	const recipientNames = $derived(
+		[...to, ...cc, ...bcc].map((a) => a.split('@')[0]).join(', ')
+	);
 </script>
 
-<!-- Docked, non-modal composer (Gmail-style) — the inbox stays visible + usable. -->
+<svelte:window onkeydown={(e) => e.key === 'Escape' && preview && (preview = null)} />
+
+<!-- Docked, non-modal composer (Gmail-style) — or a full-screen centered overlay. -->
 {#if open}
-	<div
-		class="bg-background fixed right-2 bottom-0 z-40 flex w-[min(94vw,30rem)] flex-col overflow-hidden rounded-t-xl border shadow-2xl md:right-6"
-	>
-		<!-- Title bar: click to minimize/restore -->
+	{#if bigMode}
+		<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
+		<button type="button" class="absolute inset-0 z-20 bg-black/20" aria-label="Close composer" onclick={close}></button>
+	{/if}
+	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed right-2 bottom-0 z-40 md:right-6'}>
+		<!-- One panel, two columns: an attachments rail that extends from the composer
+		     (shared border/shadow, matched height) and slides in when files exist. -->
+		<div
+			class="bg-background flex items-stretch overflow-hidden border shadow-2xl {bigMode
+				? 'h-full w-full rounded-xl'
+				: !minimized && phase !== 'sent'
+					? 'h-[min(80vh,34rem)] rounded-t-xl'
+					: 'rounded-t-xl'}"
+		>
+			{#if !minimized && phase !== 'sent' && attachments.length}
+				<aside
+					transition:slide={{ axis: 'x', duration: 180 }}
+					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
+				>
+					<div class="text-muted-foreground flex shrink-0 items-center gap-1.5 border-b px-3 py-2 text-xs font-medium">
+						<PaperclipIcon class="size-3.5" />
+						{attachments.length} attachment{attachments.length > 1 ? 's' : ''}
+					</div>
+					<div class="scrollbar-thin min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+						{#each attachments as a (a.r2Key)}
+							<div class="group bg-background relative overflow-hidden rounded-lg border shadow-sm">
+								<button type="button" class="block w-full text-left" title={isImage(a) ? 'Preview' : 'Download'} onclick={() => openAttachment(a)}>
+									{#if isImage(a)}
+										<div class="bg-muted aspect-[4/3] w-full">
+											<img src={previewUrl(a)} alt={a.filename} loading="lazy" class="size-full object-cover" />
+										</div>
+									{:else}
+										{@const m = fileMeta(a)}
+										{@const Icon = m.icon}
+										<div class="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1 {m.bg}">
+											<Icon class="size-6 {m.fg}" />
+											<span class="text-[10px] font-semibold tracking-wide {m.fg}">{ext(a)}</span>
+										</div>
+									{/if}
+									<div class="flex flex-col gap-0.5 p-2">
+										<span class="truncate text-xs font-medium">{a.filename}</span>
+										<span class="text-faint text-[10px] tabular-nums">{fmtSize(a.size)}</span>
+									</div>
+								</button>
+								<button
+									type="button"
+									title="Download"
+									class="bg-background/85 text-muted-foreground hover:text-foreground absolute top-1.5 right-9 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
+									onclick={() => downloadAttachment(a)}
+								>
+									<DownloadIcon class="size-3.5" />
+								</button>
+								<button
+									type="button"
+									title="Remove"
+									class="bg-background/85 text-muted-foreground hover:text-destructive absolute top-1.5 right-1.5 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
+									onclick={() => removeAttachment(a.r2Key)}
+								>
+									<XIcon class="size-3.5" />
+								</button>
+							</div>
+						{/each}
+					</div>
+				</aside>
+			{/if}
+
+			<div
+				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-[min(94vw,30rem)]'}"
+				role="group"
+				ondragover={onDragOver}
+				ondragleave={onDragLeave}
+				ondrop={onDrop}
+			>
+			{#if dragging && !minimized}
+				<div class="border-accent bg-background/85 pointer-events-none absolute inset-0 z-10 m-2 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed">
+					<PaperclipIcon class="text-muted-foreground size-6" />
+					<span class="text-sm font-medium">Drop files to attach</span>
+				</div>
+			{/if}
+			<!-- Title bar: click to minimize/restore -->
 		<div class="bg-foreground text-background flex items-center justify-between gap-2 px-3 py-2">
 			<button type="button" class="min-w-0 flex-1 text-left" onclick={() => (minimized = !minimized)}>
 				<span class="font-heading truncate text-sm font-medium">{title}</span>
 			</button>
 			<div class="flex items-center gap-0.5">
-				<button
-					type="button"
-					class="hover:bg-background/15 grid size-6 place-items-center rounded"
-					title={minimized ? 'Expand' : 'Minimize'}
-					onclick={() => (minimized = !minimized)}
-				>
-					{#if minimized}<Maximize2Icon class="size-3.5" />{:else}<MinusIcon class="size-4" />{/if}
+				{#if !minimized}
+					<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title={maximized ? 'Exit full screen' : 'Full screen'} onclick={() => (maximized = !maximized)}>
+						{#if maximized}<Minimize2Icon class="size-3.5" />{:else}<Maximize2Icon class="size-3.5" />{/if}
+					</button>
+				{/if}
+				<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title={minimized ? 'Expand' : 'Minimize'} onclick={() => (minimized = !minimized)}>
+					{#if minimized}<ChevronUpIcon class="size-4" />{:else}<MinusIcon class="size-4" />{/if}
 				</button>
-				<button
-					type="button"
-					class="hover:bg-background/15 grid size-6 place-items-center rounded"
-					title="Close (keeps draft)"
-					onclick={close}
-				>
+				<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title="Close (keeps draft)" onclick={close}>
 					<XIcon class="size-4" />
 				</button>
 			</div>
 		</div>
+
+		{#if minimized}
+			<button type="button" class="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2 text-left" onclick={() => (minimized = false)}>
+				<span class="truncate text-sm font-medium">{subject || 'New message'}</span>
+				{#if recipientNames}
+					<span class="text-muted-foreground truncate text-xs">· {recipientNames}</span>
+				{/if}
+				{#if attachments.length}
+					<span class="text-faint ml-auto shrink-0 text-xs">
+						{attachments.length} file{attachments.length > 1 ? 's' : ''}
+					</span>
+				{/if}
+			</button>
+		{/if}
 
 		{#if !minimized}
 			{#if phase === 'sent'}
@@ -323,60 +492,74 @@
 					</Button>
 				</div>
 			{:else}
-				<div class="max-h-[min(60vh,32rem)] space-y-2.5 overflow-auto px-3 py-3">
-					<div class="flex items-center gap-2">
-						<span class="text-muted-foreground w-10 text-xs">From</span>
-						<FromSelector {identities} bind:mailboxId bind:aliasId />
-					</div>
-					<div class="flex items-start gap-2">
-						<span class="text-muted-foreground w-10 pt-2 text-xs">To</span>
-						<div class="min-w-0 flex-1">
-							<RecipientInput bind:value={to} onchange={scheduleSave} />
-							{#if !showCc}
-								<button type="button" class="text-muted-foreground hover:text-foreground mt-1 text-xs" onclick={() => (showCc = true)}>
-									Add Cc/Bcc
-								</button>
-							{/if}
-						</div>
-					</div>
-					{#if showCc}
+				<!-- Body fills the fixed-height panel; the editor flexes so nothing shifts. -->
+				<div class="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-3">
+					<div class="flex shrink-0 flex-col gap-2">
 						<div class="flex items-center gap-2">
-							<span class="text-muted-foreground w-10 text-xs">Cc</span>
-							<div class="min-w-0 flex-1"><RecipientInput bind:value={cc} onchange={scheduleSave} /></div>
+							<span class="text-muted-foreground w-10 shrink-0 text-xs">From</span>
+							<FromSelector {identities} bind:mailboxId bind:aliasId />
 						</div>
-						<div class="flex items-center gap-2">
-							<span class="text-muted-foreground w-10 text-xs">Bcc</span>
-							<div class="min-w-0 flex-1"><RecipientInput bind:value={bcc} onchange={scheduleSave} /></div>
+						<div class="flex items-start gap-2">
+							<span class="text-muted-foreground w-10 shrink-0 pt-2 text-xs">To</span>
+							<div class="min-w-0 flex-1">
+								<RecipientInput bind:value={to} onchange={scheduleSave} />
+								{#if !showCc}
+									<button type="button" class="text-muted-foreground hover:text-foreground mt-1 text-xs" onclick={() => (showCc = true)}>
+										Add Cc/Bcc
+									</button>
+								{/if}
+							</div>
 						</div>
-					{/if}
-					<div class="flex items-center gap-2">
-						<span class="text-muted-foreground w-10 text-xs">Subj</span>
-						<Input class="h-8 flex-1" placeholder="Subject" bind:value={subject} oninput={scheduleSave} onblur={flushSave} />
+						{#if showCc}
+							<div class="flex items-center gap-2">
+								<span class="text-muted-foreground w-10 shrink-0 text-xs">Cc</span>
+								<div class="min-w-0 flex-1"><RecipientInput bind:value={cc} onchange={scheduleSave} /></div>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="text-muted-foreground w-10 shrink-0 text-xs">Bcc</span>
+								<div class="min-w-0 flex-1"><RecipientInput bind:value={bcc} onchange={scheduleSave} /></div>
+							</div>
+						{/if}
 					</div>
 
-					{#key editorKey}
-						<RichEditor
-							initial={body}
-							oninput={(html) => {
-								body = html;
-								scheduleSave();
-							}}
-							onattach={() => fileInput?.click()}
-						/>
-					{/key}
+					<Input
+						class="h-8 shrink-0"
+						placeholder="Subject"
+						aria-label="Subject"
+						bind:value={subject}
+						oninput={scheduleSave}
+						onblur={flushSave}
+					/>
+
+					<div class="min-h-0 flex-1 pb-2">
+						{#key editorKey}
+							<TiptapEditor
+								initial={body}
+								oninput={(html) => {
+									body = html;
+									scheduleSave();
+								}}
+								onattach={() => fileInput?.click()}
+								onsend={send}
+							/>
+						{/key}
+					</div>
 
 					{#if attachments.length}
-						<div class="flex flex-wrap gap-2">
-							{#each attachments as a (a.r2Key)}
-								<span class="bg-muted flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
-									<PaperclipIcon class="text-muted-foreground size-3" />
-									<span class="max-w-[14ch] truncate">{a.filename}</span>
-									<span class="text-faint">{fmtSize(a.size)}</span>
-									<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(a.r2Key)}>
-										<XIcon class="size-3" />
-									</button>
-								</span>
-							{/each}
+						<!-- Mobile fallback: a rail won't fit at 94vw, so dock chips at the bottom. -->
+						<div class="max-h-24 shrink-0 overflow-y-auto pb-1 md:hidden">
+							<div class="flex flex-wrap gap-2">
+								{#each attachments as a (a.r2Key)}
+									<span class="bg-muted flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
+										<PaperclipIcon class="text-muted-foreground size-3" />
+										<span class="max-w-[14ch] truncate">{a.filename}</span>
+										<span class="text-faint">{fmtSize(a.size)}</span>
+										<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(a.r2Key)}>
+											<XIcon class="size-3" />
+										</button>
+									</span>
+								{/each}
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -384,32 +567,64 @@
 				{#if showSchedule}
 					<div class="flex items-center gap-2 border-t px-3 py-2">
 						<ClockIcon class="text-muted-foreground size-4" />
-						<input
-							type="datetime-local"
-							class="bg-background flex-1 rounded-md border px-2 py-1 text-xs"
-							bind:value={scheduleAt}
-						/>
-						<button type="button" class="text-muted-foreground hover:text-foreground text-xs" onclick={() => { showSchedule = false; scheduleAt = ''; }}>
-							Clear
-						</button>
+						<input type="datetime-local" class="bg-background flex-1 rounded-md border px-2 py-1 text-xs" bind:value={scheduleAt} aria-label="Schedule send time" />
+						<button type="button" class="text-muted-foreground hover:text-foreground text-xs" onclick={() => { showSchedule = false; scheduleAt = ''; }}>Clear</button>
 					</div>
 				{/if}
+
 				<div class="flex items-center justify-between gap-2 border-t px-3 py-2">
 					<div class="flex items-center gap-1">
-						<Button variant="ghost" size="icon" class="size-8" title="Schedule send" onclick={() => (showSchedule = !showSchedule)}>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-8 {showSchedule || scheduleAt
+								? 'text-amber-600 dark:text-amber-400'
+								: 'text-muted-foreground hover:text-foreground'}"
+							title="Schedule send"
+							aria-pressed={showSchedule}
+							onclick={() => (showSchedule = !showSchedule)}
+						>
 							<ClockIcon class="size-4" />
 						</Button>
-						<span class="text-muted-foreground text-xs">{uploading ? 'Uploading…' : ''}</span>
-					</div>
-					<div class="flex gap-2">
-						<Button variant="ghost" size="sm" onclick={discard}>Discard</Button>
-						<Button size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
-							<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
+						<Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" title="Discard draft" onclick={discard}>
+							<Trash2Icon class="size-4" />
 						</Button>
+						{#if uploading}
+							<span class="text-muted-foreground text-xs">Uploading…</span>
+						{:else if saved && draftId}
+							<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
+								<CheckIcon class="size-3.5 text-emerald-600 dark:text-emerald-400" /> Draft saved
+							</span>
+						{/if}
 					</div>
+					<Button size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
+						<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
+					</Button>
 				</div>
 			{/if}
 		{/if}
 		<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
+		</div>
+	</div>
+	</div>
+{/if}
+
+<!-- Image preview lightbox (Gmail-style): click backdrop or Esc to close. -->
+{#if preview}
+	<div class="fixed inset-0 z-50 flex flex-col bg-black/80" role="dialog" aria-modal="true" aria-label="Attachment preview">
+		<div class="flex items-center justify-between gap-3 px-4 py-3 text-white">
+			<span class="truncate text-sm font-medium">{preview.filename}</span>
+			<div class="flex items-center gap-1">
+				<button type="button" class="grid size-9 place-items-center rounded-full hover:bg-white/15" title="Download" onclick={() => preview && downloadAttachment(preview)}>
+					<DownloadIcon class="size-5" />
+				</button>
+				<button type="button" class="grid size-9 place-items-center rounded-full hover:bg-white/15" title="Close" onclick={() => (preview = null)}>
+					<XIcon class="size-5" />
+				</button>
+			</div>
+		</div>
+		<button type="button" class="flex min-h-0 flex-1 cursor-zoom-out items-center justify-center p-4" aria-label="Close preview" onclick={() => (preview = null)}>
+			<img src={previewUrl(preview)} alt={preview.filename} class="max-h-full max-w-full object-contain" />
+		</button>
 	</div>
 {/if}

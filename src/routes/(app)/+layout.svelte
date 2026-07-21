@@ -32,7 +32,7 @@
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
-	<Sidebar.Inset class="flex h-svh flex-col overflow-hidden">
+	<Sidebar.Inset class="relative flex h-svh flex-col overflow-hidden">
 		<TopBar>
 			{#snippet action()}
 				<Button size="sm" class="gap-1.5" onclick={() => compose.start()}>
@@ -45,13 +45,15 @@
 		<div class="min-h-0 flex-1 overflow-y-auto">
 			{@render children()}
 		</div>
+
+		<!-- Mounted inside the content region so the full-screen composer fills the
+		     mail view (beside the sidebar), not the whole viewport. -->
+		{#key compose.nonce}
+			<ComposePanel
+				bind:open={compose.open}
+				prefill={compose.prefill as never}
+				resumeDraftId={compose.resumeDraftId}
+			/>
+		{/key}
 	</Sidebar.Inset>
 </Sidebar.Provider>
-
-{#key compose.nonce}
-	<ComposePanel
-		bind:open={compose.open}
-		prefill={compose.prefill as never}
-		resumeDraftId={compose.resumeDraftId}
-	/>
-{/key}

@@ -50,13 +50,30 @@
 			remove(value[value.length - 1]);
 		}
 	}
+
+	// Deterministic avatar tint per address (subtle; readable in both themes).
+	const TINTS = [
+		'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+		'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+		'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+		'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+		'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+	];
+	function tint(addr: string): string {
+		let h = 0;
+		for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) >>> 0;
+		return TINTS[h % TINTS.length];
+	}
 </script>
 
 <div class="relative">
 	<div class="focus-within:ring-ring/40 flex flex-wrap items-center gap-1 rounded-md border px-2 py-1.5 focus-within:ring-2">
 		{#each value as a (a)}
-			<span class="bg-muted flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs">
-				{a}
+			<span class="bg-muted flex items-center gap-1.5 rounded-full py-0.5 pr-1.5 pl-0.5 text-xs">
+				<span class="grid size-5 place-items-center rounded-full text-[10px] font-semibold uppercase {tint(a)}">
+					{a[0] ?? '?'}
+				</span>
+				<span class="font-mono">{a}</span>
 				<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => remove(a)}>
 					<XIcon class="size-3" />
 				</button>
