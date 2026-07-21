@@ -34,7 +34,8 @@ export type OutboundEnv = {
 export type SendRequest = {
   orgId: string;
   mailboxId: string;
-  createdByUserId: string;
+  /** Null for service-key sends (no human author). */
+  createdByUserId: string | null;
   /** Header + envelope From — the mailbox address or one of its aliases. */
   fromAddress: string;
   fromName?: string | null;

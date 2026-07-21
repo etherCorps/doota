@@ -81,6 +81,9 @@ export const mailbox = sqliteTable(
     isPersonal: integer("is_personal", { mode: "boolean" })
       .default(false)
       .notNull(),
+    // Service mailboxes are non-human sending identities for automation; org
+    // admins issue send-only API keys against them (never a personal inbox).
+    isService: integer("is_service", { mode: "boolean" }).default(false).notNull(),
     createdAt: now(),
   },
   (t) => [
@@ -659,10 +662,17 @@ export const apiKey = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    // Restrict the key to sending as one mailbox; null = any mailbox the user can.
+    // Legacy human owner (a key ACTS AS this user). Null for service keys, which
+    // authorize the service mailbox directly — so they survive staff turnover.
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    // Admin who issued a service key (audit only). Set-null so key outlives them.
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Service keys send AS the mailbox itself; no per-user grant is consulted.
+    isService: integer("is_service", { mode: "boolean" }).default(false).notNull(),
+    // The sending scope. Required for service keys; for legacy keys null = any
+    // mailbox the owning user can send as.
     mailboxId: text("mailbox_id").references(() => mailbox.id, {
       onDelete: "cascade",
     }),

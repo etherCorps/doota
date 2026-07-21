@@ -146,5 +146,37 @@ export async function resolveSender(
   return { orgId: box.orgId, fromAddress, fromName: box.displayName, fromAliasId: resolvedAliasId };
 }
 
+/**
+ * Resolve the from-address for a SERVICE-key send. The key itself is the
+ * authorization (issued by an org admin against a service mailbox), so no
+ * per-user grant is consulted — but the target MUST be an active service mailbox.
+ */
+export async function resolveServiceSender(
+  db: import("drizzle-orm/d1").DrizzleD1Database<typeof schema>,
+  mailboxId: string,
+  fromAliasId?: string | null,
+): Promise<{ orgId: string; fromAddress: string; fromName: string | null; fromAliasId: string | null }> {
+  const box = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, mailboxId),
+    columns: { id: true, orgId: true, address: true, displayName: true, isActive: true, isService: true },
+  });
+  if (!box) error(404, "Mailbox not found");
+  if (!box.isService) error(403, "This key can only send as its service mailbox.");
+  if (!box.isActive) error(409, "Mailbox is not active");
+
+  let fromAddress = box.address;
+  let resolvedAliasId: string | null = null;
+  if (fromAliasId) {
+    const al = await db.query.alias.findFirst({
+      where: eq(schema.alias.id, fromAliasId),
+      columns: { address: true, mailboxId: true, isEnabled: true },
+    });
+    if (!al || al.mailboxId !== mailboxId || !al.isEnabled) error(409, "Alias unavailable for this mailbox");
+    fromAddress = al.address;
+    resolvedAliasId = fromAliasId;
+  }
+  return { orgId: box.orgId, fromAddress, fromName: box.displayName, fromAliasId: resolvedAliasId };
+}
+
 /** Convenience for callers that only have an address string. */
 export { domainOf };

@@ -1,50 +1,16 @@
 <script lang="ts">
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
-	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Input } from '$lib/components/ui/input';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Field from '$lib/components/ui/field/index.js';
-	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { myApiKeys, createApiKeyForUser, revokeApiKeyById } from '$lib/rpc/api-keys.remote';
-	import { sendIdentities } from '$lib/rpc/draft.remote';
+	import { myApiKeys, revokeApiKeyById } from '$lib/rpc/api-keys.remote';
 
-	// Single stable query instance — render from `.current` so a post-mutation
-	// refresh() updates in place instead of re-suspending (which blanks the list).
+	// Read-only: new keys are issued by org admins against service mailboxes (a
+	// leaked send key hurts the whole domain's reputation). Users may still revoke
+	// their existing legacy keys.
 	const keysQ = myApiKeys();
-
-	// Mailboxes the user can send as (for the optional key scope).
-	const mailboxOptions = $derived.by(async () => {
-		const ids = await sendIdentities();
-		const seen = new Map<string, string>();
-		for (const i of ids) if (i.kind === 'mailbox') seen.set(i.mailboxId, i.address);
-		return [...seen].map(([mailboxId, address]) => ({ mailboxId, address }));
-	});
-
-	let createOpen = $state(false);
-	let name = $state('');
-	let scope = $state<string>(''); // '' = any mailbox
-	let creating = $state(false);
-	let newSecret = $state<string | null>(null);
-
-	async function create() {
-		creating = true;
-		try {
-			const res = await createApiKeyForUser({ name: name || undefined, mailboxId: scope || null });
-			newSecret = res.key;
-			name = '';
-			scope = '';
-			await keysQ.refresh();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create the key.');
-		} finally {
-			creating = false;
-		}
-	}
 
 	async function revoke(keyId: string) {
 		try {
@@ -56,18 +22,8 @@
 		}
 	}
 
-	async function copy(text: string) {
-		await navigator.clipboard.writeText(text);
-		toast.success('Copied to clipboard.');
-	}
-
 	function fmt(ms: number | null): string {
 		return ms ? new Date(ms).toLocaleDateString() : '—';
-	}
-
-	function closeCreate() {
-		createOpen = false;
-		newSecret = null;
 	}
 </script>
 
@@ -77,13 +33,11 @@
 			<KeyRoundIcon class="size-4" /> API keys
 		</Card.CardTitle>
 		<Card.CardDescription>
-			Bearer keys for programmatic send only (<span class="font-mono">POST /api/send</span>). A key
-			can send mail as you and nothing else — no account, admin, or read access — and is limited to
-			mailboxes you can send as. The secret is shown once.
+			Programmatic send (<span class="font-mono">POST /api/send</span>) is issued by your org admins
+			against a <span class="font-medium">service mailbox</span> — a send key affects the whole
+			domain's reputation, so it isn't self-serve. Ask an admin to provision one. You can revoke any
+			legacy key you still hold below.
 		</Card.CardDescription>
-		<Card.CardAction>
-			<Button size="sm" variant="outline" onclick={() => (createOpen = true)}>New key</Button>
-		</Card.CardAction>
 	</Card.CardHeader>
 	<Card.CardContent>
 		{#if keysQ.current}
@@ -115,12 +69,9 @@
 					{/each}
 				</ul>
 			{:else}
-				<div class="flex flex-col items-center gap-3 py-6 text-center">
-					<p class="text-muted-foreground text-sm">No API keys yet.</p>
-					<Button size="sm" variant="outline" class="gap-1.5" onclick={() => (createOpen = true)}>
-						<KeyRoundIcon class="size-3.5" /> Create a key
-					</Button>
-				</div>
+				<p class="text-muted-foreground text-sm">
+					No API keys. Programmatic access is managed by your org admins.
+				</p>
 			{/if}
 		{:else}
 			<div class="flex flex-col gap-3">
@@ -130,62 +81,3 @@
 		{/if}
 	</Card.CardContent>
 </Card.Card>
-
-<Dialog.Root open={createOpen} onOpenChange={(o) => !o && closeCreate()}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title class="font-heading">
-				{newSecret ? 'Copy your key' : 'New API key'}
-			</Dialog.Title>
-			<Dialog.Description>
-				{#if newSecret}
-					This is the only time the secret is shown. Store it somewhere safe.
-				{:else}
-					Optionally name it and scope it to one mailbox.
-				{/if}
-			</Dialog.Description>
-		</Dialog.Header>
-
-		{#if newSecret}
-			<div class="flex items-center gap-2 py-2">
-				<Input readonly value={newSecret} class="font-mono text-xs" />
-				<Button size="icon" variant="outline" onclick={() => copy(newSecret!)}>
-					<CopyIcon class="size-4" />
-				</Button>
-			</div>
-			<div class="flex justify-end">
-				<Button onclick={closeCreate}>Done</Button>
-			</div>
-		{:else}
-			<div class="flex flex-col gap-3 py-2">
-				<Field.Field>
-					<Field.Label>Name (optional)</Field.Label>
-					<Input bind:value={name} placeholder="CI deploy bot" autocomplete="off" />
-				</Field.Field>
-				<Field.Field>
-					<Field.Label>Send as</Field.Label>
-					<select
-						bind:value={scope}
-						class="border-input bg-background h-9 rounded-md border px-3 text-sm"
-					>
-						<option value="">Any mailbox I can send as</option>
-						{#await mailboxOptions then opts}
-							{#each opts as o (o.mailboxId)}
-								<option value={o.mailboxId}>{o.address}</option>
-							{/each}
-						{/await}
-					</select>
-				</Field.Field>
-				<div class="flex justify-end gap-2 pt-1">
-					<Button type="button" variant="ghost" onclick={closeCreate} disabled={creating}>
-						Cancel
-					</Button>
-					<Button type="button" onclick={create} disabled={creating}>
-						{#if creating}<Spinner class="mr-1" />{/if}
-						Create key
-					</Button>
-				</div>
-			</div>
-		{/if}
-	</Dialog.Content>
-</Dialog.Root>

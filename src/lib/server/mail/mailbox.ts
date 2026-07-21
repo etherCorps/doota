@@ -22,6 +22,7 @@ export async function upsertMailbox(
     address: string;
     displayName?: string | null;
     isPersonal?: boolean;
+    isService?: boolean;
   },
 ): Promise<string> {
   const address = input.address.trim().toLowerCase();
@@ -33,6 +34,7 @@ export async function upsertMailbox(
       localPart: localPartOf(address),
       displayName: input.displayName ?? null,
       isPersonal: input.isPersonal ?? false,
+      isService: input.isService ?? false,
     })
     .onConflictDoNothing();
   const row = await db.query.mailbox.findFirst({
