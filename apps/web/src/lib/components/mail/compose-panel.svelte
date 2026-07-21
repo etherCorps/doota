@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import FromSelector from './from-selector.svelte';
 	import RecipientInput from './recipient-input.svelte';
 	import TiptapEditor from './tiptap-editor.svelte';
+	import SchedulePicker from './schedule-picker.svelte';
+	import { toLocalDatetime } from '$lib/utils/parse-when';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import Undo2Icon from '@lucide/svelte/icons/undo-2';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
@@ -18,7 +22,6 @@
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
-	import ClockIcon from '@lucide/svelte/icons/clock';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
@@ -59,7 +62,7 @@
 	);
 
 	let scheduleAt = $state('');
-	let showSchedule = $state(false);
+	let schedulePickerOpen = $state(false);
 
 	let identities = $state<SendIdentity[]>([]);
 	let mailboxId = $state<string | undefined>(undefined);
@@ -69,6 +72,7 @@
 	let cc = $state<string[]>([]);
 	let bcc = $state<string[]>([]);
 	let showCc = $state(false);
+	let showBcc = $state(false);
 	let subject = $state('');
 	let body = $state('');
 	let attachments = $state<AttachmentRef[]>([]);
@@ -103,7 +107,8 @@
 			subject = d.subject ?? '';
 			body = d.body ?? '';
 			attachments = d.attachments;
-			showCc = d.cc.length > 0 || d.bcc.length > 0;
+			showCc = d.cc.length > 0;
+			showBcc = d.bcc.length > 0;
 			editorKey++;
 			return;
 		}
@@ -125,6 +130,54 @@
 	});
 
 	const canSend = $derived(phase === 'editing' && !!mailboxId && to.length + cc.length + bcc.length > 0);
+	// Why the primary action is blocked — surfaced as the button's title so a
+	// disabled Send explains itself instead of just greying out.
+	const sendHint = $derived(
+		!mailboxId
+			? 'Choose a sender first'
+			: to.length + cc.length + bcc.length === 0
+				? 'Add at least one recipient'
+				: scheduleAt
+					? 'Schedule send'
+					: 'Send  (⌘↵)'
+	);
+
+	// Schedule-send presets. Arming one fills the datetime input (reviewable) and
+	// flips the primary button to “Schedule” — it does NOT fire immediately.
+	function armSchedule(d: Date) {
+		scheduleAt = toLocalDatetime(d);
+	}
+	function presetTomorrow(): Date {
+		const d = new Date();
+		d.setDate(d.getDate() + 1);
+		d.setHours(8, 0, 0, 0);
+		return d;
+	}
+	function presetMonday(): Date {
+		const d = new Date();
+		const add = ((1 - d.getDay() + 7) % 7) || 7; // next Monday (never today)
+		d.setDate(d.getDate() + add);
+		d.setHours(8, 0, 0, 0);
+		return d;
+	}
+	function clearSchedule() {
+		scheduleAt = '';
+	}
+
+	// ⌘/Ctrl+Enter sends from anywhere in the composer (the editor handles it only
+	// while focused; this covers the To / subject fields too). Esc stays owned by
+	// the image-preview lightbox.
+	function onWindowKey(e: KeyboardEvent) {
+		if (preview) {
+			if (e.key === 'Escape') preview = null;
+			return;
+		}
+		if (!open || minimized || phase !== 'editing') return;
+		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canSend) {
+			e.preventDefault();
+			send();
+		}
+	}
 
 	function scheduleSave() {
 		if (phase !== 'editing') return;
@@ -312,11 +365,12 @@
 		body = '';
 		attachments = [];
 		showCc = false;
+		showBcc = false;
 		minimized = false;
 		maximized = false;
 		saved = false;
 		scheduleAt = '';
-		showSchedule = false;
+		schedulePickerOpen = false;
 		editorKey++;
 	}
 
@@ -331,19 +385,19 @@
 		const e = (a.filename.split('.').pop() ?? '').toLowerCase();
 		const t = a.contentType;
 		if (t.includes('pdf') || e === 'pdf')
-			return { icon: FileTextIcon, bg: 'bg-red-500/10', fg: 'text-red-600 dark:text-red-400' };
+			return { icon: FileTextIcon, bg: 'bg-destructive/10', fg: 'text-destructive' };
 		if (['zip', 'rar', '7z', 'gz', 'tar'].includes(e))
-			return { icon: FileArchiveIcon, bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' };
+			return { icon: FileArchiveIcon, bg: 'bg-p1/10', fg: 'text-p1' };
 		if (['doc', 'docx'].includes(e))
-			return { icon: FileTextIcon, bg: 'bg-blue-500/10', fg: 'text-blue-600 dark:text-blue-400' };
+			return { icon: FileTextIcon, bg: 'bg-brand/10', fg: 'text-brand' };
 		if (['xls', 'xlsx', 'csv'].includes(e))
-			return { icon: FileSpreadsheetIcon, bg: 'bg-emerald-500/10', fg: 'text-emerald-600 dark:text-emerald-400' };
+			return { icon: FileSpreadsheetIcon, bg: 'bg-ok/10', fg: 'text-ok' };
 		if (['ppt', 'pptx'].includes(e))
-			return { icon: FileTextIcon, bg: 'bg-orange-500/10', fg: 'text-orange-600 dark:text-orange-400' };
+			return { icon: FileTextIcon, bg: 'bg-warn/10', fg: 'text-warn' };
 		if (t.startsWith('video/'))
-			return { icon: FileVideoIcon, bg: 'bg-pink-500/10', fg: 'text-pink-600 dark:text-pink-400' };
+			return { icon: FileVideoIcon, bg: 'bg-p3/10', fg: 'text-p3' };
 		if (t.startsWith('audio/'))
-			return { icon: FileAudioIcon, bg: 'bg-teal-500/10', fg: 'text-teal-600 dark:text-teal-400' };
+			return { icon: FileAudioIcon, bg: 'bg-p2/10', fg: 'text-p2' };
 		return { icon: FileIcon, bg: 'bg-muted', fg: 'text-muted-foreground' };
 	}
 	// Private, owner-only preview (streamed from R2 by the API) — never a public URL.
@@ -366,13 +420,13 @@
 	);
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && preview && (preview = null)} />
+<svelte:window onkeydown={onWindowKey} />
 
 <!-- Docked, non-modal composer (Gmail-style) — or a full-screen centered overlay. -->
 {#if open}
 	{#if bigMode}
 		<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
-		<button type="button" class="absolute inset-0 z-20 bg-black/20" aria-label="Close composer" onclick={close}></button>
+		<button type="button" class="bg-scrim/30 absolute inset-0 z-20" aria-label="Close composer" onclick={close}></button>
 	{/if}
 	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed right-2 bottom-0 z-40 md:right-6'}>
 		<!-- One panel, two columns: an attachments rail that extends from the composer
@@ -386,7 +440,7 @@
 		>
 			{#if !minimized && phase !== 'sent' && attachments.length}
 				<aside
-					transition:slide={{ axis: 'x', duration: 180 }}
+					transition:fade={{ duration: 120 }}
 					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
 				>
 					<div class="text-muted-foreground flex shrink-0 items-center gap-1.5 border-b px-3 py-2 text-xs font-medium">
@@ -450,20 +504,20 @@
 				</div>
 			{/if}
 			<!-- Title bar: click to minimize/restore -->
-		<div class="bg-foreground text-background flex items-center justify-between gap-2 px-3 py-2">
+		<div class="bg-muted/60 text-foreground flex items-center justify-between gap-2 border-b px-3 py-2">
 			<button type="button" class="min-w-0 flex-1 text-left" onclick={() => (minimized = !minimized)}>
 				<span class="font-heading truncate text-sm font-medium">{title}</span>
 			</button>
-			<div class="flex items-center gap-0.5">
+			<div class="text-muted-foreground flex items-center gap-0.5">
 				{#if !minimized}
-					<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title={maximized ? 'Exit full screen' : 'Full screen'} onclick={() => (maximized = !maximized)}>
+					<button type="button" class="hover:bg-foreground/10 hover:text-foreground grid size-6 place-items-center rounded transition-colors" title={maximized ? 'Exit full screen' : 'Full screen'} onclick={() => (maximized = !maximized)}>
 						{#if maximized}<Minimize2Icon class="size-3.5" />{:else}<Maximize2Icon class="size-3.5" />{/if}
 					</button>
 				{/if}
-				<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title={minimized ? 'Expand' : 'Minimize'} onclick={() => (minimized = !minimized)}>
+				<button type="button" class="hover:bg-foreground/10 hover:text-foreground grid size-6 place-items-center rounded transition-colors" title={minimized ? 'Expand' : 'Minimize'} onclick={() => (minimized = !minimized)}>
 					{#if minimized}<ChevronUpIcon class="size-4" />{:else}<MinusIcon class="size-4" />{/if}
 				</button>
-				<button type="button" class="hover:bg-background/15 grid size-6 place-items-center rounded" title="Close (keeps draft)" onclick={close}>
+				<button type="button" class="hover:bg-destructive/10 hover:text-destructive grid size-6 place-items-center rounded transition-colors" title="Close (keeps draft)" onclick={close}>
 					<XIcon class="size-4" />
 				</button>
 			</div>
@@ -501,23 +555,32 @@
 						</div>
 						<div class="flex items-start gap-2">
 							<span class="text-muted-foreground w-10 shrink-0 pt-2 text-xs">To</span>
-							<div class="min-w-0 flex-1">
-								<RecipientInput bind:value={to} onchange={scheduleSave} />
+							<div class="min-w-0 flex-1"><RecipientInput bind:value={to} onchange={scheduleSave} /></div>
+							<div class="flex shrink-0 items-center gap-1.5 pt-2 text-xs font-medium">
 								{#if !showCc}
-									<button type="button" class="text-muted-foreground hover:text-foreground mt-1 text-xs" onclick={() => (showCc = true)}>
-										Add Cc/Bcc
-									</button>
+									<button type="button" class="text-muted-foreground hover:text-brand" onclick={() => (showCc = true)}>Cc</button>
+								{/if}
+								{#if !showBcc}
+									<button type="button" class="text-muted-foreground hover:text-brand" onclick={() => (showBcc = true)}>Bcc</button>
 								{/if}
 							</div>
 						</div>
 						{#if showCc}
-							<div class="flex items-center gap-2">
-								<span class="text-muted-foreground w-10 shrink-0 text-xs">Cc</span>
+							<div class="flex items-start gap-2">
+								<span class="text-muted-foreground w-10 shrink-0 pt-2 text-xs">Cc</span>
 								<div class="min-w-0 flex-1"><RecipientInput bind:value={cc} onchange={scheduleSave} /></div>
+								<button type="button" class="text-muted-foreground hover:text-foreground shrink-0 pt-2" title="Remove Cc" onclick={() => { showCc = false; cc = []; scheduleSave(); }}>
+									<XIcon class="size-3.5" />
+								</button>
 							</div>
-							<div class="flex items-center gap-2">
-								<span class="text-muted-foreground w-10 shrink-0 text-xs">Bcc</span>
+						{/if}
+						{#if showBcc}
+							<div class="flex items-start gap-2">
+								<span class="text-muted-foreground w-10 shrink-0 pt-2 text-xs">Bcc</span>
 								<div class="min-w-0 flex-1"><RecipientInput bind:value={bcc} onchange={scheduleSave} /></div>
+								<button type="button" class="text-muted-foreground hover:text-foreground shrink-0 pt-2" title="Remove Bcc" onclick={() => { showBcc = false; bcc = []; scheduleSave(); }}>
+									<XIcon class="size-3.5" />
+								</button>
 							</div>
 						{/if}
 					</div>
@@ -564,31 +627,12 @@
 					{/if}
 				</div>
 
-				{#if showSchedule}
-					<div class="flex items-center gap-2 border-t px-3 py-2">
-						<ClockIcon class="text-muted-foreground size-4" />
-						<input type="datetime-local" class="bg-background flex-1 rounded-md border px-2 py-1 text-xs" bind:value={scheduleAt} aria-label="Schedule send time" />
-						<button type="button" class="text-muted-foreground hover:text-foreground text-xs" onclick={() => { showSchedule = false; scheduleAt = ''; }}>Clear</button>
-					</div>
-				{/if}
-
 				<div class="flex items-center justify-between gap-2 border-t px-3 py-2">
 					<div class="flex items-center gap-1">
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-8 {showSchedule || scheduleAt
-								? 'text-warn'
-								: 'text-muted-foreground hover:text-foreground'}"
-							title="Schedule send"
-							aria-pressed={showSchedule}
-							onclick={() => (showSchedule = !showSchedule)}
-						>
-							<ClockIcon class="size-4" />
-						</Button>
 						<Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" title="Discard draft" onclick={discard}>
 							<Trash2Icon class="size-4" />
 						</Button>
+						<SchedulePicker bind:value={scheduleAt} bind:open={schedulePickerOpen} />
 						{#if uploading}
 							<span class="text-muted-foreground text-xs">Uploading…</span>
 						{:else if saved && draftId}
@@ -597,9 +641,31 @@
 							</span>
 						{/if}
 					</div>
-					<Button size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
-						<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
-					</Button>
+					<!-- Split send: primary sends now (⌘↵); caret opens schedule presets. -->
+					<div class="inline-flex">
+						<Button size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
+							<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
+						</Button>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button {...props} size="sm" class="border-primary-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
+										<ChevronDownIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end" class="w-56">
+								<DropdownMenu.Label class="text-muted-foreground text-xs">Send later</DropdownMenu.Label>
+								<DropdownMenu.Item onSelect={() => armSchedule(presetTomorrow())}>Tomorrow, 8:00 AM</DropdownMenu.Item>
+								<DropdownMenu.Item onSelect={() => armSchedule(presetMonday())}>Monday, 8:00 AM</DropdownMenu.Item>
+								<DropdownMenu.Item onSelect={() => (schedulePickerOpen = true)}>Pick date &amp; time…</DropdownMenu.Item>
+								{#if scheduleAt}
+									<DropdownMenu.Separator />
+									<DropdownMenu.Item onSelect={clearSchedule}>Send now instead</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					</div>
 				</div>
 			{/if}
 		{/if}
@@ -611,7 +677,7 @@
 
 <!-- Image preview lightbox (Gmail-style): click backdrop or Esc to close. -->
 {#if preview}
-	<div class="fixed inset-0 z-50 flex flex-col bg-black/80" role="dialog" aria-modal="true" aria-label="Attachment preview">
+	<div class="bg-scrim/80 fixed inset-0 z-50 flex flex-col" role="dialog" aria-modal="true" aria-label="Attachment preview">
 		<div class="flex items-center justify-between gap-3 px-4 py-3 text-white">
 			<span class="truncate text-sm font-medium">{preview.filename}</span>
 			<div class="flex items-center gap-1">
