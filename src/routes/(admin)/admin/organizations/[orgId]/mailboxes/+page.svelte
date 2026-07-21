@@ -13,7 +13,6 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
-	import { generateAlias } from '$lib/rpc/alias.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import BotIcon from '@lucide/svelte/icons/bot';
 
@@ -87,15 +86,6 @@
 			saving = false;
 		}
 	}
-
-	async function makeAlias(id: string) {
-		try {
-			const res = await generateAlias({ mailboxId: id });
-			toast.success(`Alias created: ${res.address}`);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create an alias.');
-		}
-	}
 </script>
 
 {#snippet addressCell(mb: Mailbox)}
@@ -129,9 +119,7 @@
 
 {#snippet actionsCell(mb: Mailbox)}
 	<div class="flex justify-end">
-		{#if mb.isPersonal}
-			<Button variant="outline" size="sm" onclick={() => makeAlias(mb.id)}>Add alias</Button>
-		{:else}
+		{#if !mb.isPersonal}
 			<Button variant="outline" size="sm" href="{manageBase}/{mb.id}">Manage</Button>
 		{/if}
 	</div>
