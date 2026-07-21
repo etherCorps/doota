@@ -6,13 +6,15 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import { myMailboxes } from '$lib/rpc/mailbox.remote';
+	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import {
 		mailboxThreads,
 		openThread,
@@ -72,6 +74,8 @@
 	const threadId = $derived(params.get('thread'));
 	const isVirtual = $derived(placement === 'drafts' || placement === 'scheduled');
 	const activeMailbox = $derived(mailboxes.find((m) => m.id === mailboxId));
+	const managedIdsQ = myManagedMailboxIds();
+	const canManageActive = $derived(!!mailboxId && (managedIdsQ.current ?? []).includes(mailboxId));
 	const folder = $derived(FOLDERS.find((f) => f.id === placement) ?? FOLDERS[0]);
 
 	function nav(next: Record<string, string | null>) {
@@ -257,6 +261,37 @@
 	}
 </script>
 
+{#snippet listSkeleton()}
+	{#each Array.from({ length: 6 }, (_, i) => i) as i (i)}
+		<div class="flex flex-col gap-2 border-b px-4 py-3">
+			<div class="flex items-center gap-2">
+				<Skeleton class="h-3 w-28 rounded" />
+				<Skeleton class="ml-auto h-3 w-10 rounded" />
+			</div>
+			<Skeleton class="h-3.5 w-3/4 rounded" />
+			<Skeleton class="h-3 w-1/2 rounded" />
+		</div>
+	{/each}
+{/snippet}
+
+{#snippet threadSkeleton()}
+	<div class="flex h-12 items-center gap-2 border-b px-3 md:px-4">
+		<Skeleton class="h-4 w-48 rounded" />
+		<Skeleton class="ml-auto size-8 rounded-md" />
+	</div>
+	<div class="flex-1 space-y-5 p-4">
+		{#each Array.from({ length: 3 }, (_, i) => i) as i (i)}
+			<div class="space-y-2">
+				<div class="flex items-center gap-2">
+					<Skeleton class="size-8 rounded-full" />
+					<Skeleton class="h-3 w-32 rounded" />
+				</div>
+				<Skeleton class="h-20 w-full rounded-lg" />
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
 <div class="flex h-full">
 	<!-- List pane -->
 	<div class="flex w-full flex-col border-r md:w-[360px] md:shrink-0 {threadId ? 'hidden md:flex' : 'flex'}">
@@ -264,6 +299,15 @@
 		<div class="flex h-11 items-center gap-2 border-b px-3">
 			<InboxIcon class="text-muted-foreground size-4" />
 			<span class="truncate font-mono text-xs">{activeMailbox?.address ?? '…'}</span>
+			{#if canManageActive}
+				<a
+					href="/mailboxes/{mailboxId}"
+					title="Manage mailbox"
+					class="text-muted-foreground hover:text-foreground ml-auto"
+				>
+					<SettingsIcon class="size-4" />
+				</a>
+			{/if}
 		</div>
 
 		<!-- Folder rail -->
@@ -299,7 +343,9 @@
 
 		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
 			{#if placement === 'drafts'}
-				{#await myDrafts() then drafts}
+				{#await myDrafts()}
+					{@render listSkeleton()}
+				{:then drafts}
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
 							<button type="button" onclick={() => openDraft(d.id)} class="hover:bg-muted/60 flex w-full flex-col gap-0.5 border-b px-4 py-3 text-left">
@@ -319,7 +365,9 @@
 					{/if}
 				{/await}
 			{:else if placement === 'scheduled'}
-				{#await scheduledSends() then items}
+				{@const schedQ = scheduledSends()}
+				{#if schedQ.current}
+					{@const items = schedQ.current}
 					{#if items.length}
 						{#each items as s (s.submissionId)}
 							<div class="flex flex-col gap-0.5 border-b px-4 py-3">
@@ -334,7 +382,9 @@
 					{:else}
 						<EmptyState icon={ClockIcon} title="Nothing scheduled" description="Schedule a send and it will appear here until it goes out." />
 					{/if}
-				{/await}
+				{:else}
+					{@render listSkeleton()}
+				{/if}
 			{:else if mailboxId && !isVirtual}
 					{#if applyAssignFilter(items).length}
 						{#each applyAssignFilter(items) as t (t.threadId)}
@@ -354,7 +404,9 @@
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
 						{/if}
-					{:else if !loadingList}
+					{:else if loadingList}
+						{@render listSkeleton()}
+					{:else}
 						<EmptyState icon={InboxIcon} title="Nothing here" description="This folder is empty.">
 							{#snippet action()}
 								<Button size="sm" class="gap-1.5" onclick={composeNew}>
@@ -550,6 +602,8 @@
 							{/key}
 						{/if}
 					{/if}
+			{:else}
+				{@render threadSkeleton()}
 			{/if}
 		{:else}
 			<EmptyState icon={MessagesSquareIcon} title="No conversation selected" description="Pick a thread from the list to read it here, or compose a new message." />

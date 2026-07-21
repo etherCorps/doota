@@ -9,6 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myApiKeys, createApiKeyForUser, revokeApiKeyById } from '$lib/rpc/api-keys.remote';
 	import { sendIdentities } from '$lib/rpc/draft.remote';
 
@@ -122,7 +123,10 @@
 				</div>
 			{/if}
 		{:else}
-			<div class="flex justify-center py-4"><Spinner /></div>
+			<div class="flex flex-col gap-3">
+				<Skeleton class="h-10 w-full rounded-md" />
+				<Skeleton class="h-10 w-full rounded-md" />
+			</div>
 		{/if}
 	</Card.CardContent>
 </Card.Card>

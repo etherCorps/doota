@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import { listAliases, generateAlias, toggleAlias, deleteAlias } from '$lib/rpc/alias.remote';
 
@@ -66,7 +67,12 @@
 		</Card.CardDescription>
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col gap-5">
-		{#await myMailboxes() then allBoxes}
+		{#await myMailboxes()}
+			<div class="flex flex-col gap-2">
+				<Skeleton class="h-8 w-full rounded-md" />
+				<Skeleton class="h-8 w-full rounded-md" />
+			</div>
+		{:then allBoxes}
 			{@const boxes = allBoxes.filter((b) => b.isPersonal)}
 			{#if boxes.length}
 				{#each boxes as box (box.id)}
