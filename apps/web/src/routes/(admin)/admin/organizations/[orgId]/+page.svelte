@@ -88,8 +88,8 @@
 			<div class="flex items-center gap-3">
 				<div
 					class="flex size-10 items-center justify-center rounded-full {active
-						? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-						: 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}"
+						? 'bg-ok/10 text-ok'
+						: 'bg-warn/10 text-warn'}"
 				>
 					<CheckCircle2Icon class="size-5" />
 				</div>
@@ -113,9 +113,9 @@
 	<div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
 		{#each stats as s (s.label)}
 			<a href={s.href} class="group">
-				<Card.Card class="transition-colors group-hover:border-foreground/20">
+				<Card.Card class="transition-all duration-150 group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-lg">
 					<Card.CardContent class="flex items-center gap-3 py-4">
-						<div class="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md">
+						<div class="bg-muted text-muted-foreground group-hover:text-foreground flex size-9 items-center justify-center rounded-md transition-colors">
 							<s.icon class="size-4" />
 						</div>
 						<div>
@@ -154,7 +154,7 @@
 						</div>
 						<div>
 							<div class="text-muted-foreground text-xs">Delivered (7d)</div>
-							<div class="mt-0.5 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+							<div class="text-ok mt-0.5 text-xl font-semibold tabular-nums">
 								{mailStats.delivered.toLocaleString()}
 							</div>
 						</div>

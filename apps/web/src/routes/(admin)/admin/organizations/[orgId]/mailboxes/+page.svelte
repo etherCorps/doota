@@ -105,7 +105,7 @@
 
 {#snippet typeCell(mb: Mailbox)}
 	{#if mb.isService}
-		<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+		<span class="border-p1/30 bg-p1/10 text-p1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium">
 			<BotIcon class="size-3" /> service
 		</span>
 	{:else if mb.isPersonal}

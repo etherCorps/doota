@@ -19,9 +19,9 @@
 	type Row = (typeof data.suppressions)[number];
 
 	// hard_bounce / complaint are automatic (from bounce DSNs); manual is admin-added.
-	const REASON: Record<string, { label: string; variant: 'destructive' | 'secondary' | 'outline' }> = {
+	const REASON: Record<string, { label: string; variant: 'destructive' | 'warning' | 'secondary' | 'outline' }> = {
 		hard_bounce: { label: 'hard bounce', variant: 'destructive' },
-		complaint: { label: 'complaint', variant: 'destructive' },
+		complaint: { label: 'complaint', variant: 'warning' },
 		manual: { label: 'manual', variant: 'secondary' }
 	};
 	const fmtDate = (d: Date | string | number) =>

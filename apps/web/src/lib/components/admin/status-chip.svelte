@@ -17,7 +17,7 @@
 
 	const classes: Record<string, string> = {
 		ok: 'bg-ok/10 text-ok',
-		warn: 'bg-amber-500/10 text-amber-600',
+		warn: 'bg-warn/10 text-warn',
 		bad: 'bg-destructive/10 text-destructive',
 		muted: 'bg-muted text-muted-foreground'
 	};

@@ -267,7 +267,7 @@
 		onkeydown={onEditorKeydown}
 		class="prose-sm min-h-[200px] max-w-none overflow-auto px-3 py-2 text-sm outline-none
 			[&:empty]:before:text-muted-foreground [&:empty]:before:content-[attr(data-placeholder)]
-			[&_a]:text-accent [&_a]:underline
+			[&_a]:text-brand [&_a]:underline
 			[&_blockquote]:border-muted-foreground/30 [&_blockquote]:text-muted-foreground [&_blockquote]:border-l-2 [&_blockquote]:pl-3"
 	></div>
 </div>

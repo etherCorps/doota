@@ -161,7 +161,11 @@
 							<div class="flex flex-col gap-1.5">
 								<div class="bg-muted h-2 w-full overflow-hidden rounded-full">
 									<div
-										class="h-full rounded-full transition-all {acctPct >= 90 ? 'bg-destructive' : 'bg-primary'}"
+										class="h-full rounded-full transition-all {acctPct >= 90
+											? 'bg-destructive'
+											: acctPct >= 75
+												? 'bg-warn'
+												: 'bg-brand'}"
 										style="width: {acctPct}%"
 									></div>
 								</div>

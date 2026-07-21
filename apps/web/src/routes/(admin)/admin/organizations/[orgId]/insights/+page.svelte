@@ -109,8 +109,8 @@
 		const t = new Date(d);
 		return isNaN(+t) ? d : t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 	};
-	const statusVariant = (s: string | null): 'default' | 'destructive' | 'outline' =>
-		!s ? 'outline' : s === 'delivered' ? 'default' : isFail(s) ? 'destructive' : 'outline';
+	const statusVariant = (s: string | null): 'success' | 'destructive' | 'outline' =>
+		!s ? 'outline' : s === 'delivered' ? 'success' : isFail(s) ? 'destructive' : 'outline';
 
 	// ---- Email-log table -----------------------------------------------------
 	const logColumns: ColumnDef<Logs[number], unknown>[] = [
@@ -146,7 +146,7 @@
 
 {#snippet authFlag(label: string, v: string | null)}
 	{#if v}
-		<span class="text-[10px] {v === 'pass' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}">
+		<span class="text-[10px] {v === 'pass' ? 'text-ok' : 'text-muted-foreground'}">
 			{label}:{v}
 		</span>
 	{/if}
@@ -225,23 +225,23 @@
 			<p class="text-muted-foreground py-10 text-sm">This organization has no Cloudflare zone yet.</p>
 		{:else}
 			<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-				<div class="rounded-lg border p-4">
+				<div class="rounded-lg border border-l-2 border-l-brand p-4">
 					<div class="text-muted-foreground text-xs">Sent ({days}d)</div>
 					<div class="mt-1 text-2xl font-semibold tabular-nums">{totals.total.toLocaleString()}</div>
 				</div>
-				<div class="rounded-lg border p-4">
+				<div class="rounded-lg border border-l-2 border-l-ok p-4">
 					<div class="text-muted-foreground text-xs">Delivered</div>
-					<div class="mt-1 text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+					<div class="text-ok mt-1 text-2xl font-semibold tabular-nums">
 						{totals.delivered.toLocaleString()}
 					</div>
 				</div>
-				<div class="rounded-lg border p-4">
+				<div class="rounded-lg border border-l-2 border-l-destructive p-4">
 					<div class="text-muted-foreground text-xs">Failed</div>
 					<div class="mt-1 text-2xl font-semibold tabular-nums text-destructive">
 						{totals.failed.toLocaleString()}
 					</div>
 				</div>
-				<div class="rounded-lg border p-4">
+				<div class="rounded-lg border border-l-2 border-l-p2 p-4">
 					<div class="text-muted-foreground text-xs">Delivery rate</div>
 					<div class="mt-1 text-2xl font-semibold tabular-nums">{totals.rate === null ? '—' : `${totals.rate}%`}</div>
 				</div>

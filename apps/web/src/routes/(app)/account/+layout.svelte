@@ -65,7 +65,7 @@
 				class={cn(
 					'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
 					hasSecondFactor
-						? 'text-foreground'
+						? 'border-ok/40 text-ok'
 						: 'border-destructive/40 text-destructive'
 				)}
 			>
@@ -75,7 +75,11 @@
 			<span
 				class={cn(
 					'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-					data.user.recoveryEmailVerified ? 'text-foreground' : 'text-muted-foreground'
+					data.user.recoveryEmailVerified
+						? 'border-ok/40 text-ok'
+						: data.user.recoveryEmail
+							? 'border-warn/40 text-warn'
+							: 'text-muted-foreground'
 				)}
 			>
 				<LifeBuoyIcon class="size-3.5" />

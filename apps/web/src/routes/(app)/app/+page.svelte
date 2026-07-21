@@ -331,7 +331,7 @@
 					{#each [['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']] as [id, label] (id)}
 						<button
 							type="button"
-							class="rounded px-1.5 py-0.5 {assignFilter === id ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							class="rounded px-1.5 py-0.5 {assignFilter === id ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}"
 							onclick={() => (assignFilter = id as typeof assignFilter)}
 						>
 							{label}
@@ -374,7 +374,7 @@
 								<span class="truncate text-sm font-medium">{s.subject || '(no subject)'}</span>
 								<span class="text-muted-foreground truncate font-mono text-xs">to {s.to ?? '—'}</span>
 								<div class="mt-1 flex items-center justify-between">
-									<span class="text-accent text-xs">Sends {fmtTime(s.sendAt)}</span>
+									<span class="text-brand text-xs font-medium">Sends {fmtTime(s.sendAt)}</span>
 									<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
 								</div>
 							</div>
@@ -393,7 +393,7 @@
 									{#if t.unread}<span class="bg-brand size-2 shrink-0 rounded-full"></span>{/if}
 									<span class="flex-1 truncate font-mono text-xs {t.unread ? 'font-semibold' : ''}">{t.from ?? '—'}</span>
 									{#if t.hasNotes}<StickyNoteIcon class="size-3.5 shrink-0 text-amber-500" />{/if}
-									{#if t.assigneeUserId}<UserRoundIcon class="text-accent size-3.5 shrink-0" />{/if}
+									{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
 									{#if t.isStarred}<StarIcon class="text-p3 size-3.5 shrink-0 fill-current" />{/if}
 									<span class="text-faint shrink-0 text-[11px]">{fmtTime(t.lastMessageAt)}</span>
 								</div>
@@ -502,7 +502,7 @@
 												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
 												<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow)} class="h-72 w-full rounded border-0 bg-white"></iframe>
 												{#if !allow}
-													<button type="button" class="text-accent mt-1 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
+													<button type="button" class="text-brand mt-1 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
 													</button>
 												{/if}

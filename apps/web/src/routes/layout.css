@@ -8,28 +8,30 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Doota design tokens.
-   paper #F4F6F8 · surface #FFF · ink #15171E · muted #68707E · faint #98A0AD
-   line #E7EAEF · brand #0E7AE6 (interactive/active ONLY) · ok #16A968
+   Neutrals are tinted toward the brand hue (~250°) at low chroma — greys carry a
+   cool cast instead of reading dead-flat. Interaction earns color: --accent and
+   --sidebar-accent are a soft blue wash with a brand-dark foreground, so hovered /
+   selected / active-nav states pick up a blue identity. brand #0E7AE6 · ok #16A968
    participants #6D5AE6 / #0EA59B / #E05D96
-   Sent bubbles use ink (graphite), never brand. */
+   --primary stays graphite (sent bubbles use ink, never brand). */
 :root {
-	--background: #f4f6f8; /* paper */
-	--foreground: #15171e; /* ink */
-	--card: #ffffff; /* surface */
-	--card-foreground: #15171e;
+	--background: oklch(0.98 0.006 250); /* paper — faint cool tint */
+	--foreground: oklch(0.23 0.02 264); /* ink */
+	--card: #ffffff; /* surface — crisp white lifts off tinted paper */
+	--card-foreground: oklch(0.23 0.02 264);
 	--popover: #ffffff;
-	--popover-foreground: #15171e;
-	--primary: #15171e; /* graphite, not blue */
+	--popover-foreground: oklch(0.23 0.02 264);
+	--primary: oklch(0.23 0.02 264); /* graphite, not blue */
 	--primary-foreground: #ffffff;
-	--secondary: #edeff3;
-	--secondary-foreground: #15171e;
-	--muted: #eef1f4;
-	--muted-foreground: #68707e; /* muted */
-	--accent: #edeff3; /* neutral hover, NOT brand */
-	--accent-foreground: #15171e;
+	--secondary: oklch(0.945 0.012 250);
+	--secondary-foreground: oklch(0.23 0.02 264);
+	--muted: oklch(0.955 0.01 250);
+	--muted-foreground: oklch(0.53 0.025 258); /* muted */
+	--accent: oklch(0.93 0.035 250); /* soft brand wash — hover/selected earn color */
+	--accent-foreground: oklch(0.42 0.12 250); /* brand-dark → selected text reads blue */
 	--destructive: #e5484d;
-	--border: #e7eaef; /* line */
-	--input: #e7eaef;
+	--border: oklch(0.91 0.012 250); /* line */
+	--input: oklch(0.91 0.012 250);
 	--ring: #0e7ae6; /* focus ring is interactive → brand */
 	--radius: 0.5rem;
 
@@ -38,17 +40,19 @@
 	--brand: #0e7ae6;
 	--brand-foreground: #ffffff;
 	--ok: #16a968;
+	--warn: #b45309; /* amber — readable as badge text on white */
+	--scrim: oklch(0.15 0.03 262); /* modal backdrop — tinted ink, used at alpha */
 	--p1: #6d5ae6;
 	--p2: #0ea59b;
 	--p3: #e05d96;
 
-	--sidebar: #ffffff;
-	--sidebar-foreground: #15171e;
-	--sidebar-primary: #15171e;
+	--sidebar: oklch(0.99 0.004 250); /* barely-tinted rail */
+	--sidebar-foreground: oklch(0.23 0.02 264);
+	--sidebar-primary: oklch(0.23 0.02 264);
 	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: #eef1f4;
-	--sidebar-accent-foreground: #15171e;
-	--sidebar-border: #e7eaef;
+	--sidebar-accent: oklch(0.925 0.04 250); /* colored active/hover nav */
+	--sidebar-accent-foreground: oklch(0.42 0.13 250); /* brand-dark nav label */
+	--sidebar-border: oklch(0.92 0.012 250);
 	--sidebar-ring: #0e7ae6;
 
 	--chart-1: #0e7ae6;
@@ -59,20 +63,20 @@
 }
 
 .dark {
-	--background: #0f1115;
-	--foreground: #eef1f4;
-	--card: #15171e;
-	--card-foreground: #eef1f4;
-	--popover: #15171e;
-	--popover-foreground: #eef1f4;
-	--primary: #eef1f4;
-	--primary-foreground: #15171e;
-	--secondary: #21242c;
-	--secondary-foreground: #eef1f4;
-	--muted: #21242c;
-	--muted-foreground: #98a0ad;
-	--accent: #21242c;
-	--accent-foreground: #eef1f4;
+	--background: oklch(0.17 0.015 262); /* tinted charcoal, not neutral black */
+	--foreground: oklch(0.94 0.006 250);
+	--card: oklch(0.21 0.018 262);
+	--card-foreground: oklch(0.94 0.006 250);
+	--popover: oklch(0.21 0.018 262);
+	--popover-foreground: oklch(0.94 0.006 250);
+	--primary: oklch(0.94 0.006 250);
+	--primary-foreground: oklch(0.17 0.015 262);
+	--secondary: oklch(0.26 0.02 260);
+	--secondary-foreground: oklch(0.94 0.006 250);
+	--muted: oklch(0.26 0.02 260);
+	--muted-foreground: oklch(0.7 0.022 258);
+	--accent: oklch(0.32 0.05 255); /* brand-lit hover/selected */
+	--accent-foreground: oklch(0.85 0.06 250); /* light-blue selected text */
 	--destructive: #ff6369;
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 12%);
@@ -82,16 +86,17 @@
 	--brand: #3d9bf0;
 	--brand-foreground: #0f1115;
 	--ok: #3dd68c;
+	--warn: #f5b73d;
 	--p1: #9587ff;
 	--p2: #35c9bd;
 	--p3: #f087b8;
 
-	--sidebar: #15171e;
-	--sidebar-foreground: #eef1f4;
-	--sidebar-primary: #eef1f4;
-	--sidebar-primary-foreground: #15171e;
-	--sidebar-accent: #21242c;
-	--sidebar-accent-foreground: #eef1f4;
+	--sidebar: oklch(0.19 0.017 262);
+	--sidebar-foreground: oklch(0.94 0.006 250);
+	--sidebar-primary: oklch(0.94 0.006 250);
+	--sidebar-primary-foreground: oklch(0.17 0.015 262);
+	--sidebar-accent: oklch(0.33 0.055 255); /* colored active/hover nav */
+	--sidebar-accent-foreground: oklch(0.86 0.06 250);
 	--sidebar-border: oklch(1 0 0 / 10%);
 	--sidebar-ring: #3d9bf0;
 }
@@ -105,6 +110,8 @@
 	--color-brand: var(--brand);
 	--color-brand-foreground: var(--brand-foreground);
 	--color-ok: var(--ok);
+	--color-warn: var(--warn);
+	--color-scrim: var(--scrim);
 	--color-p1: var(--p1);
 	--color-p2: var(--p2);
 	--color-p3: var(--p3);
@@ -144,6 +151,14 @@
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
+
+	/* Tinted elevation — shadows carry the brand hue so depth reads cohesive
+	   with the palette instead of a flat neutral grey drop. */
+	--shadow-xs: 0 1px 2px 0 oklch(0.25 0.06 262 / 0.06);
+	--shadow-sm: 0 1px 3px 0 oklch(0.25 0.06 262 / 0.09), 0 1px 2px -1px oklch(0.25 0.06 262 / 0.07);
+	--shadow-md: 0 4px 6px -1px oklch(0.25 0.06 262 / 0.09), 0 2px 4px -2px oklch(0.25 0.06 262 / 0.07);
+	--shadow-lg: 0 10px 15px -3px oklch(0.25 0.06 262 / 0.1), 0 4px 6px -4px oklch(0.25 0.06 262 / 0.07);
+	--shadow-xl: 0 20px 25px -5px oklch(0.25 0.06 262 / 0.11), 0 8px 10px -6px oklch(0.25 0.06 262 / 0.07);
 }
 
 @layer base {

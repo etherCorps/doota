@@ -578,7 +578,7 @@
 							variant="ghost"
 							size="icon"
 							class="size-8 {showSchedule || scheduleAt
-								? 'text-amber-600 dark:text-amber-400'
+								? 'text-warn'
 								: 'text-muted-foreground hover:text-foreground'}"
 							title="Schedule send"
 							aria-pressed={showSchedule}
@@ -593,7 +593,7 @@
 							<span class="text-muted-foreground text-xs">Uploading…</span>
 						{:else if saved && draftId}
 							<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
-								<CheckIcon class="size-3.5 text-emerald-600 dark:text-emerald-400" /> Draft saved
+								<CheckIcon class="text-ok size-3.5" /> Draft saved
 							</span>
 						{/if}
 					</div>

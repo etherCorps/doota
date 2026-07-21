@@ -57,10 +57,10 @@
 
     {#snippet stepsCounter({ index, length }: { index: number; length: number })}
         <div
-            class="text-muted-foreground flex items-center gap-2 text-xs font-medium"
+            class="text-brand flex items-center gap-2 text-xs font-medium"
         >
             <span
-                class="bg-muted flex size-5 items-center justify-center rounded-full text-[11px]"
+                class="bg-brand text-brand-foreground flex size-5 items-center justify-center rounded-full text-[11px]"
             >
                 {index + 1}
             </span>

@@ -82,7 +82,7 @@
 {/snippet}
 
 {#snippet roleCell(m: Member)}
-	<Badge variant={m.role === 'member' ? 'secondary' : 'default'} class="capitalize">{m.role}</Badge>
+	<Badge variant={m.role === 'member' ? 'secondary' : 'info'} class="capitalize">{m.role}</Badge>
 {/snippet}
 
 {#snippet statusCell(m: Member)}

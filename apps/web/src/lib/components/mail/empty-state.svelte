@@ -10,7 +10,7 @@
 </script>
 
 <div class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
-	<div class="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
+	<div class="bg-brand/10 text-brand flex size-12 items-center justify-center rounded-full">
 		<Icon class="size-6" />
 	</div>
 	<div class="space-y-1">

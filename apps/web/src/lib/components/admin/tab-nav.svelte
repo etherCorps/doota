@@ -15,7 +15,7 @@
 				class={cn(
 					'shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
 					t.active
-						? 'border-primary text-foreground'
+						? 'border-brand text-brand'
 						: 'text-muted-foreground hover:text-foreground border-transparent'
 				)}
 			>

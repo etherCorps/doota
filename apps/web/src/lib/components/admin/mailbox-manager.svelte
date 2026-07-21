@@ -232,7 +232,7 @@
 			<h1 class="font-heading text-2xl font-semibold tracking-tight">{mb.address}</h1>
 			<Badge variant={mb.isActive ? 'default' : 'outline'}>{mb.isActive ? 'active' : 'inactive'}</Badge>
 			{#if mb.isService}
-				<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400">
+				<span class="border-p1/30 bg-p1/10 text-p1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium">
 					<BotIcon class="size-3.5" /> service
 				</span>
 			{/if}

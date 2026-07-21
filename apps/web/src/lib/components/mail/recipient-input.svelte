@@ -51,13 +51,14 @@
 		}
 	}
 
-	// Deterministic avatar tint per address (subtle; readable in both themes).
+	// Deterministic avatar tint per address, drawn from the app's own hues
+	// (brand + participant palette) so chips read cohesive; tokens flip per theme.
 	const TINTS = [
-		'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-		'bg-violet-500/15 text-violet-600 dark:text-violet-400',
-		'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-		'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-		'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+		'bg-brand/15 text-brand',
+		'bg-p1/15 text-p1',
+		'bg-p2/15 text-p2',
+		'bg-p3/15 text-p3',
+		'bg-ok/15 text-ok'
 	];
 	function tint(addr: string): string {
 		let h = 0;
