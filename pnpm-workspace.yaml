@@ -4,6 +4,8 @@ onlyBuiltDependencies:
   - sharp
   - '@tailwindcss/oxide'
   - '@better-auth/root'
+  # memlab (client memory-leak testing) — lets Puppeteer fetch its Chromium.
+  - puppeteer
 packages:
   - 'apps/*'
   - 'packages/*'

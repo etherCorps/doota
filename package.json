@@ -9,6 +9,7 @@
     "build": "pnpm --filter doota build",
     "check": "pnpm -r --if-present check",
     "test": "pnpm --filter doota test",
+    "leak": "pnpm --filter doota leak",
     "deploy": "pnpm --filter doota deploy",
     "deploy:mail-in": "pnpm --filter @doota/mail-in deploy",
     "deploy:mail-jobs": "pnpm --filter @doota/mail-jobs deploy",
