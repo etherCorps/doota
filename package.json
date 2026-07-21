@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "//exports": "Subpath so the workers/* packages import the app's shared server logic (mail pipeline, db schema) without reaching across package roots. App code itself keeps using the $lib alias.",
+  "exports": {
+    "./server/*": "./src/lib/server/*.ts"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -21,13 +25,15 @@
     "db:migrate:remote": "wrangler d1 migrations apply doota --remote",
     "db:studio": "drizzle-kit studio",
     "gen": "wrangler types",
-    "gen:mail": "wrangler types -c wrangler.mail.jsonc",
     "reset-admin": "node scripts/reset-admin.mjs",
     "seed:dummy": "node scripts/seed-dummy.mjs",
-    "dev:mail": "wrangler dev -c wrangler.mail.jsonc",
+    "dev:mail-in": "pnpm --filter @doota/mail-in dev",
+    "dev:mail-jobs": "pnpm --filter @doota/mail-jobs dev",
     "deploy": "pnpm run build && wrangler deploy",
-    "deploy:mail": "wrangler deploy -c wrangler.mail.jsonc",
-    "deploy:all": "pnpm run deploy && pnpm run deploy:mail"
+    "deploy:mail-in": "pnpm --filter @doota/mail-in deploy",
+    "deploy:mail-jobs": "pnpm --filter @doota/mail-jobs deploy",
+    "deploy:workers": "pnpm run deploy:mail-in && pnpm run deploy:mail-jobs",
+    "deploy:all": "pnpm run deploy && pnpm run deploy:workers"
   },
   "devDependencies": {
     "@better-auth/passkey": "^1.6.23",

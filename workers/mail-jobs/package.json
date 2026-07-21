@@ -1,0 +1,19 @@
+{
+  "name": "@doota/mail-jobs",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "gen": "wrangler types",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry"
+  },
+  "dependencies": {
+    "doota": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0"
+  }
+}

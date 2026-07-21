@@ -7,3 +7,4 @@ onlyBuiltDependencies:
 packages:
   - '.'          # <--- This includes the root project
   - 'landing'
+  - 'workers/*'

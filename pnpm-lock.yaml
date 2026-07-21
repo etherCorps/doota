@@ -199,6 +199,29 @@ importers:
         specifier: ^4.110.0
         version: 4.110.0
 
+  workers/mail-in:
+    dependencies:
+      doota:
+        specifier: workspace:*
+        version: link:../..
+    devDependencies:
+      wrangler:
+        specifier: ^4.110.0
+        version: 4.110.0
+
+  workers/mail-jobs:
+    dependencies:
+      doota:
+        specifier: workspace:*
+        version: link:../..
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@libsql/client@0.17.4)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.8.0)(kysely@0.28.17)(pg@8.20.0)
+    devDependencies:
+      wrangler:
+        specifier: ^4.110.0
+        version: 4.110.0
+
 packages:
 
   '@babel/code-frame@7.29.0':
