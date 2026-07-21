@@ -5,10 +5,22 @@ import * as schema from "../db/schema";
 // so the auth-boundary guard (which matches `.insert/.update/.delete(schema.…)`)
 // never trips — these are app-owned tables, freely writable.
 import * as mail from "../db/mail.schema";
+import { currentRoutingSubdomains } from "./mirror";
 
 type Db = DrizzleD1Database<typeof schema>;
 
 const localPartOf = (address: string) => address.slice(0, address.lastIndexOf("@"));
+
+/**
+ * Hosts a new address may sit on for an org: the apex plus every configured
+ * routing subdomain (inbound-routed, and sendable via the same served-domain
+ * map). The apex is always first (the default). Lowercased, de-duped.
+ */
+export async function addressHosts(db: Db, orgId: string, apex: string): Promise<string[]> {
+  const apexL = apex.trim().toLowerCase();
+  const subs = await currentRoutingSubdomains(db, orgId);
+  return [apexL, ...subs.map((s) => s.toLowerCase()).filter((s) => s && s !== apexL)];
+}
 
 /**
  * Create (or reuse) a mailbox for an org, keyed on (org_id, address). Idempotent

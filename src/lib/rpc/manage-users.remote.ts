@@ -55,6 +55,7 @@ const createSchema = z.object({
   recoveryEmail: Email,
   role: z.enum(["member", "admin"]),
   organizationId: z.string().min(1),
+  host: z.string().optional(),
 });
 
 export const createUser = form(createSchema, async (input) => {

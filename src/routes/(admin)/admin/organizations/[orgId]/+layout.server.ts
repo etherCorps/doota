@@ -2,6 +2,7 @@ import { error, redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import * as schema from "$lib/server/db/schema.js";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { addressHosts } from "$lib/server/mail/mailbox.js";
 
 // Shared org context + access gate for every org sub-route (DNS / members /
 // settings). Children inherit `org` via merged layout data.
@@ -28,5 +29,9 @@ export const load = async ({ locals, params }) => {
     if (!orgAdminOf.includes(org.id)) error(403, "You don't manage this organization");
   }
 
-  return { org };
+  // Hosts a new address may sit on (apex + routing subdomains) — offered in the
+  // add-user / add-mailbox pickers so addresses can live on a subdomain.
+  const mailHosts = await addressHosts(locals.db, org.id, org.domain);
+
+  return { org, mailHosts };
 };

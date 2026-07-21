@@ -6,6 +6,7 @@ import * as schema from "$lib/server/db/schema.js";
 import { can } from "$lib/server/can.js";
 import { sendGrantUserIds } from "$lib/server/mail/mailbox.js";
 import { enqueueSend, cancelSend, type OutboundEnv } from "$lib/server/mail/outbound.js";
+import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { resolveSender } from "$lib/server/mail/resolver";
 
 /**
@@ -84,6 +85,12 @@ export const sendMessage = command(SendInput, async (input) => {
     idempotencyKey: input.idempotencyKey ?? crypto.randomUUID(),
     undoSeconds: input.undoSeconds ?? undefined,
   });
+  // Bridge: drain this send in-process (see deliver-bridge.ts) since the queue
+  // consumer isn't running. Skip future-scheduled sends (left for the queue/cron).
+  const undo = input.undoSeconds ?? 10;
+  if (!input.sendAt || input.sendAt <= Date.now() + undo * 1000) {
+    deliverInBackground(res.submissionId, undo);
+  }
   return { submissionId: res.submissionId, threadId: res.threadId, deduped: res.deduped };
 });
 

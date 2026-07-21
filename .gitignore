@@ -27,3 +27,6 @@ vite.config.ts.timestamp-*
 *.db
 
 .dev.vars
+
+# seed script scratch output
+scripts/.seed.sql

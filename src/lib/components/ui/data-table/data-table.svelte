@@ -11,6 +11,7 @@
 		getSortedRowModel
 	} from '@tanstack/table-core';
 	import { untrack, type Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { createSvelteTable } from './data-table.svelte.js';
 	import FlexRender from './flex-render.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
@@ -30,6 +31,9 @@
 		empty?: string;
 		/** Rendered on the search row, right-aligned (e.g. an "Add" button). */
 		actions?: Snippet;
+		/** When set, the whole row is clickable and navigates here. A real link
+		 *  inside a cell (e.g. the name) stays the keyboard/screen-reader target. */
+		rowHref?: (row: TData) => string;
 	};
 	let {
 		columns,
@@ -38,7 +42,8 @@
 		filterPlaceholder = 'Search…',
 		pageSize = 10,
 		empty = 'No results.',
-		actions
+		actions,
+		rowHref
 	}: Props = $props();
 
 	let sorting = $state<SortingState>([]);
@@ -129,7 +134,15 @@
 			</Table.Header>
 			<Table.Body>
 				{#each table.getRowModel().rows as row (row.id)}
-					<Table.Row>
+					<Table.Row
+						class={rowHref ? 'cursor-pointer' : undefined}
+						onclick={rowHref
+							? (e) => {
+									if ((e.target as HTMLElement).closest('a,button,input,[role="button"]')) return;
+									goto(rowHref(row.original));
+								}
+							: undefined}
+					>
 						{#each row.getVisibleCells() as cell (cell.id)}
 							<Table.Cell>
 								<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />

@@ -24,6 +24,7 @@
 		revokeServiceKey
 	} from '$lib/rpc/mailbox.remote';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import BotIcon from '@lucide/svelte/icons/bot';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 
@@ -230,8 +231,16 @@
 		<div class="flex flex-wrap items-center gap-3">
 			<h1 class="font-heading text-2xl font-semibold tracking-tight">{mb.address}</h1>
 			<Badge variant={mb.isActive ? 'default' : 'outline'}>{mb.isActive ? 'active' : 'inactive'}</Badge>
-			{#if mb.isService}<Badge variant="secondary">service</Badge>{/if}
+			{#if mb.isService}
+				<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400">
+					<BotIcon class="size-3.5" /> service
+				</span>
+			{/if}
 		</div>
+		<p class="text-muted-foreground text-sm">
+			{mb.isService ? 'Service mailbox' : 'Shared mailbox'} · {grants.length}
+			{grants.length === 1 ? 'member' : 'members'} · created {fmtDate(mb.createdAt)}
+		</p>
 	</div>
 
 	<Tabs.Root value="settings">

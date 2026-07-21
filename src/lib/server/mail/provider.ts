@@ -1,9 +1,9 @@
 /**
- * Provider seam. Cloudflare Email Service is primary (public beta — a named
- * dependency risk), Resend is the fallback behind the SAME interface. Nothing
- * provider-specific leaks past `MailProvider`: the consumer builds an
- * `OutboundEmail` and calls send(); classification of failures is by the
- * `permanent` flag on the thrown error, never by provider payload shape.
+ * Provider seam. Cloudflare Email Service is the sole provider (public beta — a
+ * named dependency risk), behind the `MailProvider` interface. Nothing
+ * provider-specific leaks past it: the consumer builds an `OutboundEmail` and
+ * calls send(); classification of failures is by the `permanent` flag on the
+ * thrown error, never by provider payload shape.
  */
 
 /** One provider call's worth of mail. Recipients are already chunked (≤50). */
@@ -18,7 +18,9 @@ export type OutboundEmail = {
   html?: string;
   /** Message-ID / In-Reply-To / References — we own the Message-ID. */
   headers?: Record<string, string>;
-  attachments?: { filename: string; contentType: string; content: ArrayBuffer }[];
+  /** `contentId` set → inline (referenced by `cid:` in the html), else a normal
+   *  file attachment. */
+  attachments?: { filename: string; contentType: string; content: ArrayBuffer; contentId?: string }[];
 };
 
 export type SendResult = { providerMessageId: string };
@@ -42,7 +44,6 @@ export interface MailProvider {
 
 export type ProviderEnv = {
   EMAIL_SENDER?: SendEmail;
-  RESEND_API_KEY?: string;
 };
 
 /**
@@ -59,6 +60,10 @@ class CloudflareProvider implements MailProvider {
   constructor(private readonly sender: SendEmail) {}
 
   async send(email: OutboundEmail): Promise<SendResult> {
+    // Cloudflare Email Sending only accepts whitelisted + X-* headers and sets
+    // Message-ID itself — passing our own is rejected ("custom header 'Message-ID'
+    // is not allowed"). Keep the threading headers it does accept; drop the rest.
+    const headers = filterCloudflareHeaders(email.headers);
     try {
       const res = await this.sender.send({
         from: email.from.name ? { name: email.from.name, email: email.from.email } : email.from.email,
@@ -68,21 +73,35 @@ class CloudflareProvider implements MailProvider {
         to: email.to,
         ...(email.cc?.length ? { cc: email.cc } : {}),
         ...(email.bcc?.length ? { bcc: email.bcc } : {}),
-        ...(email.headers ? { headers: email.headers } : {}),
+        ...(headers ? { headers } : {}),
         ...(email.text ? { text: email.text } : {}),
         ...(email.html ? { html: email.html } : {}),
         ...(email.attachments?.length
           ? {
-              attachments: email.attachments.map((a) => ({
-                disposition: "attachment" as const,
-                filename: a.filename,
-                type: a.contentType,
-                content: a.content,
-              })),
+              attachments: email.attachments.map((a) =>
+                a.contentId
+                  ? {
+                      disposition: "inline" as const,
+                      contentId: a.contentId,
+                      filename: a.filename,
+                      type: a.contentType,
+                      content: base64(a.content),
+                    }
+                  : {
+                      disposition: "attachment" as const,
+                      filename: a.filename,
+                      type: a.contentType,
+                      content: base64(a.content),
+                    },
+              ),
             }
           : {}),
       });
-      return { providerMessageId: res.messageId };
+      const providerMessageId = res.messageId;
+      // The binding returns a Cloudflare RPC stub; dispose it once we've read the
+      // id, or the runtime warns ("An RPC stub was not disposed properly").
+      (res as { [Symbol.dispose]?: () => void })[Symbol.dispose]?.();
+      return { providerMessageId };
     } catch (e) {
       // ponytail: the binding surfaces little structure today; treat as soft
       // (retryable) unless the message clearly reads as a permanent rejection.
@@ -94,30 +113,44 @@ class CloudflareProvider implements MailProvider {
   }
 }
 
-/**
- * Resend fallback — stubbed, same interface. Wire the HTTP send when Cloudflare
- * Email Service's beta risk actually bites; until then it fails loudly rather
- * than silently pretending to send.
- */
-class ResendProvider implements MailProvider {
-  readonly name = "resend";
-  constructor(private readonly apiKey: string) {}
-
-  async send(_email: OutboundEmail): Promise<SendResult> {
-    // ponytail: implement POST https://api.resend.com/emails here; kept a stub so
-    // the seam exists and the switch is one env var, not a code change.
-    void this.apiKey;
-    throw new ProviderSendError("Resend provider not implemented", true);
+/** ArrayBuffer → base64 string. The EMAIL_SENDER binding can't serialize a raw
+ *  ArrayBuffer ("Cannot serialize value: [object ArrayBuffer]") — content must be
+ *  a base64 string. */
+function base64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const CH = 0x8000; // chunk to avoid arg-count limits on large images
+  for (let i = 0; i < bytes.length; i += CH) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CH));
   }
+  return btoa(bin);
 }
 
 /**
- * Pick the active provider from bindings: Cloudflare Email Service when its
- * binding is present, else Resend when an API key is configured. Returns null
- * when neither is available (dev with no bindings) so the caller can no-op.
+ * Headers Cloudflare Email Sending accepts: threading (In-Reply-To, References)
+ * plus any X-* header. Message-ID and everything else are dropped — the binding
+ * rejects unknown headers and sets Message-ID itself. Returns undefined if none
+ * survive (so the send omits the field entirely).
+ */
+const CF_ALLOWED_HEADERS = new Set(["in-reply-to", "references"]);
+function filterCloudflareHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    const key = k.toLowerCase();
+    if (CF_ALLOWED_HEADERS.has(key) || key.startsWith("x-")) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * The active provider from bindings: Cloudflare Email Service when its binding is
+ * present. Returns null when it's absent (dev with no bindings) so the caller can
+ * no-op instead of pretending to send.
  */
 export function selectProvider(env: ProviderEnv): MailProvider | null {
   if (env.EMAIL_SENDER) return new CloudflareProvider(env.EMAIL_SENDER);
-  if (env.RESEND_API_KEY) return new ResendProvider(env.RESEND_API_KEY);
   return null;
 }

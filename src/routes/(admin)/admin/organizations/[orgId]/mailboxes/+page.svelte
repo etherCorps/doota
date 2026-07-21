@@ -10,10 +10,12 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
+	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
+	import PageHeader from '$lib/components/admin/page-header.svelte';
+	import HostSelect from '$lib/components/admin/host-select.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
-	import { generateAlias } from '$lib/rpc/alias.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import BotIcon from '@lucide/svelte/icons/bot';
 
@@ -23,19 +25,30 @@
 
 	type Mailbox = (typeof data.mailboxes)[number];
 
-	// Shared and individual (personal) mailboxes live in separate tables: only
-	// shared mailboxes are provisioned here (personal ones come with members),
-	// and only shared ones carry access grants / activation.
-	const sharedMailboxes = $derived(data.mailboxes.filter((m) => !m.isPersonal));
-	const personalMailboxes = $derived(data.mailboxes.filter((m) => m.isPersonal));
+	// Mailbox categories (a mailbox is exactly one).
+	const kindOf = (m: Mailbox) => (m.isService ? 'service' : m.isPersonal ? 'individual' : 'shared');
+	const sharedMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'shared'));
+	const serviceMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'service'));
+	const personalMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'individual'));
 
-	// Honest counts for the summary strip — distinct members holding any grant.
-	const membersWithAccess = $derived(new Set(data.grants.map((g) => g.userId)).size);
+	// Segmented filter over a single table.
+	type Filter = 'all' | 'shared' | 'service' | 'individual';
+	let filter = $state<Filter>('all');
+	const segments = $derived([
+		{ key: 'all' as const, label: 'All', n: data.mailboxes.length },
+		{ key: 'shared' as const, label: 'Shared', n: sharedMailboxes.length },
+		{ key: 'service' as const, label: 'Service', n: serviceMailboxes.length },
+		{ key: 'individual' as const, label: 'Individual', n: personalMailboxes.length }
+	]);
+	const filtered = $derived(
+		filter === 'all' ? data.mailboxes : data.mailboxes.filter((m) => kindOf(m) === filter)
+	);
 
 	let addOpen = $state(false);
 	let localPart = $state('');
 	let displayName = $state('');
 	let isService = $state(false);
+	let host = $state(data.mailHosts[0]);
 	let saving = $state(false);
 
 	// mailboxId → number of members with any grant (drives the access count column).
@@ -49,28 +62,25 @@
 		return map;
 	});
 
-	const sharedColumns: ColumnDef<Mailbox, unknown>[] = [
+	const columns: ColumnDef<Mailbox, unknown>[] = [
 		{ accessorKey: 'address', header: 'Address', cell: ({ row }) => renderSnippet(addressCell, row.original) },
+		{ id: 'kind', header: 'Type', enableSorting: false, cell: ({ row }) => renderSnippet(typeCell, row.original) },
 		{ id: 'access', header: 'Access', enableSorting: false, cell: ({ row }) => renderSnippet(accessCell, row.original) },
 		{ accessorKey: 'isActive', header: 'Status', cell: ({ row }) => renderSnippet(statusCell, row.original) },
-		{ id: 'actions', header: '', enableSorting: false, cell: ({ row }) => renderSnippet(sharedActionsCell, row.original) }
-	];
-	const personalColumns: ColumnDef<Mailbox, unknown>[] = [
-		{ accessorKey: 'address', header: 'Address', cell: ({ row }) => renderSnippet(addressCell, row.original) },
-		{ accessorKey: 'isActive', header: 'Status', cell: ({ row }) => renderSnippet(statusCell, row.original) },
-		{ id: 'actions', header: '', enableSorting: false, cell: ({ row }) => renderSnippet(personalActionsCell, row.original) }
+		{ id: 'actions', header: '', enableSorting: false, cell: ({ row }) => renderSnippet(actionsCell, row.original) }
 	];
 
 	async function createMailbox() {
 		saving = true;
 		try {
-			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName, isService });
+			const res = await createSharedMailbox({ orgId: org.id, localPart, displayName, isService, host });
 			if (res.success) {
 				toast.success(`Created ${res.address}`);
 				addOpen = false;
 				localPart = '';
 				displayName = '';
 				isService = false;
+				host = data.mailHosts[0];
 				await invalidateAll();
 			} else {
 				toast.error(res.message);
@@ -81,116 +91,86 @@
 			saving = false;
 		}
 	}
-
-	async function makeAlias(id: string) {
-		try {
-			const res = await generateAlias({ mailboxId: id });
-			toast.success(`Alias created: ${res.address}`);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create an alias.');
-		}
-	}
 </script>
 
 {#snippet addressCell(mb: Mailbox)}
-	<span class="flex items-center gap-2">
-		<span class="font-mono">{mb.address}</span>
-		{#if mb.isService}
-			<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
-				<BotIcon class="size-3" /> service
-			</span>
-		{/if}
-	</span>
+	<span class="font-mono">{mb.address}</span>
+{/snippet}
+
+{#snippet typeCell(mb: Mailbox)}
+	{#if mb.isService}
+		<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+			<BotIcon class="size-3" /> service
+		</span>
+	{:else if mb.isPersonal}
+		<Badge variant="outline" class="text-[10px]">individual</Badge>
+	{:else}
+		<Badge variant="secondary" class="text-[10px]">shared</Badge>
+	{/if}
 {/snippet}
 
 {#snippet accessCell(mb: Mailbox)}
-	{@const n = accessCountByMailbox.get(mb.id)?.size ?? 0}
-	<span class="text-muted-foreground">{n} {n === 1 ? 'member' : 'members'}</span>
+	{#if mb.isPersonal}
+		<span class="text-muted-foreground">—</span>
+	{:else}
+		{@const n = accessCountByMailbox.get(mb.id)?.size ?? 0}
+		<span class="text-muted-foreground">{n} {n === 1 ? 'member' : 'members'}</span>
+	{/if}
 {/snippet}
 
 {#snippet statusCell(mb: Mailbox)}
 	<Badge variant={mb.isActive ? 'default' : 'outline'}>{mb.isActive ? 'active' : 'inactive'}</Badge>
 {/snippet}
 
-{#snippet sharedActionsCell(mb: Mailbox)}
+{#snippet actionsCell(mb: Mailbox)}
 	<div class="flex justify-end">
-		<Button variant="outline" size="sm" href="{manageBase}/{mb.id}">Manage</Button>
+		{#if !mb.isPersonal}
+			<Button variant="outline" size="sm" href="{manageBase}/{mb.id}">Manage</Button>
+		{/if}
 	</div>
 {/snippet}
 
-{#snippet personalActionsCell(mb: Mailbox)}
-	<div class="flex justify-end">
-		<Button variant="outline" size="sm" onclick={() => makeAlias(mb.id)}>Add alias</Button>
-	</div>
-{/snippet}
-
-<div class="flex flex-col gap-8">
-	<dl class="grid grid-cols-3 divide-x rounded-lg border">
-		<div class="flex flex-col gap-0.5 px-4 py-3">
-			<dt class="text-muted-foreground text-xs">Shared</dt>
-			<dd class="font-heading text-2xl font-semibold tabular-nums">{sharedMailboxes.length}</dd>
-		</div>
-		<div class="flex flex-col gap-0.5 px-4 py-3">
-			<dt class="text-muted-foreground text-xs">Individual</dt>
-			<dd class="font-heading text-2xl font-semibold tabular-nums">{personalMailboxes.length}</dd>
-		</div>
-		<div class="flex flex-col gap-0.5 px-4 py-3">
-			<dt class="text-muted-foreground text-xs">Members with access</dt>
-			<dd class="font-heading text-2xl font-semibold tabular-nums">{membersWithAccess}</dd>
-		</div>
-	</dl>
-
-	<section class="flex flex-col gap-3">
-		<div class="flex items-end justify-between gap-3">
-			<div class="flex flex-col">
-				<div class="flex items-center gap-2">
-					<h2 class="font-heading text-lg font-semibold">Shared mailboxes</h2>
-					<Badge variant="secondary" class="tabular-nums">{sharedMailboxes.length}</Badge>
-				</div>
-				<p class="text-muted-foreground text-sm">
-					Team addresses like support@ — grant members access to read and send.
-				</p>
-			</div>
+<div class="flex flex-col gap-4">
+	<PageHeader title="Mailboxes" description="Team, service, and individual addresses on {org.domain}.">
+		{#snippet action()}
 			<Button class="gap-1.5" onclick={() => (addOpen = true)}>
-				<PlusIcon class="size-4" /> Add shared mailbox
+				<PlusIcon class="size-4" /> Add mailbox
 			</Button>
-		</div>
-		<DataTable
-			columns={sharedColumns}
-			data={sharedMailboxes}
-			filterColumn="address"
-			filterPlaceholder="Search shared mailboxes…"
-			empty="No shared mailboxes yet. Add one to give the team a common inbox."
-		/>
-	</section>
+		{/snippet}
+	</PageHeader>
 
-	<section class="flex flex-col gap-3">
-		<div class="flex flex-col">
-			<div class="flex items-center gap-2">
-				<h2 class="font-heading text-lg font-semibold">Individual mailboxes</h2>
-				<Badge variant="secondary" class="tabular-nums">{personalMailboxes.length}</Badge>
-			</div>
-			<p class="text-muted-foreground text-sm">
-				One per member — created automatically when you add a member.
-			</p>
-		</div>
-		<DataTable
-			columns={personalColumns}
-			data={personalMailboxes}
-			filterColumn="address"
-			filterPlaceholder="Search individual mailboxes…"
-			empty="No individual mailboxes yet. They appear when you add members."
-		/>
-	</section>
+	<ToggleGroup.Root
+		type="single"
+		variant="outline"
+		size="sm"
+		value={filter}
+		onValueChange={(v) => v && (filter = v as Filter)}
+		class="justify-start"
+	>
+		{#each segments as s (s.key)}
+			<ToggleGroup.Item value={s.key} class="gap-1.5">
+				{s.label}
+				<span class="text-muted-foreground text-xs tabular-nums">{s.n}</span>
+			</ToggleGroup.Item>
+		{/each}
+	</ToggleGroup.Root>
+
+	<DataTable
+		{columns}
+		data={filtered}
+		filterColumn="address"
+		filterPlaceholder="Search mailboxes…"
+		empty="No mailboxes in this view."
+	/>
 </div>
 
 <Dialog.Root bind:open={addOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
-			<Dialog.Title class="font-heading">Add shared mailbox</Dialog.Title>
+			<Dialog.Title class="font-heading">Add mailbox</Dialog.Title>
 			<Dialog.Description>
-				A shared address on <span class="font-mono">{org.domain}</span> (e.g. support@). Grant members
-				access with “Manage access” once it exists.
+				A team address on <span class="font-mono">{org.domain}</span> (e.g. support@). Grant members
+				access from its Manage page, or make it a service mailbox for API sending.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -200,7 +180,7 @@
 				<InputGroup.Root>
 					<InputGroup.Input bind:value={localPart} placeholder="support" autocomplete="off" />
 					<InputGroup.Addon align="inline-end">
-						<InputGroup.Text class="font-mono">@{org.domain}</InputGroup.Text>
+						<HostSelect hosts={data.mailHosts} bind:value={host} />
 					</InputGroup.Addon>
 				</InputGroup.Root>
 			</Field.Field>

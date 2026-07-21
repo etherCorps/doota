@@ -220,6 +220,7 @@ export async function enqueueSend(
     );
   }
 
+  console.log(`[mail:out] enqueued ${submissionId} from=${req.fromAddress} recipients=${recips.length} delay=${delaySeconds}s`);
   return { submissionId, messageId, threadId, deduped: false };
 }
 

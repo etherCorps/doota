@@ -16,8 +16,8 @@ import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
   addRoutingSubdomain,
   findZone,
-  getMailDnsRecords,
   getRoutingConfig,
+  listZoneDnsRecords,
   inspectZoneMail,
   listZones,
   pollZoneStatus,
@@ -310,19 +310,19 @@ export const updateOrgProfile = command(
 );
 
 /**
- * Live expected mail DNS records for an onboarded domain (Email Sending: DKIM /
- * DMARC / return-path). Shown so the operator can populate them if their DNS
- * isn't Cloudflare-hosted. Superadmin only; fetched live, never persisted.
+ * Every DNS record in the org's Cloudflare zone — the apex and all subdomains —
+ * for the operator's full view of what's published. Superadmin only; fetched
+ * live, never persisted.
  */
 export const domainDnsRecords = command(z.string(), async (orgId) => {
   requireSuperadmin();
   const { locals } = getRequestEvent();
   const org = await locals.db.query.organization.findFirst({
     where: eq(schema.organization.id, orgId),
-    columns: { domain: true, zoneId: true },
+    columns: { zoneId: true },
   });
   if (!org?.zoneId) error(400, "No Cloudflare zone for this domain yet.");
-  return getMailDnsRecords(org.zoneId, org.domain);
+  return listZoneDnsRecords(org.zoneId);
 });
 
 /** Fetch the org's zone (superadmin-gated). Shared by the routing commands. */

@@ -17,8 +17,6 @@
 	let busy = $state<string | null>(null);
 	let subFor = $state<string | null>(null);
 	let subValue = $state('');
-	let manualDomain = $state('');
-	let manualSub = $state('');
 	let nameservers = $state<{ domain: string; ns: string[] } | null>(null);
 
 	const available = $derived((zones ?? []).filter((z) => !z.onboarded));
@@ -55,8 +53,6 @@
 				toast.success(`${d} added. Delegate the nameservers, then Refresh in its DNS tab.`);
 				if (res.nameServers?.length) nameservers = { domain: d, ns: res.nameServers };
 			}
-			manualDomain = '';
-			manualSub = '';
 			subFor = null;
 			subValue = '';
 			await loadZones();
@@ -101,7 +97,7 @@
 			</p>
 		{:else if available.length === 0}
 			<p class="text-muted-foreground text-sm">
-				Every zone on the account is already onboarded. Add a new one below.
+				Every zone on the account is already onboarded. Add the domain to your Cloudflare account first, then reload.
 			</p>
 		{:else}
 			{#each available as z (z.id)}
@@ -148,21 +144,6 @@
 				</div>
 			{/each}
 		{/if}
-	</div>
-
-	<!-- Manual add -->
-	<div class="space-y-2 border-t pt-4">
-		<p class="text-sm font-medium">Add a new domain</p>
-		<Input class="font-mono" placeholder="acme.com" bind:value={manualDomain} />
-		<Input class="font-mono" placeholder="send.acme.com (optional sending subdomain)" bind:value={manualSub} />
-		<Button
-			class="w-full"
-			disabled={!manualDomain.trim() || busy === manualDomain.trim().toLowerCase()}
-			onclick={() => onboard(manualDomain, manualSub.trim() || undefined)}
-		>
-			{#if busy === manualDomain.trim().toLowerCase()}<Spinner class="mr-1" />{/if}
-			Onboard
-		</Button>
 	</div>
 
 	{#if nameservers}

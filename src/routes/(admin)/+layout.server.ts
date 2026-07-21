@@ -7,6 +7,11 @@ export const load = async ({ locals }) => {
   if (!user) redirect(302, "/login");
   if (!ADMIN_ROLES.includes(user.role ?? "")) redirect(302, "/app");
   return {
-    user: { name: user.name, email: user.email, role: user.role ?? "member" },
+    user: {
+      name: user.name,
+      email: user.email,
+      role: user.role ?? "member",
+      image: user.image ?? null,
+    },
   };
 };

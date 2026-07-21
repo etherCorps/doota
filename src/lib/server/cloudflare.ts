@@ -134,46 +134,41 @@ export async function listZones(): Promise<ZoneRef[]> {
   return (res.result ?? []).map((z) => toZoneRef(z));
 }
 
-export type MailDnsRecord = {
-  category: "sending" | "routing";
+export type ZoneDnsRecord = {
   type: string;
   name: string;
-  value: string;
+  content: string;
   priority?: number;
+  ttl?: number;
+  proxied?: boolean;
 };
 
 /**
- * Expected mail DNS records for a domain, fetched LIVE from Cloudflare (never
- * persisted). Surfaced on the domain screen so the operator can populate them if
- * their DNS isn't Cloudflare-hosted. Best-effort: returns what it can, [] on error.
+ * Every DNS record in the zone, LIVE from Cloudflare (never persisted). Cloudflare
+ * holds the full zone — the apex (domain.tld itself) and every subdomain — so this
+ * is the operator's complete view of what's published. Best-effort: [] on error.
  */
-export async function getMailDnsRecords(
-  zoneId: string,
-  domain: string,
-): Promise<MailDnsRecord[]> {
-  const records: MailDnsRecord[] = [];
+export async function listZoneDnsRecords(zoneId: string): Promise<ZoneDnsRecord[]> {
   try {
-    const subs = await cf().emailSending.subdomains.list({ zone_id: zoneId });
-    const list = subs.result ?? [];
-    const sub = list.find((s) => s.name === domain) ?? list[0];
-    if (sub?.tag) {
-      const page = await cf().emailSending.subdomains.dns.get(sub.tag, {
-        zone_id: zoneId,
-      });
-      for (const r of page.result ?? []) {
-        records.push({
-          category: "sending",
-          type: r.type ?? "TXT",
-          name: r.name ?? domain,
-          value: r.content ?? "",
-          priority: r.priority,
-        });
-      }
-    }
+    const page = await cf().dns.records.list({ zone_id: zoneId, per_page: 100 });
+    // `priority`/`proxied` exist only on some record subtypes in the CF union.
+    const rows = (page.result ?? []).map((r) => {
+      const rec = r as { priority?: number; proxied?: boolean };
+      return {
+        type: r.type ?? "",
+        name: r.name ?? "",
+        content: r.content ?? "",
+        priority: rec.priority,
+        ttl: r.ttl,
+        proxied: rec.proxied,
+      };
+    });
+    rows.sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type));
+    return rows;
   } catch (e) {
-    console.error("[cf:dns] sending records", e);
+    console.error("[cf:dns] zone records", e);
+    return [];
   }
-  return records;
 }
 
 /** Enable Email Routing on the zone. Tolerates already-enabled. */
@@ -189,7 +184,7 @@ export async function enableEmailRouting(zoneId: string): Promise<void> {
  * this is a best-effort no-name call and any error is non-fatal (enable did it).
  *
  * ponytail: best-effort. If you ever host DNS outside Cloudflare (partial zone),
- * surface the records from `getMailDnsRecords` and have the operator add them.
+ * surface the records from `listZoneDnsRecords` and have the operator add them.
  */
 export async function writeDnsRecords(
   zoneId: string,
