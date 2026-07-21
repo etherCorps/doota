@@ -21,6 +21,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(root, "src");
 const BOUNDARY = join(root, "src", "lib", "server", "auth"); // the sanctioned zone
 
+// The shared server code moved out of the app into workspace packages, which
+// hold the mail pipeline's DB writes. Scan them too, or the boundary rule has a
+// blind spot: an auth-table write added there would bypass the guard.
+const WS = join(root, "..", "..");
+const SCAN_ROOTS = [SRC, join(WS, "packages", "mail-core", "src"), join(WS, "packages", "db", "src")];
+
 const RULES = [
   { re: /\$context\b/, msg: "$context (Better Auth internal) — use a boundary function" },
   { re: /\binternalAdapter\b/, msg: "internalAdapter (Better Auth internal) — use a boundary function" },
@@ -45,7 +51,7 @@ function walk(dir) {
 const TESTS = join(root, "src", "test"); // test stubs/fakes are not app code
 
 const violations = [];
-for (const file of walk(SRC)) {
+for (const file of SCAN_ROOTS.flatMap(walk)) {
   if (file.startsWith(BOUNDARY)) continue; // the boundary is allowed to use internals
   if (file.startsWith(TESTS) || /\.test\.ts$/.test(file)) continue; // tests are not app code
   const lines = readFileSync(file, "utf8").split("\n");
