@@ -446,7 +446,8 @@
 					transition:fade={{ duration: 120 }}
 					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
 				>
-					<div class="text-muted-foreground flex shrink-0 items-center gap-1.5 border-b px-3 py-2 text-xs font-medium">
+					<!-- h-10 matches the composer header so both bottom borders align. -->
+					<div class="text-muted-foreground flex h-10 shrink-0 items-center gap-1.5 border-b px-3 text-xs font-medium">
 						<PaperclipIcon class="size-3.5" />
 						{attachments.length ? `${attachments.length} attachment${attachments.length > 1 ? 's' : ''}` : 'Attachments'}
 					</div>
@@ -518,7 +519,7 @@
 				</div>
 			{/if}
 			<!-- Title bar: click to minimize/restore -->
-		<div class="bg-muted/60 text-foreground flex items-center justify-between gap-2 border-b px-3 py-2">
+		<div class="bg-muted/60 text-foreground flex h-10 items-center justify-between gap-2 border-b px-3">
 			<button type="button" class="min-w-0 flex-1 text-left" onclick={() => (minimized = !minimized)}>
 				<span class="font-heading truncate text-sm font-medium">{title}</span>
 			</button>

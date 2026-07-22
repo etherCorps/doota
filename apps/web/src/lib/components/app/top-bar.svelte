@@ -4,6 +4,9 @@
 	import { Kbd } from '$lib/components/ui/kbd/index.js';
 	import CommandSearch from './command-search.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import SunIcon from '@lucide/svelte/icons/sun';
+	import MoonIcon from '@lucide/svelte/icons/moon';
+	import { toggleMode } from 'mode-watcher';
 
 	let { action }: { action?: import('svelte').Snippet } = $props();
 
@@ -28,6 +31,12 @@
 	</button>
 
 	<div class="ml-auto flex items-center gap-2">
+		<!-- Sun/moon cross-rotate on theme flip; collapses under reduced motion. -->
+		<Button variant="ghost" size="icon" class="text-muted-foreground relative" title="Toggle theme" onclick={toggleMode}>
+			<SunIcon class="size-4 scale-100 rotate-0 transition-all duration-200 ease-out motion-reduce:transition-none dark:scale-0 dark:-rotate-90" />
+			<MoonIcon class="absolute size-4 scale-0 rotate-90 transition-all duration-200 ease-out motion-reduce:transition-none dark:scale-100 dark:rotate-0" />
+			<span class="sr-only">Toggle theme</span>
+		</Button>
 		{@render action?.()}
 	</div>
 </header>
