@@ -439,16 +439,29 @@
 					? 'h-[min(80vh,34rem)] rounded-t-xl'
 					: 'rounded-t-xl'}"
 		>
-			{#if !minimized && phase !== 'sent' && attachments.length}
+			<!-- Expanded mode keeps the rail mounted even when empty, so the first
+			     attachment doesn't reflow the editor column. -->
+			{#if !minimized && phase !== 'sent' && (bigMode || attachments.length)}
 				<aside
 					transition:fade={{ duration: 120 }}
 					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
 				>
 					<div class="text-muted-foreground flex shrink-0 items-center gap-1.5 border-b px-3 py-2 text-xs font-medium">
 						<PaperclipIcon class="size-3.5" />
-						{attachments.length} attachment{attachments.length > 1 ? 's' : ''}
+						{attachments.length ? `${attachments.length} attachment${attachments.length > 1 ? 's' : ''}` : 'Attachments'}
 					</div>
-					<div class="scrollbar-thin min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+					{#if !attachments.length}
+						<!-- Empty state: same slot the tiles fill, doubles as a picker target. -->
+						<button
+							type="button"
+							onclick={() => fileInput?.click()}
+							class="text-muted-foreground hover:border-brand/40 hover:text-foreground focus-visible:ring-ring/50 m-2 flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-xs transition-colors outline-none focus-visible:ring-2"
+						>
+							<PaperclipIcon class="size-5" />
+							<span>Drop files here<br />or click to attach</span>
+						</button>
+					{/if}
+					<div class="scrollbar-thin min-h-0 flex-1 space-y-2 overflow-y-auto p-2 {attachments.length ? '' : 'hidden'}">
 						{#each attachments as a (a.r2Key)}
 							<div class="group bg-background relative overflow-hidden rounded-lg border shadow-sm">
 								<button type="button" class="block w-full text-left" title={isImage(a) ? 'Preview' : 'Download'} onclick={() => openAttachment(a)}>
