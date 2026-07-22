@@ -20,7 +20,7 @@
 	<button
 		type="button"
 		onclick={() => (searchOpen = true)}
-		class="text-muted-foreground hover:border-ring/40 flex h-9 max-w-md flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm transition-colors"
+		class="text-muted-foreground hover:border-ring/40 flex h-9 max-w-md flex-1 items-center gap-2 rounded-full border bg-card px-3.5 text-sm shadow-xs transition-colors hover:shadow-sm"
 	>
 		<SearchIcon class="size-4" />
 		<span class="flex-1 text-left">Search</span>

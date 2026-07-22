@@ -97,7 +97,7 @@
 			<Card.Card>
 				<Card.CardContent class="flex items-center gap-3 py-4">
 					<div
-						class="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md"
+						class="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-xl"
 					>
 						<stat.icon class="size-4" />
 					</div>

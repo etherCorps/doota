@@ -54,7 +54,7 @@
 				<MailboxSwitcher />
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
-		<Button onclick={onCompose} class="mx-1 mt-1 justify-start gap-2">
+		<Button variant="brand" onclick={onCompose} class="mx-1 mt-1 justify-start gap-2">
 			<PenLineIcon class="size-4" /> Compose
 		</Button>
 	</Sidebar.Header>

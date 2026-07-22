@@ -41,7 +41,7 @@
 
     {#snippet stepDone({ title }: { title: string })}
         <div
-            class="flex items-center gap-3 rounded-lg border bg-card px-4 py-3"
+            class="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-xs"
         >
             <span
                 class="bg-ok/10 text-ok flex size-6 items-center justify-center rounded-full"
@@ -71,7 +71,7 @@
     {#each steps as step, i (step.id)}
         {#if !isEmailVerified && step.id !== "verify-email" && step.id !== "verify-recovery"}
             <div
-                class="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 opacity-50"
+                class="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-xs opacity-50"
             >
                 <span
                     class="bg-muted flex size-6 items-center justify-center rounded-full text-[11px]"

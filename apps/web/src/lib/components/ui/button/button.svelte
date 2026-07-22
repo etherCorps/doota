@@ -7,9 +7,10 @@
 		base: "focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-4xl border border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-3 active:not-aria-[haspopup]:translate-y-px aria-invalid:ring-3 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
-				default: "bg-primary text-primary-foreground hover:bg-primary/80",
-				outline: "border-border bg-background hover:bg-muted hover:text-foreground dark:hover:bg-input/30 aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent",
-				secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+				default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[inset_0_1px_0_0_oklch(1_0_0/0.12),var(--shadow-xs)] hover:shadow-[inset_0_1px_0_0_oklch(1_0_0/0.12),var(--shadow-sm)] active:shadow-[inset_0_1px_0_0_oklch(1_0_0/0.12)]",
+				brand: "bg-brand text-brand-foreground hover:bg-brand/90 shadow-[inset_0_1px_0_0_oklch(1_0_0/0.18),var(--shadow-sm)] hover:shadow-[inset_0_1px_0_0_oklch(1_0_0/0.18),var(--shadow-md)] active:shadow-[inset_0_1px_0_0_oklch(1_0_0/0.18)] focus-visible:ring-brand/40",
+				outline: "border-border bg-background hover:bg-muted hover:text-foreground shadow-xs hover:shadow-sm dark:hover:bg-input/30 aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent",
+				secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-xs hover:shadow-sm active:shadow-none aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
 				ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground",
 				destructive: "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
 				link: "text-primary underline-offset-4 hover:underline",

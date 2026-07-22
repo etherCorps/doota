@@ -233,6 +233,26 @@
 		return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	}
 
+	// Sender identity for list rows + message monograms. `from` is a raw header
+	// ("Name <addr>" or a bare address); pull a human name + two-letter initials,
+	// and tint the monogram deterministically so a sender keeps the same colour.
+	function senderName(from: string | null): string {
+		if (!from) return 'Unknown';
+		const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
+		if (named?.[1]?.trim()) return named[1].trim();
+		return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
+	}
+	function initials(from: string | null): string {
+		const parts = senderName(from).split(/\s+/).filter(Boolean);
+		return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+	}
+	const MONO_TINTS = ['bg-p1/15 text-p1', 'bg-p2/15 text-p2', 'bg-p3/15 text-p3', 'bg-brand/15 text-brand', 'bg-ok/15 text-ok'];
+	function monoTint(key: string | null): string {
+		let h = 0;
+		for (const ch of key ?? '') h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
+		return MONO_TINTS[h % MONO_TINTS.length];
+	}
+
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
 	// the single ComposePanel is mounted in the (app) layout.
 	function forward(parent: MessageDTO, subject: string | null) {
@@ -292,46 +312,25 @@
 	</div>
 {/snippet}
 
+{#snippet monogram(from: string | null, cls: string)}
+	<span class="grid shrink-0 place-items-center rounded-full font-semibold {monoTint(from)} {cls}">{initials(from)}</span>
+{/snippet}
+
 <div class="flex h-full">
 	<!-- List pane -->
 	<div class="flex w-full flex-col border-r md:w-[360px] md:shrink-0 {threadId ? 'hidden md:flex' : 'flex'}">
-		<!-- Active mailbox (switch via the sidebar switcher) -->
-		<div class="flex h-11 items-center gap-2 border-b px-3">
-			<InboxIcon class="text-muted-foreground size-4" />
-			<span class="truncate font-mono text-xs">{activeMailbox?.address ?? '…'}</span>
-			{#if canManageActive}
-				<a
-					href="/mailboxes/{mailboxId}"
-					title="Manage mailbox"
-					class="text-muted-foreground hover:text-foreground ml-auto"
-				>
-					<SettingsIcon class="size-4" />
-				</a>
-			{/if}
-		</div>
-
-		<!-- Folder rail -->
-		<div class="flex items-center gap-1 border-b px-2 py-1.5">
-			{#each FOLDERS as f (f.id)}
-				<Button
-					variant={placement === f.id ? 'secondary' : 'ghost'}
-					size="icon"
-					class="size-8"
-					title={f.name}
-					onclick={() => nav({ folder: f.id, thread: null })}
-				>
-					<f.icon class="size-4" />
-				</Button>
-			{/each}
-		</div>
-		<div class="flex h-9 items-center justify-between px-4">
-			<h2 class="font-heading text-sm font-semibold">{folder.name}</h2>
+		<!-- List header — folder identity + active mailbox + (shared) assign filter -->
+		<div class="flex h-14 items-center gap-2 border-b px-4">
+			<div class="min-w-0 flex-1">
+				<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
+				<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{activeMailbox?.address ?? '…'}</span>
+			</div>
 			{#if isShared && !isVirtual}
-				<div class="flex items-center gap-0.5 text-xs">
+				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
 					{#each [['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']] as [id, label] (id)}
 						<button
 							type="button"
-							class="rounded px-1.5 py-0.5 {assignFilter === id ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}"
+							class="focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2 {assignFilter === id ? 'bg-card text-foreground shadow-xs font-medium' : 'text-muted-foreground hover:text-foreground'}"
 							onclick={() => (assignFilter = id as typeof assignFilter)}
 						>
 							{label}
@@ -339,6 +338,26 @@
 					{/each}
 				</div>
 			{/if}
+			{#if canManageActive}
+				<a href="/mailboxes/{mailboxId}" title="Manage mailbox" class="text-muted-foreground hover:text-foreground hover:bg-muted grid size-8 shrink-0 place-items-center rounded-lg transition-colors">
+					<SettingsIcon class="size-4" />
+				</a>
+			{/if}
+		</div>
+
+		<!-- Folder rail -->
+		<div class="flex items-center gap-0.5 border-b px-2 py-1.5">
+			{#each FOLDERS as f (f.id)}
+				{@const active = placement === f.id}
+				<button
+					type="button"
+					title={f.name}
+					onclick={() => nav({ folder: f.id, thread: null })}
+					class="focus-visible:ring-ring/50 grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {active ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+				>
+					<f.icon class="size-4" />
+				</button>
+			{/each}
 		</div>
 
 		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
@@ -348,10 +367,16 @@
 				{:then drafts}
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
-							<button type="button" onclick={() => openDraft(d.id)} class="hover:bg-muted/60 flex w-full flex-col gap-0.5 border-b px-4 py-3 text-left">
-								<span class="truncate text-sm font-medium">{d.subject || '(no subject)'}</span>
-								<span class="text-muted-foreground truncate font-mono text-xs">{d.to.join(', ') || 'No recipients'}</span>
-								<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
+							<button type="button" onclick={() => openDraft(d.id)} class="flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/50">
+								{@render monogram(d.to[0] ?? null, 'mt-0.5 size-9 text-xs')}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-baseline gap-2">
+										<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
+										<span class="text-warn shrink-0 text-[11px] font-medium">Draft</span>
+									</div>
+									<span class="block truncate text-[13px] text-muted-foreground">{d.subject || '(no subject)'}</span>
+									<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
+								</div>
 							</button>
 						{/each}
 					{:else}
@@ -370,12 +395,15 @@
 					{@const items = schedQ.current}
 					{#if items.length}
 						{#each items as s (s.submissionId)}
-							<div class="flex flex-col gap-0.5 border-b px-4 py-3">
-								<span class="truncate text-sm font-medium">{s.subject || '(no subject)'}</span>
-								<span class="text-muted-foreground truncate font-mono text-xs">to {s.to ?? '—'}</span>
-								<div class="mt-1 flex items-center justify-between">
-									<span class="text-brand text-xs font-medium">Sends {fmtTime(s.sendAt)}</span>
-									<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
+							<div class="flex gap-3 border-b px-3 py-2.5">
+								{@render monogram(s.to ?? null, 'mt-0.5 size-9 text-xs')}
+								<div class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium">{s.to ? senderName(s.to) : '—'}</span>
+									<span class="block truncate text-[13px] text-muted-foreground">{s.subject || '(no subject)'}</span>
+									<div class="mt-1 flex items-center justify-between">
+										<span class="text-brand inline-flex items-center gap-1 text-xs font-medium"><ClockIcon class="size-3" /> Sends {fmtTime(s.sendAt)}</span>
+										<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
+									</div>
 								</div>
 							</div>
 						{/each}
@@ -388,17 +416,24 @@
 			{:else if mailboxId && !isVirtual}
 					{#if applyAssignFilter(items).length}
 						{#each applyAssignFilter(items) as t (t.threadId)}
-							<button type="button" onclick={() => selectThread(t.threadId)} class="flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition-colors {threadId === t.threadId ? 'bg-accent' : 'hover:bg-muted/60'}">
-								<div class="flex items-center gap-2">
-									{#if t.unread}<span class="bg-brand size-2 shrink-0 rounded-full"></span>{/if}
-									<span class="flex-1 truncate font-mono text-xs {t.unread ? 'font-semibold' : ''}">{t.from ?? '—'}</span>
-									{#if t.hasNotes}<StickyNoteIcon class="size-3.5 shrink-0 text-amber-500" />{/if}
-									{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
-									{#if t.isStarred}<StarIcon class="text-p3 size-3.5 shrink-0 fill-current" />{/if}
-									<span class="text-faint shrink-0 text-[11px]">{fmtTime(t.lastMessageAt)}</span>
+							{@const selected = threadId === t.threadId}
+							<button type="button" onclick={() => selectThread(t.threadId)} class="relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}">
+								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
+								{@render monogram(t.from, 'mt-0.5 size-9 text-xs')}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-baseline gap-2">
+										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderName(t.from)}</span>
+										<span class="text-faint shrink-0 text-[11px]">{fmtTime(t.lastMessageAt)}</span>
+									</div>
+									<div class="flex items-center gap-1.5">
+										{#if t.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
+										<span class="min-w-0 flex-1 truncate text-[13px] {t.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{t.subject ?? '(no subject)'}</span>
+										{#if t.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
+										{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
+										{#if t.isStarred}<StarIcon class="text-p3 size-3.5 shrink-0 fill-current" />{/if}
+									</div>
+									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
-								<span class="truncate text-sm {t.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{t.subject ?? '(no subject)'}</span>
-								<span class="text-muted-foreground line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 							</button>
 						{/each}
 						{#if loadingList}
@@ -426,17 +461,22 @@
 				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const ctx = replyCtx(msgs)}
-					<div class="flex h-12 items-center gap-2 border-b px-3 md:px-4">
+					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
 						<Button variant="ghost" size="icon" class="text-muted-foreground md:hidden" onclick={() => nav({ thread: null })}>
 							<ArrowLeftIcon class="size-4" />
 						</Button>
-						<p class="min-w-0 flex-1 truncate text-sm font-semibold">{thread.subject ?? '(no subject)'}</p>
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm leading-tight font-semibold">{thread.subject ?? '(no subject)'}</p>
+							<p class="text-muted-foreground truncate text-[11px] leading-tight">
+								{msgs.length} message{msgs.length === 1 ? '' : 's'}{ctx.target ? ` · ${senderName(ctx.target)}` : ''}
+							</p>
+						</div>
 						{#if isShared}
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger>
 									{#snippet child({ props })}
 										<Button variant="outline" size="sm" class="h-8 gap-1.5" {...props}>
-											<UserRoundIcon class="size-3.5" />
+											<UserRoundIcon class="size-3.5 {thread.assigneeUserId ? 'text-brand' : ''}" />
 											<span class="max-w-[12ch] truncate text-xs">{thread.assigneeUserId ? short(thread.assigneeUserId, members) : 'Unassigned'}</span>
 										</Button>
 									{/snippet}
@@ -456,35 +496,41 @@
 								</DropdownMenu.Content>
 							</DropdownMenu.Root>
 						{/if}
-						<Button variant="ghost" size="icon" class="text-muted-foreground" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
+
+						<!-- Interact: star + forward -->
+						<Button variant="ghost" size="icon" class="text-muted-foreground size-8" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
 							<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
 						</Button>
 						{#if ctx.parent}
 							{@const p = ctx.parent}
-							<Button variant="ghost" size="icon" class="text-muted-foreground" title="Forward" onclick={() => forward(p, thread.subject)}>
+							<Button variant="ghost" size="icon" class="text-muted-foreground size-8" title="Forward" onclick={() => forward(p, thread.subject)}>
 								<ForwardIcon class="size-4" />
 							</Button>
 						{/if}
-						{#if placement !== 'inbox'}
-							<Button variant="ghost" size="icon" class="text-muted-foreground" title="Move to inbox" onclick={() => move('inbox')}>
-								<InboxDownIcon class="size-4" />
-							</Button>
-						{/if}
-						{#if placement !== 'archived'}
-							<Button variant="ghost" size="icon" class="text-muted-foreground" title="Archive" onclick={() => move('archived')}>
-								<ArchiveIcon class="size-4" />
-							</Button>
-						{/if}
-						{#if placement !== 'spam'}
-							<Button variant="ghost" size="icon" class="text-muted-foreground" title="Mark spam" onclick={() => move('spam')}>
-								<ShieldAlertIcon class="size-4" />
-							</Button>
-						{/if}
-						{#if placement !== 'trash'}
-							<Button variant="ghost" size="icon" class="text-muted-foreground" title="Trash" onclick={() => move('trash')}>
-								<Trash2Icon class="size-4" />
-							</Button>
-						{/if}
+
+						<!-- Triage: grouped as one control cluster, separate from interact -->
+						<div class="bg-muted/60 flex items-center gap-0.5 rounded-xl p-0.5">
+							{#if placement !== 'inbox'}
+								<button type="button" title="Move to inbox" onclick={() => move('inbox')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg shadow-none transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+									<InboxDownIcon class="size-4" />
+								</button>
+							{/if}
+							{#if placement !== 'archived'}
+								<button type="button" title="Archive" onclick={() => move('archived')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+									<ArchiveIcon class="size-4" />
+								</button>
+							{/if}
+							{#if placement !== 'spam'}
+								<button type="button" title="Mark spam" onclick={() => move('spam')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+									<ShieldAlertIcon class="size-4" />
+								</button>
+							{/if}
+							{#if placement !== 'trash'}
+								<button type="button" title="Trash" onclick={() => move('trash')} class="text-muted-foreground hover:text-destructive hover:bg-card focus-visible:ring-destructive/40 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+									<Trash2Icon class="size-4" />
+								</button>
+							{/if}
+						</div>
 					</div>
 
 					<ScrollArea class="min-h-0 flex-1">
@@ -493,9 +539,11 @@
 								{#if item.type === 'external_message'}
 								{@const m = item}
 								{@const outbound = !!m.submission}
-								<div class="flex flex-col {outbound ? 'items-end' : 'items-start'}">
-									{#if !outbound}<span class="text-muted-foreground mb-1 px-1 font-mono text-[11px]">{m.from ?? ''}</span>{/if}
-									<div class="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
+								<div class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
+									{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
+									<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
+										{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
+										<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 										{#if m.contentKind === 'card' && m.bodyHtml}
 											{@const allow = loadedImages.has(m.id)}
 											<div class="w-[min(70vw,32rem)]">
@@ -530,6 +578,7 @@
 											{/if}
 										</div>
 									</div>
+								</div>
 								</div>
 								{:else if item.type === 'internal_note'}
 									{@const n = item}

@@ -643,13 +643,13 @@
 					</div>
 					<!-- Split send: primary sends now (⌘↵); caret opens schedule presets. -->
 					<div class="inline-flex">
-						<Button size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
+						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
 							<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
 						</Button>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button {...props} size="sm" class="border-primary-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
+									<Button {...props} variant="brand" size="sm" class="border-brand-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
 										<ChevronDownIcon class="size-4" />
 									</Button>
 								{/snippet}

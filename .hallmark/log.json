@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-07-22",
+    "macrostructure": "app-shell (N/A — product UI)",
+    "theme": "custom (soft-round-friendly · indigo-iris)",
+    "theme_axes": "light / rounded-sans / cool-iris",
+    "vibe": "soft round friendly Motion x Superhuman",
+    "enrichment": "none",
+    "brief": "Doota mail client — whole-app design-system rebuild (D)"
+  },
+  {
     "date": "2026-07-19",
     "macrostructure": "Manifesto",
     "theme": "Cobalt",
