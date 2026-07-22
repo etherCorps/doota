@@ -636,7 +636,7 @@
 				<SearchIcon class="text-muted-foreground size-4 shrink-0" />
 				<div class="min-w-0 flex-1">
 					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">Search</h2>
-					<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{searchQ}</span>
+					<span class="text-muted-foreground mt-1 block truncate font-mono text-[11px] leading-none">{searchQ}</span>
 				</div>
 				<button
 					type="button"
@@ -649,7 +649,7 @@
 			{:else}
 				<div class="min-w-0 flex-1">
 					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
-					<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{activeMailbox?.address ?? '…'}</span>
+					<span class="text-muted-foreground mt-1 block truncate font-mono text-[11px] leading-none">{activeMailbox?.address ?? '…'}</span>
 				</div>
 			{/if}
 			{#if (placement === 'trash' || placement === 'spam') && !searchQ && items.length}
@@ -771,8 +771,7 @@
 				</Button>
 			</div>
 		{/if}
-		<!-- pt-2: air between the header/rail block and the first row. -->
-		<div class="flex-1 overflow-y-auto pt-2" onscroll={onListScroll}>
+		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}
