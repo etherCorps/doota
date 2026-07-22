@@ -751,6 +751,26 @@
 			</div>
 		{/if}
 
+		{#if placement === 'drafts' && draftSel.size}
+			<!-- Floats over the list top (pane is relative; header is h-14) so the
+			     bar's appearance pushes nothing — same zero-shift rule as threads. -->
+			<div class="bg-card/85 absolute inset-x-0 top-14 z-10 flex h-10 items-center gap-1 border-b px-2 shadow-xs backdrop-blur">
+				<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => draftSel.clear()}>
+					<XIcon class="size-4" />
+				</Button>
+				<span class="text-muted-foreground text-xs tabular-nums">{draftSel.size} selected</span>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="text-destructive hover:text-destructive ml-auto gap-1.5"
+					disabled={deletingDrafts}
+					onclick={() => deleteDrafts([...draftSel])}
+				>
+					{#if deletingDrafts}<Spinner class="size-3.5" />{:else}<Trash2Icon class="size-3.5" />{/if}
+					Delete
+				</Button>
+			</div>
+		{/if}
 		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
@@ -792,24 +812,6 @@
 				{:else}
 					{@const drafts = draftsQ.current}
 					{#if drafts.length}
-						{#if draftSel.size}
-							<div class="bg-card/60 sticky top-0 z-[1] flex h-10 items-center gap-1 border-b px-2 backdrop-blur">
-								<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => draftSel.clear()}>
-									<XIcon class="size-4" />
-								</Button>
-								<span class="text-muted-foreground text-xs">{draftSel.size} selected</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									class="text-destructive hover:text-destructive ml-auto gap-1.5"
-									disabled={deletingDrafts}
-									onclick={() => deleteDrafts([...draftSel])}
-								>
-									{#if deletingDrafts}<Spinner class="size-3.5" />{:else}<Trash2Icon class="size-3.5" />{/if}
-									Delete
-								</Button>
-							</div>
-						{/if}
 						{#each drafts as d (d.id)}
 							<div class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-colors {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}">
 								{@render selectAvatar(
