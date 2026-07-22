@@ -12,7 +12,7 @@ ranked.
 | `message` | one per `(orgId, messageIdHeader)` | Shared, immutable. Same email delivered to 5 org mailboxes = **1 row**. Encrypted content (subject / stripped / full / html), cleartext routing metadata (from, to, cc, In-Reply-To, References). |
 | `thread` | org-level | `subjectNormalized` + `lastMessageAt`. No participants of its own — derived from member messages. |
 | `delivery` | per `(message, mailbox, role)` | "This mailbox received/sent this message as to/cc/bcc/from." Bcc exists **only** here, never in stored headers. |
-| `thread_state` | per `(thread, mailbox)` | Placement (inbox/sent/archived/spam/trash), `hiddenAt` (soft empty-folder). One thread can sit in different folders per mailbox. |
+| `thread_state` | per `(thread, mailbox)` | Placement (inbox/archived/spam/trash — user-controlled location only), `hiddenAt` (soft empty-folder). One thread can sit in different folders per mailbox. **Sent is not a placement** — it's a view: threads with a role-`from` delivery for the mailbox (placement short of spam/trash). A new outbound thread starts `archived`; the first inbound reply un-archives it into Inbox, and it shows in both Sent and Inbox (Gmail semantics). Migration 0013 converted legacy `sent` placements. |
 
 Plus outbound bookkeeping: `submission` (one send attempt: status, undoUntil,
 idempotencyKey, provider ids) and `submission_recipient` (per-address status →
@@ -87,8 +87,9 @@ second — that is what makes redelivery safe.
    for the consumer (html survives; D1 keeps only encrypted columns).
 4. **Same materialize seam as inbound**: message row stores what the sender
    wrote (a bubble — quoted history is wire-only), sender's delivery role
-   `from`, placement policy sent-and-never-yank (new thread → `sent`; a reply
-   leaves the thread wherever it sits).
+   `from`. Placement policy: new thread → `archived` (visible via the Sent
+   view; the first inbound reply un-archives it into Inbox); a reply of ours
+   leaves the thread wherever it sits.
 5. Submission (`queued`, `undoUntil` = max(sendAt, now + undo window)) +
    per-recipient rows.
 6. Queue job with `delaySeconds` = the hold. Beyond the queue's 12 h max delay

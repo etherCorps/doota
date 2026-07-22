@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -43,7 +43,14 @@ function preview(text: string | null, n = 140): string | null {
   return clean.length > n ? clean.slice(0, n) + "…" : clean;
 }
 
-/** Threads in a mailbox at a placement (inbox/archived/…), newest first. */
+/**
+ * Threads in a mailbox at a placement (inbox/archived/…), newest first.
+ *
+ * `sent` is a VIEW, not a placement: "threads where this mailbox sent
+ * something" (a delivery with role `from`), whatever their placement short of
+ * spam/trash. Gmail semantics — a replied-to sent thread shows in BOTH Sent and
+ * Inbox; trashing removes it from Sent.
+ */
 export async function listThreads(
   db: Db,
   input: {
@@ -58,6 +65,26 @@ export async function listThreads(
     userId?: string;
   },
 ): Promise<ThreadSummary[]> {
+  const placementCond =
+    input.placement === "sent"
+      ? and(
+          notInArray(schema.threadState.placement, ["spam", "trash"]),
+          exists(
+            db
+              .select({ one: sql`1` })
+              .from(schema.delivery)
+              .innerJoin(schema.message, eq(schema.message.id, schema.delivery.messageId))
+              .where(
+                and(
+                  eq(schema.delivery.mailboxId, input.mailboxId),
+                  eq(schema.delivery.role, "from"),
+                  eq(schema.message.threadId, schema.threadState.threadId),
+                ),
+              ),
+          ),
+        )
+      : eq(schema.threadState.placement, input.placement);
+
   const states = await db
     .select({
       threadId: schema.threadState.threadId,
@@ -69,7 +96,7 @@ export async function listThreads(
     .where(
       and(
         eq(schema.threadState.mailboxId, input.mailboxId),
-        eq(schema.threadState.placement, input.placement),
+        placementCond,
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
       ),
     )

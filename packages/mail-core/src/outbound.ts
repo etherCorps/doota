@@ -56,9 +56,12 @@ export type SendRequest = {
   undoSeconds?: number;
 };
 
-// New outbound thread lands in Sent; a reply must not yank the thread out of
-// wherever it currently sits (Part D).
-const OUTBOUND_PLACEMENT: PlacementPolicy = { newThread: "sent", unarchiveOnReply: false };
+// Sent is a VIEW (deliveries with role `from`), not a placement. A new outbound
+// thread starts `archived` — Gmail's "no Inbox label" state — so the first
+// inbound reply un-archives it into the inbox via the normal inbound policy,
+// while it already shows in Sent through the delivery. Our own reply must not
+// yank the thread out of wherever it currently sits (Part D).
+const OUTBOUND_PLACEMENT: PlacementPolicy = { newThread: "archived", unarchiveOnReply: false };
 
 const DEFAULT_UNDO_SECONDS = 10;
 // Cloudflare Queues cap delivery delay at 12h; beyond that the cron sweep enqueues.

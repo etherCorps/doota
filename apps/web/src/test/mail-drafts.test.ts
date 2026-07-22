@@ -325,10 +325,11 @@ describe("recipient autocomplete", () => {
     });
     await db.insert(schema.delivery).values({ id: "dc", orgId: ORG, messageId: "mc", mailboxId: "mb_alice", role: "to" });
 
-    const all = await suggestRecipients(db, "u1", "");
+    const all = (await suggestRecipients(db, "u1", "")).map((s) => s.address);
     expect(all).toContain("colleague@ext.com");
     expect(all).toContain("customer@ext.com");
-    expect(await suggestRecipients(db, "u1", "custo")).toEqual(["customer@ext.com"]);
+    const filtered = await suggestRecipients(db, "u1", "custo");
+    expect(filtered.map((s) => s.address)).toEqual(["customer@ext.com"]);
   });
 });
 

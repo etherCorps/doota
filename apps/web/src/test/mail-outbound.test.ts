@@ -6,6 +6,8 @@ import { invalidateDomainCache } from "@doota/db/org-domains";
 import { importKey } from "@doota/mail-core/crypto";
 import { enqueueSend, cancelSend, sweepDueSubmissions } from "@doota/mail-core/outbound";
 import { processSubmission } from "@doota/mail-core/outbound-consumer";
+import { materializeMessage, materializeDelivery } from "@doota/mail-core/materialize";
+import { listThreads } from "@doota/mail-core/read";
 import { parseBounce, looksLikeBounce, applyBounce } from "@doota/mail-core/bounce";
 import {
   buildQuotedText,
@@ -164,18 +166,51 @@ describe("bounce parsing (Part F)", () => {
 // ---- integration -------------------------------------------------------------
 
 describe("enqueue + sender copy (Parts B/D)", () => {
-  it("writes submission + recipients + sender copy in Sent", async () => {
+  it("writes submission + recipients + sender copy visible in the Sent view", async () => {
     const { submissionId, threadId } = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"] }));
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
     expect(sub.status).toBe("queued");
     const recips = await db.query.submissionRecipient.findMany({ where: eq(schema.submissionRecipient.submissionId, submissionId) });
     expect(recips.map((r: any) => r.address)).toEqual(["out@ext.com"]);
-    // Sender's own copy: a `from` delivery + thread_state placed in `sent`.
+    // Sender's own copy: a `from` delivery; thread_state starts `archived`
+    // (Sent is a view over `from` deliveries, not a placement).
     const fromDel = await db.query.delivery.findFirst({ where: eq(schema.delivery.mailboxId, "mb_alice") });
     expect(fromDel.role).toBe("from");
     const ts = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, threadId) });
-    expect(ts.placement).toBe("sent");
+    expect(ts.placement).toBe("archived");
+    const sent = await listThreads(db, { mailboxId: "mb_alice", placement: "sent", ck });
+    expect(sent.map((t) => t.threadId)).toEqual([threadId]);
+    const inbox = await listThreads(db, { mailboxId: "mb_alice", placement: "inbox", ck });
+    expect(inbox).toEqual([]);
     expect(queue.sent.length).toBe(1);
+  });
+
+  it("an external reply pulls the sent thread into the inbox (still in Sent view)", async () => {
+    const { threadId, messageId } = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"] }));
+    const sent = await db.query.message.findFirst({ where: eq(schema.message.id, messageId) });
+
+    // Reply arrives, threaded via In-Reply-To onto our message.
+    const reply = {
+      messageIdHeader: "<re@ext.com>", inReplyTo: sent.messageIdHeader, references: null,
+      from: "out@ext.com", subject: "Re: Hi", sentAt: Date.now() + 1000,
+      text: "pong", html: null, r2RawKey: null, attachments: [],
+    };
+    const deps = { ck, searchKeyB64: KEY_B64 };
+    const m2 = await materializeMessage(db, ORG, reply, deps);
+    expect(m2.threadId).toBe(threadId);
+    await materializeDelivery(db, {
+      orgId: ORG, ...m2, mailboxId: "mb_alice", role: "to",
+      viaAliasId: null, subaddressTag: null, sentAt: reply.sentAt,
+    });
+
+    // archived → inbox via the normal inbound un-archive policy…
+    const ts = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, threadId) });
+    expect(ts.placement).toBe("inbox");
+    const inbox = await listThreads(db, { mailboxId: "mb_alice", placement: "inbox", ck });
+    expect(inbox.map((t) => t.threadId)).toEqual([threadId]);
+    // …while the thread keeps showing in the Sent view (Gmail both-places).
+    const sentView = await listThreads(db, { mailboxId: "mb_alice", placement: "sent", ck });
+    expect(sentView.map((t) => t.threadId)).toEqual([threadId]);
   });
 
   it("dedupes on idempotency key (double-send guard)", async () => {

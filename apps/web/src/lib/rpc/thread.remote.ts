@@ -66,7 +66,10 @@ async function assertMailboxGrant(mailboxId: string) {
   return box;
 }
 
-const PLACEMENTS = ["inbox", "archived", "spam", "trash", "sent"] as const;
+// Real placements a thread can be MOVED to. `sent` is a view (threads this
+// mailbox sent something in), listable but never a move target.
+const MOVE_PLACEMENTS = ["inbox", "archived", "spam", "trash"] as const;
+const VIEW_PLACEMENTS = [...MOVE_PLACEMENTS, "sent"] as const;
 
 // Kept local: a remote-function module may export ONLY remote functions.
 const PAGE_SIZE = 30;
@@ -74,7 +77,7 @@ const PAGE_SIZE = 30;
 export const mailboxThreads = query(
   z.object({
     mailboxId: z.string().min(1),
-    placement: z.enum(PLACEMENTS).default("inbox"),
+    placement: z.enum(VIEW_PLACEMENTS).default("inbox"),
     offset: z.number().int().min(0).default(0),
   }),
   async ({ mailboxId, placement, offset }) => {
@@ -146,7 +149,7 @@ export const moveThread = command(
   z.object({
     mailboxId: z.string().min(1),
     threadId: z.string().min(1),
-    placement: z.enum(PLACEMENTS),
+    placement: z.enum(MOVE_PLACEMENTS),
   }),
   async ({ mailboxId, threadId, placement }) => {
     const box = await assertMailboxGrant(mailboxId);
@@ -183,7 +186,7 @@ export const bulkMoveThreads = command(
   z.object({
     mailboxId: z.string().min(1),
     threadIds: z.array(z.string().min(1)).min(1).max(200),
-    placement: z.enum(PLACEMENTS),
+    placement: z.enum(MOVE_PLACEMENTS),
   }),
   async ({ mailboxId, threadIds, placement }) => {
     await assertMailboxGrant(mailboxId);
