@@ -771,7 +771,8 @@
 				</Button>
 			</div>
 		{/if}
-		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
+		<!-- pt-2: air between the header/rail block and the first row. -->
+		<div class="flex-1 overflow-y-auto pt-2" onscroll={onListScroll}>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}
