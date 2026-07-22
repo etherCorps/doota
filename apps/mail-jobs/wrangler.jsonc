@@ -11,28 +11,28 @@
     {
       "binding": "MAIL_RAW",
       "bucket_name": "doota-mail-raw",
-    },
+    }
   ],
   "queues": {
     // Producers: retries + the cron sweep re-enqueue to MAIL_OUT_QUEUE.
     "producers": [
       {
         "binding": "MAIL_OUT_QUEUE",
-        "queue": "doota-mail-outbound",
-      },
+        "queue": "doota-mail-outbound"
+      }
     ],
     "consumers": [
       {
         "queue": "doota-mail-outbound",
         "max_batch_size": 10,
-        "max_retries": 5,
-      },
-    ],
+        "max_retries": 5
+      }
+    ]
   },
   // The 5-min sweep for scheduled sends beyond the queue's 12h max delay +
   // stale-draft GC.
   "triggers": {
-    "crons": ["*/5 * * * *"],
+    "crons": ["*/5 * * * *"]
   },
   // Cloudflare Email Service — DKIM/return-path set by the binding from the
   // sending zone.
@@ -40,7 +40,7 @@
     {
       "name": "EMAIL_SENDER",
       "remote": true,
-    },
+    }
   ],
   "d1_databases": [
     {
@@ -48,6 +48,6 @@
       "database_name": "doota",
       "database_id": "f60f6cbf-7936-4169-90a8-a8555793aa8b",
       "migrations_dir": "../../drizzle",
-    },
-  ],
+    }
+  ]
 }

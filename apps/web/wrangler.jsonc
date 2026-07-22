@@ -61,7 +61,7 @@
   "routes": [
     {
       "custom_domain": true,
-      "pattern": "doota.ethercorps.io",
+      "pattern": "doota.dev",
     },
   ],
   "d1_databases": [
