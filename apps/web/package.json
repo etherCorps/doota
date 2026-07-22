@@ -71,6 +71,8 @@
     "zod": "^4.3.6"
   },
   "dependencies": {
+    "@dicebear/collection": "^9",
+    "@dicebear/core": "^9.4.3",
     "@doota/db": "workspace:*",
     "@doota/mail-core": "workspace:*",
     "@ethercorps/un-jinja": "^1.0.0",
