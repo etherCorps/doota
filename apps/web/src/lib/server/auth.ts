@@ -112,7 +112,7 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       },
       autoSignInAfterVerification: false,
     },
-    appName: `Doota - ${ORIGIN.replace(/^https?:\/\//, "")}`,
+    appName: `Doota`,
     baseURL: ORIGIN,
     secret: BETTER_AUTH_SECRET,
     database: drizzleAdapter(db!, { provider: "sqlite", schema }),
