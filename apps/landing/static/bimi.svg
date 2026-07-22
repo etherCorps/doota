@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Doota BIMI logo — SVG Tiny-PS. Solid background (inbox tiles are circle-
+     cropped), mark inverted to white on brand blue #0e7ae6. Derived from
+     favicon.svg — same geometry, scaled 12x onto a 512 canvas.
+     NOTE: if a VMC is ever issued, it binds to these exact bytes. -->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 512 512">
+  <title>Doota</title>
+  <rect width="512" height="512" fill="#0e7ae6"/>
+  <g transform="translate(64 64) scale(12)">
+    <path d="M9 4h14a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-9l-6 4v-4H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z" fill="#ffffff"/>
+    <path d="M9.5 11 16 15.5 22.5 11" stroke="#0e7ae6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

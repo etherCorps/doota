@@ -171,6 +171,26 @@ export async function listZoneDnsRecords(zoneId: string): Promise<ZoneDnsRecord[
   }
 }
 
+/**
+ * Create-or-update a TXT record by exact name. Used for records we own outright
+ * (e.g. the BIMI `default._bimi.<apex>` record) — one record per name, so an
+ * existing one is updated in place rather than duplicated.
+ */
+export async function upsertTxtRecord(
+  zoneId: string,
+  name: string,
+  content: string,
+): Promise<void> {
+  const page = await cf().dns.records.list({ zone_id: zoneId, per_page: 100, type: "TXT" });
+  const existing = (page.result ?? []).find((r) => r.name === name);
+  // ttl: 1 = "automatic" on Cloudflare.
+  if (existing?.id) {
+    await cf().dns.records.update(existing.id, { zone_id: zoneId, type: "TXT", name, content, ttl: 1 });
+  } else {
+    await cf().dns.records.create({ zone_id: zoneId, type: "TXT", name, content, ttl: 1 });
+  }
+}
+
 /** Enable Email Routing on the zone. Tolerates already-enabled. */
 export async function enableEmailRouting(zoneId: string): Promise<void> {
   await tolerant(() => cf().emailRouting.enable({ zone_id: zoneId, body: {} }));

@@ -23,6 +23,7 @@ import {
   pollZoneStatus,
   removeRoutingSubdomain,
   setSubaddressing,
+  upsertTxtRecord,
   wireMail,
   zoneCreate,
   type ZoneOnboardStatus,
@@ -324,6 +325,58 @@ export const domainDnsRecords = command(z.string(), async (orgId) => {
   if (!org?.zoneId) error(400, "No Cloudflare zone for this domain yet.");
   return listZoneDnsRecords(org.zoneId);
 });
+
+/**
+ * BIMI — the verified-logo badge. One TXT record at `default._bimi.<apex>`
+ * pointing at a public HTTPS square SVG Tiny-PS (plus an optional VMC cert for
+ * the blue check). Inbox providers only show the logo when DMARC is enforcing
+ * (p=quarantine|reject), so the status surfaces DMARC alongside the record.
+ */
+const HTTPS_URL = z
+  .string()
+  .trim()
+  .url()
+  .refine((u) => u.startsWith("https://"), "Must be an HTTPS URL.");
+
+/** Published BIMI + DMARC state for the org's domain. Superadmin only. */
+export const bimiStatus = command(z.string(), async (orgId) => {
+  const { zoneId, apex } = await orgZone(orgId);
+  const records = await listZoneDnsRecords(zoneId);
+  const host = `default._bimi.${apex}`;
+  const bimi = records.find((r) => r.type === "TXT" && r.name === host);
+  const dmarc = records.find((r) => r.type === "TXT" && r.name === `_dmarc.${apex}`);
+  const dmarcPolicy = dmarc ? (/\bp\s*=\s*(\w+)/i.exec(dmarc.content)?.[1]?.toLowerCase() ?? null) : null;
+  return {
+    host,
+    published: !!bimi,
+    record: bimi?.content ?? null,
+    logoUrl: bimi ? (/\bl\s*=\s*([^;\s]+)/i.exec(bimi.content)?.[1] ?? "") : "",
+    vmcUrl: bimi ? (/\ba\s*=\s*([^;\s]+)/i.exec(bimi.content)?.[1] ?? "") : "",
+    // Providers require enforcement before they render the logo.
+    dmarcPolicy,
+    dmarcOk: dmarcPolicy === "quarantine" || dmarcPolicy === "reject",
+  };
+});
+
+/** Publish/update the BIMI TXT record on the org's zone. Superadmin only. */
+export const publishBimi = command(
+  z.object({
+    orgId: z.string().min(1),
+    logoUrl: HTTPS_URL,
+    vmcUrl: HTTPS_URL.optional().or(z.literal("")),
+  }),
+  async ({ orgId, logoUrl, vmcUrl }) => {
+    const { zoneId, apex } = await orgZone(orgId);
+    const content = `v=BIMI1; l=${logoUrl};${vmcUrl ? ` a=${vmcUrl};` : ""}`;
+    try {
+      await upsertTxtRecord(zoneId, `default._bimi.${apex}`, content);
+    } catch (e) {
+      console.error("[domains:bimi] publish failed", e);
+      return { success: false as const, message: "Cloudflare rejected the BIMI record. Check the zone and try again." };
+    }
+    return { success: true as const, record: content };
+  },
+);
 
 /** Fetch the org's zone (superadmin-gated). Shared by the routing commands. */
 async function orgZone(orgId: string) {
