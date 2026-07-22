@@ -13,9 +13,27 @@ import { stripHtmlTags } from "./mail-thread-contract";
 function looksLikeHtml(s: string): boolean {
   return /<[a-z][\s\S]*>/i.test(s);
 }
+/** Tiptap serializes trailing blank lines/spaces as empty <p>s, <br>s and
+ * &nbsp; — strip them from the tail so sent mail doesn't end with phantom
+ * whitespace the recipient's client renders. */
+function trimTrailingHtml(html: string): string {
+  let prev: string;
+  do {
+    prev = html;
+    html = html
+      .replace(/(?:\s|&nbsp;|<br\s*\/?>)+(<\/(?:p|div)>)\s*$/i, "$1")
+      .replace(/<(p|div)(?:\s[^>]*)?>\s*<\/\1>\s*$/i, "")
+      .trimEnd();
+  } while (html !== prev);
+  return html;
+}
+
 function toHtmlAndText(body: string | null): { html: string | null; text: string | null } {
   if (!body) return { html: null, text: null };
-  if (looksLikeHtml(body)) return { html: body, text: stripHtmlTags(body) };
+  if (looksLikeHtml(body)) {
+    const html = trimTrailingHtml(body);
+    return { html: html || null, text: stripHtmlTags(html) || null };
+  }
   // Plain text → escape + line breaks so it renders faithfully on the wire.
   const esc = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return { html: esc.replace(/\r?\n/g, "<br>"), text: body };
