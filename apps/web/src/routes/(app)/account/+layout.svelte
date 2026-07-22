@@ -47,20 +47,22 @@
 <div class="flex w-full flex-col">
 	<!-- Identity banner — full-width bar, the anchor every tab shares. -->
 	<header class="bg-card flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:gap-4 sm:px-6 sm:py-5 md:px-8">
-		<Avatar.Root class="size-16 shrink-0">
+		<Avatar.Root class="size-12 shrink-0 sm:size-16">
 			{#if data.user.image}<Avatar.Image src={data.user.image} alt={data.user.name} />{/if}
-			<Avatar.Fallback class="text-lg">{initials}</Avatar.Fallback>
+			<Avatar.Fallback class="text-base sm:text-lg">{initials}</Avatar.Fallback>
 		</Avatar.Root>
 		<div class="min-w-0 flex-1">
 			<div class="flex flex-wrap items-center gap-2">
-				<h1 class="font-heading truncate text-xl font-semibold tracking-tight">{data.user.name}</h1>
+				<h1 class="font-heading truncate text-lg font-semibold tracking-tight sm:text-xl">{data.user.name}</h1>
 				<Badge variant={data.user.role === 'member' ? 'secondary' : 'default'}>
 					{roleLabel[data.user.role] ?? data.user.role}
 				</Badge>
 			</div>
-			<p class="text-muted-foreground truncate font-mono text-sm">{data.user.email}</p>
+			<p class="text-muted-foreground truncate font-mono text-xs sm:text-sm">{data.user.email}</p>
 		</div>
-		<div class="flex flex-wrap items-center gap-2">
+		<!-- w-full below sm: the status pills take a clean row of their own instead
+		     of wrapping raggedly beside the identity block. -->
+		<div class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
 			<span
 				class={cn(
 					'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
