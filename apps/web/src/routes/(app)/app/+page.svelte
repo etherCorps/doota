@@ -496,7 +496,7 @@
 									<span class="block truncate text-sm font-medium">{att.filename ?? 'file'}</span>
 									<span class="text-faint block text-[11px]">{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
 								</span>
-								<DownloadIcon class="text-muted-foreground size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+								<DownloadIcon class="text-muted-foreground pointer-coarse:opacity-100 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
 							</a>
 						{/each}
 					</div>

@@ -16,6 +16,7 @@
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { toast } from 'svelte-sonner';
 	import { compose } from '$lib/client/compose.svelte.js';
+	import { portal } from '$lib/client/portal';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import FileIcon from '@lucide/svelte/icons/file';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -468,7 +469,7 @@
 								<button
 									type="button"
 									title="Download"
-									class="bg-background/85 text-muted-foreground hover:text-foreground absolute top-1.5 right-9 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
+									class="bg-background/85 text-muted-foreground hover:text-foreground pointer-coarse:opacity-100 absolute top-1.5 right-9 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
 									onclick={() => downloadAttachment(a)}
 								>
 									<DownloadIcon class="size-3.5" />
@@ -476,7 +477,7 @@
 								<button
 									type="button"
 									title="Remove"
-									class="bg-background/85 text-muted-foreground hover:text-destructive absolute top-1.5 right-1.5 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
+									class="bg-background/85 text-muted-foreground hover:text-destructive pointer-coarse:opacity-100 absolute top-1.5 right-1.5 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
 									onclick={() => removeAttachment(a.r2Key)}
 								>
 									<XIcon class="size-3.5" />
@@ -707,7 +708,9 @@
 
 <!-- Image preview lightbox (Gmail-style): click backdrop or Esc to close. -->
 {#if preview}
-	<div class="bg-scrim/80 fixed inset-0 z-50 flex flex-col" role="dialog" aria-modal="true" aria-label="Attachment preview">
+	<!-- use:portal — in drawer mode this renders inside vaul's transformed
+	     content, where position:fixed pins to the drawer instead of the viewport. -->
+	<div use:portal class="bg-scrim/80 fixed inset-0 z-50 flex flex-col" role="dialog" aria-modal="true" aria-label="Attachment preview">
 		<div class="flex items-center justify-between gap-3 px-4 py-3 text-white">
 			<span class="truncate text-sm font-medium">{preview.filename}</span>
 			<div class="flex items-center gap-1">

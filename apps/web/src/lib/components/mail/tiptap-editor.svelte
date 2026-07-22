@@ -131,7 +131,7 @@
 					'aria-multiline': 'true',
 					'aria-label': 'Message body',
 					class:
-						'tiptap prose-sm min-h-[200px] max-w-none px-3 py-2 text-sm outline-none focus:outline-none'
+						'tiptap prose-sm min-h-[200px] max-w-none px-3 py-2 text-base outline-none focus:outline-none md:text-sm'
 				},
 				handleKeyDown: (_view, event) => {
 					const mod = event.metaKey || event.ctrlKey;

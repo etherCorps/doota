@@ -121,7 +121,7 @@
 			</span>
 		{/each}
 		<input
-			class="min-w-[10ch] flex-1 bg-transparent font-mono text-sm outline-none"
+			class="min-w-[10ch] flex-1 bg-transparent font-mono text-base outline-none md:text-sm"
 			{placeholder}
 			role="combobox"
 			aria-expanded={open}
