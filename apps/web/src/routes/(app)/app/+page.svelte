@@ -481,11 +481,14 @@
 	{/each}
 {/snippet}
 
-<div class="flex h-full">
+<!-- @container: the list/thread split reacts to THIS region's width (sidebar
+     open/closed included), not the viewport — collapsing the sidebar on a small
+     laptop earns the two-pane layout. -->
+<div class="@container flex h-full">
 	<!-- List pane -->
-	<!-- Single-pane swap (list OR thread) up to lg — tablets keep the sidebar and
-	     one full-width mail pane; the two-pane split starts at lg. -->
-	<div class="flex w-full flex-col border-r lg:w-[360px] lg:shrink-0 {threadId ? 'hidden lg:flex' : 'flex'}">
+	<!-- Single-pane swap (list OR thread) until the mail region is ≥ 56rem wide;
+	     then the real two-pane split. -->
+	<div class="@4xl:w-[360px] @4xl:shrink-0 flex w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
 		<!-- List header — folder identity + active mailbox + (shared) assign filter -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
 			<div class="min-w-0 flex-1">
@@ -622,7 +625,7 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : 'hidden lg:flex'}">
+	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
@@ -630,7 +633,7 @@
 					{@const ctx = replyCtx(msgs)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
-						<Button variant="ghost" size="icon" class="text-muted-foreground lg:hidden" onclick={() => nav({ thread: null })}>
+						<Button variant="ghost" size="icon" class="text-muted-foreground @4xl:hidden" onclick={() => nav({ thread: null })}>
 							<ArrowLeftIcon class="size-4" />
 						</Button>
 						<div class="min-w-0 flex-1">
