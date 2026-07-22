@@ -265,6 +265,9 @@ export const threadState = sqliteTable(
       onDelete: "set null",
     }),
     lastReadAt: integer("last_read_at", { mode: "timestamp_ms" }),
+    // "Empty trash/spam" hides — never a hard delete. Hidden threads drop out of
+    // every list; moving a thread to a new placement clears it.
+    hiddenAt: integer("hidden_at", { mode: "timestamp_ms" }),
     createdAt: now(),
   },
   (t) => [

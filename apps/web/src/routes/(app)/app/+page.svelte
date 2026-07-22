@@ -27,9 +27,17 @@
 		mailboxMembers,
 		assignThread,
 		editNoteById,
-		deleteNoteById
+		deleteNoteById,
+		bulkMoveThreads,
+		bulkMarkRead,
+		emptyFolder
 	} from '$lib/rpc/thread.remote';
-	import { sendIdentities, myDrafts, scheduledSends, undoDraftById } from '$lib/rpc/draft.remote';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+	import { toast } from 'svelte-sonner';
+	import MailIcon from '@lucide/svelte/icons/mail';
+	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
+	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts } from '$lib/rpc/draft.remote';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
@@ -150,6 +158,8 @@
 	watch(
 		[() => mailboxId, () => isVirtual, () => placement],
 		([mb, virt]) => {
+			draftSel.clear();
+			threadSel.clear();
 			if (mb && !virt) loadThreads(true);
 			else {
 				items = [];
@@ -158,6 +168,61 @@
 			}
 		}
 	);
+
+	// Thread multi-select — checkbox column; the filter rail becomes the action
+	// toolbar while anything is selected. Bulk mutations patch `items` in place
+	// like the single-thread actions do (no refetch/flash).
+	const threadSel = new SvelteSet<string>();
+	let bulkBusy = $state(false);
+	async function bulkMove(pl: 'inbox' | 'archived' | 'spam' | 'trash') {
+		if (!mailboxId || bulkBusy) return;
+		const ids = [...threadSel];
+		bulkBusy = true;
+		try {
+			await bulkMoveThreads({ mailboxId, threadIds: ids, placement: pl });
+			items = items.filter((t) => !threadSel.has(t.threadId));
+			if (threadId && threadSel.has(threadId)) nav({ thread: null });
+			threadSel.clear();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+	async function bulkRead(read: boolean) {
+		if (!mailboxId || bulkBusy) return;
+		const ids = [...threadSel];
+		bulkBusy = true;
+		try {
+			await bulkMarkRead({ mailboxId, threadIds: ids, read });
+			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
+			threadSel.clear();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
+	// "Empty trash/spam" — hides everything at the placement (no hard delete).
+	async function emptyCurrentFolder() {
+		if (!mailboxId || (placement !== 'trash' && placement !== 'spam')) return;
+		await emptyFolder({ mailboxId, placement });
+		items = [];
+		threadSel.clear();
+		if (threadId) nav({ thread: null });
+		toast.success(`${folder.name} emptied.`);
+	}
+
+	// Drafts multi-select. Single-row delete goes through the same bulk call.
+	const draftSel = new SvelteSet<string>();
+	let deletingDrafts = $state(false);
+	async function deleteDrafts(ids: string[]) {
+		deletingDrafts = true;
+		try {
+			await discardDrafts({ draftIds: ids });
+			for (const id of ids) draftSel.delete(id);
+			await myDrafts().refresh();
+		} finally {
+			deletingDrafts = false;
+		}
+	}
 
 	// Closing the composer (send, discard, or plain close) refreshes the virtual
 	// lists it feeds — Drafts and Scheduled were serving cached results until a
@@ -559,6 +624,30 @@
 					<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{activeMailbox?.address ?? '…'}</span>
 				</div>
 			{/if}
+			{#if (placement === 'trash' || placement === 'spam') && !searchQ && items.length}
+				<AlertDialog.Root>
+					<AlertDialog.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="ghost" size="sm" class="text-muted-foreground hover:text-destructive shrink-0 gap-1.5 text-xs">
+								<Trash2Icon class="size-3.5" /> Empty
+							</Button>
+						{/snippet}
+					</AlertDialog.Trigger>
+					<AlertDialog.Content>
+						<AlertDialog.Header>
+							<AlertDialog.Title>Empty {folder.name.toLowerCase()}?</AlertDialog.Title>
+							<AlertDialog.Description>
+								Every conversation in {folder.name.toLowerCase()} is hidden from this mailbox and won't
+								appear in the app again.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+						<AlertDialog.Footer>
+							<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+							<AlertDialog.Action onclick={emptyCurrentFolder}>Empty {folder.name.toLowerCase()}</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Root>
+			{/if}
 			{#if canManageActive && !searchQ}
 				<a href="/mailboxes/{mailboxId}" title="Manage mailbox" class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2">
 					<SettingsIcon class="size-4" />
@@ -568,7 +657,43 @@
 
 		<!-- Filter rail — folder nav lives in the sidebar (this row used to duplicate
 		     it); the list's own row narrows what's shown instead. -->
-		{#if !isVirtual && !searchQ}
+		{#if !isVirtual && !searchQ && threadSel.size}
+			<!-- Selection toolbar — takes the filter rail's row while anything is selected. -->
+			<div class="bg-card/60 flex items-center gap-1 border-b px-2 py-1.5">
+				<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => threadSel.clear()}>
+					<XIcon class="size-4" />
+				</Button>
+				<span class="text-muted-foreground text-xs tabular-nums">{threadSel.size}</span>
+				<div class="ml-auto flex items-center gap-0.5">
+					<Button variant="ghost" size="icon" class="size-7" title="Mark read" disabled={bulkBusy} onclick={() => bulkRead(true)}>
+						<MailOpenIcon class="size-4" />
+					</Button>
+					<Button variant="ghost" size="icon" class="size-7" title="Mark unread" disabled={bulkBusy} onclick={() => bulkRead(false)}>
+						<MailIcon class="size-4" />
+					</Button>
+					{#if placement !== 'inbox'}
+						<Button variant="ghost" size="icon" class="size-7" title="Move to inbox" disabled={bulkBusy} onclick={() => bulkMove('inbox')}>
+							<InboxIcon class="size-4" />
+						</Button>
+					{/if}
+					{#if placement !== 'archived'}
+						<Button variant="ghost" size="icon" class="size-7" title="Archive" disabled={bulkBusy} onclick={() => bulkMove('archived')}>
+							<ArchiveIcon class="size-4" />
+						</Button>
+					{/if}
+					{#if placement !== 'spam'}
+						<Button variant="ghost" size="icon" class="size-7" title="Mark spam" disabled={bulkBusy} onclick={() => bulkMove('spam')}>
+							<ShieldAlertIcon class="size-4" />
+						</Button>
+					{/if}
+					{#if placement !== 'trash'}
+						<Button variant="ghost" size="icon" class="size-7 hover:text-destructive" title="Trash" disabled={bulkBusy} onclick={() => bulkMove('trash')}>
+							<Trash2Icon class="size-4" />
+						</Button>
+					{/if}
+				</div>
+			</div>
+		{:else if !isVirtual && !searchQ}
 			<div class="flex items-center gap-2 border-b px-3 py-1.5">
 				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
 					{#each [['all', 'All'], ['unread', 'Unread'], ['starred', 'Starred']] as [id, label] (id)}
@@ -638,18 +763,53 @@
 				{:else}
 					{@const drafts = draftsQ.current}
 					{#if drafts.length}
+						{#if draftSel.size}
+							<div class="bg-card/60 sticky top-0 z-[1] flex items-center gap-1 border-b px-2 py-1.5 backdrop-blur">
+								<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => draftSel.clear()}>
+									<XIcon class="size-4" />
+								</Button>
+								<span class="text-muted-foreground text-xs">{draftSel.size} selected</span>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="text-destructive hover:text-destructive ml-auto gap-1.5"
+									disabled={deletingDrafts}
+									onclick={() => deleteDrafts([...draftSel])}
+								>
+									{#if deletingDrafts}<Spinner class="size-3.5" />{:else}<Trash2Icon class="size-3.5" />{/if}
+									Delete
+								</Button>
+							</div>
+						{/if}
 						{#each drafts as d (d.id)}
-							<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset hover:bg-muted/50">
-								{@render monogram(d.to[0] ?? null, 'mt-0.5 size-9 text-xs')}
-								<div class="min-w-0 flex-1">
-									<div class="flex items-baseline gap-2">
-										<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
-										<span class="text-warn shrink-0 text-[11px] font-medium">Draft</span>
+							<div class="group/draft flex items-center border-b {draftSel.has(d.id) ? 'bg-accent/50' : ''}">
+								<label class="grid shrink-0 cursor-pointer place-items-center self-stretch pl-3">
+									<Checkbox
+										checked={draftSel.has(d.id)}
+										onCheckedChange={(v) => (v ? draftSel.add(d.id) : draftSel.delete(d.id))}
+										aria-label="Select draft"
+									/>
+								</label>
+								<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {draftSel.has(d.id) ? '' : 'hover:bg-muted/50'}">
+									{@render monogram(d.to[0] ?? null, 'mt-0.5 size-9 text-xs')}
+									<div class="min-w-0 flex-1">
+										<div class="flex items-baseline gap-2">
+											<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
+											<span class="text-warn shrink-0 text-[11px] font-medium">Draft</span>
+										</div>
+										<span class="block truncate text-[13px] text-muted-foreground">{d.subject || '(no subject)'}</span>
+										<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
 									</div>
-									<span class="block truncate text-[13px] text-muted-foreground">{d.subject || '(no subject)'}</span>
-									<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
-								</div>
-							</button>
+								</button>
+								<button
+									type="button"
+									title="Delete draft"
+									onclick={() => deleteDrafts([d.id])}
+									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
+								>
+									<Trash2Icon class="size-4" />
+								</button>
+							</div>
 						{/each}
 					{:else}
 						<EmptyState icon={FileTextIcon} title="No drafts" description="Messages you start and close are saved here.">
@@ -689,8 +849,17 @@
 					{#if applyListFilters(items).length}
 						{#each applyListFilters(items) as t (t.threadId)}
 							{@const selected = threadId === t.threadId}
-							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}">
+							{@const checked = threadSel.has(t.threadId)}
+							<div class="group/row relative flex items-center border-b {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : ''}">
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
+								<label class="grid shrink-0 cursor-pointer place-items-center self-stretch pl-3">
+									<Checkbox
+										{checked}
+										onCheckedChange={(v) => (v ? threadSel.add(t.threadId) : threadSel.delete(t.threadId))}
+										aria-label="Select conversation"
+									/>
+								</label>
+							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected || checked ? '' : 'hover:bg-muted/50'}">
 								{@render monogram(t.from, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
@@ -707,6 +876,7 @@
 									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
 							</button>
+							</div>
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>

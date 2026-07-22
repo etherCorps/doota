@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -70,6 +70,7 @@ export async function listThreads(
       and(
         eq(schema.threadState.mailboxId, input.mailboxId),
         eq(schema.threadState.placement, input.placement),
+        isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
       ),
     )
     .orderBy(desc(schema.thread.lastMessageAt))

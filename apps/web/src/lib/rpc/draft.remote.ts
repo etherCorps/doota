@@ -129,6 +129,26 @@ export const discardDraftById = command(z.object({ draftId: z.string().min(1) })
   return { discarded: true };
 });
 
+export const discardDrafts = command(
+  z.object({ draftIds: z.array(z.string().min(1)).min(1).max(100) }),
+  async ({ draftIds }) => {
+    const user = requireUser();
+    const { locals } = getRequestEvent();
+    let discarded = 0;
+    // ponytail: loop the single-draft path — the ownership guard and R2 blob
+    // purge live there; N is small and schema-bounded. Batch SQL when it matters.
+    for (const draftId of draftIds) {
+      try {
+        await discardDraft(locals.db, outboundEnv(), draftId, user.id);
+        discarded++;
+      } catch {
+        // skip missing/foreign ids; the rest still delete
+      }
+    }
+    return { discarded };
+  },
+);
+
 export const detachDraftAttachment = command(
   z.object({ draftId: z.string().min(1), r2Key: z.string().min(1) }),
   async ({ draftId, r2Key }) => {

@@ -1,0 +1,1 @@
+ALTER TABLE `thread_state` ADD `hidden_at` integer;

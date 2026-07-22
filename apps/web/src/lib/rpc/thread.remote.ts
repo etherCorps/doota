@@ -1,7 +1,7 @@
 import { query, command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
@@ -157,7 +157,7 @@ export const moveThread = command(
     });
     await locals.db
       .update(mail.threadState)
-      .set({ placement })
+      .set({ placement, hiddenAt: null }) // moving un-hides
       .where(
         and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)),
       );
@@ -171,6 +171,83 @@ export const moveThread = command(
         fromPlacement: prev.placement,
         toPlacement: placement,
       });
+    }
+    return { ok: true as const };
+  },
+);
+
+/** Bulk move — one query over the selection. ponytail: no per-thread system
+ * events on bulk moves (the loop of prev-placement reads isn't worth it);
+ * add them if shared-mailbox timelines miss them in practice. */
+export const bulkMoveThreads = command(
+  z.object({
+    mailboxId: z.string().min(1),
+    threadIds: z.array(z.string().min(1)).min(1).max(200),
+    placement: z.enum(PLACEMENTS),
+  }),
+  async ({ mailboxId, threadIds, placement }) => {
+    await assertMailboxGrant(mailboxId);
+    const { locals } = getRequestEvent();
+    await locals.db
+      .update(mail.threadState)
+      .set({ placement, hiddenAt: null }) // moving un-hides
+      .where(and(eq(mail.threadState.mailboxId, mailboxId), inArray(mail.threadState.threadId, threadIds)));
+    return { ok: true as const };
+  },
+);
+
+/** "Empty trash/spam": hides every thread at the placement — never a hard
+ * delete (messages, R2 content and other mailboxes' state are untouched). */
+export const emptyFolder = command(
+  z.object({ mailboxId: z.string().min(1), placement: z.enum(["trash", "spam"]) }),
+  async ({ mailboxId, placement }) => {
+    await assertMailboxGrant(mailboxId);
+    const { locals } = getRequestEvent();
+    await locals.db
+      .update(mail.threadState)
+      .set({ hiddenAt: new Date() })
+      .where(
+        and(
+          eq(mail.threadState.mailboxId, mailboxId),
+          eq(mail.threadState.placement, placement),
+          isNull(mail.threadState.hiddenAt),
+        ),
+      );
+    return { ok: true as const };
+  },
+);
+
+/** Bulk read/unread for the calling user (per-user threadRead rows). */
+export const bulkMarkRead = command(
+  z.object({
+    mailboxId: z.string().min(1),
+    threadIds: z.array(z.string().min(1)).min(1).max(200),
+    read: z.boolean(),
+  }),
+  async ({ mailboxId, threadIds, read }) => {
+    const box = await assertMailboxGrant(mailboxId);
+    const { locals } = getRequestEvent();
+    const userId = locals.user!.id;
+    if (read) {
+      const now = new Date();
+      await locals.db
+        .insert(mail.threadRead)
+        .values(threadIds.map((threadId) => ({ orgId: box.orgId, userId, threadId, mailboxId, lastReadAt: now })))
+        .onConflictDoUpdate({
+          target: [mail.threadRead.userId, mail.threadRead.threadId, mail.threadRead.mailboxId],
+          set: { lastReadAt: now },
+        });
+    } else {
+      // Unread = no read marker newer than the thread; deleting the marker restores it.
+      await locals.db
+        .delete(mail.threadRead)
+        .where(
+          and(
+            eq(mail.threadRead.userId, userId),
+            eq(mail.threadRead.mailboxId, mailboxId),
+            inArray(mail.threadRead.threadId, threadIds),
+          ),
+        );
     }
     return { ok: true as const };
   },
