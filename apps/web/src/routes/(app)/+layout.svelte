@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { PersistedState } from 'runed';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
+	import EdgeSwipeOpen from '$lib/components/app/edge-swipe-open.svelte';
 	import TopBar from '$lib/components/app/top-bar.svelte';
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
@@ -37,6 +38,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
+	<EdgeSwipeOpen />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
 	<Sidebar.Inset class="relative flex h-svh flex-col overflow-hidden">
 		<TopBar>
