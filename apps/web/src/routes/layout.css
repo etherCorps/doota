@@ -1,5 +1,5 @@
 /* Hallmark · app design system · tone: soft-round-friendly (Motion × Superhuman)
- * theme: custom · paper oklch(0.976 0.005 90) warm-off-white · accent oklch(0.54 0.18 274) indigo-iris
+ * theme: custom · paper oklch(0.976 0.005 90) warm-off-white · accent #0E7AE6 brand-blue
  * display: Plus Jakarta Sans · body: Inter · depth: layered warm-ink shadows + sheen
  * pre-emit critique: P5 H5 E4 S5 R4 V4 */
 @import 'tailwindcss';
@@ -14,18 +14,18 @@
 /* Doota design tokens — "soft-round-friendly · Motion × Superhuman".
    Depth over flatness: the app PAPER sits a step under WHITE cards so surfaces
    lift on layered warm-tinted shadows (not a flat single fill). Interaction rides
-   an INDIGO-IRIS brand (#5B57D8, ~274°) — friendlier than corporate blue, still
-   trustworthy for SMB/corporate. --accent / --sidebar-accent are a soft iris wash
-   so hover / selected / active-nav pop against the warm paper.
+   the BRAND BLUE (#0E7AE6 — same mark as the landing favicon). --accent /
+   --sidebar-accent are a soft brand wash so hover / selected / active-nav pop
+   against the warm paper.
    Semantics unchanged: ok #16A968 · warn amber · destructive · participants.
    --primary stays graphite so default buttons + sent bubbles read ink, never brand.
    Revert lever: swap only --brand / --accent* / --chart-1 / --ring to restore blue. */
 :root {
 	--background: oklch(0.976 0.005 90); /* paper — warm off-white, a step under cards */
 	--foreground: oklch(0.23 0.012 285); /* ink — faint cool so it sits with iris */
-	--card: #ffffff; /* surface — crisp white lifts off warm paper */
+	--card: oklch(0.993 0.003 85); /* surface — warm near-white, lifts off paper without glare */
 	--card-foreground: oklch(0.23 0.012 285);
-	--popover: #ffffff;
+	--popover: oklch(0.993 0.003 85);
 	--popover-foreground: oklch(0.23 0.012 285);
 	--primary: oklch(0.26 0.014 285); /* graphite, not brand */
 	--primary-foreground: #ffffff;
@@ -33,17 +33,17 @@
 	--secondary-foreground: oklch(0.26 0.014 285);
 	--muted: oklch(0.962 0.007 285);
 	--muted-foreground: oklch(0.52 0.018 285); /* muted */
-	--accent: oklch(0.945 0.028 274); /* soft iris wash — hover/selected earn color */
-	--accent-foreground: oklch(0.46 0.16 274); /* iris-dark → selected text reads brand */
+	--accent: oklch(0.945 0.03 250); /* soft brand wash — hover/selected earn color */
+	--accent-foreground: oklch(0.44 0.13 250); /* brand-dark → selected text reads brand */
 	--destructive: #e5484d;
 	--border: oklch(0.912 0.007 285); /* line */
 	--input: oklch(0.905 0.008 285);
-	--ring: #5b57d8; /* focus ring is interactive → brand iris */
+	--ring: #0e7ae6; /* focus ring is interactive → brand */
 	--radius: 0.75rem; /* softer inputs/menus to match the pill buttons */
 
 	/* Doota extras */
 	--faint: #9b99a6;
-	--brand: #5b57d8; /* indigo-iris */
+	--brand: #0e7ae6; /* brand blue — the landing mark */
 	--brand-foreground: #ffffff;
 	--ok: #16a968;
 	--warn: #b45309; /* amber — readable as badge text on white */
@@ -56,12 +56,12 @@
 	--sidebar-foreground: oklch(0.23 0.012 285);
 	--sidebar-primary: oklch(0.26 0.014 285);
 	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: oklch(0.94 0.032 274); /* colored active/hover nav */
-	--sidebar-accent-foreground: oklch(0.46 0.16 274); /* iris-dark nav label */
+	--sidebar-accent: oklch(0.94 0.035 250); /* colored active/hover nav */
+	--sidebar-accent-foreground: oklch(0.44 0.13 250); /* brand-dark nav label */
 	--sidebar-border: oklch(0.915 0.008 285);
-	--sidebar-ring: #5b57d8;
+	--sidebar-ring: #0e7ae6;
 
-	--chart-1: #5b57d8;
+	--chart-1: #0e7ae6;
 	--chart-2: #0ea59b;
 	--chart-3: #7c5cff;
 	--chart-4: #e05d96;
@@ -81,16 +81,16 @@
 	--secondary-foreground: oklch(0.94 0.006 285);
 	--muted: oklch(0.28 0.016 285);
 	--muted-foreground: oklch(0.71 0.016 285);
-	--accent: oklch(0.33 0.06 274); /* brand-lit hover/selected */
-	--accent-foreground: oklch(0.85 0.08 274); /* light-iris selected text */
+	--accent: oklch(0.33 0.055 255); /* brand-lit hover/selected */
+	--accent-foreground: oklch(0.85 0.07 250); /* light-blue selected text */
 	--destructive: #ff6369;
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 12%);
-	--ring: #8b87f0;
+	--ring: #3d9bf0;
 
 	--faint: #6b6a7a;
-	--brand: #8b87f0; /* light iris for dark surfaces */
-	--brand-foreground: #14131f;
+	--brand: #3d9bf0; /* light blue for dark surfaces */
+	--brand-foreground: #0f1115;
 	--ok: #3dd68c;
 	--warn: #f5b73d;
 	--p1: #a891ff;
@@ -101,10 +101,10 @@
 	--sidebar-foreground: oklch(0.94 0.006 285);
 	--sidebar-primary: oklch(0.94 0.006 285);
 	--sidebar-primary-foreground: oklch(0.185 0.012 285);
-	--sidebar-accent: oklch(0.34 0.065 274); /* colored active/hover nav */
-	--sidebar-accent-foreground: oklch(0.86 0.08 274);
+	--sidebar-accent: oklch(0.34 0.06 255); /* colored active/hover nav */
+	--sidebar-accent-foreground: oklch(0.86 0.07 250);
 	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: #8b87f0;
+	--sidebar-ring: #3d9bf0;
 }
 
 @theme inline {

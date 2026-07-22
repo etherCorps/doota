@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { mode } from 'mode-watcher';
+	import { PersistedState } from 'runed';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -49,6 +51,13 @@
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
+	import Rows3Icon from '@lucide/svelte/icons/rows-3';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import XIcon from '@lucide/svelte/icons/x';
+	import { fly } from 'svelte/transition';
+	import * as Drawer from '$lib/components/ui/drawer/index.js';
+	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 
 	const FOLDERS = [
 		{ id: 'inbox', name: 'Inbox', icon: InboxIcon },
@@ -220,12 +229,16 @@
 	}
 
 	// Remote images (tracking pixels) are blocked by default via CSP inside the
-	// sandboxed iframe; the user can opt in per message.
+	// sandboxed iframe; the user can opt in per message. The doc body is
+	// transparent with a mode-matched text color, so plain emails follow the app
+	// theme (the iframe element paints bg-card); emails that hardcode their own
+	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
-	function frameDoc(html: string, allowRemote: boolean): string {
+	function frameDoc(html: string, allowRemote: boolean, dark: boolean): string {
 		const imgSrc = allowRemote ? 'img-src data: https:;' : 'img-src data:;';
 		const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src data:; media-src data:;`;
-		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width"></head><body style="margin:0;font:14px system-ui,sans-serif">${html}</body></html>`;
+		const color = dark ? '#e8e8ee' : '#25252c';
+		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}</head><body style="margin:0;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
 	}
 
 	function fmtTime(ms: number | null): string {
@@ -251,6 +264,106 @@
 		let h = 0;
 		for (const ch of key ?? '') h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
 		return MONO_TINTS[h % MONO_TINTS.length];
+	}
+
+	// Two conversation renderings, user-switchable + persisted: 'chat' (default —
+	// WhatsApp-style bubbles, reads as a communication flow) and 'mail' (Gmail-style
+	// collapsible card stack, reads as correspondence).
+	const threadView = new PersistedState<'chat' | 'mail'>('doota:thread-view', 'chat');
+
+	// Day dividers for the chat view (WhatsApp-style). Items are a mixed union;
+	// each type carries its timestamp under a different key.
+	function itemMs(it: unknown): number | null {
+		const o = it as { sentAt?: number | null; at?: number | null; createdAt?: number | null };
+		return o.sentAt ?? o.at ?? o.createdAt ?? null;
+	}
+	function isNewDay(items: unknown[], i: number): boolean {
+		const ms = itemMs(items[i]);
+		if (ms == null) return false;
+		for (let j = i - 1; j >= 0; j--) {
+			const prev = itemMs(items[j]);
+			if (prev != null) return new Date(ms).toDateString() !== new Date(prev).toDateString();
+		}
+		return true;
+	}
+	const fmtDay = (ms: number) =>
+		new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+	// Land on the newest message when a thread opens (or the view flips): chat
+	// scrolls to the bottom, mail brings the newest card's header into view.
+	// Keyed on thread id — a refresh() of the same thread never yanks the scroll.
+	let streamEl = $state<HTMLElement>();
+	$effect(() => {
+		const id = openDto?.id;
+		const view = threadView.current;
+		if (!id || !streamEl) return;
+		requestAnimationFrame(() => {
+			streamEl
+				?.querySelector('[data-newest="true"]')
+				?.scrollIntoView(view === 'chat' ? { block: 'end' } : { block: 'start' });
+		});
+	});
+
+	// Gmail-style collapse (mail view): every message except the newest starts
+	// collapsed; clicking a header toggles it. Effective state = default XOR
+	// toggled, so no seeding pass is needed and thread switches stay stateless.
+	const msgToggles = new SvelteSet<string>();
+	const msgOpen = (id: string, isLast: boolean) => isLast !== msgToggles.has(id);
+	function toggleMsg(id: string) {
+		if (msgToggles.has(id)) msgToggles.delete(id);
+		else msgToggles.add(id);
+	}
+	/** First text line of a message, for the collapsed-header preview. */
+	function msgSnippet(m: MessageDTO): string {
+		return (m.bodyStripped ?? m.bodyFull ?? '').split('\n').find((l) => l.trim()) ?? '';
+	}
+
+	// Thread attachments panel — every attachment in the open thread, grouped by
+	// day (messages are chronological, so consecutive-day grouping is enough).
+	// ≥ md it docks beside the stream; < md it's a bottom drawer.
+	let attachmentsOpen = $state(false);
+	const isMobile = new IsMobile();
+	function senderEmail(from: string | null): string {
+		return from?.match(/<([^>]+)>/)?.[1] ?? from ?? '';
+	}
+	// Grouped day → message, so a message's files stay together as one tile grid.
+	function groupAttachments(msgs: MessageDTO[]) {
+		const days: { day: string; entries: { msg: MessageDTO; atts: MessageDTO['attachments'] }[] }[] = [];
+		for (const msg of msgs) {
+			if (!msg.attachments.length) continue;
+			const day = msg.sentAt ? fmtDay(msg.sentAt) : 'Unknown date';
+			let d = days.at(-1);
+			if (!d || d.day !== day) {
+				d = { day, entries: [] };
+				days.push(d);
+			}
+			d.entries.push({ msg, atts: msg.attachments });
+		}
+		return days;
+	}
+	const isImage = (a: { contentType: string | null }) => !!a.contentType?.startsWith('image/');
+	const fileExt = (name: string | null) => name?.match(/\.(\w{1,5})$/)?.[1]?.toUpperCase() ?? 'FILE';
+	const fmtSize = (n: number | null) =>
+		n == null ? '' : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
+	// Type-tinted icon tile for non-image files (PDF reads red, archives amber, …).
+	function fileTile(a: { contentType: string | null }) {
+		const t = a.contentType ?? '';
+		if (t === 'application/pdf') return { icon: FileTextIcon, cls: 'bg-destructive/10 text-destructive' };
+		if (t.includes('zip') || t.includes('compressed') || t.includes('tar')) return { icon: ArchiveIcon, cls: 'bg-warn/10 text-warn' };
+		if (t.startsWith('audio/')) return { icon: PaperclipIcon, cls: 'bg-p1/10 text-p1' };
+		if (t.startsWith('video/')) return { icon: PaperclipIcon, cls: 'bg-p3/10 text-p3' };
+		if (t.startsWith('text/') || t.includes('word') || t.includes('document') || t.includes('sheet')) return { icon: FileTextIcon, cls: 'bg-brand/10 text-brand' };
+		return { icon: PaperclipIcon, cls: 'bg-muted text-muted-foreground' };
+	}
+	/** Scroll a message into view; in mail view, expand it first if collapsed.
+	 * On mobile the drawer covers the stream, so jumping closes it. */
+	function jumpToMsg(id: string, isLast: boolean) {
+		if (isMobile.current) attachmentsOpen = false;
+		if (threadView.current === 'mail' && !msgOpen(id, isLast)) toggleMsg(id);
+		const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+		requestAnimationFrame(() => {
+			streamEl?.querySelector(`[data-msg="${id}"]`)?.scrollIntoView({ behavior, block: 'center' });
+		});
 	}
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
@@ -314,6 +427,58 @@
 
 {#snippet monogram(from: string | null, cls: string)}
 	<span class="grid shrink-0 place-items-center rounded-full font-semibold {monoTint(from)} {cls}">{initials(from)}</span>
+{/snippet}
+
+<!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
+{#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
+	{#if groups.length === 0}
+		<p class="text-muted-foreground py-6 text-center text-sm">No attachments in this thread.</p>
+	{/if}
+	{#each groups as g (g.day)}
+		<p class="text-faint px-1 pt-2 pb-1.5 text-[11px] font-medium first:pt-0">{g.day}</p>
+		<div class="space-y-2">
+			{#each g.entries as { msg, atts } (msg.id)}
+				<div class="bg-background/60 rounded-xl border p-2">
+					<!-- Sender header (once per message) → jump to the message -->
+					<button
+						type="button"
+						title="Show in conversation"
+						onclick={() => jumpToMsg(msg.id, msg.id === msgs.at(-1)?.id)}
+						class="hover:text-brand focus-visible:ring-ring/50 mb-1.5 flex w-full items-baseline gap-1.5 rounded text-left outline-none focus-visible:ring-2"
+					>
+						<span class="text-foreground text-xs font-semibold">{msg.submission ? 'You' : senderName(msg.from)}</span>
+						<span class="text-faint min-w-0 flex-1 truncate font-mono text-[10px]">{senderEmail(msg.from)}</span>
+						<span class="text-faint shrink-0 text-[10px]">{fmtTime(msg.sentAt)}</span>
+					</button>
+					<!-- One row per file — thumb (image preview / type icon), name + size always
+					     visible. Click downloads. -->
+					<div class="space-y-1">
+						{#each atts as att (att.id)}
+							{@const tile = fileTile(att)}
+							<a
+								href={resolve('/api/attachments/[id]', { id: att.id })}
+								download={att.filename ?? 'file'}
+								class="group hover:bg-muted/60 focus-visible:ring-ring/50 flex items-center gap-2.5 rounded-lg p-1 transition-colors outline-none focus-visible:ring-2"
+							>
+								<span class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border {isImage(att) ? 'bg-muted' : tile.cls}">
+									{#if isImage(att)}
+										<img src={resolve('/api/attachments/[id]', { id: att.id })} alt={att.filename ?? 'attachment'} loading="lazy" class="h-full w-full object-cover" />
+									{:else}
+										<tile.icon class="size-4" />
+									{/if}
+								</span>
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium">{att.filename ?? 'file'}</span>
+									<span class="text-faint block text-[11px]">{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
+								</span>
+								<DownloadIcon class="text-muted-foreground size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+							</a>
+						{/each}
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/each}
 {/snippet}
 
 <div class="flex h-full">
@@ -455,12 +620,13 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="min-w-0 flex-1 flex-col {threadId ? 'flex' : 'hidden md:flex'}">
+	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : 'hidden md:flex'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const ctx = replyCtx(msgs)}
+					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
 						<Button variant="ghost" size="icon" class="text-muted-foreground md:hidden" onclick={() => nav({ thread: null })}>
 							<ArrowLeftIcon class="size-4" />
@@ -507,6 +673,28 @@
 								<ForwardIcon class="size-4" />
 							</Button>
 						{/if}
+						{#if attTotal > 0}
+							<button
+								type="button"
+								title="Attachments"
+								aria-pressed={attachmentsOpen}
+								onclick={() => (attachmentsOpen = !attachmentsOpen)}
+								class="focus-visible:ring-ring/50 relative grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {attachmentsOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+							>
+								<PaperclipIcon class="size-4" />
+								<span class="bg-brand text-brand-foreground absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full text-[9px] font-semibold">{attTotal}</span>
+							</button>
+						{/if}
+
+						<!-- View toggle: chat flow vs mail card stack -->
+						<div class="bg-muted/60 flex items-center gap-0.5 rounded-xl p-0.5">
+							<button type="button" title="Chat view" aria-pressed={threadView.current === 'chat'} onclick={() => (threadView.current = 'chat')} class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'chat' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
+								<MessageCircleIcon class="size-4" />
+							</button>
+							<button type="button" title="Mail view" aria-pressed={threadView.current === 'mail'} onclick={() => (threadView.current = 'mail')} class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'mail' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
+								<Rows3Icon class="size-4" />
+							</button>
+						</div>
 
 						<!-- Triage: grouped as one control cluster, separate from interact -->
 						<div class="bg-muted/60 flex items-center gap-0.5 rounded-xl p-0.5">
@@ -533,53 +721,129 @@
 						</div>
 					</div>
 
-					<ScrollArea class="min-h-0 flex-1">
-						<div class="flex flex-col gap-3 p-4 md:p-6">
-							{#each thread.items as item (item.id)}
-								{#if item.type === 'external_message'}
+					<!-- Middle row: message stream + (optional) docked attachments column.
+					     Header above and reply/notes below stay full-width and visible. -->
+					<div class="flex min-h-0 min-w-0 flex-1">
+					<ScrollArea class="min-h-0 min-w-0 flex-1">
+						<!-- chat: WhatsApp-style flow (default). mail: full-width card stack. -->
+						<div bind:this={streamEl} class="flex w-full flex-col p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
+							{#each thread.items as item, i (item.id)}
+								{#if threadView.current === 'chat' && isNewDay(thread.items, i)}
+									{@const ms = itemMs(item)}
+									{#if ms != null}
+										<div class="flex justify-center py-1">
+											<span class="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-[11px] font-medium">{fmtDay(ms)}</span>
+										</div>
+									{/if}
+								{/if}
+								{#if item.type === 'external_message' && threadView.current === 'chat'}
+									{@const m = item}
+									{@const outbound = !!m.submission}
+									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
+										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
+										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
+											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
+											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
+												{#if m.contentKind === 'card' && m.bodyHtml}
+													{@const allow = loadedImages.has(m.id)}
+													<!-- Outbound bubbles are ink (inverted vs the app mode), so the frame's
+													     text scheme follows the BUBBLE surface, and the frame stays
+													     transparent so the bubble color shows through. -->
+													{@const frameDark = outbound ? mode.current !== 'dark' : mode.current === 'dark'}
+													<div class="w-[min(70vw,32rem)]">
+														<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
+														<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow, frameDark)} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+														{#if !allow}
+															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
+																Load remote images
+															</button>
+														{/if}
+													</div>
+												{:else}
+													<div class="whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
+												{/if}
+												{#if m.attachments.length}
+													<div class="mt-2 flex flex-wrap gap-1.5">
+														{#each m.attachments as a (a.id)}
+															<a href={resolve('/api/attachments/[id]', { id: a.id })} class="{outbound ? 'bg-background/15' : 'bg-muted border'} flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs" target="_blank" rel="noopener">
+																<PaperclipIcon class="size-3" /><span class="max-w-[14ch] truncate">{a.filename ?? 'file'}</span>
+															</a>
+														{/each}
+													</div>
+												{/if}
+												<div class="mt-1 flex items-center justify-end gap-1 text-[11px] {outbound ? 'text-background/70' : 'text-faint'}">
+													{#if m.viaAlias}<span class="font-mono">via {m.viaAlias}</span>{/if}
+													<span>{fmtTime(m.sentAt)}</span>
+													{#if outbound && m.submission}
+														{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
+														{:else if m.submission.tick === 'single'}<CheckIcon class="size-3" />
+														{:else if m.submission.tick === 'double'}<CheckCheckIcon class="size-3" />
+														{:else}<TriangleAlertIcon class="text-destructive size-3" />{/if}
+													{/if}
+												</div>
+											</div>
+										</div>
+									</div>
+								{:else if item.type === 'external_message'}
 								{@const m = item}
 								{@const outbound = !!m.submission}
-								<div class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
-									{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
-									<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
-										{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
-										<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
-										{#if m.contentKind === 'card' && m.bodyHtml}
-											{@const allow = loadedImages.has(m.id)}
-											<div class="w-[min(70vw,32rem)]">
-												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
-												<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow)} class="h-72 w-full rounded border-0 bg-white"></iframe>
-												{#if !allow}
-													<button type="button" class="text-brand mt-1 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
-														Load remote images
-													</button>
-												{/if}
+								{@const isLast = m.id === msgs.at(-1)?.id}
+								{@const open = msgOpen(m.id, isLast)}
+								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
+									<button
+										type="button"
+										aria-expanded={open}
+										onclick={() => toggleMsg(m.id)}
+										class="hover:bg-muted/40 focus-visible:ring-ring/50 flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors outline-none focus-visible:ring-2"
+									>
+										{@render monogram(m.from, 'size-8 text-[11px]')}
+										<div class="min-w-0 flex-1">
+											<div class="flex items-baseline gap-2">
+												<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderName(m.from)}</span>
+												{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
 											</div>
-										{:else}
-											{m.bodyStripped ?? m.bodyFull ?? ''}
-										{/if}
-										{#if m.attachments.length}
-											<div class="mt-2 flex flex-wrap gap-1.5">
-												{#each m.attachments as a (a.id)}
-													<a href={resolve('/api/attachments/[id]', { id: a.id })} class="{outbound ? 'bg-background/15' : 'bg-muted'} flex items-center gap-1 rounded px-1.5 py-0.5 text-xs" target="_blank" rel="noopener">
-														<PaperclipIcon class="size-3" /><span class="max-w-[14ch] truncate">{a.filename ?? 'file'}</span>
-													</a>
-												{/each}
-											</div>
-										{/if}
-										<div class="mt-1 flex items-center justify-end gap-1 text-[11px] {outbound ? 'text-background/70' : 'text-faint'}">
-											{#if m.viaAlias}<span class="font-mono">via {m.viaAlias}</span>{/if}
+											{#if open}
+												<span class="text-muted-foreground block truncate font-mono text-[11px]">{m.from ?? ''}</span>
+											{:else}
+												<span class="text-muted-foreground block truncate text-xs">{msgSnippet(m)}</span>
+											{/if}
+										</div>
+										<div class="text-faint flex shrink-0 items-center gap-1 text-[11px]">
 											<span>{fmtTime(m.sentAt)}</span>
 											{#if outbound && m.submission}
 												{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
 												{:else if m.submission.tick === 'single'}<CheckIcon class="size-3" />
-												{:else if m.submission.tick === 'double'}<CheckCheckIcon class="size-3" />
+												{:else if m.submission.tick === 'double'}<CheckCheckIcon class="text-brand size-3" />
 												{:else}<TriangleAlertIcon class="text-destructive size-3" />{/if}
 											{/if}
 										</div>
-									</div>
-								</div>
-								</div>
+									</button>
+									{#if open}
+										<div class="px-3.5 pb-3.5">
+											{#if m.contentKind === 'card' && m.bodyHtml}
+												{@const allow = loadedImages.has(m.id)}
+												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
+												<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow, mode.current === 'dark')} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+												{#if !allow}
+													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
+														Load remote images
+													</button>
+												{/if}
+											{:else}
+												<div class="text-sm whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
+											{/if}
+											{#if m.attachments.length}
+												<div class="mt-2.5 flex flex-wrap gap-1.5">
+													{#each m.attachments as a (a.id)}
+														<a href={resolve('/api/attachments/[id]', { id: a.id })} class="bg-muted hover:bg-accent hover:text-accent-foreground flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition-colors" target="_blank" rel="noopener">
+															<PaperclipIcon class="size-3" /><span class="max-w-[18ch] truncate">{a.filename ?? 'file'}</span>
+														</a>
+													{/each}
+												</div>
+											{/if}
+										</div>
+									{/if}
+								</article>
 								{:else if item.type === 'internal_note'}
 									{@const n = item}
 									<!-- Internal note — unmistakably NOT an email: amber, left-spined, "not sent". -->
@@ -621,6 +885,44 @@
 							{/each}
 						</div>
 					</ScrollArea>
+
+					<!-- Attachments ≥ md — docked column beside the stream. -->
+					{#if attachmentsOpen && !isMobile.current}
+						{@const groups = groupAttachments(msgs)}
+						<aside
+							transition:fly={{ x: 24, duration: 160 }}
+							class="bg-card/40 flex w-80 max-w-[45%] shrink-0 flex-col border-l"
+							aria-label="Thread attachments"
+						>
+							<div class="flex h-12 shrink-0 items-center gap-2 border-b px-3.5">
+								<PaperclipIcon class="text-muted-foreground size-4" />
+								<span class="text-sm font-semibold">Attachments</span>
+								<button type="button" title="Close" onclick={() => (attachmentsOpen = false)} class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 ml-auto grid size-7 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2">
+									<XIcon class="size-4" />
+								</button>
+							</div>
+							<div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-3">
+								{@render attachmentGroups(groups, msgs)}
+							</div>
+						</aside>
+					{/if}
+					</div>
+
+					<!-- Attachments < md — bottom drawer over the conversation. -->
+					{#if isMobile.current}
+						<Drawer.Root open={attachmentsOpen} onOpenChange={(o) => (attachmentsOpen = o)}>
+							<Drawer.Content class="max-h-[80svh]">
+								<Drawer.Header class="pb-2">
+									<Drawer.Title class="flex items-center gap-2 text-sm">
+										<PaperclipIcon class="text-muted-foreground size-4" /> Attachments
+									</Drawer.Title>
+								</Drawer.Header>
+								<div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+									{@render attachmentGroups(groupAttachments(msgs), msgs)}
+								</div>
+							</Drawer.Content>
+						</Drawer.Root>
+					{/if}
 
 					{#if mailboxId}
 						{#if isShared}
