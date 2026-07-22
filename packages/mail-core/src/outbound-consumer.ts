@@ -12,6 +12,7 @@ import { buildQuotedText, buildQuotedHtml } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
+import { log, errInfo } from "./log";
 import type { OutboundJob } from "./outbound";
 
 /**
@@ -30,6 +31,7 @@ export type OutboundConsumerEnv = {
   MAIL_SEARCH_KEY: string;
   EMAIL_SENDER?: SendEmail;
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
+  LOG_LEVEL?: string;
 };
 
 const CHUNK = 50; // recipients per provider call
@@ -50,7 +52,7 @@ export async function handleOutboundQueue(batch: QueueBatch, env: OutboundConsum
       await processSubmission(db, env, ck, m);
     } catch (e) {
       // A soft/unclassified failure: retry the whole job with backoff.
-      console.error("[mail:out] job failed, retrying", m.body.submissionId, e);
+      log.error("out.job_retry", { subId: m.body.submissionId, ...errInfo(e) });
       m.retry({ delaySeconds: BACKOFF_BASE_SECONDS });
     }
   }
@@ -101,11 +103,11 @@ export async function processSubmission(
     .set({ status: "sending", attempts: sub.attempts + 1 })
     .where(eq(mail.submission.id, sub.id));
 
-  console.log(`[mail:out] processing ${sub.id} from=${sub.envelopeFrom} attempt=${sub.attempts + 1}`);
+  log.info("out.processing", { subId: sub.id, from: sub.envelopeFrom, attempt: sub.attempts + 1 });
 
   // ---- Preflight (Part B.7) — any failure is permanent, no retry ----
   const fail = async (reason: string) => {
-    console.warn(`[mail:out] FAILED ${sub.id}: ${reason}`);
+    log.warn("out.failed", { subId: sub.id, reason });
     await db.update(mail.submission).set({ status: "failed", lastError: reason }).where(eq(mail.submission.id, sub.id));
     await db
       .update(mail.submissionRecipient)
@@ -133,13 +135,31 @@ export async function processSubmission(
   if (org?.status !== "active" || routing?.id !== sub.orgId) {
     return fail("from-address domain is not active");
   }
+  // Wire From display name. Alias sends use the alias label ONLY — hide-my-email
+  // exists to not leak who's behind it, so never fall through to the user's real
+  // name. Direct sends: mailbox displayName, else the sending user's name.
+  let fromName: string | undefined;
   if (sub.fromAliasId) {
     const aliasRow = await db.query.alias.findFirst({
       where: eq(schema.alias.id, sub.fromAliasId),
-      columns: { isEnabled: true, mailboxId: true },
+      columns: { isEnabled: true, mailboxId: true, label: true },
     });
     if (!aliasRow?.isEnabled || aliasRow.mailboxId !== sub.mailboxId) {
       return fail("from-alias disabled or not owned by mailbox");
+    }
+    fromName = aliasRow.label ?? undefined;
+  } else {
+    const box = await db.query.mailbox.findFirst({
+      where: eq(schema.mailbox.id, sub.mailboxId),
+      columns: { displayName: true },
+    });
+    fromName = box?.displayName ?? undefined;
+    if (!fromName && sub.createdByUserId) {
+      const sender = await db.query.user.findFirst({
+        where: eq(schema.user.id, sub.createdByUserId),
+        columns: { name: true },
+      });
+      fromName = sender?.name || undefined;
     }
   }
 
@@ -185,7 +205,7 @@ export async function processSubmission(
     external.push({ id: r.id, address: r.address, role: r.role });
   }
 
-  console.log(`[mail:out] ${sub.id} recipients: ${external.length} external, ${recipients.length - external.length} internal/skipped`);
+  log.info("out.recipients", { subId: sub.id, external: external.length, internal: recipients.length - external.length });
 
   // ---- Rate limit (Part G) — external volume only ----
   if (external.length > 0) {
@@ -205,14 +225,17 @@ export async function processSubmission(
     // those, so convert them to inline CID attachments and rewrite the src.
     const { html, images } = extractInlineImages(built.html);
     const dataUrisInSource = (built.html?.match(/data:image\//g) ?? []).length;
-    console.log(
-      `[mail:out] ${sub.id} body: htmlLen=${built.html?.length ?? 0} dataImgs=${dataUrisInSource} inlined=${images.length}`,
-    );
+    log.info("out.body", {
+      subId: sub.id,
+      htmlLen: built.html?.length ?? 0,
+      dataImgs: dataUrisInSource,
+      inlined: images.length,
+    });
     const headers: Record<string, string> = { "Message-ID": message.messageIdHeader };
     if (message.inReplyTo) headers["In-Reply-To"] = message.inReplyTo;
     if (message.references) headers["References"] = message.references;
     const attachments = [...((await loadAttachments(db, env, sub.messageId)) ?? []), ...images];
-    const from = { name: message.fromAddr ?? undefined, email: sub.envelopeFrom };
+    const from = { name: fromName, email: sub.envelopeFrom };
 
     for (let i = 0; i < external.length; i += CHUNK) {
       const chunk = external.slice(i, i + CHUNK);
@@ -228,10 +251,10 @@ export async function processSubmission(
         attachments,
       };
       const dests = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])];
-      console.log(`[mail:out] ${sub.id} → ${provider.name} sending to ${dests.join(", ")}`);
+      log.info("out.sending", { subId: sub.id, provider: provider.name, to: dests.join(", ") });
       try {
         const res = await provider.send(email);
-        console.log(`[mail:out] ${sub.id} sent via ${provider.name} msgid=${res.providerMessageId}`);
+        log.info("out.sent", { subId: sub.id, provider: provider.name, msgId: res.providerMessageId });
         const ids = chunk.map((r) => r.id);
         await db
           .update(mail.submissionRecipient)
@@ -247,7 +270,7 @@ export async function processSubmission(
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const soft = e instanceof ProviderSendError && !e.permanent;
-        console.error(`[mail:out] ${sub.id} provider ${provider.name} error (${soft ? "soft" : "permanent"}): ${msg}`);
+        log.error("out.provider_error", { subId: sub.id, provider: provider.name, soft, err: msg });
         if (soft) {
           // Soft: give up after the cap, else retry the whole job with backoff.
           if (sub.attempts + 1 >= MAX_ATTEMPTS) return fail(`send failed after retries: ${(e as Error).message}`);

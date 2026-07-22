@@ -1,5 +1,6 @@
 import { handleEmail, type InboundJob, type MailEnv } from "@doota/mail-core/inbound-worker";
 import { handleQueue } from "@doota/mail-core/queue-consumer";
+import { initLogLevel } from "@doota/mail-core/log";
 
 /**
  * Inbound mail Worker (`doota-mail`). Owns the two handlers the app Worker does
@@ -13,6 +14,7 @@ import { handleQueue } from "@doota/mail-core/queue-consumer";
  *
  * Config: wrangler.jsonc. Secrets: MAIL_DEK, MAIL_SEARCH_KEY (put via
  * `wrangler secret put <NAME>` from this dir; .dev.vars for local).
+ * Vars: LOG_LEVEL (optional, debug|info|warn|error, default info).
  */
 export default {
   // Bucket-first, accept-and-enqueue (see inbound-worker.ts). Awaited (not
@@ -20,10 +22,12 @@ export default {
   // accept — a failed enqueue then rejects the message so Email Routing retries,
   // instead of silently dropping mail we already told the sender we took.
   async email(message, env): Promise<void> {
+    initLogLevel(env);
     await handleEmail(message, env);
   },
   // Only the inbound queue lands here now.
   async queue(batch, env): Promise<void> {
+    initLogLevel(env);
     // ponytail: cast matches the app's existing consumer wiring; the handler
     // narrows the batch itself.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

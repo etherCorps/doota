@@ -79,6 +79,8 @@ See `.env.example` for the full list. The essentials:
 - `APP_CLOUDFLARE_ACCOUNT_ID` / `APP_CLOUDFLARE_API_TOKEN` — a **scoped** API
   token (not the Global API Key), stored as a Worker secret in production.
 - `MAIL_IN_WORKER_NAME` — the deployed mail-in Worker the catch-all rule targets.
+- `LOG_LEVEL` — optional mail-pipeline log level (`debug`/`info`/`warn`/`error`,
+  default `info`); set per Worker (web, mail-in, mail-jobs) as a plain var.
 
 ### Deploy
 

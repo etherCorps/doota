@@ -11,6 +11,7 @@ import {
   type PlacementPolicy,
 } from "./materialize";
 import { mintMessageId, threadingHeaders } from "./mail-thread-contract";
+import { log } from "./log";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -220,7 +221,7 @@ export async function enqueueSend(
     );
   }
 
-  console.log(`[mail:out] enqueued ${submissionId} from=${req.fromAddress} recipients=${recips.length} delay=${delaySeconds}s`);
+  log.info("out.enqueued", { subId: submissionId, from: req.fromAddress, recipients: recips.length, delaySeconds });
   return { submissionId, messageId, threadId, deduped: false };
 }
 

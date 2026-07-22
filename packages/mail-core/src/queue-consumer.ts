@@ -5,6 +5,7 @@ import * as schema from "@doota/db/schema";
 import { importKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
+import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
 /**
@@ -142,7 +143,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
 
       m.ack();
     } catch (e) {
-      console.error("[mail:consumer] job failed, will retry", job.r2RawKey, e);
+      log.error("in.job_retry", { r2Key: job.r2RawKey, ...errInfo(e) });
       m.retry();
     }
   }

@@ -21,6 +21,7 @@ export type MailEnv = {
   MAIL_QUEUE: Queue<InboundJob>;
   MAIL_DEK: string;
   MAIL_SEARCH_KEY: string;
+  LOG_LEVEL?: string;
 };
 
 export type InboundJob = {

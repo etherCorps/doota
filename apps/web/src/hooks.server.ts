@@ -9,6 +9,7 @@ import {
   markOnboarded,
   onboardingHome,
 } from "$lib/server/onboarding.js";
+import { initLogLevel } from "@doota/mail-core/log";
 
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
   if (building) return resolve(event);
@@ -20,6 +21,7 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     );
   }
 
+  initLogLevel(env);
   const db = drizzle(env.DB, { schema });
 
   const auth = createAuth(db, env.AUTH_KV);

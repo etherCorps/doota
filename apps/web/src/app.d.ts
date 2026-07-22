@@ -15,6 +15,8 @@ declare global {
     MAIL_SEARCH_KEY: string;
     /** Bearer secret the cron trigger presents to POST /api/cron. */
     CRON_SECRET?: string;
+    /** Optional log-level override for @doota/mail-core/log (debug|info|warn|error). */
+    LOG_LEVEL?: string;
   }
 
   namespace App {

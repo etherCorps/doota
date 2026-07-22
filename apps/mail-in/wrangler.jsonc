@@ -7,6 +7,14 @@
   "compatibility_date": "2026-04-28",
   "compatibility_flags": ["nodejs_als", "nodejs_compat"],
   "main": "src/index.ts",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    }
+  },
   "r2_buckets": [
     {
       "binding": "MAIL_RAW",
