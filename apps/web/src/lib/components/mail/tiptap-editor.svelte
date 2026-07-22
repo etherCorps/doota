@@ -201,7 +201,7 @@
 					</Toggle>
 				{/snippet}
 			</Popover.Trigger>
-			<Popover.Content class="w-80 p-2" align="start">
+			<Popover.Content class="w-80 max-w-[calc(100vw-1rem)] p-2" align="start">
 				<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); applyLink(); }}>
 					<div class="flex flex-col gap-1">
 						<label for="tiptap-link-text" class="text-muted-foreground text-xs font-medium">Text</label>

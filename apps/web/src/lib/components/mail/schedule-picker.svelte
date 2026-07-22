@@ -134,12 +134,13 @@
 			{/if}
 		</div>
 
-		<!-- Date + time-slot column -->
-		<div class="flex items-start">
+		<!-- Date + time slots: side column ≥ sm; stacked under the calendar on
+		     narrow phones (calendar + 112px column won't fit under ~390px). -->
+		<div class="flex flex-col sm:flex-row sm:items-start">
 			<Calendar type="single" value={cal} onValueChange={setDate} minValue={minDay} class="p-2" />
-			<div class="flex w-28 flex-col border-l">
+			<div class="flex w-full flex-col border-t sm:w-28 sm:border-t-0 sm:border-l">
 				<div class="text-muted-foreground border-b px-3 py-2 text-xs font-medium">Time</div>
-				<div bind:this={scroller} class="scrollbar-thin h-64 space-y-0.5 overflow-y-auto p-2">
+				<div bind:this={scroller} class="scrollbar-thin h-32 space-y-0.5 overflow-y-auto p-2 sm:h-64">
 					{#each SLOTS as s (s)}
 						{@const active = s === time}
 						<button

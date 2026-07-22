@@ -147,7 +147,7 @@
 						<Spinner /> Loading…
 					</div>
 				{:else if mail}
-					<div class="grid grid-cols-3 gap-3">
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
 						<div>
 							<div class="text-muted-foreground text-xs">Sent today</div>
 							<div class="mt-0.5 text-xl font-semibold tabular-nums">{mail.usage.today.toLocaleString()}</div>

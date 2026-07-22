@@ -181,9 +181,11 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+		overflow-x: clip;
 	}
 	html {
 		@apply font-sans;
+		overflow-x: clip;
 	}
 	/* Headings ride the friendly rounded display face. */
 	h1, h2, h3, h4 {
