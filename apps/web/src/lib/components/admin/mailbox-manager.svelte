@@ -244,7 +244,7 @@
 	</div>
 
 	<Tabs.Root value="settings">
-		<Tabs.List>
+		<Tabs.List class="max-w-full overflow-x-auto">
 			<Tabs.Trigger value="settings">Settings</Tabs.Trigger>
 			<Tabs.Trigger value="access">Access <Badge variant="secondary" class="ml-1.5 tabular-nums">{grantsMap.size}</Badge></Tabs.Trigger>
 			{#if mb.isService}<Tabs.Trigger value="keys">API keys</Tabs.Trigger>{/if}
