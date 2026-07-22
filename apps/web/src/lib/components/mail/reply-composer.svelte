@@ -4,7 +4,7 @@
 	import FromSelector from './from-selector.svelte';
 	import RichEditor from './rich-editor.svelte';
 	import SendIcon from '@lucide/svelte/icons/send';
-	import Undo2Icon from '@lucide/svelte/icons/undo-2';
+	import { toast } from 'svelte-sonner';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import XIcon from '@lucide/svelte/icons/x';
 	import {
@@ -72,11 +72,7 @@
 	});
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
-	let phase = $state<'editing' | 'sent'>('editing');
-	let sentSubmissionId = $state<string | null>(null);
-	let undoLeft = $state(0);
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
-	let undoTimer: ReturnType<typeof setInterval> | undefined;
 
 	// Switching threads remounts this component via {#key thread.id} in the page,
 	// so initial state above is always fresh for the current parent.
@@ -125,7 +121,7 @@
 
 	async function flushSave() {
 		clearTimeout(saveTimer);
-		if (phase !== 'editing' || !hasBody) return;
+		if (!hasBody) return;
 		if (!draftId) {
 			await ensureDraft();
 			return;
@@ -153,39 +149,30 @@
 		await ensureDraft();
 		if (!draftId) return;
 		const res = await sendDraftById({ draftId, undoSeconds: UNDO_SECONDS });
-		sentSubmissionId = res.submissionId;
-		phase = 'sent';
-		undoLeft = UNDO_SECONDS;
-		undoTimer = setInterval(() => {
-			undoLeft -= 1;
-			if (undoLeft <= 0) finishSent();
-		}, 1000);
-		onchange?.(); // the sent bubble now exists in this mailbox's timeline
-	}
-
-	function finishSent() {
-		clearInterval(undoTimer);
-		phase = 'editing';
-		sentSubmissionId = null;
+		// Gmail-style: the composer frees instantly; the toast carries Undo for
+		// the send-delay window. Undo restores the draft back into the editor.
+		const submissionId = res.submissionId;
 		draftId = null;
 		clientRevision = 0;
 		body = '';
+		editorKey++;
+		onchange?.(); // the sent bubble now exists in this mailbox's timeline
+		toast('Reply sent', {
+			duration: UNDO_SECONDS * 1000,
+			action: { label: 'Undo', onClick: () => undoSend(submissionId) }
+		});
 	}
 
-	async function undo() {
-		if (!sentSubmissionId) return;
-		clearInterval(undoTimer);
-		const res = await undoDraftById({ submissionId: sentSubmissionId });
+	async function undoSend(submissionId: string) {
+		const res = await undoDraftById({ submissionId });
 		if (res.restored && res.draft) {
 			draftId = res.draft.id;
 			clientRevision = res.draft.clientRevision;
 			body = res.draft.body ?? '';
 			aliasId = res.draft.fromAliasId;
 			editorKey++;
-			phase = 'editing';
-			sentSubmissionId = null;
 		} else {
-			finishSent();
+			toast.error('Too late to undo — the reply already left.');
 		}
 		onchange?.(); // the timeline bubble was removed (undo) — refresh
 	}
@@ -200,15 +187,7 @@
 </script>
 
 <div class="bg-card border-t p-3 shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)]">
-	{#if phase === 'sent'}
-		<div class="flex items-center justify-between rounded-xl border px-4 py-2.5">
-			<span class="text-muted-foreground text-sm">Reply sent.</span>
-			<Button variant="outline" size="sm" class="gap-1.5" onclick={undo}>
-				<Undo2Icon class="size-3.5" /> Undo ({undoLeft})
-			</Button>
-		</div>
-	{:else}
-		<div class="space-y-2">
+	<div class="space-y-2">
 			<div class="flex items-center gap-2">
 				<span class="text-muted-foreground text-xs">From</span>
 				<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
@@ -265,5 +244,4 @@
 			</div>
 			<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
 		</div>
-	{/if}
 </div>

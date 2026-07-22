@@ -11,7 +11,8 @@
 	import SchedulePicker from './schedule-picker.svelte';
 	import { toLocalDatetime } from '$lib/utils/parse-when';
 	import SendIcon from '@lucide/svelte/icons/send';
-	import Undo2Icon from '@lucide/svelte/icons/undo-2';
+	import { toast } from 'svelte-sonner';
+	import { compose } from '$lib/client/compose.svelte.js';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import FileIcon from '@lucide/svelte/icons/file';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -83,15 +84,12 @@
 
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
-	let phase = $state<'editing' | 'sending' | 'sent'>('editing');
+	let phase = $state<'editing' | 'sending'>('editing');
 	// Full-screen centered overlay vs the docked bottom-right popup.
-	const bigMode = $derived(maximized && !minimized && phase !== 'sent');
-	let sentSubmissionId = $state<string | null>(null);
-	let undoLeft = $state(0);
+	const bigMode = $derived(maximized && !minimized);
 	let uploading = $state(false);
 	let saved = $state(false);
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
-	let undoTimer: ReturnType<typeof setInterval> | undefined;
 
 	onMount(async () => {
 		identities = await sendIdentities();
@@ -295,47 +293,32 @@
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
 		const res = await sendDraftById({ draftId, sendAt, undoSeconds: UNDO_SECONDS });
 		if (sendAt && sendAt > Date.now() + UNDO_SECONDS * 1000) {
+			const submissionId = res.submissionId;
 			reset();
 			open = false;
+			toast('Send scheduled', {
+				duration: UNDO_SECONDS * 1000,
+				action: { label: 'Undo', onClick: () => undoSend(submissionId) }
+			});
 			return;
 		}
-		sentSubmissionId = res.submissionId;
-		phase = 'sent';
-		minimized = false;
-		undoLeft = UNDO_SECONDS;
-		undoTimer = setInterval(() => {
-			undoLeft -= 1;
-			if (undoLeft <= 0) finishSent();
-		}, 1000);
-	}
-
-	function finishSent() {
-		clearInterval(undoTimer);
+		// Gmail-style: the composer frees instantly; the toast carries Undo for
+		// the send-delay window. Undo restores the draft and reopens the composer.
+		const submissionId = res.submissionId;
 		reset();
 		open = false;
+		toast('Message sent', {
+			duration: UNDO_SECONDS * 1000,
+			action: { label: 'Undo', onClick: () => undoSend(submissionId) }
+		});
 	}
 
-	async function undo() {
-		if (!sentSubmissionId) return;
-		clearInterval(undoTimer);
-		const res = await undoDraftById({ submissionId: sentSubmissionId });
+	async function undoSend(submissionId: string) {
+		const res = await undoDraftById({ submissionId });
 		if (res.restored && res.draft) {
-			const d = res.draft;
-			draftId = d.id;
-			clientRevision = d.clientRevision;
-			mailboxId = d.mailboxId;
-			aliasId = d.fromAliasId;
-			to = d.to;
-			cc = d.cc;
-			bcc = d.bcc;
-			subject = d.subject ?? '';
-			body = d.body ?? '';
-			attachments = d.attachments;
-			editorKey++;
-			phase = 'editing';
-			sentSubmissionId = null;
+			compose.start({ resumeDraftId: res.draft.id });
 		} else {
-			finishSent();
+			toast.error('Too late to undo — the message already left.');
 		}
 	}
 
@@ -357,7 +340,6 @@
 		draftId = null;
 		clientRevision = 0;
 		phase = 'editing';
-		sentSubmissionId = null;
 		to = [];
 		cc = [];
 		bcc = [];
@@ -435,13 +417,13 @@
 		<div
 			class="bg-background flex items-stretch overflow-hidden border shadow-2xl {bigMode
 				? 'h-full w-full rounded-xl'
-				: !minimized && phase !== 'sent'
+				: !minimized
 					? 'h-[min(80vh,34rem)] rounded-t-xl'
 					: 'rounded-t-xl'}"
 		>
 			<!-- Expanded mode keeps the rail mounted even when empty, so the first
 			     attachment doesn't reflow the editor column. -->
-			{#if !minimized && phase !== 'sent' && (bigMode || attachments.length)}
+			{#if !minimized && (bigMode || attachments.length)}
 				<aside
 					transition:fade={{ duration: 120 }}
 					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
@@ -553,14 +535,6 @@
 		{/if}
 
 		{#if !minimized}
-			{#if phase === 'sent'}
-				<div class="m-3 flex items-center justify-between rounded-lg border bg-card px-4 py-3">
-					<span class="text-sm">Message sent.</span>
-					<Button variant="outline" size="sm" class="gap-1.5" onclick={undo}>
-						<Undo2Icon class="size-3.5" /> Undo ({undoLeft})
-					</Button>
-				</div>
-			{:else}
 				<!-- Body fills the fixed-height panel; the editor flexes so nothing shifts. -->
 				<div class="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-3">
 					<div class="flex shrink-0 flex-col gap-2">
@@ -682,7 +656,6 @@
 						</DropdownMenu.Root>
 					</div>
 				</div>
-			{/if}
 		{/if}
 		<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
 		</div>
