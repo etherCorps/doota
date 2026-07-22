@@ -68,7 +68,7 @@
 	<span class="tabular-nums">{org.members}</span>
 {/snippet}
 
-<div class="flex w-full flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	<div class="flex items-center justify-between gap-3">
 		<div class="flex flex-col gap-1">
 			<h1 class="font-heading text-2xl font-semibold tracking-tight">Organizations</h1>

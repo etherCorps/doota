@@ -34,10 +34,10 @@
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger>
 		{#snippet child({ props })}
-			<Button variant="outline" size="sm" class="h-8 gap-1.5" {...props}>
-				<AtSignIcon class="text-muted-foreground size-3.5" />
-				<span class="font-mono text-xs">{selected?.address ?? 'Choose identity'}</span>
-				<ChevronsUpDownIcon class="text-muted-foreground size-3.5" />
+			<Button variant="outline" size="sm" class="h-8 max-w-full gap-1.5" {...props}>
+				<AtSignIcon class="text-muted-foreground size-3.5 shrink-0" />
+				<span class="max-w-[48vw] truncate font-mono text-xs sm:max-w-none">{selected?.address ?? 'Choose identity'}</span>
+				<ChevronsUpDownIcon class="text-muted-foreground size-3.5 shrink-0" />
 			</Button>
 		{/snippet}
 	</DropdownMenu.Trigger>

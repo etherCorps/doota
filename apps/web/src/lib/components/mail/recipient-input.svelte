@@ -68,7 +68,7 @@
 </script>
 
 <div class="relative">
-	<div class="focus-within:ring-ring/40 flex flex-wrap items-center gap-1 rounded-md border px-2 py-1.5 focus-within:ring-2">
+	<div class="focus-within:ring-ring/40 flex flex-wrap items-center gap-1 rounded-xl border bg-input/40 px-2 py-1.5 transition-colors focus-within:border-ring/60 focus-within:ring-2">
 		{#each value as a (a)}
 			<span class="bg-muted flex items-center gap-1.5 rounded-full py-0.5 pr-1.5 pl-0.5 text-xs">
 				<span class="grid size-5 place-items-center rounded-full text-[10px] font-semibold uppercase {tint(a)}">
@@ -90,12 +90,12 @@
 		/>
 	</div>
 	{#if open}
-		<ul class="bg-popover absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border shadow-md">
+		<ul class="bg-popover absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border p-1 shadow-lg">
 			{#each suggestions as s (s)}
 				<li>
 					<button
 						type="button"
-						class="hover:bg-accent w-full px-2 py-1.5 text-left font-mono text-xs"
+						class="hover:bg-accent hover:text-accent-foreground w-full rounded-lg px-2 py-1.5 text-left font-mono text-xs transition-colors"
 						onmousedown={(e) => {
 							e.preventDefault();
 							commit(s);

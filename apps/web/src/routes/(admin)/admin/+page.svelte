@@ -58,7 +58,7 @@
 	]);
 </script>
 
-<div class="flex w-full flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	<div class="flex flex-col gap-1">
 		<h1 class="font-heading text-2xl font-semibold tracking-tight">Dashboard</h1>
 		<p class="text-muted-foreground text-sm">
@@ -97,7 +97,7 @@
 			<Card.Card>
 				<Card.CardContent class="flex items-center gap-3 py-4">
 					<div
-						class="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md"
+						class="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-xl"
 					>
 						<stat.icon class="size-4" />
 					</div>

@@ -6,7 +6,7 @@
 	const backHref = resolve('/app');
 </script>
 
-<div class="mx-auto w-full max-w-4xl p-6 md:p-8">
+<div class="mx-auto w-full max-w-4xl p-4 sm:p-6 md:p-8">
 	<MailboxManager
 		mailbox={data.mailbox}
 		members={data.members}

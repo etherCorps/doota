@@ -428,7 +428,8 @@
 		<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
 		<button type="button" class="bg-scrim/30 absolute inset-0 z-20" aria-label="Close composer" onclick={close}></button>
 	{/if}
-	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed right-2 bottom-0 z-40 md:right-6'}>
+	<!-- Small mode: full-width bottom sheet on phones, floating window ≥ md. -->
+	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed inset-x-0 bottom-0 z-40 md:inset-x-auto md:right-6'}>
 		<!-- One panel, two columns: an attachments rail that extends from the composer
 		     (shared border/shadow, matched height) and slides in when files exist. -->
 		<div
@@ -491,7 +492,7 @@
 			{/if}
 
 			<div
-				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-[min(94vw,30rem)]'}"
+				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-full md:w-[min(94vw,30rem)]'}"
 				role="group"
 				ondragover={onDragOver}
 				ondragleave={onDragLeave}
@@ -643,13 +644,13 @@
 					</div>
 					<!-- Split send: primary sends now (⌘↵); caret opens schedule presets. -->
 					<div class="inline-flex">
-						<Button size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
+						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
 							<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
 						</Button>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button {...props} size="sm" class="border-primary-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
+									<Button {...props} variant="brand" size="sm" class="border-brand-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
 										<ChevronDownIcon class="size-4" />
 									</Button>
 								{/snippet}

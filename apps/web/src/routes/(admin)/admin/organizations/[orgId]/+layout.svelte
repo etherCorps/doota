@@ -32,19 +32,19 @@
 	);
 </script>
 
-<div class="flex w-full flex-col gap-6 p-6 md:p-8">
-	<div class="flex items-center gap-3">
-		<div class="bg-muted text-muted-foreground flex size-10 items-center justify-center overflow-hidden rounded-md">
+<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
+	<div class="flex min-w-0 items-center gap-3">
+		<div class="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md">
 			{#if data.org.logo}
 				<img src={data.org.logo} alt="" class="size-full object-cover" />
 			{:else}
 				<GlobeIcon class="size-5" />
 			{/if}
 		</div>
-		<div class="flex flex-col gap-0.5">
-			<h1 class="font-heading text-2xl font-semibold tracking-tight">{data.org.name}</h1>
-			<span class="flex items-center gap-2">
-				<span class="text-muted-foreground font-mono text-sm">{data.org.domain}</span>
+		<div class="flex min-w-0 flex-col gap-0.5">
+			<h1 class="font-heading truncate text-xl font-semibold tracking-tight sm:text-2xl">{data.org.name}</h1>
+			<span class="flex min-w-0 items-center gap-2">
+				<span class="text-muted-foreground truncate font-mono text-sm">{data.org.domain}</span>
 				<StatusChip status={chip} />
 			</span>
 		</div>

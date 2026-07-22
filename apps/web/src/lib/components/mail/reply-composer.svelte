@@ -199,7 +199,7 @@
 	}
 </script>
 
-<div class="bg-card border-t p-3">
+<div class="bg-card border-t p-3 shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)]">
 	{#if phase === 'sent'}
 		<div class="flex items-center justify-between rounded-xl border px-4 py-2.5">
 			<span class="text-muted-foreground text-sm">Reply sent.</span>
@@ -246,7 +246,7 @@
 			{#if attachments.length}
 				<div class="flex flex-wrap gap-2">
 					{#each attachments as a (a.r2Key)}
-						<span class="bg-muted flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
+						<span class="bg-muted flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
 							<PaperclipIcon class="text-muted-foreground size-3" />
 							<span class="max-w-[14ch] truncate">{a.filename}</span>
 							<span class="text-faint">{fmtSize(a.size)}</span>
@@ -257,8 +257,9 @@
 					{/each}
 				</div>
 			{/if}
-			<div class="flex items-center justify-end">
-				<Button size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
+			<div class="flex items-center justify-end gap-2">
+				<span class="text-faint hidden text-[11px] sm:inline">⌘↵ to send</span>
+				<Button variant="brand" size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
 					<SendIcon class="size-3.5" /> Send
 				</Button>
 			</div>

@@ -196,7 +196,7 @@
 					</Button>
 				{/snippet}
 			</Popover.Trigger>
-			<Popover.Content class="w-80 p-2" align="start">
+			<Popover.Content class="w-80 max-w-[calc(100vw-1rem)] p-2" align="start">
 				<form
 					class="flex flex-col gap-2"
 					onsubmit={(e) => {

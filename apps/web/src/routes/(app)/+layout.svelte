@@ -35,7 +35,7 @@
 	<Sidebar.Inset class="relative flex h-svh flex-col overflow-hidden">
 		<TopBar>
 			{#snippet action()}
-				<Button size="sm" class="gap-1.5" onclick={() => compose.start()}>
+				<Button variant="brand" size="sm" class="gap-1.5" onclick={() => compose.start()}>
 					<PenLineIcon class="size-4" /> Compose
 				</Button>
 			{/snippet}
