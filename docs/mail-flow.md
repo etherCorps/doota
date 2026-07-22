@@ -149,17 +149,21 @@ status and acks without sending.
 
 ## Known issues (ranked)
 
-1. **Cloudflare rewrites Message-ID — the big one.** The binding rejects a
-   custom `Message-ID` header and mints its own (`provider.ts:63`), but D1
-   stores *our* minted id. External replies therefore carry
-   `In-Reply-To: <CF's id>`, which matches nothing — threading survives only on
-   the weak subject+participant fallback. Reply after 7 idle days, or with an
-   edited subject → new thread. Also breaks reflection dedupe: send to a mailing
-   list containing one of our own hosted addresses → the reflected copy carries
-   CF's id → duplicate message in the thread. **Fix direction**: store the
-   provider's `res.messageId` as an additional lookup key on the message row
-   (second indexed column checked by `resolveParentMessageId`'s consumer), or
-   move to raw-MIME sending when Email Service allows owning Message-ID.
+1. **Cloudflare rewrites Message-ID — FIXED (2026-07-22).** The binding rejects
+   a custom `Message-ID` header and mints its own (`provider.ts:63`), but D1
+   stores *our* minted id. Verified against prod: `send()`'s returned
+   `messageId` **is** the wire `Message-ID` header, angle brackets included
+   (e.g. `<EUQ4Km…@doota.dev>`), and we already persist it —
+   `submission.provider_message_id` (first chunk) +
+   `submission_recipient.provider_message_id` (every chunk). Fix shipped:
+   `findMessageByHeaderId` (`materialize.ts`) resolves a header id via
+   `message.messageIdHeader` first, then the provider ids → submission →
+   message. Used by both the parent lookup in `resolveThreadId` (replies from
+   Gmail etc. now thread) and the dedupe in `materializeMessage` (reflected
+   copies of our own sends reuse the sender's row). `candidateParentIds`
+   additionally walks the whole References chain newest-first, so one unknown
+   id can't orphan a reply. Indexes: migration 0012. Residual: replies to mail
+   sent before provider ids were captured still fall to the subject fallback.
 2. **Chunking breaks visible headers for >50 recipients**
    (`outbound-consumer.ts:240`): each chunk's wire To/Cc contains only that
    chunk's subset, so recipients in different chunks see different To lists and

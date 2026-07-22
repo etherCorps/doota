@@ -140,6 +140,24 @@ export function resolveParentMessageId(
   return refs.length ? refs[refs.length - 1] : null;
 }
 
+/**
+ * Every candidate parent Message-ID, newest first: In-Reply-To ids, then the
+ * References chain reversed (last = closest ancestor). Threading tries each in
+ * order — one unknown id (e.g. a provider-rewritten Message-ID we never saw)
+ * must not orphan a reply when an older ancestor is still resolvable.
+ */
+export function candidateParentIds(
+  inReplyTo: string | null | undefined,
+  references: string | null | undefined,
+): string[] {
+  return [
+    ...new Set([
+      ...parseReferences(inReplyTo),
+      ...parseReferences(references).reverse(),
+    ]),
+  ];
+}
+
 // ---- Quote stripping ---------------------------------------------------------
 
 /**

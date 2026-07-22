@@ -5,9 +5,9 @@ import * as mail from "@doota/db/mail.schema";
 import { encryptContent, type ContentKey } from "./crypto";
 import { indexMessage, tokensFor } from "./search";
 import {
+  candidateParentIds,
   deriveContentKind,
   normalizeSubject,
-  resolveParentMessageId,
   stripHtmlTags,
   stripQuotesText,
 } from "./mail-thread-contract";
@@ -43,24 +43,76 @@ export type MaterializeDeps = { ck: ContentKey; searchKeyB64: string };
 const SUBJECT_FALLBACK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7d — weak, bounded
 
 /**
- * Find or create the thread for a message. In-Reply-To / References win; a
- * normalized-subject match in the same org within a 7-day window is the weak
- * fallback only when headers give nothing. Cleartext metadata — no decryption.
+ * Find one of OUR messages by a wire Message-ID. Tries the stored header first,
+ * then the provider-minted ids: Cloudflare Email Service rejects a custom
+ * Message-ID and stamps its own (e.g. <EUQ…@doota.dev>), which we capture from
+ * send() into submission.provider_message_id (first chunk) and
+ * submission_recipient.provider_message_id (every chunk). External replies carry
+ * THAT id in In-Reply-To, so it must resolve to the same message row.
+ */
+async function findMessageByHeaderId(
+  db: Db,
+  orgId: string,
+  headerId: string,
+): Promise<{ id: string; threadId: string } | null> {
+  const direct = await db.query.message.findFirst({
+    where: and(
+      eq(schema.message.orgId, orgId),
+      eq(schema.message.messageIdHeader, headerId),
+    ),
+    columns: { id: true, threadId: true },
+  });
+  if (direct) return direct;
+
+  const sub = await db.query.submission.findFirst({
+    where: and(
+      eq(schema.submission.orgId, orgId),
+      eq(schema.submission.providerMessageId, headerId),
+    ),
+    columns: { messageId: true },
+  });
+  let messageId = sub?.messageId ?? null;
+  if (!messageId) {
+    // Chunks after the first store their wire id only on the recipient rows.
+    const rec = await db
+      .select({ messageId: schema.submission.messageId })
+      .from(schema.submissionRecipient)
+      .innerJoin(
+        schema.submission,
+        eq(schema.submissionRecipient.submissionId, schema.submission.id),
+      )
+      .where(
+        and(
+          eq(schema.submission.orgId, orgId),
+          eq(schema.submissionRecipient.providerMessageId, headerId),
+        ),
+      )
+      .limit(1);
+    messageId = rec[0]?.messageId ?? null;
+  }
+  if (!messageId) return null;
+  return (
+    (await db.query.message.findFirst({
+      where: eq(schema.message.id, messageId),
+      columns: { id: true, threadId: true },
+    })) ?? null
+  );
+}
+
+/**
+ * Find or create the thread for a message. In-Reply-To / References win — every
+ * candidate id is tried newest-first (an unknown rewritten id must not orphan a
+ * reply whose older ancestors we know). A normalized-subject match in the same
+ * org within a 7-day window is the weak fallback only when headers give
+ * nothing. Cleartext metadata — no decryption.
  */
 async function resolveThreadId(
   db: Db,
   orgId: string,
   parsed: ParsedMessage,
 ): Promise<string> {
-  const parentMsgId = resolveParentMessageId(parsed.inReplyTo, parsed.references);
-  if (parentMsgId) {
-    const parent = await db.query.message.findFirst({
-      where: and(
-        eq(schema.message.orgId, orgId),
-        eq(schema.message.messageIdHeader, parentMsgId),
-      ),
-      columns: { threadId: true },
-    });
+  for (const pid of candidateParentIds(parsed.inReplyTo, parsed.references)) {
+    const parent = await findMessageByHeaderId(db, orgId, pid);
     if (parent) return parent.threadId;
   }
 
@@ -112,13 +164,10 @@ export async function materializeMessage(
   parsed: ParsedMessage,
   deps: MaterializeDeps,
 ): Promise<{ messageId: string; threadId: string }> {
-  const existing = await db.query.message.findFirst({
-    where: and(
-      eq(schema.message.orgId, orgId),
-      eq(schema.message.messageIdHeader, parsed.messageIdHeader),
-    ),
-    columns: { id: true, threadId: true },
-  });
+  // Dedupe by header id — including the provider-minted wire id, so our own
+  // message reflecting back (mailing list, CC to a hosted address) reuses the
+  // sender's row instead of duplicating in the thread.
+  const existing = await findMessageByHeaderId(db, orgId, parsed.messageIdHeader);
   if (existing) {
     // Converge attachments + search on re-run without duplicating the message.
     await writeAttachments(db, existing.id, parsed);

@@ -161,6 +161,52 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     expect(state.placement).toBe("inbox");
   });
 
+  it("threads a reply carrying the provider-rewritten Message-ID", async () => {
+    // Our outbound message: D1 stores the minted id, the wire carried CF's.
+    const sent = parsed({ messageIdHeader: "<minted@acme.com>", from: "alice@acme.com" });
+    const m1 = await materializeMessage(db, ORG, sent, deps);
+    await db.insert(schema.submission).values({
+      id: "sub1", orgId: ORG, messageId: m1.messageId, mailboxId: "mb_apex",
+      envelopeFrom: "alice@acme.com", status: "sent", idempotencyKey: "ik1",
+      providerMessageId: "<EUQ4wire@acme.com>",
+    });
+    // A later chunk's wire id lives only on the recipient row.
+    await db.insert(schema.submissionRecipient).values({
+      id: "sr1", submissionId: "sub1", address: "far@ext.com", role: "to",
+      status: "sent", providerMessageId: "<chunk2wire@acme.com>",
+    });
+
+    // Gmail replies with In-Reply-To = the wire id we never stored on message.
+    const reply = parsed({ messageIdHeader: "<re1@ext>", inReplyTo: "<EUQ4wire@acme.com>", subject: "Re: Hello", sentAt: Date.now() + 1000 });
+    const m2 = await materializeMessage(db, ORG, reply, deps);
+    expect(m2.threadId).toBe(m1.threadId);
+
+    // Same via a chunk-2 id, and only in References (In-Reply-To unknown).
+    const reply2 = parsed({
+      messageIdHeader: "<re2@ext>", inReplyTo: "<unknown@nowhere>",
+      references: "<also-unknown@x> <chunk2wire@acme.com>", subject: "Re: Hello", sentAt: Date.now() + 2000,
+    });
+    const m3 = await materializeMessage(db, ORG, reply2, deps);
+    expect(m3.threadId).toBe(m1.threadId);
+  });
+
+  it("dedupes our own message reflecting back under the provider id", async () => {
+    const sent = parsed({ messageIdHeader: "<minted2@acme.com>", from: "alice@acme.com" });
+    const m1 = await materializeMessage(db, ORG, sent, deps);
+    await db.insert(schema.submission).values({
+      id: "sub2", orgId: ORG, messageId: m1.messageId, mailboxId: "mb_apex",
+      envelopeFrom: "alice@acme.com", status: "sent", idempotencyKey: "ik2",
+      providerMessageId: "<reflect@acme.com>",
+    });
+
+    // Mailing list bounces our own mail back — its Message-ID is the wire id.
+    const reflected = parsed({ messageIdHeader: "<reflect@acme.com>", from: "alice@acme.com" });
+    const m2 = await materializeMessage(db, ORG, reflected, deps);
+    expect(m2.messageId).toBe(m1.messageId);
+    const msgs = await db.select().from(schema.message).where(eq(schema.message.orgId, ORG));
+    expect(msgs.length).toBe(1);
+  });
+
   it("respects spam/trash — a reply does not resurrect a killed thread", async () => {
     const first = parsed({ messageIdHeader: "<s1@ext>" });
     const m1 = await materializeMessage(db, ORG, first, deps);

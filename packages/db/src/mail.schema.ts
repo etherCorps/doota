@@ -572,6 +572,8 @@ export const submission = sqliteTable(
     index("submission_mailbox_idx").on(t.mailboxId),
     index("submission_message_idx").on(t.messageId),
     index("submission_status_idx").on(t.status),
+    // Wire Message-ID → our message: replies to provider-rewritten ids resolve here.
+    index("submission_provider_msgid_idx").on(t.providerMessageId),
   ],
 );
 
@@ -602,6 +604,8 @@ export const submissionRecipient = sqliteTable(
   (t) => [
     uniqueIndex("submission_recipient_uidx").on(t.submissionId, t.address),
     index("submission_recipient_submission_idx").on(t.submissionId),
+    // Per-chunk wire Message-ID lookups (chunks past the first live only here).
+    index("submission_recipient_provider_msgid_idx").on(t.providerMessageId),
   ],
 );
 

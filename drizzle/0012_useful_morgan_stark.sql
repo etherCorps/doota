@@ -1,0 +1,2 @@
+CREATE INDEX `submission_provider_msgid_idx` ON `submission` (`provider_message_id`);--> statement-breakpoint
+CREATE INDEX `submission_recipient_provider_msgid_idx` ON `submission_recipient` (`provider_message_id`);
