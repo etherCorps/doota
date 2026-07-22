@@ -46,7 +46,7 @@
 
 <div class="flex w-full flex-col">
 	<!-- Identity banner — full-width bar, the anchor every tab shares. -->
-	<header class="bg-card flex flex-wrap items-center gap-4 border-b px-6 py-5 md:px-8">
+	<header class="bg-card flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:gap-4 sm:px-6 sm:py-5 md:px-8">
 		<Avatar.Root class="size-16 shrink-0">
 			{#if data.user.image}<Avatar.Image src={data.user.image} alt={data.user.name} />{/if}
 			<Avatar.Fallback class="text-lg">{initials}</Avatar.Fallback>
@@ -92,7 +92,7 @@
 		</div>
 	</header>
 
-	<div class="flex w-full max-w-5xl flex-col gap-6 p-6 md:p-8">
+	<div class="flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 md:p-8">
 	{#if needsSecondFactor}
 		<Card.Card class="border-destructive">
 			<Card.CardHeader>

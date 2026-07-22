@@ -58,7 +58,7 @@
 	]);
 </script>
 
-<div class="flex w-full flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	<div class="flex flex-col gap-1">
 		<h1 class="font-heading text-2xl font-semibold tracking-tight">Dashboard</h1>
 		<p class="text-muted-foreground text-sm">

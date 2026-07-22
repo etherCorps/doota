@@ -428,7 +428,8 @@
 		<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
 		<button type="button" class="bg-scrim/30 absolute inset-0 z-20" aria-label="Close composer" onclick={close}></button>
 	{/if}
-	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed right-2 bottom-0 z-40 md:right-6'}>
+	<!-- Small mode: full-width bottom sheet on phones, floating window ≥ md. -->
+	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed inset-x-0 bottom-0 z-40 md:inset-x-auto md:right-6'}>
 		<!-- One panel, two columns: an attachments rail that extends from the composer
 		     (shared border/shadow, matched height) and slides in when files exist. -->
 		<div
@@ -491,7 +492,7 @@
 			{/if}
 
 			<div
-				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-[min(94vw,30rem)]'}"
+				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-full md:w-[min(94vw,30rem)]'}"
 				role="group"
 				ondragover={onDragOver}
 				ondragleave={onDragLeave}

@@ -32,7 +32,7 @@
 	);
 </script>
 
-<div class="flex w-full flex-col gap-6 p-6 md:p-8">
+<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	<div class="flex items-center gap-3">
 		<div class="bg-muted text-muted-foreground flex size-10 items-center justify-center overflow-hidden rounded-md">
 			{#if data.org.logo}

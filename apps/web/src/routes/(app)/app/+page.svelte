@@ -483,7 +483,8 @@
 
 <div class="flex h-full">
 	<!-- List pane -->
-	<div class="flex w-full flex-col border-r md:w-[360px] md:shrink-0 {threadId ? 'hidden md:flex' : 'flex'}">
+	<!-- 288px at md keeps the thread pane usable on tablets; full 360px from lg. -->
+	<div class="flex w-full flex-col border-r md:w-72 md:shrink-0 lg:w-[360px] {threadId ? 'hidden md:flex' : 'flex'}">
 		<!-- List header — folder identity + active mailbox + (shared) assign filter -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
 			<div class="min-w-0 flex-1">
@@ -663,13 +664,13 @@
 							</DropdownMenu.Root>
 						{/if}
 
-						<!-- Interact: star + forward -->
-						<Button variant="ghost" size="icon" class="text-muted-foreground size-8" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
+						<!-- Interact: star + forward (step back on phones — star also lives on list rows) -->
+						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
 							<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
 						</Button>
 						{#if ctx.parent}
 							{@const p = ctx.parent}
-							<Button variant="ghost" size="icon" class="text-muted-foreground size-8" title="Forward" onclick={() => forward(p, thread.subject)}>
+							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward" onclick={() => forward(p, thread.subject)}>
 								<ForwardIcon class="size-4" />
 							</Button>
 						{/if}
