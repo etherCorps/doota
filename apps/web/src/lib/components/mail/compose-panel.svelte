@@ -191,6 +191,18 @@
 		debouncedSave();
 	}
 
+	// The standard for "this is a draft": the session has meaningful content —
+	// a subject, a recipient, body text, or an attachment. Below that bar nothing
+	// is persisted (open+close must not mint empty draft rows), and a draft the
+	// user empties out is deleted on close. Prefilled forward/reply content
+	// counts — it's resumable state the user chose to start.
+	const hasContent = $derived(
+		subject.trim().length > 0 ||
+			to.length + cc.length + bcc.length > 0 ||
+			attachments.length > 0 ||
+			body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0
+	);
+
 	async function ensureDraft(): Promise<string | null> {
 		if (draftId || !mailboxId) return draftId;
 		const d = await startDraft({
@@ -214,7 +226,7 @@
 		debouncedSave.cancel();
 		if (phase !== 'editing' || !mailboxId) return;
 		if (!draftId) {
-			await ensureDraft();
+			if (hasContent) await ensureDraft();
 			return;
 		}
 		const res = await autosaveDraft({
@@ -339,7 +351,14 @@
 
 	// Esc / X / overlay: close but KEEP the draft (autosaved — find it in Drafts).
 	async function close() {
-		await flushSave();
+		// Emptied-out draft = no longer a draft: delete the husk instead of saving it.
+		if (draftId && !hasContent) {
+			debouncedSave.cancel();
+			await discardDraftById({ draftId });
+			draftId = null;
+		} else {
+			await flushSave();
+		}
 		open = false;
 	}
 
