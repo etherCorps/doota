@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
+	import { mergeProps } from 'bits-ui';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -86,7 +87,9 @@
 						<Sidebar.MenuItem>
 							<Sidebar.MenuButton isActive={activeFolder === folder.id} tooltipContent={folder.name}>
 								{#snippet child({ props })}
-									<a href={folderHref(folder.id)} onclick={closeMobile} {...props}>
+									<!-- mergeProps: a plain onclick before the spread gets clobbered by
+									     the menu-button/tooltip handlers inside `props`. -->
+									<a href={folderHref(folder.id)} {...mergeProps(props, { onclick: closeMobile })}>
 										<Icon class="size-4" />
 										<span>{folder.name}</span>
 									</a>
@@ -105,7 +108,7 @@
 						<Sidebar.MenuItem>
 							<Sidebar.MenuButton tooltipContent="Admin dashboard">
 								{#snippet child({ props })}
-									<a href={resolve('/admin')} onclick={closeMobile} {...props}>
+									<a href={resolve('/admin')} {...mergeProps(props, { onclick: closeMobile })}>
 										<ShieldIcon class="size-4" />
 										<span>Admin dashboard</span>
 									</a>
