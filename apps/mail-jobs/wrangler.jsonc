@@ -6,6 +6,8 @@
   "name": "doota-mail-jobs",
   "compatibility_date": "2026-04-28",
   "compatibility_flags": ["nodejs_als", "nodejs_compat"],
+  // Deploys wipe dashboard-set plaintext vars unless kept (secrets survive).
+  "keep_vars": true,
   "main": "src/index.ts",
   "observability": {
     "logs": {

@@ -3,6 +3,10 @@
   "name": "doota",
   "compatibility_date": "2026-04-28",
   "compatibility_flags": ["nodejs_als", "nodejs_compat"],
+  // Workers Builds runs `wrangler deploy` on every push, and by default that
+  // DELETES any dashboard-set plaintext variable not present in this file.
+  // keep_vars preserves them. (Encrypted secrets always survive deploys.)
+  "keep_vars": true,
   // Wrapper entry: re-exports the SvelteKit fetch handler (adapter-cloudflare's
   // _worker.js). This Worker serves the app and PRODUCES to the mail queues; the
   // asynchronous mail handlers (email/queue/scheduled) live in the standalone
