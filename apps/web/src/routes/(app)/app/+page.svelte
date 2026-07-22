@@ -483,8 +483,9 @@
 
 <div class="flex h-full">
 	<!-- List pane -->
-	<!-- 288px at md keeps the thread pane usable on tablets; full 360px from lg. -->
-	<div class="flex w-full flex-col border-r md:w-72 md:shrink-0 lg:w-[360px] {threadId ? 'hidden md:flex' : 'flex'}">
+	<!-- Single-pane swap (list OR thread) up to lg — tablets keep the sidebar and
+	     one full-width mail pane; the two-pane split starts at lg. -->
+	<div class="flex w-full flex-col border-r lg:w-[360px] lg:shrink-0 {threadId ? 'hidden lg:flex' : 'flex'}">
 		<!-- List header — folder identity + active mailbox + (shared) assign filter -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
 			<div class="min-w-0 flex-1">
@@ -621,7 +622,7 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : 'hidden md:flex'}">
+	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : 'hidden lg:flex'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
@@ -629,7 +630,7 @@
 					{@const ctx = replyCtx(msgs)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
-						<Button variant="ghost" size="icon" class="text-muted-foreground md:hidden" onclick={() => nav({ thread: null })}>
+						<Button variant="ghost" size="icon" class="text-muted-foreground lg:hidden" onclick={() => nav({ thread: null })}>
 							<ArrowLeftIcon class="size-4" />
 						</Button>
 						<div class="min-w-0 flex-1">
