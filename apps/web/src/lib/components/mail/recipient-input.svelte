@@ -47,7 +47,9 @@
 		}, 200);
 	}
 	function moveActive(delta: number) {
-		active = (active + delta + suggestions.length + 1) % (suggestions.length + 1) - 1; // -1 = free text
+		// Cycle over n+1 states (suggestions plus the -1 "free text" state): shift
+		// to 0-based, step, wrap, shift back.
+		active = ((active + 1 + delta + suggestions.length + 1) % (suggestions.length + 1)) - 1;
 		if (active >= 0) {
 			document.getElementById(`${uid}-opt-${active}`)?.scrollIntoView({ block: 'nearest' });
 		}
