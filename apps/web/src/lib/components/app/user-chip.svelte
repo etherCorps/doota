@@ -2,6 +2,7 @@
 	import * as Avatar from '$lib/components/ui/avatar/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { authClient } from '$lib/client/auth-client.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -25,7 +26,15 @@
 			.toUpperCase()
 	);
 
+	const sidebar = useSidebar();
+
+	// Navigating from the popup should also close the mobile sheet under it.
+	function toAccount() {
+		sidebar.setOpenMobile(false);
+		goto(resolve('/account'));
+	}
 	async function logout() {
+		sidebar.setOpenMobile(false);
 		await authClient.signOut();
 		await goto(resolve('/login'));
 	}
@@ -59,7 +68,7 @@
 			</div>
 		</DropdownMenu.Label>
 		<DropdownMenu.Separator />
-		<DropdownMenu.Item onSelect={() => goto(resolve('/account'))}>
+		<DropdownMenu.Item onSelect={toAccount}>
 			<SettingsIcon class="size-4" /> Account settings
 		</DropdownMenu.Item>
 		<DropdownMenu.Item onSelect={logout}>
