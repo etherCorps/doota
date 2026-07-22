@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { recipientSuggestions } from '$lib/rpc/draft.remote';
+	import SenderAvatar from './sender-avatar.svelte';
 	import XIcon from '@lucide/svelte/icons/x';
+	import type { RecipientSuggestion } from '@doota/mail-core/contacts';
 
-	// Recipient token input with autocomplete from prior correspondents (Part C).
-	// Addresses render in JetBrains Mono per the design system.
+	// Recipient token input with autocomplete: org teammates (name + avatar)
+	// and prior correspondents. Addresses render in JetBrains Mono per the
+	// design system.
 	let {
 		value = $bindable<string[]>([]),
 		placeholder = 'name@domain.com',
@@ -11,10 +14,11 @@
 	}: { value?: string[]; placeholder?: string; onchange?: () => void } = $props();
 
 	let text = $state('');
-	let suggestions = $state<string[]>([]);
+	let suggestions = $state<RecipientSuggestion[]>([]);
 	let open = $state(false);
 	let active = $state(-1);
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let seq = 0; // drop out-of-order fetch results
 	const uid = $props.id();
 
 	function commit(addr: string) {
@@ -38,11 +42,17 @@
 		if (!q) {
 			suggestions = [];
 			open = false;
+			active = -1;
 			return;
 		}
 		timer = setTimeout(async () => {
-			suggestions = (await recipientSuggestions(q)).filter((s) => !value.includes(s));
-			open = suggestions.length > 0;
+			const mySeq = ++seq;
+			const res = (await recipientSuggestions(q)).filter((s) => !value.includes(s.address));
+			// A slower earlier response must not clobber a newer one — that's the
+			// "list flickers back" glitch.
+			if (mySeq !== seq) return;
+			suggestions = res;
+			open = res.length > 0;
 			active = -1;
 		}, 200);
 	}
@@ -66,12 +76,19 @@
 			e.preventDefault();
 			open = false;
 			active = -1;
-		} else if (e.key === 'Enter' || e.key === ',') {
+		} else if (e.key === 'Enter' || e.key === ',' || (e.key === 'Tab' && open && active >= 0)) {
 			e.preventDefault();
-			commit(open && active >= 0 ? suggestions[active] : text);
+			commit(open && active >= 0 ? suggestions[active].address : text);
 		} else if (e.key === 'Backspace' && !text && value.length) {
 			remove(value[value.length - 1]);
 		}
+	}
+
+	/** Display name fallback: prettified local part. */
+	function displayName(s: RecipientSuggestion): string {
+		if (s.name) return s.name;
+		const local = s.address.split('@')[0] ?? s.address;
+		return local.replace(/[._-]+/g, ' ').trim() || s.address;
 	}
 
 	// Deterministic avatar tint per address, drawn from the app's own hues
@@ -118,19 +135,28 @@
 		/>
 	</div>
 	{#if open}
-		<ul id="{uid}-listbox" role="listbox" class="bg-popover absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border p-1 shadow-lg">
-			{#each suggestions as s, i (s)}
+		<ul id="{uid}-listbox" role="listbox" class="bg-popover absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-xl border p-1 shadow-lg">
+			{#each suggestions as s, i (s.address)}
 				<li id="{uid}-opt-{i}" role="option" aria-selected={active === i}>
+					<!-- pointerdown (not click): fires before the input's blur commits the
+					     raw text — same reason the old mousedown was there, but pointer
+					     covers touch too. mouseenter syncs hover with the keyboard
+					     highlight so there's never two highlighted rows. -->
 					<button
 						type="button"
 						tabindex="-1"
-						class="w-full rounded-lg px-2 py-1.5 text-left font-mono text-xs transition-colors {active === i ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}"
-						onmousedown={(e) => {
+						class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors {active === i ? 'bg-accent text-accent-foreground' : ''}"
+						onpointerdown={(e) => {
 							e.preventDefault();
-							commit(s);
+							commit(s.address);
 						}}
+						onmouseenter={() => (active = i)}
 					>
-						{s}
+						<SenderAvatar from={s.address} class="size-7 text-[10px]" />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate text-xs font-medium">{displayName(s)}</span>
+							<span class="text-muted-foreground block truncate font-mono text-[11px]">{s.address}</span>
+						</span>
 					</button>
 				</li>
 			{/each}
