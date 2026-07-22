@@ -259,6 +259,11 @@ async function indexContent(
     parsed.subject ?? "",
     parsed.text ?? "",
     parsed.html ? stripHtmlTags(parsed.html) : "",
+    // Participants: lets plain-text queries find people ("alice") — the words()
+    // regex splits addresses into name/domain words. Indexed going forward only.
+    parsed.from ?? "",
+    ...(parsed.to ?? []),
+    ...(parsed.cc ?? []),
   ]);
   await indexMessage(db, { messageId, orgId, tokens });
 }
