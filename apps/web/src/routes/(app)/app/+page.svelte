@@ -37,7 +37,6 @@
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts } from '$lib/rpc/draft.remote';
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
@@ -542,6 +541,35 @@
 	<SenderAvatar {from} class={cls} />
 {/snippet}
 
+<!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
+     selected and shows a checkbox affordance on fine-pointer hover — the row's
+     geometry never changes, so selection causes zero layout shift. -->
+{#snippet selectAvatar(from: string | null, checked: boolean, toggle: () => void, label: string)}
+	<button
+		type="button"
+		aria-pressed={checked}
+		aria-label={label}
+		onclick={(e) => {
+			e.stopPropagation();
+			toggle();
+		}}
+		class="focus-visible:ring-ring/50 relative mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-2"
+	>
+		{#if checked}
+			<span class="bg-brand text-brand-foreground grid size-9 place-items-center rounded-full">
+				<CheckIcon class="size-4" />
+			</span>
+		{:else}
+			{@render monogram(from, 'size-9 text-xs')}
+			<span
+				class="bg-background/95 text-muted-foreground pointer-fine:group-hover/row:grid absolute inset-0 hidden place-items-center rounded-full border"
+			>
+				<CheckIcon class="size-4" />
+			</span>
+		{/if}
+	</button>
+{/snippet}
+
 <!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
 {#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
 	{#if groups.length === 0}
@@ -658,8 +686,9 @@
 		<!-- Filter rail — folder nav lives in the sidebar (this row used to duplicate
 		     it); the list's own row narrows what's shown instead. -->
 		{#if !isVirtual && !searchQ && threadSel.size}
-			<!-- Selection toolbar — takes the filter rail's row while anything is selected. -->
-			<div class="bg-card/60 flex items-center gap-1 border-b px-2 py-1.5">
+			<!-- Selection toolbar — takes the filter rail's row while anything is
+			     selected. Same fixed h-10 as the rail: swapping causes no shift. -->
+			<div class="bg-card/60 flex h-10 items-center gap-1 border-b px-2">
 				<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => threadSel.clear()}>
 					<XIcon class="size-4" />
 				</Button>
@@ -694,7 +723,7 @@
 				</div>
 			</div>
 		{:else if !isVirtual && !searchQ}
-			<div class="flex items-center gap-2 border-b px-3 py-1.5">
+			<div class="flex h-10 items-center gap-2 border-b px-3">
 				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
 					{#each [['all', 'All'], ['unread', 'Unread'], ['starred', 'Starred']] as [id, label] (id)}
 						<button
@@ -764,7 +793,7 @@
 					{@const drafts = draftsQ.current}
 					{#if drafts.length}
 						{#if draftSel.size}
-							<div class="bg-card/60 sticky top-0 z-[1] flex items-center gap-1 border-b px-2 py-1.5 backdrop-blur">
+							<div class="bg-card/60 sticky top-0 z-[1] flex h-10 items-center gap-1 border-b px-2 backdrop-blur">
 								<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => draftSel.clear()}>
 									<XIcon class="size-4" />
 								</Button>
@@ -782,16 +811,14 @@
 							</div>
 						{/if}
 						{#each drafts as d (d.id)}
-							<div class="group/draft flex items-center border-b {draftSel.has(d.id) ? 'bg-accent/50' : ''}">
-								<label class="grid shrink-0 cursor-pointer place-items-center self-stretch pl-3">
-									<Checkbox
-										checked={draftSel.has(d.id)}
-										onCheckedChange={(v) => (v ? draftSel.add(d.id) : draftSel.delete(d.id))}
-										aria-label="Select draft"
-									/>
-								</label>
-								<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {draftSel.has(d.id) ? '' : 'hover:bg-muted/50'}">
-									{@render monogram(d.to[0] ?? null, 'mt-0.5 size-9 text-xs')}
+							<div class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-colors {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}">
+								{@render selectAvatar(
+									d.to[0] ?? null,
+									draftSel.has(d.id),
+									() => (draftSel.has(d.id) ? draftSel.delete(d.id) : draftSel.add(d.id)),
+									'Select draft'
+								)}
+								<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 									<div class="min-w-0 flex-1">
 										<div class="flex items-baseline gap-2">
 											<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
@@ -805,7 +832,7 @@
 									type="button"
 									title="Delete draft"
 									onclick={() => deleteDrafts([d.id])}
-									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
+									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center self-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
 								>
 									<Trash2Icon class="size-4" />
 								</button>
@@ -850,17 +877,15 @@
 						{#each applyListFilters(items) as t (t.threadId)}
 							{@const selected = threadId === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
-							<div class="group/row relative flex items-center border-b {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : ''}">
+							<div class="group/row relative flex items-start border-b py-2.5 pl-3 transition-colors {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : 'hover:bg-muted/50'}">
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
-								<label class="grid shrink-0 cursor-pointer place-items-center self-stretch pl-3">
-									<Checkbox
-										{checked}
-										onCheckedChange={(v) => (v ? threadSel.add(t.threadId) : threadSel.delete(t.threadId))}
-										aria-label="Select conversation"
-									/>
-								</label>
-							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected || checked ? '' : 'hover:bg-muted/50'}">
-								{@render monogram(t.from, 'mt-0.5 size-9 text-xs')}
+								{@render selectAvatar(
+									t.from,
+									checked,
+									() => (checked ? threadSel.delete(t.threadId) : threadSel.add(t.threadId)),
+									'Select conversation'
+								)}
+							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
 										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderName(t.from)}</span>
