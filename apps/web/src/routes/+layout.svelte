@@ -9,7 +9,9 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<Toaster richColors closeButton position="top-right" />
+<!-- bottom-right: same corner as the compose panel, so send/undo toasts appear
+     where the user's attention already is. -->
+<Toaster richColors closeButton position="bottom-right" />
 <ModeWatcher defaultTheme="dark" defaultMode="system" />
 
 {@render children()}
