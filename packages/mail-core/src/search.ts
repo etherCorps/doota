@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
+import { b64ToBytes } from "./crypto";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -28,10 +29,8 @@ export function words(text: string | null | undefined): string[] {
 }
 
 async function importSearchKey(base64Key: string): Promise<CryptoKey> {
-  const bin = atob(base64Key);
-  const raw = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
-  return crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, [
+  const raw = b64ToBytes(base64Key); // tolerant decode — same as the DEK
+  return crypto.subtle.importKey("raw", raw as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, [
     "sign",
   ]);
 }

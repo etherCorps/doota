@@ -19,12 +19,19 @@ function b64(bytes: Uint8Array): string {
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
 }
-function unb64(s: string): Uint8Array {
-  const bin = atob(s);
+/**
+ * base64 → bytes, tolerant of base64url and stray whitespace/padding — env
+ * secrets arrive from many generators (`openssl rand -base64`, base64url
+ * tooling, copy/paste with newlines) and Workers' atob() is strict.
+ */
+export function b64ToBytes(s: string): Uint8Array {
+  const norm = s.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(norm + "=".repeat((4 - (norm.length % 4)) % 4));
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+const unb64 = b64ToBytes;
 
 export type ContentKey = { keyId: string; key: CryptoKey };
 
@@ -33,8 +40,15 @@ export type ContentKey = { keyId: string; key: CryptoKey };
  * envelope so a rotated key can still decrypt old rows (look up by id).
  */
 export async function importKey(base64Key: string, keyId = "0"): Promise<ContentKey> {
-  const raw = unb64(base64Key);
-  if (raw.length !== 32) throw new Error("DEK must be 32 bytes (base64)");
+  let raw: Uint8Array;
+  try {
+    raw = unb64(base64Key);
+  } catch {
+    throw new Error(
+      "MAIL_DEK is not valid base64 — regenerate with `openssl rand -base64 32` and re-set the worker secret",
+    );
+  }
+  if (raw.length !== 32) throw new Error(`MAIL_DEK must decode to 32 bytes, got ${raw.length}`);
   const key = await crypto.subtle.importKey("raw", raw as BufferSource, { name: "AES-GCM" }, false, [
     "encrypt",
     "decrypt",
