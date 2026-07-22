@@ -163,7 +163,10 @@
 </script>
 
 <div class="focus-within:ring-ring/40 rounded-md border focus-within:ring-2">
-	<div class="text-muted-foreground flex flex-wrap items-center gap-0.5 border-b px-1 py-1">
+	<!-- Single row, formatting group scrolls sideways when narrow (wrap rows used
+	     to paint over the text area); attach pinned outside the scroll region. -->
+	<div class="text-muted-foreground flex shrink-0 items-center border-b">
+		<div class="scrollbar-thin flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 py-1 *:shrink-0">
 		<Toggle size="sm" class="size-7 p-0" pressed={active.bold} title="Bold (⌘B)" onPressedChange={() => exec('bold')}>
 			<BoldIcon class="size-4" />
 		</Toggle>
@@ -245,9 +248,10 @@
 		<Button variant="ghost" size="icon" class="size-7" title="Clear formatting" onclick={() => exec('removeFormat')}>
 			<RemoveFormattingIcon class="size-4" />
 		</Button>
+		</div>
 
 		{#if onattach}
-			<Button variant="ghost" size="icon" class="ml-auto size-7" title="Attach file" onclick={onattach}>
+			<Button variant="ghost" size="icon" class="mx-1 size-7 shrink-0" title="Attach file" onclick={onattach}>
 				<PaperclipIcon class="size-4" />
 			</Button>
 		{/if}

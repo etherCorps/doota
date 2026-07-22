@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { mode } from 'mode-watcher';
-	import { PersistedState } from 'runed';
+	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -14,6 +14,7 @@
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
+	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
@@ -42,6 +43,7 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ForwardIcon from '@lucide/svelte/icons/forward';
 	import StarIcon from '@lucide/svelte/icons/star';
+	import ListFilterIcon from '@lucide/svelte/icons/list-filter';
 	import InboxDownIcon from '@lucide/svelte/icons/inbox';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
@@ -55,6 +57,8 @@
 	import Rows3Icon from '@lucide/svelte/icons/rows-3';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import XIcon from '@lucide/svelte/icons/x';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import { searchMail } from '$lib/rpc/search.remote';
 	import { fly } from 'svelte/transition';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
@@ -86,6 +90,15 @@
 	const managedIdsQ = myManagedMailboxIds();
 	const canManageActive = $derived(!!mailboxId && (managedIdsQ.current ?? []).includes(mailboxId));
 	const folder = $derived(FOLDERS.find((f) => f.id === placement) ?? FOLDERS[0]);
+
+	// Full search-results mode (?q=): the palette shows the top hits; "view all"
+	// lands here, where the list pane becomes the results list. Searches ALL
+	// accessible mailboxes — deliberately not scoped to the active one, so
+	// opening a hit (which switches ?mailbox) can't reshuffle the results.
+	const searchQ = $derived(params.get('q'));
+	const searchResultsQ = $derived(
+		searchQ && searchQ.trim().length >= 2 ? searchMail({ q: searchQ.trim(), limit: 100 }) : null
+	);
 
 	function nav(next: Record<string, string | null>) {
 		const sp = new URLSearchParams(params);
@@ -122,21 +135,19 @@
 		}
 	}
 
-	// Reset + load page 0 when mailbox/folder changes. `untrack` keeps the loader's
-	// own state writes from retriggering this effect.
-	$effect(() => {
-		const mb = mailboxId,
-			virt = isVirtual;
-		void placement;
-		untrack(() => {
+	// Reset + load page 0 when mailbox/folder changes. `watch` tracks only its
+	// sources, so the loader's own state writes can't retrigger it.
+	watch(
+		[() => mailboxId, () => isVirtual, () => placement],
+		([mb, virt]) => {
 			if (mb && !virt) loadThreads(true);
 			else {
 				items = [];
 				nextOffset = 0;
 				reachedEnd = false;
 			}
-		});
-	});
+		}
+	);
 
 	function onListScroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
@@ -162,11 +173,20 @@
 	const isShared = $derived(members.length > 1);
 	let composeMode = $state<'reply' | 'note'>('reply');
 	let assignFilter = $state<'all' | 'mine' | 'unassigned'>('all');
+	// Quick filters narrow the loaded pages client-side (ponytail: filters what's
+	// fetched, not the whole mailbox — server-side filtering if that ever bites).
+	let quickFilter = $state<'all' | 'unread' | 'starred'>('all');
+	const filtersActive = $derived(quickFilter !== 'all' || assignFilter !== 'all');
 
-	function applyAssignFilter<T extends { assigneeUserId: string | null }>(rows: T[]): T[] {
-		if (assignFilter === 'mine') return rows.filter((r) => r.assigneeUserId === currentUserId);
-		if (assignFilter === 'unassigned') return rows.filter((r) => !r.assigneeUserId);
-		return rows;
+	function applyListFilters<
+		T extends { assigneeUserId: string | null; unread: boolean; isStarred: boolean }
+	>(rows: T[]): T[] {
+		let out = rows;
+		if (assignFilter === 'mine') out = out.filter((r) => r.assigneeUserId === currentUserId);
+		else if (assignFilter === 'unassigned') out = out.filter((r) => !r.assigneeUserId);
+		if (quickFilter === 'unread') out = out.filter((r) => r.unread);
+		else if (quickFilter === 'starred') out = out.filter((r) => r.isStarred);
+		return out;
 	}
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
@@ -254,16 +274,6 @@
 		const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
 		if (named?.[1]?.trim()) return named[1].trim();
 		return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
-	}
-	function initials(from: string | null): string {
-		const parts = senderName(from).split(/\s+/).filter(Boolean);
-		return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
-	}
-	const MONO_TINTS = ['bg-p1/15 text-p1', 'bg-p2/15 text-p2', 'bg-p3/15 text-p3', 'bg-brand/15 text-brand', 'bg-ok/15 text-ok'];
-	function monoTint(key: string | null): string {
-		let h = 0;
-		for (const ch of key ?? '') h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
-		return MONO_TINTS[h % MONO_TINTS.length];
 	}
 
 	// Two conversation renderings, user-switchable + persisted: 'chat' (default —
@@ -392,7 +402,22 @@
 		await undoDraftById({ submissionId });
 		await scheduledSends().refresh();
 	}
+
+	// Escape walks back out: attachments panel first, then the open thread.
+	// Dialogs/drawers (composer, palette) preventDefault their own Esc — skip those.
+	function onPageKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || e.defaultPrevented) return;
+		const t = e.target as HTMLElement;
+		if (t?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
+		if (attachmentsOpen) {
+			attachmentsOpen = false;
+		} else if (threadId) {
+			nav({ thread: null });
+		}
+	}
 </script>
+
+<svelte:window onkeydown={onPageKeydown} />
 
 {#snippet listSkeleton()}
 	{#each Array.from({ length: 6 }, (_, i) => i) as i (i)}
@@ -426,7 +451,7 @@
 {/snippet}
 
 {#snippet monogram(from: string | null, cls: string)}
-	<span class="grid shrink-0 place-items-center rounded-full font-semibold {monoTint(from)} {cls}">{initials(from)}</span>
+	<SenderAvatar {from} class={cls} />
 {/snippet}
 
 <!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
@@ -488,56 +513,107 @@
 	<!-- List pane -->
 	<!-- Single-pane swap (list OR thread) until the mail region is ≥ 56rem wide;
 	     then the real two-pane split. -->
-	<div class="@4xl:w-[360px] @4xl:shrink-0 flex w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
-		<!-- List header — folder identity + active mailbox + (shared) assign filter -->
+	<div class="@4xl:w-[360px] @4xl:shrink-0 relative flex w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
+		<!-- List header — folder identity (or the active search) + settings -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
-			<div class="min-w-0 flex-1">
-				<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
-				<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{activeMailbox?.address ?? '…'}</span>
-			</div>
-			{#if isShared && !isVirtual}
-				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
-					{#each [['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']] as [id, label] (id)}
-						<button
-							type="button"
-							class="focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2 {assignFilter === id ? 'bg-card text-foreground shadow-xs font-medium' : 'text-muted-foreground hover:text-foreground'}"
-							onclick={() => (assignFilter = id as typeof assignFilter)}
-						>
-							{label}
-						</button>
-					{/each}
+			{#if searchQ}
+				<SearchIcon class="text-muted-foreground size-4 shrink-0" />
+				<div class="min-w-0 flex-1">
+					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">Search</h2>
+					<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{searchQ}</span>
+				</div>
+				<button
+					type="button"
+					title="Clear search"
+					onclick={() => nav({ q: null, thread: null })}
+					class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+				>
+					<XIcon class="size-4" />
+				</button>
+			{:else}
+				<div class="min-w-0 flex-1">
+					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
+					<span class="text-muted-foreground block truncate font-mono text-[11px] leading-tight">{activeMailbox?.address ?? '…'}</span>
 				</div>
 			{/if}
-			{#if canManageActive}
-				<a href="/mailboxes/{mailboxId}" title="Manage mailbox" class="text-muted-foreground hover:text-foreground hover:bg-muted grid size-8 shrink-0 place-items-center rounded-lg transition-colors">
+			{#if canManageActive && !searchQ}
+				<a href="/mailboxes/{mailboxId}" title="Manage mailbox" class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2">
 					<SettingsIcon class="size-4" />
 				</a>
 			{/if}
 		</div>
 
-		<!-- Folder rail -->
-		<div class="flex items-center gap-0.5 border-b px-2 py-1.5">
-			{#each FOLDERS as f (f.id)}
-				{@const active = placement === f.id}
-				<button
-					type="button"
-					title={f.name}
-					onclick={() => nav({ folder: f.id, thread: null })}
-					class="focus-visible:ring-ring/50 grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {active ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-				>
-					<f.icon class="size-4" />
-				</button>
-			{/each}
-		</div>
+		<!-- Filter rail — folder nav lives in the sidebar (this row used to duplicate
+		     it); the list's own row narrows what's shown instead. -->
+		{#if !isVirtual && !searchQ}
+			<div class="flex items-center gap-2 border-b px-3 py-1.5">
+				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
+					{#each [['all', 'All'], ['unread', 'Unread'], ['starred', 'Starred']] as [id, label] (id)}
+						<button
+							type="button"
+							class="focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2 {quickFilter === id ? 'bg-card text-foreground shadow-xs font-medium' : 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => (quickFilter = id as typeof quickFilter)}
+						>
+							{label}
+						</button>
+					{/each}
+				</div>
+				{#if isShared}
+					<div class="bg-muted/60 ml-auto flex items-center gap-0.5 rounded-full p-0.5 text-xs">
+						{#each [['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']] as [id, label] (id)}
+							<button
+								type="button"
+								class="focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2 {assignFilter === id ? 'bg-card text-foreground shadow-xs font-medium' : 'text-muted-foreground hover:text-foreground'}"
+								onclick={() => (assignFilter = id as typeof assignFilter)}
+							>
+								{label}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
-			{#if placement === 'drafts'}
+			{#if searchQ && searchResultsQ}
+				{#await searchResultsQ}
+					{@render listSkeleton()}
+				{:then hits}
+					{#if hits.length}
+						{#each hits as hit (hit.threadId)}
+							{@const selected = threadId === hit.threadId}
+							<button
+								type="button"
+								onclick={() => nav({ mailbox: hit.mailboxId, thread: hit.threadId })}
+								class="focus-visible:ring-ring/50 relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}"
+							>
+								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
+								{@render monogram(hit.from, 'mt-0.5 size-9 text-xs')}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-baseline gap-2">
+										<span class="flex-1 truncate text-sm font-medium">{hit.from ? senderName(hit.from) : '—'}</span>
+										{#if hit.at}<span class="text-faint shrink-0 text-[11px]">{fmtTime(hit.at)}</span>{/if}
+									</div>
+									<span class="block truncate text-[13px] text-muted-foreground">{hit.subject ?? '(no subject)'}</span>
+									<span class="text-muted-foreground line-clamp-1 text-xs">{hit.snippet ?? ''}</span>
+								</div>
+							</button>
+						{/each}
+					{:else}
+						<EmptyState icon={SearchIcon} title="No results" description={`Nothing matches “${searchQ}”.`}>
+							{#snippet action()}
+								<Button variant="ghost" size="sm" onclick={() => nav({ q: null })}>Clear search</Button>
+							{/snippet}
+						</EmptyState>
+					{/if}
+				{/await}
+			{:else if placement === 'drafts'}
 				{#await myDrafts()}
 					{@render listSkeleton()}
 				{:then drafts}
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
-							<button type="button" onclick={() => openDraft(d.id)} class="flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/50">
+							<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset hover:bg-muted/50">
 								{@render monogram(d.to[0] ?? null, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
@@ -584,10 +660,10 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{#if applyAssignFilter(items).length}
-						{#each applyAssignFilter(items) as t (t.threadId)}
+					{#if applyListFilters(items).length}
+						{#each applyListFilters(items) as t (t.threadId)}
 							{@const selected = threadId === t.threadId}
-							<button type="button" onclick={() => selectThread(t.threadId)} class="relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}">
+							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}">
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render monogram(t.from, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
@@ -611,6 +687,15 @@
 						{/if}
 					{:else if loadingList}
 						{@render listSkeleton()}
+					{:else if filtersActive && items.length}
+						<!-- The folder has mail; the filters hid all of it. -->
+						<EmptyState icon={ListFilterIcon} title="No matches" description="Nothing loaded here matches the active filters.">
+							{#snippet action()}
+								<Button variant="ghost" size="sm" onclick={() => { quickFilter = 'all'; assignFilter = 'all'; }}>
+									Clear filters
+								</Button>
+							{/snippet}
+						</EmptyState>
 					{:else}
 						<EmptyState icon={InboxIcon} title="Nothing here" description="This folder is empty.">
 							{#snippet action()}
@@ -622,6 +707,20 @@
 					{/if}
 			{/if}
 		</div>
+
+		<!-- Mobile compose FAB — the top bar drops its Compose button below `sm` to
+		     give the search field the width back; composing moves here. Lives inside
+		     the list pane so opening a thread (which hides the pane) hides it too. -->
+		{#if mailboxId}
+			<button
+				type="button"
+				aria-label="Compose"
+				onclick={composeNew}
+				class="bg-brand text-brand-foreground focus-visible:ring-ring/50 absolute right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 grid size-13 place-items-center rounded-full shadow-lg transition-transform outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-95 sm:hidden"
+			>
+				<PencilIcon class="size-5" />
+			</button>
+		{/if}
 	</div>
 
 	<!-- Conversation -->

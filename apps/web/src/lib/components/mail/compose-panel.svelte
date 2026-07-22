@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { useDebounce } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import FromSelector from './from-selector.svelte';
 	import RecipientInput from './recipient-input.svelte';
@@ -54,8 +57,12 @@
 	let {
 		open = $bindable(false),
 		prefill = undefined,
-		resumeDraftId = undefined
-	}: { open?: boolean; prefill?: Prefill; resumeDraftId?: string } = $props();
+		resumeDraftId = undefined,
+		// Single-pane mail region (list OR thread): compose in a bottom drawer
+		// instead of the docked window / overlay. Passed down from the layout,
+		// which measures the content region (same 56rem line as the pane split).
+		asDrawer = false
+	}: { open?: boolean; prefill?: Prefill; resumeDraftId?: string; asDrawer?: boolean } = $props();
 
 	const UNDO_SECONDS = 10;
 	const title = $derived(
@@ -89,7 +96,7 @@
 	const bigMode = $derived(maximized && !minimized);
 	let uploading = $state(false);
 	let saved = $state(false);
-	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	const debouncedSave = useDebounce(() => flushSave(), 800);
 
 	onMount(async () => {
 		identities = await sendIdentities();
@@ -180,8 +187,7 @@
 	function scheduleSave() {
 		if (phase !== 'editing') return;
 		saved = false;
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(flushSave, 800);
+		debouncedSave();
 	}
 
 	async function ensureDraft(): Promise<string | null> {
@@ -204,7 +210,7 @@
 	}
 
 	async function flushSave() {
-		clearTimeout(saveTimer);
+		debouncedSave.cancel();
 		if (phase !== 'editing' || !mailboxId) return;
 		if (!draftId) {
 			await ensureDraft();
@@ -285,13 +291,21 @@
 	async function send() {
 		if (!canSend) return;
 		phase = 'sending';
-		await flushSave();
-		if (!draftId) {
+		let res!: Awaited<ReturnType<typeof sendDraftById>>;
+		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
+		try {
+			await flushSave();
+			if (!draftId) {
+				phase = 'editing';
+				return;
+			}
+			res = await sendDraftById({ draftId, sendAt, undoSeconds: UNDO_SECONDS });
+		} catch {
+			// The draft is intact — let the user retry instead of eating the mail.
 			phase = 'editing';
+			toast.error('Send failed — check your connection and try again.');
 			return;
 		}
-		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
-		const res = await sendDraftById({ draftId, sendAt, undoSeconds: UNDO_SECONDS });
 		if (sendAt && sendAt > Date.now() + UNDO_SECONDS * 1000) {
 			const submissionId = res.submissionId;
 			reset();
@@ -324,13 +338,12 @@
 
 	// Esc / X / overlay: close but KEEP the draft (autosaved — find it in Drafts).
 	async function close() {
-		clearTimeout(saveTimer);
 		await flushSave();
 		open = false;
 	}
 
 	async function discard() {
-		clearTimeout(saveTimer);
+		debouncedSave.cancel();
 		if (draftId) await discardDraftById({ draftId });
 		reset();
 		open = false;
@@ -404,26 +417,13 @@
 
 <svelte:window onkeydown={onWindowKey} />
 
-<!-- Docked, non-modal composer (Gmail-style) — or a full-screen centered overlay. -->
-{#if open}
-	{#if bigMode}
-		<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
-		<button type="button" class="bg-scrim/30 absolute inset-0 z-20" aria-label="Close composer" onclick={close}></button>
-	{/if}
-	<!-- Small mode: full-width bottom sheet on phones, floating window ≥ md. -->
-	<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed inset-x-0 bottom-0 z-40 md:inset-x-auto md:right-6'}>
-		<!-- One panel, two columns: an attachments rail that extends from the composer
-		     (shared border/shadow, matched height) and slides in when files exist. -->
-		<div
-			class="bg-background flex items-stretch overflow-hidden border shadow-2xl {bigMode
-				? 'h-full w-full rounded-xl'
-				: !minimized
-					? 'h-[min(80vh,34rem)] rounded-t-xl'
-					: 'rounded-t-xl'}"
-		>
+<!-- The panel interior (attachments rail + editor column) is one snippet shared
+     by the three containers: docked window, full-screen overlay, bottom drawer.
+     `drawer` disables the minimize/maximize chrome — the drawer swipes instead. -->
+{#snippet panelInner(drawer: boolean)}
 			<!-- Expanded mode keeps the rail mounted even when empty, so the first
 			     attachment doesn't reflow the editor column. -->
-			{#if !minimized && (bigMode || attachments.length)}
+			{#if drawer ? attachments.length > 0 : !minimized && (bigMode || attachments.length)}
 				<aside
 					transition:fade={{ duration: 120 }}
 					class="bg-muted/20 hidden flex-col border-r md:flex {bigMode ? 'w-64' : 'w-48'}"
@@ -488,7 +488,7 @@
 			{/if}
 
 			<div
-				class="relative flex flex-col {bigMode ? 'min-w-0 flex-1' : 'w-full md:w-[min(94vw,30rem)]'}"
+				class="relative flex flex-col {drawer || bigMode ? 'min-w-0 flex-1' : 'w-full md:w-[min(94vw,30rem)]'}"
 				role="group"
 				ondragover={onDragOver}
 				ondragleave={onDragLeave}
@@ -502,18 +502,20 @@
 			{/if}
 			<!-- Title bar: click to minimize/restore -->
 		<div class="bg-muted/60 text-foreground flex h-10 items-center justify-between gap-2 border-b px-3">
-			<button type="button" class="min-w-0 flex-1 text-left" onclick={() => (minimized = !minimized)}>
+			<button type="button" class="min-w-0 flex-1 text-left" onclick={() => drawer || (minimized = !minimized)}>
 				<span class="font-heading truncate text-sm font-medium">{title}</span>
 			</button>
 			<div class="text-muted-foreground flex items-center gap-0.5">
-				{#if !minimized}
+				{#if !minimized && !drawer}
 					<button type="button" class="hover:bg-foreground/10 hover:text-foreground grid size-6 place-items-center rounded transition-colors" title={maximized ? 'Exit full screen' : 'Full screen'} onclick={() => (maximized = !maximized)}>
 						{#if maximized}<Minimize2Icon class="size-3.5" />{:else}<Maximize2Icon class="size-3.5" />{/if}
 					</button>
 				{/if}
-				<button type="button" class="hover:bg-foreground/10 hover:text-foreground grid size-6 place-items-center rounded transition-colors" title={minimized ? 'Expand' : 'Minimize'} onclick={() => (minimized = !minimized)}>
-					{#if minimized}<ChevronUpIcon class="size-4" />{:else}<MinusIcon class="size-4" />{/if}
-				</button>
+				{#if !drawer}
+					<button type="button" class="hover:bg-foreground/10 hover:text-foreground grid size-6 place-items-center rounded transition-colors" title={minimized ? 'Expand' : 'Minimize'} onclick={() => (minimized = !minimized)}>
+						{#if minimized}<ChevronUpIcon class="size-4" />{:else}<MinusIcon class="size-4" />{/if}
+					</button>
+				{/if}
 				<button type="button" class="hover:bg-destructive/10 hover:text-destructive grid size-6 place-items-center rounded transition-colors" title="Close (keeps draft)" onclick={close}>
 					<XIcon class="size-4" />
 				</button>
@@ -616,7 +618,7 @@
 					{/if}
 				</div>
 
-				<div class="flex items-center justify-between gap-2 border-t px-3 py-2">
+				<div class="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2">
 					<div class="flex items-center gap-1">
 						<Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" title="Discard draft" onclick={discard}>
 							<Trash2Icon class="size-4" />
@@ -632,13 +634,17 @@
 					</div>
 					<!-- Split send: primary sends now (⌘↵); caret opens schedule presets. -->
 					<div class="inline-flex">
-						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend} title={sendHint} onclick={send}>
-							<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
+						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend || phase === 'sending'} title={sendHint} onclick={send}>
+							{#if phase === 'sending'}
+								<Spinner class="size-4" /> Sending…
+							{:else}
+								<SendIcon class="size-4" /> {scheduleAt ? 'Schedule' : 'Send'}
+							{/if}
 						</Button>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button {...props} variant="brand" size="sm" class="border-brand-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend} title="Schedule send" aria-label="Schedule send">
+									<Button {...props} variant="brand" size="sm" class="border-brand-foreground/25 rounded-l-none border-l px-1.5" disabled={!canSend || phase === 'sending'} title="Schedule send" aria-label="Schedule send">
 										<ChevronDownIcon class="size-4" />
 									</Button>
 								{/snippet}
@@ -659,8 +665,44 @@
 		{/if}
 		<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
 		</div>
-	</div>
-	</div>
+{/snippet}
+
+{#if open}
+	{#if asDrawer}
+		<!-- Single-pane region: bottom drawer, ~full height so typing space matches
+		     the full-screen panel. Swipe-down/Esc close keeps the draft (autosave). -->
+		<Drawer.Root open={true} onOpenChange={(v) => { if (!v) close(); }}>
+			<!-- interactOutsideBehavior="ignore": a stray tap outside must not dismiss
+			     mid-composition — closing is deliberate (swipe, Esc, or the ✕). -->
+			<Drawer.Content
+				interactOutsideBehavior="ignore"
+				class="h-[94svh] p-0 data-[vaul-drawer-direction=bottom]:max-h-[94svh]"
+			>
+				<div class="mt-2 flex min-h-0 flex-1 items-stretch overflow-hidden">
+					{@render panelInner(true)}
+				</div>
+			</Drawer.Content>
+		</Drawer.Root>
+	{:else}
+		{#if bigMode}
+			<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->
+			<button type="button" class="bg-scrim/30 absolute inset-0 z-20" aria-label="Close composer" onclick={close}></button>
+		{/if}
+		<!-- Docked, non-modal composer (Gmail-style) — or a full-screen centered overlay. -->
+		<div class={bigMode ? 'absolute inset-0 z-30 flex p-2' : 'fixed inset-x-0 bottom-0 z-40 md:inset-x-auto md:right-6'}>
+			<!-- One panel, two columns: an attachments rail that extends from the composer
+			     (shared border/shadow, matched height) and slides in when files exist. -->
+			<div
+				class="bg-background flex items-stretch overflow-hidden border shadow-2xl {bigMode
+					? 'h-full w-full rounded-xl'
+					: !minimized
+						? 'h-[min(80vh,34rem)] rounded-t-xl'
+						: 'rounded-t-xl'}"
+			>
+				{@render panelInner(false)}
+			</div>
+		</div>
+	{/if}
 {/if}
 
 <!-- Image preview lightbox (Gmail-style): click backdrop or Esc to close. -->

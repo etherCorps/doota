@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { useDebounce } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import FromSelector from './from-selector.svelte';
 	import RichEditor from './rich-editor.svelte';
 	import SendIcon from '@lucide/svelte/icons/send';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { toast } from 'svelte-sonner';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -61,6 +63,8 @@
 	let editorKey = $state(0);
 	let attachments = $state<AttachmentRef[]>([]);
 	let fileInput = $state<HTMLInputElement>();
+	let sending = $state(false);
+	let uploading = $state(false);
 	const fmtSize = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 	// The body is HTML; "has content" ignores tags/whitespace.
 	const hasBody = $derived(body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0);
@@ -72,15 +76,11 @@
 	});
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
-	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Switching threads remounts this component via {#key thread.id} in the page,
 	// so initial state above is always fresh for the current parent.
 
-	function scheduleSave() {
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(flushSave, 800);
-	}
+	const scheduleSave = useDebounce(() => flushSave(), 800);
 
 	async function ensureDraft(): Promise<string | null> {
 		if (draftId) return draftId;
@@ -106,12 +106,17 @@
 		if (!files.length) return;
 		const id = await ensureDraft();
 		if (!id) return;
-		for (const file of files) {
-			const fd = new FormData();
-			fd.append('draftId', id);
-			fd.append('file', file);
-			const res = await fetch('/api/drafts/attachments', { method: 'POST', body: fd });
-			if (res.ok) attachments = ((await res.json()) as { attachments: AttachmentRef[] }).attachments;
+		uploading = true;
+		try {
+			for (const file of files) {
+				const fd = new FormData();
+				fd.append('draftId', id);
+				fd.append('file', file);
+				const res = await fetch('/api/drafts/attachments', { method: 'POST', body: fd });
+				if (res.ok) attachments = ((await res.json()) as { attachments: AttachmentRef[] }).attachments;
+			}
+		} finally {
+			uploading = false;
 		}
 	}
 	async function removeAttachment(r2Key: string) {
@@ -120,7 +125,7 @@
 	}
 
 	async function flushSave() {
-		clearTimeout(saveTimer);
+		scheduleSave.cancel();
 		if (!hasBody) return;
 		if (!draftId) {
 			await ensureDraft();
@@ -144,11 +149,20 @@
 	const canSend = $derived(hasBody || attachments.length > 0);
 
 	async function send() {
-		if (!canSend) return;
-		await flushSave();
-		await ensureDraft();
-		if (!draftId) return;
-		const res = await sendDraftById({ draftId, undoSeconds: UNDO_SECONDS });
+		if (!canSend || sending) return;
+		sending = true;
+		let res!: Awaited<ReturnType<typeof sendDraftById>>;
+		try {
+			await flushSave();
+			await ensureDraft();
+			if (!draftId) return;
+			res = await sendDraftById({ draftId, undoSeconds: UNDO_SECONDS });
+		} catch {
+			toast.error('Send failed — check your connection and try again.');
+			return;
+		} finally {
+			sending = false;
+		}
 		// Gmail-style: the composer frees instantly; the toast carries Undo for
 		// the send-delay window. Undo restores the draft back into the editor.
 		const submissionId = res.submissionId;
@@ -237,9 +251,19 @@
 				</div>
 			{/if}
 			<div class="flex items-center justify-end gap-2">
-				<span class="text-faint hidden text-[11px] sm:inline">⌘↵ to send</span>
-				<Button variant="brand" size="sm" class="gap-1.5" disabled={!canSend} onclick={send}>
-					<SendIcon class="size-3.5" /> Send
+				{#if uploading}
+					<span class="text-muted-foreground inline-flex items-center gap-1.5 text-[11px]">
+						<Spinner class="size-3" /> Uploading…
+					</span>
+				{:else}
+					<span class="text-faint hidden text-[11px] sm:inline">⌘↵ to send</span>
+				{/if}
+				<Button variant="brand" size="sm" class="gap-1.5" disabled={!canSend || sending || uploading} onclick={send}>
+					{#if sending}
+						<Spinner class="size-3.5" /> Sending…
+					{:else}
+						<SendIcon class="size-3.5" /> Send
+					{/if}
 				</Button>
 			</div>
 			<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />

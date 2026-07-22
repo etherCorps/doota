@@ -13,7 +13,9 @@
 	let text = $state('');
 	let suggestions = $state<string[]>([]);
 	let open = $state(false);
+	let active = $state(-1);
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	const uid = $props.id();
 
 	function commit(addr: string) {
 		const a = addr.trim().toLowerCase();
@@ -24,6 +26,7 @@
 		text = '';
 		suggestions = [];
 		open = false;
+		active = -1;
 	}
 	function remove(a: string) {
 		value = value.filter((x) => x !== a);
@@ -40,12 +43,30 @@
 		timer = setTimeout(async () => {
 			suggestions = (await recipientSuggestions(q)).filter((s) => !value.includes(s));
 			open = suggestions.length > 0;
+			active = -1;
 		}, 200);
 	}
+	function moveActive(delta: number) {
+		active = (active + delta + suggestions.length + 1) % (suggestions.length + 1) - 1; // -1 = free text
+		if (active >= 0) {
+			document.getElementById(`${uid}-opt-${active}`)?.scrollIntoView({ block: 'nearest' });
+		}
+	}
 	function onKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' || e.key === ',') {
+		if (open && e.key === 'ArrowDown') {
 			e.preventDefault();
-			commit(text);
+			moveActive(1);
+		} else if (open && e.key === 'ArrowUp') {
+			e.preventDefault();
+			moveActive(-1);
+		} else if (open && e.key === 'Escape') {
+			// preventDefault keeps outer Escape handlers (close composer) from firing.
+			e.preventDefault();
+			open = false;
+			active = -1;
+		} else if (e.key === 'Enter' || e.key === ',') {
+			e.preventDefault();
+			commit(open && active >= 0 ? suggestions[active] : text);
 		} else if (e.key === 'Backspace' && !text && value.length) {
 			remove(value[value.length - 1]);
 		}
@@ -83,6 +104,11 @@
 		<input
 			class="min-w-[10ch] flex-1 bg-transparent font-mono text-sm outline-none"
 			{placeholder}
+			role="combobox"
+			aria-expanded={open}
+			aria-controls="{uid}-listbox"
+			aria-autocomplete="list"
+			aria-activedescendant={open && active >= 0 ? `${uid}-opt-${active}` : undefined}
 			bind:value={text}
 			oninput={onInput}
 			onkeydown={onKeydown}
@@ -90,12 +116,13 @@
 		/>
 	</div>
 	{#if open}
-		<ul class="bg-popover absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border p-1 shadow-lg">
-			{#each suggestions as s (s)}
-				<li>
+		<ul id="{uid}-listbox" role="listbox" class="bg-popover absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border p-1 shadow-lg">
+			{#each suggestions as s, i (s)}
+				<li id="{uid}-opt-{i}" role="option" aria-selected={active === i}>
 					<button
 						type="button"
-						class="hover:bg-accent hover:text-accent-foreground w-full rounded-lg px-2 py-1.5 text-left font-mono text-xs transition-colors"
+						tabindex="-1"
+						class="w-full rounded-lg px-2 py-1.5 text-left font-mono text-xs transition-colors {active === i ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}"
 						onmousedown={(e) => {
 							e.preventDefault();
 							commit(s);

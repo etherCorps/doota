@@ -14,6 +14,12 @@
 	// Persist the sidebar collapsed state across navigations/reloads (runed).
 	const sidebarOpen = new PersistedState('doota:sidebar-open', true);
 
+	// Width of the content region (sidebar excluded) — same 56rem line the mail
+	// page's @4xl container query uses for its list/thread split. Below it the
+	// composer renders as a bottom drawer instead of the docked window.
+	let regionW = $state(0);
+	const singlePane = $derived(regionW > 0 && regionW < 896);
+
 	// ⌘K → "Compose" dispatches this; and a bare `c` composes (Gmail-style).
 	onMount(() => {
 		const openCompose = () => compose.start();
@@ -35,14 +41,16 @@
 	<Sidebar.Inset class="relative flex h-svh flex-col overflow-hidden">
 		<TopBar>
 			{#snippet action()}
-				<Button variant="brand" size="sm" class="gap-1.5" onclick={() => compose.start()}>
+				<!-- Below `sm` the list pane's floating compose button takes over and the
+				     search field gets this width back. -->
+				<Button variant="brand" size="sm" class="hidden gap-1.5 sm:inline-flex" onclick={() => compose.start()}>
 					<PenLineIcon class="size-4" /> Compose
 				</Button>
 			{/snippet}
 		</TopBar>
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and scrolls its own
 		     panes, but document-flow pages like /account must scroll here. -->
-		<div class="min-h-0 flex-1 overflow-y-auto">
+		<div class="min-h-0 flex-1 overflow-y-auto" bind:clientWidth={regionW}>
 			{@render children()}
 		</div>
 
@@ -53,6 +61,7 @@
 				bind:open={compose.open}
 				prefill={compose.prefill as never}
 				resumeDraftId={compose.resumeDraftId}
+				asDrawer={singlePane}
 			/>
 		{/key}
 	</Sidebar.Inset>

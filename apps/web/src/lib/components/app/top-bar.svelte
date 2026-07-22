@@ -18,7 +18,10 @@
 <header
 	class="bg-background/80 sticky top-0 z-10 flex h-14 items-center gap-3 border-b px-3 backdrop-blur md:px-4"
 >
-	<Sidebar.Trigger class="text-muted-foreground" />
+	<!-- Thumb-sized on touch (40px), back to the compact 32px once a pointer exists. -->
+	<Sidebar.Trigger
+		class="text-muted-foreground size-10 md:size-8 [&_svg:not([class*='size-'])]:size-5 md:[&_svg:not([class*='size-'])]:size-4"
+	/>
 
 	<button
 		type="button"
