@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
@@ -19,8 +20,11 @@
 	const activeId = $derived(page.url.searchParams.get('mailbox') ?? mailboxes[0]?.id ?? null);
 	const active = $derived(mailboxes.find((m) => m.id === activeId) ?? mailboxes[0]);
 
+	const sidebar = useSidebar();
 	function pick(id: string) {
-		// Switch mailbox on the mail route; reset the open thread.
+		// Switch mailbox on the mail route; reset the open thread. On mobile the
+		// sidebar is a sheet — close it so the list is visible.
+		sidebar.setOpenMobile(false);
 		goto(`${resolve('/app')}?mailbox=${id}`, { keepFocus: true });
 	}
 </script>
