@@ -91,6 +91,16 @@
 	const canManageActive = $derived(!!mailboxId && (managedIdsQ.current ?? []).includes(mailboxId));
 	const folder = $derived(FOLDERS.find((f) => f.id === placement) ?? FOLDERS[0]);
 
+	// Folder-specific empty states — a Compose button only where starting a new
+	// message is the natural next step; trash/spam/archive just explain themselves.
+	const EMPTY_COPY: Record<string, { title: string; desc: string; compose?: boolean }> = {
+		inbox: { title: 'Inbox zero', desc: 'New mail lands here.', compose: true },
+		sent: { title: 'Nothing sent yet', desc: 'Messages you send appear here.', compose: true },
+		archived: { title: 'No archived mail', desc: 'Archive conversations to tuck them away without deleting them.' },
+		spam: { title: 'No spam', desc: 'Suspicious mail is quarantined here.' },
+		trash: { title: 'Trash is empty', desc: 'Deleted conversations end up here.' }
+	};
+
 	// Full search-results mode (?q=): the palette shows the top hits; "view all"
 	// lands here, where the list pane becomes the results list. Searches ALL
 	// accessible mailboxes — deliberately not scoped to the active one, so
@@ -145,6 +155,19 @@
 				items = [];
 				nextOffset = 0;
 				reachedEnd = false;
+			}
+		}
+	);
+
+	// Closing the composer (send, discard, or plain close) refreshes the virtual
+	// lists it feeds — Drafts and Scheduled were serving cached results until a
+	// full navigation.
+	watch(
+		[() => compose.open],
+		(cur, prev) => {
+			if (prev?.[0] && !cur[0]) {
+				if (placement === 'drafts') void myDrafts().refresh();
+				if (placement === 'scheduled') void scheduledSends().refresh();
 			}
 		}
 	);
@@ -608,9 +631,12 @@
 					{/if}
 				{/await}
 			{:else if placement === 'drafts'}
-				{#await myDrafts()}
+				<!-- .current (not #await): reactive to refresh() when the composer closes. -->
+				{@const draftsQ = myDrafts()}
+				{#if !draftsQ.current}
 					{@render listSkeleton()}
-				{:then drafts}
+				{:else}
+					{@const drafts = draftsQ.current}
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
 							<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset hover:bg-muted/50">
@@ -634,7 +660,7 @@
 							{/snippet}
 						</EmptyState>
 					{/if}
-				{/await}
+				{/if}
 			{:else if placement === 'scheduled'}
 				{@const schedQ = scheduledSends()}
 				{#if schedQ.current}
@@ -697,13 +723,18 @@
 							{/snippet}
 						</EmptyState>
 					{:else}
-						<EmptyState icon={InboxIcon} title="Nothing here" description="This folder is empty.">
-							{#snippet action()}
-								<Button size="sm" class="gap-1.5" onclick={composeNew}>
-									<PencilIcon class="size-3.5" /> Compose
-								</Button>
-							{/snippet}
-						</EmptyState>
+						{@const empty = EMPTY_COPY[placement] ?? EMPTY_COPY.inbox}
+						{#if empty.compose}
+							<EmptyState icon={folder.icon} title={empty.title} description={empty.desc}>
+								{#snippet action()}
+									<Button size="sm" class="gap-1.5" onclick={composeNew}>
+										<PencilIcon class="size-3.5" /> Compose
+									</Button>
+								{/snippet}
+							</EmptyState>
+						{:else}
+							<EmptyState icon={folder.icon} title={empty.title} description={empty.desc} />
+						{/if}
 					{/if}
 			{/if}
 		</div>
