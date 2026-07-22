@@ -98,10 +98,25 @@ export async function processSubmission(
     return;
   }
 
-  await db
+  // Claim the job with `attempts` as a fencing token: a delayed queue delivery
+  // and a cron-sweep duplicate can arrive concurrently, and both would pass the
+  // terminal check above. D1 serializes writes, so the conditional UPDATE lets
+  // exactly one through; the loser backs off and re-reads terminal state later.
+  const claimed = await db
     .update(mail.submission)
     .set({ status: "sending", attempts: sub.attempts + 1 })
-    .where(eq(mail.submission.id, sub.id));
+    .where(
+      and(
+        eq(mail.submission.id, sub.id),
+        inArray(mail.submission.status, ["queued", "sending"]),
+        eq(mail.submission.attempts, sub.attempts),
+      ),
+    )
+    .returning({ id: mail.submission.id });
+  if (!claimed.length) {
+    m.retry({ delaySeconds: BACKOFF_BASE_SECONDS });
+    return;
+  }
 
   log.info("out.processing", { subId: sub.id, from: sub.envelopeFrom, attempt: sub.attempts + 1 });
 
@@ -115,6 +130,10 @@ export async function processSubmission(
       .where(and(eq(mail.submissionRecipient.submissionId, sub.id), notTerminalRecipient()));
     m.ack();
   };
+
+  // Attempt cap for rescued crash-loops: the soft-error path caps itself, but a
+  // job that dies before any provider call would otherwise be re-swept forever.
+  if (sub.attempts + 1 > MAX_ATTEMPTS) return fail(`gave up after ${sub.attempts} attempts`);
 
   if (!sub.createdByUserId) return fail("no sending user");
   const grantedSenderIds = await sendGrantUserIds(db, sub.mailboxId);
@@ -207,16 +226,38 @@ export async function processSubmission(
 
   log.info("out.recipients", { subId: sub.id, external: external.length, internal: recipients.length - external.length });
 
-  // ---- Rate limit (Part G) — external volume only ----
-  if (external.length > 0) {
+  // ---- Rate limit (Part G) — external volume, charged ONCE per submission ----
+  // Only the first attempt pays; a soft-failure retry re-runs this path and
+  // would otherwise charge the same send up to MAX_ATTEMPTS times.
+  // ponytail: a crash between claim and charge skips the charge on retry —
+  // under-counts one send in a rare path, safe direction for abuse control.
+  if (external.length > 0 && sub.attempts === 0) {
     const rl = await chargeSend(db, sub.mailboxId, external.length);
     if (!rl.ok) return fail(`rate limit exceeded (${rl.scope})`);
   }
 
-  // ---- Send external via provider, chunked at 50 (Part B.4) ----
+  // ---- Send external via provider (Part B.4) ----
+  // The provider couples wire headers to deliveries (To/Cc ARE the recipient
+  // list), so visible recipients must all ride in ONE call or different
+  // recipients would see different To/Cc headers and reply-all fractures.
+  // Only Bcc — envelope-only, never in headers — is chunkable. More than
+  // CHUNK visible recipients is a hard fail, not a fractured send.
   if (external.length > 0) {
     const provider = selectProvider({ EMAIL_SENDER: env.EMAIL_SENDER });
     if (!provider) return fail("no mail provider configured");
+
+    const visible = external.filter((r) => r.role !== "bcc");
+    const bccOnly = external.filter((r) => r.role === "bcc");
+    if (visible.length > CHUNK) {
+      return fail(`too many visible recipients (${visible.length}; max ${CHUNK} across to/cc — use bcc for large sends)`);
+    }
+    // First call: all visible + as much bcc as fits; then bcc-only chunks.
+    const headBcc = bccOnly.slice(0, Math.max(0, CHUNK - visible.length));
+    const batches: (typeof external)[] = [];
+    if (visible.length + headBcc.length > 0) batches.push([...visible, ...headBcc]);
+    for (let i = headBcc.length; i < bccOnly.length; i += CHUNK) {
+      batches.push(bccOnly.slice(i, i + CHUNK));
+    }
 
     const subject = (await decryptContent(ck, message.subjectEnc)) ?? "";
     const built = await buildBody(db, env, ck, message);
@@ -237,8 +278,7 @@ export async function processSubmission(
     const attachments = [...((await loadAttachments(db, env, sub.messageId)) ?? []), ...images];
     const from = { name: fromName, email: sub.envelopeFrom };
 
-    for (let i = 0; i < external.length; i += CHUNK) {
-      const chunk = external.slice(i, i + CHUNK);
+    for (const chunk of batches) {
       const email: OutboundEmail = {
         from,
         to: chunk.filter((r) => r.role === "to").map((r) => r.address),

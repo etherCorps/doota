@@ -228,10 +228,17 @@ export async function enqueueSend(
   return { submissionId, messageId, threadId, deduped: false };
 }
 
+// A submission normally spends seconds in `sending`; one this old lost its job
+// (worker crash past the queue's retry cap) and must be rescued by the sweep.
+const STALE_SENDING_MS = 15 * 60 * 1000;
+
 /**
  * Cron sweep (Part B.3): enqueue submissions whose hold has elapsed but that are
  * still `queued` — i.e. scheduled sends beyond the queue's max delay (never
  * enqueued at request time) plus any near-send whose delayed job was lost.
+ * Also rescues stale `sending` rows (crashed mid-flight, queue retries
+ * exhausted) — the consumer's fencing claim + attempt cap make the re-enqueue
+ * safe and terminal: it either finishes or rolls up to `failed`, never sticks.
  * Consumer idempotency makes a double-enqueue harmless. Returns the count swept.
  */
 export async function sweepDueSubmissions(
@@ -239,13 +246,24 @@ export async function sweepDueSubmissions(
   queue: Queue<OutboundJob>,
   limit = 100,
 ): Promise<number> {
+  const now = new Date();
   const due = await db
     .select({ id: schema.submission.id })
     .from(schema.submission)
-    .where(and(eq(schema.submission.status, "queued"), lte(schema.submission.undoUntil, new Date())))
+    .where(and(eq(schema.submission.status, "queued"), lte(schema.submission.undoUntil, now)))
     .limit(limit);
-  for (const s of due) await queue.send({ submissionId: s.id });
-  return due.length;
+  const stale = await db
+    .select({ id: schema.submission.id })
+    .from(schema.submission)
+    .where(
+      and(
+        eq(schema.submission.status, "sending"),
+        lte(schema.submission.createdAt, new Date(now.getTime() - STALE_SENDING_MS)),
+      ),
+    )
+    .limit(limit);
+  for (const s of [...due, ...stale]) await queue.send({ submissionId: s.id });
+  return due.length + stale.length;
 }
 
 /**

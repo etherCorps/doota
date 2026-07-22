@@ -68,8 +68,8 @@ class CloudflareProvider implements MailProvider {
       const res = await this.sender.send({
         from: email.from.name ? { name: email.from.name, email: email.from.email } : email.from.email,
         subject: email.subject,
-        // `to` is always present (the destinations union needs one of to/cc/bcc);
-        // a chunk always carries ≥1 recipient across the three roles.
+        // `to` is required by the builder type (empty array for a bcc-only
+        // overflow chunk — the destinations union still has ≥1 via bcc).
         to: email.to,
         ...(email.cc?.length ? { cc: email.cc } : {}),
         ...(email.bcc?.length ? { bcc: email.bcc } : {}),

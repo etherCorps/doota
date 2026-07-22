@@ -249,14 +249,46 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(sender.calls.length).toBe(1);
   });
 
-  it("chunks recipients at 50 per provider call", async () => {
-    const to = Array.from({ length: 60 }, (_, i) => `r${i}@ext.com`);
-    const id = await ready({ to });
+  it("keeps all visible recipients in ONE call; only bcc overflows into chunks", async () => {
+    const to = Array.from({ length: 10 }, (_, i) => `t${i}@ext.com`);
+    const bcc = Array.from({ length: 90 }, (_, i) => `b${i}@ext.com`);
+    const id = await ready({ to, bcc });
     const sender = fakeSender();
     await processSubmission(db, consEnv(sender), ck, msg(id));
     expect(sender.calls.length).toBe(2);
-    expect(sender.calls[0].to.length).toBe(50);
-    expect(sender.calls[1].to.length).toBe(10);
+    // Every to/cc rides in call 1 (identical wire To header for everyone)…
+    expect(sender.calls[0].to).toEqual(to);
+    expect(sender.calls[0].bcc?.length).toBe(40); // fills call 1 to 50
+    // …and the rest of the bcc is envelope-only overflow.
+    expect(sender.calls[1].to).toEqual([]);
+    expect(sender.calls[1].bcc?.length).toBe(50);
+  });
+
+  it("fails (not fractures) a send with >50 visible recipients", async () => {
+    const to = Array.from({ length: 60 }, (_, i) => `r${i}@ext.com`);
+    const id = await ready({ to });
+    const sender = fakeSender();
+    const m = msg(id);
+    await processSubmission(db, consEnv(sender), ck, m);
+    expect(sender.calls.length).toBe(0);
+    expect(m.ack).toHaveBeenCalled();
+    const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, id) });
+    expect(sub.status).toBe("failed");
+    expect(sub.lastError).toMatch(/visible recipients/);
+  });
+
+  it("charges the rate limit once per submission, not per retry", async () => {
+    const id = await ready({ to: ["out@ext.com"] });
+    const softThenOk = fakeSender((_b, n) => {
+      if (n === 1) throw new Error("temporary glitch");
+      return { messageId: "pm_ok" };
+    });
+    await expect(processSubmission(db, consEnv(softThenOk), ck, msg(id))).rejects.toThrow(/glitch/);
+    await processSubmission(db, consEnv(softThenOk), ck, msg(id)); // retry succeeds
+    const counter = await db.query.sendCounter.findFirst({
+      where: eq(schema.sendCounter.scopeKey, "mb_alice"),
+    });
+    expect(counter.count).toBe(1); // one external recipient, one charge
   });
 
   it("splits mixed internal/external under one submission", async () => {
@@ -342,6 +374,19 @@ describe("scheduled send sweep (Part B.3)", () => {
     const n = await sweepDueSubmissions(db, q as never);
     expect(n).toBe(1);
     expect(q.sent[0].body).toEqual({ submissionId });
+  });
+
+  it("rescues a submission stuck in `sending` (crashed job, retries exhausted)", async () => {
+    const { submissionId } = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"], undoSeconds: 0 }));
+    await db.update(schema.submission)
+      .set({ status: "sending", createdAt: new Date(Date.now() - 20 * 60 * 1000) })
+      .where(eq(schema.submission.id, submissionId));
+    const q = fakeQueue();
+    expect(await sweepDueSubmissions(db, q as never)).toBe(1);
+    expect(q.sent[0].body).toEqual({ submissionId });
+    // A fresh (seconds-old) `sending` row is NOT rescued.
+    await db.update(schema.submission).set({ createdAt: new Date() }).where(eq(schema.submission.id, submissionId));
+    expect(await sweepDueSubmissions(db, fakeQueue() as never)).toBe(0);
   });
 });
 

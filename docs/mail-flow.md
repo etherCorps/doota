@@ -165,28 +165,28 @@ status and acks without sending.
    additionally walks the whole References chain newest-first, so one unknown
    id can't orphan a reply. Indexes: migration 0012. Residual: replies to mail
    sent before provider ids were captured still fall to the subject fallback.
-2. **Chunking breaks visible headers for >50 recipients**
-   (`outbound-consumer.ts:240`): each chunk's wire To/Cc contains only that
-   chunk's subset, so recipients in different chunks see different To lists and
-   reply-all fractures. Headers should carry the full visible list and only the
-   envelope should chunk — the CF binding ties envelope to headers, so until
-   that's possible, consider capping a send at 50 external recipients.
-3. **No dead-letter queue.** Both consumers: `max_retries: 5`, no
-   `dead_letter_queue` in the wrangler configs. Inbound jobs that fail 5× (bad
-   deploy, wrong MAIL_DEK) are silently dropped — the raw stays in R2 but
+2. **Chunking breaks visible headers for >50 recipients — FIXED (2026-07-23).**
+   All visible (to/cc) recipients now ride in ONE provider call — every
+   recipient sees the same wire To/Cc, reply-all intact. Only Bcc
+   (envelope-only, never in headers) overflows into extra chunks of 50. More
+   than 50 visible recipients is a hard preflight fail with a clear reason,
+   never a fractured send.
+3. **No dead-letter queue — outbound half FIXED (2026-07-23).** The cron sweep
+   now rescues submissions stuck in `sending` for >15 min (crashed job, queue
+   retries exhausted); with the fencing claim + attempt cap the rescue always
+   terminates in `sent` or `failed`, never a silent stick. **Inbound remains
+   open**: jobs that fail 5× are still dropped — the raw stays in R2 but
    nothing re-processes it. Add a DLQ, or a repair cron that diffs
    `raw/{org}/…` keys against `message.r2RawKey`.
-4. **Concurrent double-send race.** Idempotency = re-read status, but
-   `queued → sending` is unconditional (`outbound-consumer.ts:101`, `where id`
-   only). A sweep-enqueued duplicate delivered concurrently with the delayed
-   job can have both invocations pass the terminal check and both hit the
-   provider. Cheap fix: conditional UPDATE (`... where id = ? and status =
-   'queued'`) and bail when 0 rows changed — D1's single-writer makes that an
-   effective lock.
-5. **Retries double-charge the rate limit** (`outbound-consumer.ts:212`):
-   `chargeSend` runs on every attempt for still-unsent externals; a soft
-   provider failure retried 5× charges 5× quota for one send. Charge once
-   (flag on the submission) or refund on the retry path.
+4. **Concurrent double-send race — FIXED (2026-07-23).** `queued → sending` is
+   now a conditional UPDATE fenced by `attempts` (`outbound-consumer.ts`,
+   claim block): two concurrent deliveries (delayed job + sweep duplicate)
+   both read the same attempts value, D1 serializes the writes, exactly one
+   claim matches; the loser backs off and re-reads terminal state. An attempt
+   cap at claim time also terminates rescued crash-loops.
+5. **Retries double-charge the rate limit — FIXED (2026-07-23).** `chargeSend`
+   runs only on the first attempt (`sub.attempts === 0`); soft-failure retries
+   no longer re-charge the same send.
 6. **`thread.lastMessageAt` can move backwards** (`materialize.ts:224`
    `bumpThread` sets unconditionally from the message Date header). A
    late-delivered or date-forged old message drags the thread down the list.
@@ -212,8 +212,10 @@ status and acks without sending.
      same message can duplicate attachment rows briefly.
    - Attachments are fully buffered and base64-expanded in memory (~2.3× file
      size) — very large attachments can press Worker memory / RPC size limits.
-   - `outbound/{org}/{uuid}` R2 staging blobs: verify the cron GC covers them,
-     else growth is unbounded.
+   - ~~`outbound/{org}/{uuid}` R2 staging blobs unbounded~~ — not garbage:
+     they're referenced by `message.r2RawKey` (canonical body) and
+     `attachment.r2Key` (served on demand); retention = message lifetime,
+     same as inbound `raw/`.
 
 Nothing above is urgent at current scale (single org, small recipient lists).
 Priority order if picked up: **1** (threading corrupts permanently) and **3**
