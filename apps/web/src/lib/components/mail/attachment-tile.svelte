@@ -12,6 +12,7 @@
 	import FileArchiveIcon from '@lucide/svelte/icons/file-archive';
 	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
 	import FileCodeIcon from '@lucide/svelte/icons/file-code';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { pdfThumb } from '$lib/client/pdf-thumb';
 
 	type Att = { id: string; filename: string | null; contentType: string | null; size: number | null };
@@ -101,9 +102,10 @@
 {#if variant === 'row'}
 	<a
 		{href}
+		download={name}
 		target="_blank"
 		rel="noopener"
-		title={name}
+		title="Download {name}"
 		class="focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {rowTone}"
 	>
 		<span class="{tone === 'inverse' ? 'bg-background/20' : 'bg-card border'} grid size-9 shrink-0 place-items-center overflow-hidden rounded-md">
@@ -117,16 +119,22 @@
 			<span class="block truncate text-xs font-medium">{name}</span>
 			<span class="{tone === 'inverse' ? 'text-background/70' : 'text-faint'} block text-[10px]">{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
 		</span>
+		<DownloadIcon class="{tone === 'inverse' ? 'text-background/70' : 'text-muted-foreground'} size-3.5 shrink-0" />
 	</a>
 {:else if variant === 'grid'}
 	<a
 		{href}
+		download={name}
 		target="_blank"
 		rel="noopener"
-		title={name}
+		title="Download {name}"
 		class="focus-visible:ring-ring/50 bg-muted group/att relative block aspect-[4/3] overflow-hidden rounded-lg border outline-none focus-visible:ring-2 active:scale-[0.99]"
 	>
 		{@render previewFace()}
+		<!-- download badge: click = download, say so up front -->
+		<span class="bg-scrim/55 pointer-events-none absolute top-1 right-1 grid size-6 place-items-center rounded-full text-white">
+			<DownloadIcon class="size-3" />
+		</span>
 		<!-- name scrim, WhatsApp-style: only over real pixels -->
 		{#if (kind === 'image' || kind === 'video' || (kind === 'pdf' && pdfUrl)) && !broken}
 			<span class="from-scrim/60 pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-4 pb-1">
@@ -138,13 +146,17 @@
 	<!-- strip: Gmail attachment card -->
 	<a
 		{href}
+		download={name}
 		target="_blank"
 		rel="noopener"
-		title={name}
+		title="Download {name}"
 		class="focus-visible:ring-ring/50 bg-card hover:bg-muted/60 block w-36 shrink-0 overflow-hidden rounded-lg border transition-colors outline-none focus-visible:ring-2 active:scale-[0.99]"
 	>
-		<span class="bg-muted block h-20 w-full overflow-hidden border-b">
+		<span class="bg-muted relative block h-20 w-full overflow-hidden border-b">
 			{@render previewFace()}
+			<span class="bg-scrim/55 pointer-events-none absolute top-1 right-1 grid size-6 place-items-center rounded-full text-white">
+				<DownloadIcon class="size-3" />
+			</span>
 		</span>
 		<span class="block px-2 py-1.5">
 			<span class="block truncate text-[11px] font-medium">{name}</span>

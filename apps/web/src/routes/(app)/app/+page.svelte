@@ -1347,7 +1347,8 @@
 													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
-														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}">
+														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
+														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-60 grid-cols-1' : 'max-w-80 grid-cols-2'}">
 															{#each media as a (a.id)}
 																<AttachmentTile att={a} variant="grid" />
 															{/each}

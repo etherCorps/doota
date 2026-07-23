@@ -213,6 +213,18 @@ describe("drafts — send integration & alias defaulting", () => {
     expect(stripped).toBe("Hello world"); // tags stripped for display/search
   });
 
+  it("trims accidental trailing whitespace from the sent body, even nested in inline tags", async () => {
+    const d = await createDraft(db, ck, "u1", {
+      mailboxId: "mb_alice", kind: "new", to: ["out@ext.com"],
+      body: "<p>hello <strong>world </strong></p><p>&nbsp;</p><p><br></p>",
+    });
+    const { submissionId } = await sendDraft(db, env(), ck, "u1", { draftId: d.id });
+    const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
+    const message = await db.query.message.findFirst({ where: eq(schema.message.id, sub.messageId) });
+    const html = await decryptContent(ck, message.bodyHtmlEnc);
+    expect(html).toBe("<p>hello <strong>world</strong></p>");
+  });
+
   it("keeps BCC out of message headers — bcc lives only as a submission recipient", async () => {
     const d = await createDraft(db, ck, "u1", {
       mailboxId: "mb_alice", kind: "new", to: ["a@ext.com"], bcc: ["hidden@ext.com"], subject: "s", body: "b",

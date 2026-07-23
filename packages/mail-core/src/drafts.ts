@@ -21,7 +21,9 @@ function trimTrailingHtml(html: string): string {
   do {
     prev = html;
     html = html
-      .replace(/(?:\s|&nbsp;|<br\s*\/?>)+(<\/(?:p|div)>)\s*$/i, "$1")
+      // Whitespace runs that are followed only by closing tags until the end —
+      // i.e. the visible tail of the mail, even nested (`…world </strong></p>`).
+      .replace(/(?:\s|&nbsp;|<br\s*\/?>)+(?=(?:<\/[a-z][a-z0-9]*>\s*)*$)/gi, "")
       .replace(/<(p|div)(?:\s[^>]*)?>\s*<\/\1>\s*$/i, "")
       .trimEnd();
   } while (html !== prev);
@@ -34,9 +36,12 @@ function toHtmlAndText(body: string | null): { html: string | null; text: string
     const html = trimTrailingHtml(body);
     return { html: html || null, text: stripHtmlTags(html) || null };
   }
-  // Plain text → escape + line breaks so it renders faithfully on the wire.
-  const esc = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return { html: esc.replace(/\r?\n/g, "<br>"), text: body };
+  // Plain text → trim the accidental tail, escape + line breaks so it renders
+  // faithfully on the wire.
+  const trimmed = body.replace(/\s+$/, "");
+  if (!trimmed) return { html: null, text: null };
+  const esc = trimmed.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return { html: esc.replace(/\r?\n/g, "<br>"), text: trimmed };
 }
 
 type Db = DrizzleD1Database<typeof schema>;
