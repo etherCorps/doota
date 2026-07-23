@@ -73,7 +73,8 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
     text: parsed.text ?? null,
     html: parsed.html ?? null,
     r2RawKey: job.r2RawKey,
-    // Metadata only — the bytes stay in the canonical raw and are re-extractable.
+    // r2Key is filled by stageInboundAttachments before materialize — a null
+    // key means an empty/unreadable part, and stays undownloadable.
     attachments: (parsed.attachments ?? []).map((a, i) => ({
       partId: a.contentId ?? String(i),
       filename: a.filename ?? null,
@@ -82,6 +83,30 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
       r2Key: null,
     })),
   };
+}
+
+/**
+ * Give each attachment its own R2 object and stamp the key onto the parsed
+ * message. The raw MIME stays canonical, but nothing re-parses it at read
+ * time: the download endpoint and outbound forwarding both stream per-part
+ * keys — without this, inbound attachments 404 and forwards drop them.
+ */
+async function stageInboundAttachments(
+  env: MailEnv,
+  orgId: string,
+  parsed: PMParsed,
+  pm: ParsedMessage,
+): Promise<void> {
+  for (let i = 0; i < pm.attachments.length; i++) {
+    const content = parsed.attachments?.[i]?.content;
+    if (content == null) continue;
+    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    const key = `attachments/${orgId}/${crypto.randomUUID()}`;
+    await env.MAIL_RAW.put(key, bytes, {
+      httpMetadata: { contentType: pm.attachments[i].contentType ?? "application/octet-stream" },
+    });
+    pm.attachments[i].r2Key = key;
+  }
 }
 
 type QueueBatch = { messages: { body: InboundJob; ack(): void; retry(): void }[] };
@@ -131,6 +156,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       }
 
       const pm = toParsedMessage(parsed, job);
+      await stageInboundAttachments(env, job.orgId, parsed, pm);
 
       const { messageId, threadId } = await materializeMessage(db, job.orgId, pm, deps);
 

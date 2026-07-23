@@ -76,6 +76,11 @@ class CloudflareProvider implements MailProvider {
         ...(headers ? { headers } : {}),
         ...(email.text ? { text: email.text } : {}),
         ...(email.html ? { html: email.html } : {}),
+        // Content MUST be bytes (ArrayBufferView), never a base64 string — the
+        // binding treats strings as RAW content, so base64 text used to arrive
+        // as the attachment's literal data (corrupt files at the recipient).
+        // Uint8Array also serializes over the remote-binding RPC where a bare
+        // ArrayBuffer does not.
         ...(email.attachments?.length
           ? {
               attachments: email.attachments.map((a) =>
@@ -85,13 +90,13 @@ class CloudflareProvider implements MailProvider {
                       contentId: a.contentId,
                       filename: a.filename,
                       type: a.contentType,
-                      content: base64(a.content),
+                      content: new Uint8Array(a.content),
                     }
                   : {
                       disposition: "attachment" as const,
                       filename: a.filename,
                       type: a.contentType,
-                      content: base64(a.content),
+                      content: new Uint8Array(a.content),
                     },
               ),
             }
@@ -120,19 +125,6 @@ class CloudflareProvider implements MailProvider {
       throw new ProviderSendError(msg, permanent, e);
     }
   }
-}
-
-/** ArrayBuffer → base64 string. The EMAIL_SENDER binding can't serialize a raw
- *  ArrayBuffer ("Cannot serialize value: [object ArrayBuffer]") — content must be
- *  a base64 string. */
-function base64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  const CH = 0x8000; // chunk to avoid arg-count limits on large images
-  for (let i = 0; i < bytes.length; i += CH) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CH));
-  }
-  return btoa(bin);
 }
 
 /**
