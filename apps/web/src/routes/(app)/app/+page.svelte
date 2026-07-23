@@ -14,6 +14,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
+	import MailFrame from '$lib/components/mail/mail-frame.svelte';
+	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
@@ -511,6 +513,13 @@
 			const att = atts.find((a) => (a.partId ?? '').replace(/^<|>$/g, '') === norm);
 			return att ? `${pre}${resolve('/api/attachments/[id]', { id: att.id })}${post}` : m0;
 		});
+	}
+
+	/** True when the message HTML references this part inline via cid: — its
+	 * pixels already render in the body, so no separate tile. */
+	function isInlinePart(html: string | null, partId: string | null): boolean {
+		if (!html || !partId) return false;
+		return html.includes(`cid:${partId.replace(/^<|>$/g, '')}`);
 	}
 
 	// img-src 'self': inline attachments are part of the mail itself, served
@@ -1315,10 +1324,12 @@
 													     transparent so the bubble color shows through. -->
 													{@const frameDark = outbound ? mode.current !== 'dark' : mode.current === 'dark'}
 													<div class="w-[min(70vw,32rem)]">
-														<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
-														     content. allow-same-origin WITHOUT allow-scripts stays inert —
-														     needed so inline-attachment requests carry the session cookie. -->
-														<iframe title="Message content" sandbox="allow-same-origin" srcdoc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, frameDark)} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+														<!-- Auto-sizing frame: no inner scrollbar, expands inline (MailFrame). -->
+														<MailFrame
+															doc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, frameDark)}
+															fadeClass={outbound ? 'from-foreground' : 'from-card'}
+															linkClass={outbound ? 'text-background/80' : 'text-brand'}
+														/>
 														{#if !allow}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
 																Load remote images
@@ -1329,13 +1340,26 @@
 													<div class="whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
 												{/if}
 												{#if m.attachments.length}
-													<div class="mt-2 flex flex-wrap gap-1.5">
-														{#each m.attachments as a (a.id)}
-															<a href={resolve('/api/attachments/[id]', { id: a.id })} class="{outbound ? 'bg-background/15' : 'bg-muted border'} flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs" target="_blank" rel="noopener">
-																<PaperclipIcon class="size-3" /><span class="max-w-[14ch] truncate">{a.filename ?? 'file'}</span>
-															</a>
-														{/each}
-													</div>
+													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
+													     documents as compact rows. Parts the HTML references by cid already
+													     render inline — skip their tiles to avoid doubles. -->
+													{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
+													{@const docsOnly = shown.filter((a) => !media.includes(a))}
+													{#if media.length}
+														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}">
+															{#each media as a (a.id)}
+																<AttachmentTile att={a} variant="grid" />
+															{/each}
+														</div>
+													{/if}
+													{#if docsOnly.length}
+														<div class="mt-2 space-y-1.5">
+															{#each docsOnly as a (a.id)}
+																<AttachmentTile att={a} variant="row" tone={outbound ? 'inverse' : 'default'} />
+															{/each}
+														</div>
+													{/if}
 												{/if}
 												<div class="mt-1 flex items-center justify-end gap-1 text-[11px] {outbound ? 'text-background/70' : 'text-faint'}">
 													{#if m.viaAlias}<span class="font-mono">via {m.viaAlias}</span>{/if}
@@ -1399,7 +1423,7 @@
 												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
 												     content. allow-same-origin WITHOUT allow-scripts stays inert —
 												     needed so inline-attachment requests carry the session cookie. -->
-												<iframe title="Message content" sandbox="allow-same-origin" srcdoc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, mode.current === 'dark')} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+												<MailFrame doc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, mode.current === 'dark')} collapsedMax={420} />
 												{#if !allow}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
@@ -1409,13 +1433,15 @@
 												<div class="text-sm whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
 											{/if}
 											{#if m.attachments.length}
-												<div class="mt-2.5 flex flex-wrap gap-1.5">
-													{#each m.attachments as a (a.id)}
-														<a href={resolve('/api/attachments/[id]', { id: a.id })} class="bg-muted hover:bg-accent hover:text-accent-foreground flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition-colors" target="_blank" rel="noopener">
-															<PaperclipIcon class="size-3" /><span class="max-w-[18ch] truncate">{a.filename ?? 'file'}</span>
-														</a>
-													{/each}
-												</div>
+												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
+												{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+												{#if shown.length}
+													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
+														{#each shown as a (a.id)}
+															<AttachmentTile att={a} variant="strip" />
+														{/each}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									{/if}
