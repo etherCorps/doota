@@ -18,20 +18,31 @@
 	let email = $state(page?.url.searchParams.get('email') ?? '');
 	let password = $state(page?.url.searchParams.get('password') ?? '');
 	let code = $state('');
-	let step = $state<'credentials' | 'totp'>('credentials');
+	// 'entering': credentials verified, navigating in — the slow stretch (session
+	// write, onboarding derivation, first layout loads) that used to render as a
+	// dead form. It gets its own full-card state instead.
+	let step = $state<'credentials' | 'totp' | 'entering'>('credentials');
 	let useBackup = $state(false);
 	let loading = $state(false);
+	let passkeyLoading = $state(false);
 
 	const shell = $derived(
 		step === 'credentials'
 			? { title: 'Doota', description: 'Log in to your mailbox.' }
-			: {
-					title: 'Two-factor check',
-					description: useBackup
-						? 'Enter one of your backup codes.'
-						: 'Enter the 6-digit code from your authenticator app.'
-				}
+			: step === 'entering'
+				? { title: 'Doota', description: 'Signing you in…' }
+				: {
+						title: 'Two-factor check',
+						description: useBackup
+							? 'Enter one of your backup codes.'
+							: 'Enter the 6-digit code from your authenticator app.'
+					}
 	);
+
+	async function enter() {
+		step = 'entering';
+		await goto(resolve('/'));
+	}
 
 	async function loginPassword(e: SubmitEvent) {
 		e.preventDefault();
@@ -46,7 +57,7 @@
 			step = 'totp';
 			return;
 		}
-		await goto(resolve('/'));
+		await enter();
 	}
 
 	async function verifyCode(e: SubmitEvent) {
@@ -60,22 +71,29 @@
 			toast.error(res.error.message ?? 'Invalid code.');
 			return;
 		}
-		await goto(resolve('/'));
+		await enter();
 	}
 
 	// No TOTP after passkey — a passkey is already two factors.
 	async function loginPasskey() {
+		passkeyLoading = true;
 		const res = await authClient.signIn.passkey();
+		passkeyLoading = false;
 		if (res?.error) {
 			toast.error(res.error.message ?? 'Passkey login failed.');
 			return;
 		}
-		await goto(resolve('/'));
+		await enter();
 	}
 </script>
 
 <AuthShell title={shell.title} description={shell.description}>
-	{#if step === 'credentials'}
+	{#if step === 'entering'}
+		<div class="text-muted-foreground flex flex-col items-center gap-3 py-10 text-sm" role="status">
+			<Spinner class="size-6" />
+			<span>Loading your mailbox…</span>
+		</div>
+	{:else if step === 'credentials'}
 		<form onsubmit={loginPassword}>
 			<Field.Group>
 				<Field.Field>
@@ -114,16 +132,22 @@
 					</Field.Description>
 				</Field.Field>
 				<Field.Field>
-					<Button class="w-full" type="submit" disabled={loading}>
+					<Button class="w-full" type="submit" disabled={loading || passkeyLoading}>
 						{#if loading}<Spinner class="mr-1" />{/if}
-						Log in
+						{loading ? 'Checking…' : 'Log in'}
 					</Button>
 				</Field.Field>
 				<Field.Separator>Or</Field.Separator>
 				<Field.Field>
-					<Button class="w-full" variant="outline" type="button" onclick={loginPasskey}>
-						<FingerprintIcon />
-						Log in with passkey
+					<Button
+						class="w-full"
+						variant="outline"
+						type="button"
+						disabled={loading || passkeyLoading}
+						onclick={loginPasskey}
+					>
+						{#if passkeyLoading}<Spinner />{:else}<FingerprintIcon />{/if}
+						{passkeyLoading ? 'Waiting for your passkey…' : 'Log in with passkey'}
 					</Button>
 				</Field.Field>
 			</Field.Group>
@@ -151,7 +175,7 @@
 				<Field.Field>
 					<Button class="w-full" type="submit" disabled={loading}>
 						{#if loading}<Spinner class="mr-1" />{/if}
-						Verify
+						{loading ? 'Verifying…' : 'Verify'}
 					</Button>
 				</Field.Field>
 				<Field.Field>

@@ -32,8 +32,18 @@
 	);
 
 	function measure() {
-		const body = frame?.contentDocument?.body;
-		if (body) contentH = Math.ceil(body.scrollHeight) + 4;
+		const d = frame?.contentDocument;
+		if (!d?.body || !d.documentElement) return;
+		// body.scrollHeight alone under-measures: the last element's bottom margin
+		// collapses out of it, so the frame ended a few px short and the final
+		// line hid under the rounded corner / whatever sits below the frame.
+		const h = Math.max(
+			d.body.scrollHeight,
+			d.body.offsetHeight,
+			d.documentElement.scrollHeight,
+			d.documentElement.offsetHeight
+		);
+		contentH = Math.ceil(h) + 8;
 	}
 
 	$effect(() => {

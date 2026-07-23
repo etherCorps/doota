@@ -2,8 +2,10 @@
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import { authClient } from '$lib/client/auth-client';
 	import { goto } from '$app/navigation';
+	import { navigating } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
 	let { data, children } = $props();
 
@@ -32,7 +34,20 @@
 		</div>
 	</header>
 
-	<main class="mx-auto w-full max-w-xl flex-1 px-4 py-8 md:py-12">
+	<main class="relative mx-auto w-full max-w-xl flex-1 px-4 py-8 md:py-12">
 		{@render children()}
+		<!-- Every step completion re-derives onboarding server-side (fresh D1 reads)
+		     before the page updates — surface that as progress, not a frozen page. -->
+		{#if navigating.to}
+			<div
+				class="bg-background/70 absolute inset-0 z-10 flex items-start justify-center pt-24 backdrop-blur-[2px]"
+				role="status"
+			>
+				<div class="text-muted-foreground flex items-center gap-2.5 text-sm">
+					<Spinner class="size-4" />
+					<span>Checking your setup…</span>
+				</div>
+			</div>
+		{/if}
 	</main>
 </div>

@@ -153,7 +153,20 @@
 				if (!file) continue;
 				const reader = new FileReader();
 				reader.onload = () => {
-					document.execCommand('insertHTML', false, `<img src="${reader.result}" style="max-width:100%" />`);
+					// Insert small (320px) instead of natural size — a pasted screenshot
+					// otherwise swallows the composer and fights every resize attempt.
+					// The wrapper's `resize:both` shows a native corner grip so the user
+					// sizes it up by hand; the inline width rides onto the wire so the
+					// recipient sees the size the sender chose.
+					// contenteditable=false makes the wrapper atomic: the caret can't get
+					// inside it (typed text was joining the image box), backspace removes
+					// it whole, and the native resize grip still works. The trailing <br>
+					// gives the caret a line to land on below the image.
+					document.execCommand(
+						'insertHTML',
+						false,
+						`<span contenteditable="false" style="display:inline-block;resize:both;overflow:hidden;width:320px;max-width:100%"><img src="${reader.result}" style="width:100%;height:auto;display:block" /></span><br>`
+					);
 					emit();
 				};
 				reader.readAsDataURL(file);
@@ -269,7 +282,7 @@
 		}}
 		onpaste={onPaste}
 		onkeydown={onEditorKeydown}
-		class="prose-sm min-h-[200px] max-w-none overflow-auto px-3 py-2 text-base outline-none md:text-sm
+		class="prose-sm max-h-[45svh] min-h-[200px] max-w-none overflow-auto overscroll-contain px-3 py-2 text-base outline-none md:text-sm
 			[&:empty]:before:text-muted-foreground [&:empty]:before:content-[attr(data-placeholder)]
 			[&_a]:text-brand [&_a]:underline
 			[&_blockquote]:border-muted-foreground/30 [&_blockquote]:text-muted-foreground [&_blockquote]:border-l-2 [&_blockquote]:pl-3"

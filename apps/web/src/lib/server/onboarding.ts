@@ -29,7 +29,22 @@ type SessionUser = {
   id: string;
   role?: string | null;
   onboardedAt?: number | null;
+  twoFactorEnabled?: boolean | null;
 };
+
+/** Elevated accounts must hold BOTH factors (TOTP + passkey). */
+export function isElevatedRole(role?: string | null): boolean {
+  return role === "admin" || role === "superadmin";
+}
+
+/**
+ * True when an elevated account's session says TOTP 2FA is off — the state that
+ * lets bare credentials sign in with no second factor. Cheap (session field
+ * only); used by hooks to reopen onboarding even after onboardedAt is stamped.
+ */
+export function hasSecurityDebt(user: SessionUser): boolean {
+  return isElevatedRole(user.role) && !user.twoFactorEnabled;
+}
 
 const HOME_BY_ROLE: Record<string, string> = { superadmin: "/admin" };
 export function onboardingHome(role?: string | null): string {
@@ -53,10 +68,12 @@ export async function getOnboardingStatus(
   db: DrizzleD1Database<typeof schema>,
   user: SessionUser,
 ): Promise<OnboardingStatus> {
-  if (user.onboardedAt) return DONE;
+  // Onboarded users normally skip re-derivation — EXCEPT an elevated account
+  // with security debt: the 2FA+passkey mandate reopens secure-account for them.
+  if (user.onboardedAt && !hasSecurityDebt(user)) return DONE;
 
   const role = user.role ?? "member";
-  const isElevated = role === "admin" || role === "superadmin";
+  const isElevated = isElevatedRole(role);
 
   const [fresh, passkeys] = await Promise.all([
     db.query.user.findFirst({
@@ -72,7 +89,10 @@ export async function getOnboardingStatus(
     db.$count(schema.passkey, eq(schema.passkey.userId, user.id)),
   ]);
 
-  const secured = !!fresh?.twoFactorEnabled || passkeys > 0;
+  // BOTH factors are mandatory for elevated roles. Passkey-only is not enough:
+  // password sign-in never consults passkeys, so an admin with a passkey but no
+  // TOTP could be logged in with bare credentials — that exact hole shipped once.
+  const secured = !!fresh?.twoFactorEnabled && passkeys > 0;
   const steps: OnboardingStep[] = [];
 
   // The super-admin onboards the first mail domain here: at genesis no domain is
@@ -120,7 +140,7 @@ export async function getOnboardingStatus(
       id: "secure-account",
       title: "Secure your account",
       description:
-        "Admin accounts require two-factor authentication or a passkey.",
+        "Admin accounts require both two-factor authentication and a passkey.",
       done: secured,
     });
   }

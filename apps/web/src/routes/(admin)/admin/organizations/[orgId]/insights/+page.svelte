@@ -204,6 +204,31 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if reputation}
+		<!-- Sending reputation — the Cloudflare dashboard's widget numbers:
+		     last event per message, no NDRs, delivered vs failed vs spam. -->
+		<div class="rounded-lg border p-4">
+			<div class="text-muted-foreground mb-3 text-xs">Sending reputation · {org.domain}</div>
+			<div class="grid grid-cols-2 gap-3">
+				{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}
+					<div>
+						<div class="text-muted-foreground text-xs">{w.label}</div>
+						<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(w.rep.rate)}">
+							{w.rep.rate === null ? '—' : `${w.rep.rate}%`}
+						</div>
+						<div class="text-faint mt-0.5 text-[11px] tabular-nums">
+							{#if w.rep.total === 0}
+								No sends in this window
+							{:else}
+								{w.rep.delivered.toLocaleString()} delivered · {w.rep.failed.toLocaleString()} failed · {w.rep.spam.toLocaleString()} spam-rejected
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<ToggleGroup.Root
 			type="single"
@@ -260,31 +285,6 @@
 					<div class="mt-1 text-2xl font-semibold tabular-nums">{totals.rate === null ? '—' : `${totals.rate}%`}</div>
 				</div>
 			</div>
-
-			{#if reputation}
-				<!-- Sending reputation — the Cloudflare dashboard's widget numbers:
-				     last event per message, no NDRs, delivered vs failed vs spam. -->
-				<div class="rounded-lg border p-4">
-					<div class="text-muted-foreground mb-3 text-xs">Sending reputation · {org.domain}</div>
-					<div class="grid grid-cols-2 gap-3">
-						{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}
-							<div>
-								<div class="text-muted-foreground text-xs">{w.label}</div>
-								<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(w.rep.rate)}">
-									{w.rep.rate === null ? '—' : `${w.rep.rate}%`}
-								</div>
-								<div class="text-faint mt-0.5 text-[11px] tabular-nums">
-									{#if w.rep.total === 0}
-										No sends in this window
-									{:else}
-										{w.rep.delivered.toLocaleString()} delivered · {w.rep.failed.toLocaleString()} failed · {w.rep.spam.toLocaleString()} spam-rejected
-									{/if}
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
 
 			{#if chartData.length}
 				<div class="rounded-lg border p-4">

@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import {
   getOnboardingStatus,
+  hasSecurityDebt,
   markOnboarded,
   onboardingHome,
 } from "$lib/server/onboarding.js";
@@ -60,7 +61,10 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     const inOnboarding = p.startsWith("/onboarding");
 
     if (!bypass) {
-      if (user.onboardedAt) {
+      // Security mandate: an admin/superadmin whose session says 2FA is off can
+      // be signed in with bare credentials — even if already onboarded, they go
+      // back through the secure-account step before anything else is reachable.
+      if (user.onboardedAt && !hasSecurityDebt(user)) {
         // Fast path: finished. Don't let them wander back into the flow.
         if (inOnboarding) redirect(302, onboardingHome(user.role));
       } else {
