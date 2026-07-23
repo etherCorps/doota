@@ -50,6 +50,6 @@
 
 	$effect(() => {
 		const evt = live.current;
-		if (evt && FAILED.has(evt.status)) void toastUnseen();
+		if (evt?.type === 'send_state' && FAILED.has(evt.status)) void toastUnseen();
 	});
 </script>

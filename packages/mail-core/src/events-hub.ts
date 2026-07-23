@@ -27,9 +27,9 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 
 /**
- * One send-state transition, pushed to the sending user's clients. Thin on
- * purpose: subscribers re-read the DB for display data (subject, reason,
- * recipients) — the event only says WHAT changed and WHERE (thread) to look.
+ * Events pushed to a user's clients. Thin on purpose: subscribers re-read the
+ * DB for display data (subject, reason, recipients) — an event only says WHAT
+ * changed and WHERE (thread/mailbox) to look.
  */
 export type MailStateEvent = {
   type: "send_state";
@@ -38,6 +38,16 @@ export type MailStateEvent = {
   /** New submission status (sent/delivered/failed/bounced_hard/…). */
   status: string;
 };
+
+/** New mail landed in a mailbox the user can read (external inbound OR an
+ * internal same-org delivery). Drives live inbox lists + unread badges. */
+export type InboundMailEvent = {
+  type: "inbound";
+  threadId: string;
+  mailboxId: string;
+};
+
+export type MailEvent = MailStateEvent | InboundMailEvent;
 
 export class MailEventHub {
   constructor(private readonly ctx: DurableObjectState) {}
@@ -99,14 +109,39 @@ export async function notifyMailState(
   evt: Omit<MailStateEvent, "type">,
 ): Promise<void> {
   if (!hub || !userId) return;
+  await post(hub, userId, JSON.stringify({ type: "send_state", ...evt } satisfies MailStateEvent));
+}
+
+/** One frame to one user's hub; swallow errors (streams self-heal on catch-up). */
+async function post(hub: EventHubNamespace, userId: string, frame: string): Promise<void> {
   try {
-    await hub.get(hub.idFromName(userId)).fetch("https://hub/notify", {
-      method: "POST",
-      body: JSON.stringify({ type: "send_state", ...evt } satisfies MailStateEvent),
-    });
+    await hub.get(hub.idFromName(userId)).fetch("https://hub/notify", { method: "POST", body: frame });
   } catch {
     // Stream consumers self-heal via their catch-up read; drop it.
   }
+}
+
+/**
+ * New-mail fan-out: a delivery landed in `mailboxId` — wake every user holding
+ * a mailbox_access grant on it (shared mailboxes have several). Called from
+ * both delivery producers: the inbound consumer and the outbound consumer's
+ * internal short-circuit. Best-effort like all hub traffic, and free when the
+ * binding is absent.
+ */
+export async function notifyInboundMail(
+  db: DrizzleD1Database<typeof schema>,
+  hub: EventHubNamespace | undefined,
+  mailboxId: string,
+  threadId: string,
+): Promise<void> {
+  if (!hub) return;
+  const users = await db
+    .select({ userId: schema.mailboxAccess.userId })
+    .from(schema.mailboxAccess)
+    .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
+  if (!users.length) return;
+  const frame = JSON.stringify({ type: "inbound", threadId, mailboxId } satisfies InboundMailEvent);
+  for (const u of users) await post(hub, u.userId, frame);
 }
 
 /**
@@ -153,7 +188,7 @@ export async function notifySubmissionState(
 export async function* mailEventStream(
   hub: EventHubNamespace,
   userId: string,
-): AsyncGenerator<MailStateEvent> {
+): AsyncGenerator<MailEvent> {
   const res = await hub
     .get(hub.idFromName(userId))
     .fetch("https://hub/ws", { headers: { Upgrade: "websocket" } });
@@ -161,12 +196,12 @@ export async function* mailEventStream(
   if (!ws) throw new Error(`event hub refused websocket (${res.status})`);
   ws.accept();
 
-  const queue: MailStateEvent[] = [];
+  const queue: MailEvent[] = [];
   let wake: (() => void) | null = null;
   let closed = false;
   ws.addEventListener("message", (e) => {
     try {
-      queue.push(JSON.parse(String(e.data)) as MailStateEvent);
+      queue.push(JSON.parse(String(e.data)) as MailEvent);
     } catch {
       // Unparseable frame — ignore; catch-up reads keep the stream honest.
     }

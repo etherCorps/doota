@@ -8,7 +8,7 @@ import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
-import { listThreads, getThread } from "@doota/mail-core/read";
+import { listThreads, getThread, countUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
 
@@ -95,6 +95,13 @@ export const mailboxThreads = query(
     });
   },
 );
+
+/** Unread inbox count for the badge/title — refreshed by live inbound events. */
+export const unreadCount = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
+  await assertMailboxAccess(mailboxId);
+  const { locals } = getRequestEvent();
+  return countUnread(locals.db, { mailboxId, userId: locals.user!.id });
+});
 
 export const openThread = query(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),

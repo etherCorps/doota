@@ -12,7 +12,7 @@ import { buildQuotedText, buildQuotedHtml } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
-import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
+import { notifyInboundMail, notifySubmissionState, type EventHubNamespace } from "./events-hub";
 import { log, errInfo } from "./log";
 import type { OutboundJob } from "./outbound";
 
@@ -223,6 +223,8 @@ export async function processSubmission(
         sentAt: message.sentAt ? message.sentAt.getTime() : now,
       });
       await setRecipient(db, r.id, { status: "delivered" });
+      // Live inbox for the internal recipient — same push external mail gets.
+      await notifyInboundMail(db, env.MAIL_EVENTS, resolved.mailboxId, message.threadId);
       continue;
     }
     external.push({ id: r.id, address: r.address, role: r.role });

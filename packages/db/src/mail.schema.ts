@@ -201,7 +201,10 @@ export const message = sqliteTable(
   },
   (t) => [
     uniqueIndex("message_org_msgid_uidx").on(t.orgId, t.messageIdHeader),
-    index("message_thread_idx").on(t.threadId),
+    // Composite: serves plain thread lookups AND latest-message-per-thread
+    // (ORDER BY sent_at) without scanning every message in the thread — the
+    // thread-list hot path pays per-thread O(1) instead of O(messages).
+    index("message_thread_sent_idx").on(t.threadId, t.sentAt),
   ],
 );
 
@@ -572,6 +575,8 @@ export const submission = sqliteTable(
     index("submission_mailbox_idx").on(t.mailboxId),
     index("submission_message_idx").on(t.messageId),
     index("submission_status_idx").on(t.status),
+    // Per-user failed/scheduled listings scan only that user's rows.
+    index("submission_user_status_idx").on(t.createdByUserId, t.status),
     // Wire Message-ID → our message: replies to provider-rewritten ids resolve here.
     index("submission_provider_msgid_idx").on(t.providerMessageId),
   ],

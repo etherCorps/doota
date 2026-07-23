@@ -18,6 +18,7 @@
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
+	import { unread } from '$lib/client/unread.svelte.js';
 
 	let {
 		user,
@@ -95,6 +96,11 @@
 									</a>
 								{/snippet}
 							</Sidebar.MenuButton>
+							{#if folder.id === 'inbox' && unread.count > 0}
+								<Sidebar.MenuBadge class="bg-brand/10 text-brand rounded-full group-data-[collapsible=icon]:hidden">
+									{unread.count > 99 ? '99+' : unread.count}
+								</Sidebar.MenuBadge>
+							{/if}
 						</Sidebar.MenuItem>
 					{/each}
 				</Sidebar.Menu>

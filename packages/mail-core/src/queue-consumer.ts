@@ -5,7 +5,7 @@ import * as schema from "@doota/db/schema";
 import { importKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
-import { notifySubmissionState } from "./events-hub";
+import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
@@ -147,6 +147,9 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         subaddressTag: job.subaddressTag,
         sentAt: pm.sentAt,
       });
+
+      // Live inbox: wake the mailbox's users — list prepends + badge bumps.
+      await notifyInboundMail(db, env.MAIL_EVENTS, job.resolvedMailboxId, threadId);
 
       m.ack();
     } catch (e) {

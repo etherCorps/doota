@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
@@ -30,8 +30,10 @@
 		deleteNoteById,
 		bulkMoveThreads,
 		bulkMarkRead,
-		emptyFolder
+		emptyFolder,
+		unreadCount
 	} from '$lib/rpc/thread.remote';
+	import { unread } from '$lib/client/unread.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { toast } from 'svelte-sonner';
 	import MailIcon from '@lucide/svelte/icons/mail';
@@ -128,14 +130,46 @@
 	// instead of blanking (which read like a full reload).
 	const openDto = $derived(threadQ?.current ?? null);
 
-	// Live send-state (MailEventHub push): when an event lands in the thread
-	// that's open, refresh it in place — ticks flip clock→sent→delivered (and
-	// failure banners appear) without reopening. Toasting lives in the app
-	// shell's notifier; this only keeps the visible thread honest.
+	// Unread inbox count → sidebar badge + tab title. The mail page owns the
+	// fetch (it knows the mailbox); readers watch the shared store.
+	async function refreshUnread() {
+		if (!mailboxId) return;
+		try {
+			unread.count = await unreadCount({ mailboxId });
+		} catch {
+			// transient — next trigger retries
+		}
+	}
+	watch([() => mailboxId], ([mb]) => {
+		if (mb) void refreshUnread();
+		else unread.count = 0;
+	});
+	$effect(() => {
+		document.title = unread.count > 0 ? `(${unread.count}) Doota` : 'Doota';
+	});
+
+	// Live MailEventHub push. send_state: refresh the open thread in place —
+	// ticks flip clock→sent→delivered, failure banners appear without reopening
+	// (toasting lives in the app shell's notifier). inbound: new mail for this
+	// mailbox — bump the badge, refresh the visible list, and refresh the open
+	// thread if the reply landed there. Tracks ONLY the event; folder/thread
+	// state is read untracked so navigation doesn't replay the last event.
 	const liveEvents = mailEvents();
 	$effect(() => {
 		const evt = liveEvents.current;
-		if (evt && evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
+		if (!evt) return;
+		untrack(() => {
+			if (evt.type === 'send_state') {
+				if (evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
+				return;
+			}
+			if (evt.mailboxId !== mailboxId) return;
+			void refreshUnread();
+			if (evt.threadId === threadId) void threadQ?.refresh();
+			// ponytail: full first-page reload on inbound — fine at inbox scale;
+			// switch to a prepend-merge if reset scroll ever annoys.
+			if (placement === 'inbox' || placement === 'sent') void loadThreads(true);
+		});
 	});
 
 	// Thread list — infinite scroll. Pages accumulate into `items`; the next page
@@ -204,6 +238,7 @@
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
 			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
 			threadSel.clear();
+			void refreshUnread();
 		} finally {
 			bulkBusy = false;
 		}
@@ -306,12 +341,13 @@
 	const short = (id: string, members: { userId: string; name: string }[]) =>
 		members.find((m) => m.userId === id)?.name ?? 'someone';
 
-	// Open a thread and mark it read (clears the unread dot).
+	// Open a thread and mark it read (clears the unread dot + badge).
 	async function selectThread(id: string) {
 		nav({ thread: id });
 		if (mailboxId) {
 			await markThreadRead({ mailboxId, threadId: id });
 			patchItem(id, { unread: false });
+			void refreshUnread();
 		}
 	}
 

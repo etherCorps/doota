@@ -5,6 +5,7 @@ import { makeDb } from "./mail-db";
 import { fakeHub } from "./fakes";
 import { invalidateDomainCache } from "@doota/db/org-domains";
 import { applyProviderEvent } from "@doota/mail-core/events-consumer";
+import { notifyInboundMail } from "@doota/mail-core/events-hub";
 
 /**
  * Email Service event-subscriptions consumer: structured delivery lifecycle
@@ -90,6 +91,23 @@ describe("provider event application", () => {
     expect(sup?.reason).toBe("complaint");
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, "sub1") });
     expect(sub.status).toBe("complained");
+  });
+
+  it("inbound fan-out notifies every grant holder of the mailbox", async () => {
+    await db.insert(schema.user).values({
+      id: "u2", name: "u2", email: "u2@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date(),
+    });
+    await db.insert(schema.mailboxAccess).values([
+      { id: "ma1", userId: "u1", mailboxId: "mb1" },
+      { id: "ma2", userId: "u2", mailboxId: "mb1" },
+    ]);
+    await notifyInboundMail(db, hub as never, "mb1", "th1");
+    expect(hub.notified).toHaveLength(2);
+    expect(hub.notified[0].body).toMatchObject({ type: "inbound", threadId: "th1", mailboxId: "mb1" });
+    // No grants → no notifications, no throw.
+    hub.notified.length = 0;
+    await notifyInboundMail(db, hub as never, "mb_none", "th1");
+    expect(hub.notified).toHaveLength(0);
   });
 
   it("unknown message id / deferred are safe no-ops", async () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -154,6 +154,40 @@ export async function listThreads(
     });
   }
   return out;
+}
+
+/**
+ * Unread INBOX threads for (mailbox, user): thread newer than the user's read
+ * cursor (or never read). One indexed count — feeds the sidebar badge + title.
+ */
+export async function countUnread(
+  db: Db,
+  input: { mailboxId: string; userId: string },
+): Promise<number> {
+  const rows = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.threadState)
+    .innerJoin(schema.thread, eq(schema.thread.id, schema.threadState.threadId))
+    .leftJoin(
+      schema.threadRead,
+      and(
+        eq(schema.threadRead.threadId, schema.threadState.threadId),
+        eq(schema.threadRead.mailboxId, input.mailboxId),
+        eq(schema.threadRead.userId, input.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.threadState.mailboxId, input.mailboxId),
+        eq(schema.threadState.placement, "inbox"),
+        isNull(schema.threadState.hiddenAt),
+        or(
+          isNull(schema.threadRead.lastReadAt),
+          lt(schema.threadRead.lastReadAt, schema.thread.lastMessageAt),
+        ),
+      ),
+    );
+  return rows[0]?.n ?? 0;
 }
 
 /** Full thread DTO for a mailbox: timeline items + this mailbox's triage. */
