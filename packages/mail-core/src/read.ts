@@ -268,6 +268,7 @@ export async function getThread(
         .select({
           id: schema.attachment.id,
           messageId: schema.attachment.messageId,
+          partId: schema.attachment.partId,
           filename: schema.attachment.filename,
           contentType: schema.attachment.contentType,
           size: schema.attachment.size,
@@ -316,6 +317,7 @@ export async function getThread(
       viaAliasId: d?.viaAliasId ?? null,
       attachments: (attByMsg.get(m.id) ?? []).map((a) => ({
         id: a.id,
+        partId: a.partId,
         filename: a.filename,
         contentType: a.contentType,
         size: a.size,

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeSubject,
   parseReferences,
-  resolveParentMessageId,
+  threadingHeaders,
   stripQuotesText,
   stripQuotesHtml,
   stripHtmlTags,
@@ -26,10 +26,19 @@ describe("threading helpers", () => {
     expect(parseReferences(null)).toEqual([]);
   });
 
-  it("prefers In-Reply-To, falls back to last Reference", () => {
-    expect(resolveParentMessageId("<p@x>", "<r1@x> <r2@x>")).toBe("<p@x>");
-    expect(resolveParentMessageId(null, "<r1@x> <r2@x>")).toBe("<r2@x>");
-    expect(resolveParentMessageId(null, null)).toBeNull();
+  it("builds In-Reply-To + References from the parent chain", () => {
+    const h = threadingHeaders({ messageIdHeader: "<p@x>", references: "<r1@x> <r2@x>" });
+    expect(h["In-Reply-To"]).toBe("<p@x>");
+    expect(h.References).toBe("<r1@x> <r2@x> <p@x>");
+    expect(threadingHeaders(null)).toEqual({});
+  });
+
+  it("caps References under the provider's 2KB header limit, keeping root + tail", () => {
+    const refs = Array.from({ length: 80 }, (_, i) => `<ancestor-${i}-padpadpadpadpadpad@x>`).join(" ");
+    const h = threadingHeaders({ messageIdHeader: "<p@x>", references: refs });
+    expect(h.References!.length).toBeLessThanOrEqual(1900);
+    expect(h.References!.startsWith("<ancestor-0-")).toBe(true); // root kept
+    expect(h.References!.endsWith("<p@x>")).toBe(true); // parent kept
   });
 });
 

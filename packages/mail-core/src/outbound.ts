@@ -105,15 +105,29 @@ export async function enqueueSend(
   const sentAt = req.sendAt ?? now;
 
   // Parent (reply) for threading — cleartext headers, no decryption.
-  const parent = req.parentMessageId
+  let parent = req.parentMessageId
     ? await db.query.message.findFirst({
         where: and(
           eq(schema.message.orgId, req.orgId),
           eq(schema.message.messageIdHeader, req.parentMessageId),
         ),
-        columns: { messageIdHeader: true, references: true },
+        columns: { id: true, messageIdHeader: true, references: true },
       })
     : null;
+  // Replying to OUR OWN message: its stored header id is the internally minted
+  // one, but the wire copy carried the provider's Message-ID — the only id the
+  // recipient's client has ever seen. Thread on THAT id, or a self-follow-up
+  // (second send before anyone replies) lands as a NEW conversation in
+  // Gmail/Outlook. Our own inbound resolver handles both ids either way.
+  if (parent) {
+    const psub = await db.query.submission.findFirst({
+      where: eq(schema.submission.messageId, parent.id),
+      columns: { providerMessageId: true },
+    });
+    if (psub?.providerMessageId) {
+      parent = { ...parent, messageIdHeader: psub.providerMessageId };
+    }
+  }
   const headers = threadingHeaders(parent ?? null);
 
   // Our own Message-ID: the dedupe key if the message reflects back to us.

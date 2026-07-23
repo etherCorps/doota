@@ -73,7 +73,8 @@ export type MessageDTO = {
   /** Alias id the mail was delivered through — lets a reply default its From to
    * that alias (otherwise hide-my-email leaks the real address on first reply). */
   viaAliasId: string | null;
-  attachments: { id: string; filename: string | null; contentType: string | null; size: number | null }[];
+  /** partId carries the MIME contentId for inline parts — the `cid:` target. */
+  attachments: { id: string; partId: string | null; filename: string | null; contentType: string | null; size: number | null }[];
   /** Present only for outbound messages (this mailbox sent it). */
   submission?: SubmissionState;
 };
@@ -133,20 +134,6 @@ export function parseReferences(header: string | null | undefined): string[] {
   if (!header) return [];
   const ids = header.match(/<[^>]+>/g) ?? [];
   return [...new Set(ids.map((s) => s.trim()))];
-}
-
-/**
- * The parent Message-ID for a reply: last of In-Reply-To, else last of
- * References. Cleartext metadata — no decryption needed.
- */
-export function resolveParentMessageId(
-  inReplyTo: string | null | undefined,
-  references: string | null | undefined,
-): string | null {
-  const irt = parseReferences(inReplyTo);
-  if (irt.length) return irt[irt.length - 1];
-  const refs = parseReferences(references);
-  return refs.length ? refs[refs.length - 1] : null;
 }
 
 /**
@@ -241,10 +228,14 @@ export function threadingHeaders(parent: {
   references: string | null;
 } | null): { "In-Reply-To"?: string; References?: string } {
   if (!parent) return {};
-  const chain = [...parseReferences(parent.references), parent.messageIdHeader];
+  const ids = [...new Set([...parseReferences(parent.references), parent.messageIdHeader])];
+  // Cloudflare rejects header values over 2,048 bytes (E_HEADER_VALUE_TOO_LONG,
+  // permanent) — a deep thread must not hard-fail the send. RFC convention when
+  // trimming: keep the root plus the recent tail, drop the middle.
+  while (ids.length > 2 && ids.join(" ").length > 1900) ids.splice(1, 1);
   return {
     "In-Reply-To": parent.messageIdHeader,
-    References: [...new Set(chain)].join(" "),
+    References: ids.join(" "),
   };
 }
 

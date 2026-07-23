@@ -499,8 +499,25 @@
 	// theme (the iframe element paints bg-card); emails that hardcode their own
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
+
+	// Inline attachments: external clients embed pasted images as MIME parts and
+	// reference them with src="cid:<contentId>" — unresolvable inside the iframe.
+	// Rewrite each cid: to our attachment endpoint (partId carries the contentId,
+	// with or without angle brackets).
+	function inlineCids(html: string, atts: MessageDTO['attachments']): string {
+		if (!html.includes('cid:')) return html;
+		return html.replace(/(src\s*=\s*["'])cid:([^"']+)(["'])/gi, (m0, pre, cid, post) => {
+			const norm = decodeURIComponent(cid).trim();
+			const att = atts.find((a) => (a.partId ?? '').replace(/^<|>$/g, '') === norm);
+			return att ? `${pre}${resolve('/api/attachments/[id]', { id: att.id })}${post}` : m0;
+		});
+	}
+
+	// img-src 'self': inline attachments are part of the mail itself, served
+	// authenticated from our own endpoint — always allowed, unlike remote images
+	// (tracking pixels) which stay opt-in.
 	function frameDoc(html: string, allowRemote: boolean, dark: boolean): string {
-		const imgSrc = allowRemote ? 'img-src data: https:;' : 'img-src data:;';
+		const imgSrc = allowRemote ? "img-src 'self' data: https:;" : "img-src 'self' data:;";
 		const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src data:; media-src data:;`;
 		const color = dark ? '#e8e8ee' : '#25252c';
 		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}</head><body style="margin:0;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
@@ -1298,8 +1315,10 @@
 													     transparent so the bubble color shows through. -->
 													{@const frameDark = outbound ? mode.current !== 'dark' : mode.current === 'dark'}
 													<div class="w-[min(70vw,32rem)]">
-														<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
-														<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow, frameDark)} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+														<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
+														     content. allow-same-origin WITHOUT allow-scripts stays inert —
+														     needed so inline-attachment requests carry the session cookie. -->
+														<iframe title="Message content" sandbox="allow-same-origin" srcdoc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, frameDark)} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
 														{#if !allow}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
 																Load remote images
@@ -1377,8 +1396,10 @@
 										<div class="px-3.5 pb-3.5">
 											{#if m.contentKind === 'card' && m.bodyHtml}
 												{@const allow = loadedImages.has(m.id)}
-												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote content. -->
-												<iframe title="Message content" sandbox="" srcdoc={frameDoc(m.bodyHtml, allow, mode.current === 'dark')} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
+												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
+												     content. allow-same-origin WITHOUT allow-scripts stays inert —
+												     needed so inline-attachment requests carry the session cookie. -->
+												<iframe title="Message content" sandbox="allow-same-origin" srcdoc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, mode.current === 'dark')} class="h-72 w-full rounded-lg border-0 bg-transparent"></iframe>
 												{#if !allow}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images

@@ -363,6 +363,25 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(sender.calls[0].headers?.["In-Reply-To"]).toBe(parentId);
     expect(sender.calls[0].headers?.["References"]).toContain(parentId);
   });
+
+  it("replies to OUR OWN sent message thread on the provider wire id, not the internal one", async () => {
+    // Send + process the first message so its submission captures the
+    // provider-minted wire Message-ID (what the recipient's client saw).
+    const first = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"], undoSeconds: 0 }));
+    const firstSender = fakeSender();
+    await processSubmission(db, consEnv(firstSender), ck, msg(first.submissionId));
+    const parentMsg = await db.query.message.findFirst({ where: eq(schema.message.id, first.messageId), columns: { messageIdHeader: true } });
+    // Self-follow-up referencing our internal header id (what the client sends).
+    const reply = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"], parentMessageId: parentMsg.messageIdHeader, undoSeconds: 0 }));
+    const sender = fakeSender();
+    await processSubmission(db, consEnv(sender), ck, msg(reply.submissionId));
+    // Wire headers must carry the provider id — the internal id never left us.
+    expect(sender.calls[0].headers?.["In-Reply-To"]).toBe("pm_1");
+    expect(sender.calls[0].headers?.["References"]).toContain("pm_1");
+    expect(sender.calls[0].headers?.["References"]).not.toContain(parentMsg.messageIdHeader);
+    // And the reply still landed in the same thread.
+    expect(reply.threadId).toBe(first.threadId);
+  });
 });
 
 describe("undo (Part I)", () => {
