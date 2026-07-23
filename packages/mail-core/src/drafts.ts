@@ -33,7 +33,10 @@ function trimTrailingHtml(html: string): string {
 function toHtmlAndText(body: string | null): { html: string | null; text: string | null } {
   if (!body) return { html: null, text: null };
   if (looksLikeHtml(body)) {
-    const html = trimTrailingHtml(body);
+    // The composer's image wrapper carries `resize:both` for its in-editor drag
+    // grip — editor chrome, not content. Left in, the grip renders (and works)
+    // in the recipient's view. The chosen width stays; the grip goes.
+    const html = trimTrailingHtml(body).replace(/resize:\s*both;?/gi, "");
     return { html: html || null, text: stripHtmlTags(html) || null };
   }
   // Plain text → trim the accidental tail, escape + line breaks so it renders

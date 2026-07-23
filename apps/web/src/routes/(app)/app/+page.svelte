@@ -525,11 +525,18 @@
 	// img-src 'self': inline attachments are part of the mail itself, served
 	// authenticated from our own endpoint — always allowed, unlike remote images
 	// (tracking pixels) which stay opt-in.
+	// Only offer "Load remote images" when the mail actually references any —
+	// data:/cid: images render regardless, and the button was showing on every
+	// HTML mail.
+	const hasRemoteImages = (html: string | null) => !!html && /\bsrc\s*=\s*["']?https?:\/\//i.test(html);
+
 	function frameDoc(html: string, allowRemote: boolean, dark: boolean): string {
 		const imgSrc = allowRemote ? "img-src 'self' data: https:;" : "img-src 'self' data:;";
 		const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src data:; media-src data:;`;
 		const color = dark ? '#e8e8ee' : '#25252c';
-		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}</head><body style="margin:0;display:flow-root;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
+		// resize:none kills the editor-chrome drag grip on image wrappers in mail
+		// sent before the send-time scrub existed (and any sender's stray resize).
+		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}<style>*{resize:none!important}</style></head><body style="margin:0;padding:8px;display:flow-root;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
 	}
 
 	function fmtTime(ms: number | null): string {
@@ -1330,7 +1337,7 @@
 															fadeClass={outbound ? 'from-foreground' : 'from-card'}
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
 														/>
-														{#if !allow}
+														{#if !allow && hasRemoteImages(m.bodyHtml)}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
 																Load remote images
 															</button>
@@ -1425,7 +1432,7 @@
 												     content. allow-same-origin WITHOUT allow-scripts stays inert —
 												     needed so inline-attachment requests carry the session cookie. -->
 												<MailFrame doc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, mode.current === 'dark')} collapsedMax={420} />
-												{#if !allow}
+												{#if !allow && hasRemoteImages(m.bodyHtml)}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
 													</button>
