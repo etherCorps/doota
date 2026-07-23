@@ -250,6 +250,33 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(sender.calls.length).toBe(1);
   });
 
+  it("cannot re-claim a FRESH in-flight `sending` row (bridge/queue race)", async () => {
+    const id = await ready({ to: ["out@ext.com"] });
+    // Another deliverer claimed moments ago and is mid-provider-call.
+    await db
+      .update(schema.submission)
+      .set({ status: "sending", attempts: 1, lastAttemptAt: new Date() })
+      .where(eq(schema.submission.id, id));
+    const sender = fakeSender();
+    const m = msg(id);
+    await processSubmission(db, consEnv(sender), ck, m);
+    expect(sender.calls.length).toBe(0); // no second wire send
+    expect(m.retry).toHaveBeenCalled(); // loser backs off, re-reads terminal state later
+  });
+
+  it("rescues a STUCK `sending` row once the claim stamp is stale", async () => {
+    const id = await ready({ to: ["out@ext.com"] });
+    await db
+      .update(schema.submission)
+      .set({ status: "sending", attempts: 1, lastAttemptAt: new Date(Date.now() - 11 * 60 * 1000) })
+      .where(eq(schema.submission.id, id));
+    const sender = fakeSender();
+    const m = msg(id);
+    await processSubmission(db, consEnv(sender), ck, m);
+    expect(sender.calls.length).toBe(1);
+    expect(m.ack).toHaveBeenCalled();
+  });
+
   it("keeps all visible recipients in ONE call; only bcc overflows into chunks", async () => {
     const to = Array.from({ length: 10 }, (_, i) => `t${i}@ext.com`);
     const bcc = Array.from({ length: 90 }, (_, i) => `b${i}@ext.com`);

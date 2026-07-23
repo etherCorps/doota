@@ -164,7 +164,7 @@
 						</div>
 					</div>
 					{#if mailChart.length}
-						<DeliveryChart data={mailChart} class="aspect-[5/1] w-full" />
+						<DeliveryChart data={mailChart} days={7} class="aspect-[5/1] w-full" />
 					{/if}
 				{/if}
 			</Card.CardContent>

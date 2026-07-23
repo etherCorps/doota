@@ -250,7 +250,7 @@
 			{#if chartData.length}
 				<div class="rounded-lg border p-4">
 					<div class="text-muted-foreground mb-2 text-xs">Delivered vs failed, per day</div>
-					<DeliveryChart data={chartData} />
+					<DeliveryChart data={chartData} {days} />
 				</div>
 			{/if}
 

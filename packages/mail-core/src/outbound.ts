@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -269,13 +269,17 @@ export async function sweepDueSubmissions(
     .from(schema.submission)
     .where(and(eq(schema.submission.status, "queued"), lte(schema.submission.undoUntil, now)))
     .limit(limit);
+  // Staleness measures the CLAIM stamp, not createdAt — a scheduled send is
+  // created long before it ever starts sending and must not look "stale" the
+  // moment it goes in flight. (Null stamp = pre-migration row; fall back.)
+  const staleCutoff = new Date(now.getTime() - STALE_SENDING_MS);
   const stale = await db
     .select({ id: schema.submission.id })
     .from(schema.submission)
     .where(
       and(
         eq(schema.submission.status, "sending"),
-        lte(schema.submission.createdAt, new Date(now.getTime() - STALE_SENDING_MS)),
+        sql`coalesce(${schema.submission.lastAttemptAt}, ${schema.submission.createdAt}) <= ${staleCutoff.getTime()}`,
       ),
     )
     .limit(limit);

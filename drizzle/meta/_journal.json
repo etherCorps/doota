@@ -106,6 +106,13 @@
       "when": 1784777279696,
       "tag": "0014_soft_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1784810333891,
+      "tag": "0015_little_silver_sable",
+      "breakpoints": true
     }
   ]
 }

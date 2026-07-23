@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import UserChip from '$lib/components/app/user-chip.svelte';
+	import BrandMark from '$lib/components/app/brand-mark.svelte';
 	import RolePreviewSwitcher from '$lib/components/app/role-preview-switcher.svelte';
 	import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -22,16 +23,16 @@
 	);
 </script>
 
-<Sidebar.Root>
+<!-- collapsible="icon": desktop collapse leaves an icon rail (tooltips carry the
+     labels), matching the mail sidebar's behavior. -->
+<Sidebar.Root collapsible="icon">
 	<Sidebar.Header class="gap-2">
 		<div class="flex items-center gap-2 px-2 pt-1">
-			<div
-				class="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-md font-heading text-base font-bold"
+			<BrandMark size={26} />
+			<span class="font-heading text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">Doota</span>
+			<span
+				class="text-faint bg-muted ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase group-data-[collapsible=icon]:hidden"
 			>
-				D
-			</div>
-			<span class="font-heading text-lg font-semibold tracking-tight">Doota</span>
-			<span class="text-faint bg-muted ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
 				Admin
 			</span>
 		</div>
@@ -44,6 +45,7 @@
 					{#each items as item (item.href)}
 						<Sidebar.MenuItem>
 							<Sidebar.MenuButton
+								tooltipContent={item.label}
 								isActive={item.href === '/admin'
 									? page.url.pathname === '/admin'
 									: page.url.pathname.startsWith(item.href)}
@@ -64,11 +66,13 @@
 	</Sidebar.Content>
 
 	<Sidebar.Footer>
-		<RolePreviewSwitcher />
+		<div class="group-data-[collapsible=icon]:hidden">
+			<RolePreviewSwitcher />
+		</div>
 		{#if user.role === 'admin'}
 			<Sidebar.Menu>
 				<Sidebar.MenuItem>
-					<Sidebar.MenuButton>
+					<Sidebar.MenuButton tooltipContent="Back to mailbox">
 						{#snippet child({ props })}
 							<a href={resolve('/app')} {...props}>
 								<MailIcon class="size-4" />

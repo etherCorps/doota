@@ -26,7 +26,9 @@
 			{ key: 'mailboxes', label: 'Mailboxes' },
 			{ key: 'suppressions', label: 'Suppressions' },
 			{ key: 'insights', label: 'Insights' },
-			{ key: 'domain', label: 'Domain' },
+			// Domain management (zones, DNS, routing) writes Cloudflare state —
+			// every action behind it is superadmin-only, so the tab is too.
+			...(data.user.role === 'superadmin' ? [{ key: 'domain', label: 'Domain' }] : []),
 			{ key: 'settings', label: 'Settings' }
 		].map((t) => ({ href: t.key ? `${base}/${t.key}` : base, label: t.label, active: rel === t.key }))
 	);

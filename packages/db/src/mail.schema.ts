@@ -562,6 +562,10 @@ export const submission = sqliteTable(
     undoUntil: integer("undo_until", { mode: "timestamp_ms" }),
     status: text("status").default("queued").notNull(),
     attempts: integer("attempts").default(0).notNull(),
+    // Stamped by the consumer's claim CAS. Distinguishes a FRESH in-flight
+    // `sending` row (must not be re-claimed — that's a double send on the wire)
+    // from a stuck one (crashed mid-flight; rescue-eligible after a timeout).
+    lastAttemptAt: integer("last_attempt_at", { mode: "timestamp_ms" }),
     lastError: text("last_error"),
     provider: text("provider"),
     providerMessageId: text("provider_message_id"),

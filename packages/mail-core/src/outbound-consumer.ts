@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -40,6 +40,10 @@ export type OutboundConsumerEnv = {
 const CHUNK = 50; // recipients per provider call
 const MAX_ATTEMPTS = 5; // soft-failure retry cap before giving up
 const BACKOFF_BASE_SECONDS = 30;
+// A `sending` claim older than this is presumed crashed and may be re-claimed.
+// Must comfortably exceed the longest legitimate delivery (R2 reads + provider
+// calls) and stay at or below the cron sweep's stale threshold (15 min).
+const STUCK_CLAIM_MS = 10 * 60 * 1000;
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 type QueueBatch = { messages: { body: OutboundJob; ack(): void; retry(opts?: { delaySeconds?: number }): void }[] };
@@ -105,14 +109,27 @@ export async function processSubmission(
   // and a cron-sweep duplicate can arrive concurrently, and both would pass the
   // terminal check above. D1 serializes writes, so the conditional UPDATE lets
   // exactly one through; the loser backs off and re-reads terminal state later.
+  //
+  // A `sending` row is claimable ONLY when its claim stamp has gone stale
+  // (crashed mid-flight → rescue). Without the time fence, a second deliverer
+  // reading AFTER the winner's claim sees the bumped attempts value, passes the
+  // CAS, and re-sends the same mail while the winner is mid-provider-call —
+  // the web worker's delivery bridge and the queue consumer race exactly there.
+  const claimCutoff = new Date(now - STUCK_CLAIM_MS);
   const claimed = await db
     .update(mail.submission)
-    .set({ status: "sending", attempts: sub.attempts + 1 })
+    .set({ status: "sending", attempts: sub.attempts + 1, lastAttemptAt: new Date(now) })
     .where(
       and(
         eq(mail.submission.id, sub.id),
-        inArray(mail.submission.status, ["queued", "sending"]),
         eq(mail.submission.attempts, sub.attempts),
+        or(
+          eq(mail.submission.status, "queued"),
+          and(
+            eq(mail.submission.status, "sending"),
+            or(isNull(mail.submission.lastAttemptAt), lt(mail.submission.lastAttemptAt, claimCutoff)),
+          ),
+        ),
       ),
     )
     .returning({ id: mail.submission.id });
