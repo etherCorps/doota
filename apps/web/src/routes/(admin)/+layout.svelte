@@ -11,7 +11,9 @@
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
 	<AdminSidebar user={data.user} />
-	<Sidebar.Inset class="flex h-svh flex-col overflow-hidden">
+	<!-- min-w-0: without it this flex child sizes to its widest table and the
+	     whole admin viewport scrolls sideways on phones. -->
+	<Sidebar.Inset class="flex h-svh min-w-0 flex-col overflow-hidden">
 		<TopBar />
 		<div class="min-h-0 flex-1 overflow-auto">
 			{@render children()}

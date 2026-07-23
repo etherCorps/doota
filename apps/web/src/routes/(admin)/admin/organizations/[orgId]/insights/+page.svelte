@@ -8,7 +8,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import DeliveryChart from '$lib/components/admin/delivery-chart.svelte';
-	import { zoneAnalytics, zoneEmailLogs, zoneAudit, sendingReputation } from '$lib/rpc/cf-insights.remote';
+	import { zoneAnalytics, zoneEmailLogs, zoneAudit } from '$lib/rpc/cf-insights.remote';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 
 	let { data } = $props();
@@ -55,20 +55,6 @@
 		days;
 		load(view);
 	});
-
-	// Domain reputation (fixed 24h/7d windows, independent of the range picker).
-	// One-shot, best-effort — the analytics view stands without it.
-	let reputation = $state<Awaited<ReturnType<typeof sendingReputation>>>(null);
-	let repLoaded = $state(false);
-	$effect(() => {
-		if (view !== 'analytics' || repLoaded) return;
-		repLoaded = true;
-		sendingReputation(org.id)
-			.then((r) => (reputation = r))
-			.catch(() => {});
-	});
-	const repTone = (rate: number | null) =>
-		rate === null ? 'text-muted-foreground' : rate >= 95 ? 'text-ok' : rate >= 80 ? 'text-warn' : 'text-destructive';
 
 	function setDays(d: Days) {
 		if (d === days) return;
@@ -203,31 +189,6 @@
 			</Button>
 		{/snippet}
 	</PageHeader>
-
-	{#if reputation}
-		<!-- Sending reputation — the Cloudflare dashboard's widget numbers:
-		     last event per message, no NDRs, delivered vs failed vs spam. -->
-		<div class="rounded-lg border p-4">
-			<div class="text-muted-foreground mb-3 text-xs">Sending reputation · {org.domain}</div>
-			<div class="grid grid-cols-2 gap-3">
-				{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}
-					<div>
-						<div class="text-muted-foreground text-xs">{w.label}</div>
-						<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(w.rep.rate)}">
-							{w.rep.rate === null ? '—' : `${w.rep.rate}%`}
-						</div>
-						<div class="text-faint mt-0.5 text-[11px] tabular-nums">
-							{#if w.rep.total === 0}
-								No sends in this window
-							{:else}
-								{w.rep.delivered.toLocaleString()} delivered · {w.rep.failed.toLocaleString()} failed · {w.rep.spam.toLocaleString()} spam-rejected
-							{/if}
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
 
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<ToggleGroup.Root

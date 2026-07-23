@@ -1,3 +1,11 @@
+<script module lang="ts">
+	// Module-scope reputation cache: the number moves slowly and the CF GraphQL
+	// read is rate-limited, so navigating back to an overview must not refetch.
+	// 2.5h TTL, survives navigation (module scope), cleared on full reload.
+	const REP_TTL_MS = 2.5 * 60 * 60 * 1000;
+	const repCache = new Map<string, { at: number; val: unknown }>();
+</script>
+
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -58,9 +66,17 @@
 			.then(([rows, usage]) => (mail = { rows, usage }))
 			.catch(() => {})
 			.finally(() => (mailLoading = false));
-		sendingReputation(org.id)
-			.then((r) => (reputation = r))
-			.catch(() => {});
+		const hit = repCache.get(org.id);
+		if (hit && Date.now() - hit.at < REP_TTL_MS) {
+			reputation = hit.val as typeof reputation;
+		} else {
+			sendingReputation(org.id)
+				.then((r) => {
+					reputation = r;
+					repCache.set(org.id, { at: Date.now(), val: r });
+				})
+				.catch(() => {});
+		}
 	});
 
 	// Reputation tone: green while healthy, amber when mailbox providers start
@@ -137,13 +153,13 @@
 		{/each}
 	</div>
 
-	<!-- Email delivery snapshot (live) -->
+	<!-- Mail analytics + sending reputation — two concerns, two cards. -->
 	{#if org.zoneId}
 		<Card.Card>
 			<Card.CardContent class="flex flex-col gap-4 py-5">
 				<div class="flex items-center justify-between gap-2">
 					<div class="flex flex-col gap-0.5">
-						<span class="text-sm font-medium">Email delivery</span>
+						<span class="text-sm font-medium">Mail analytics</span>
 						<span class="text-muted-foreground text-xs">Last 7 days · live from Cloudflare</span>
 					</div>
 					<Button variant="ghost" size="sm" class="gap-1.5" href="{base}/insights">
@@ -171,22 +187,42 @@
 							<div class="text-muted-foreground text-xs">Delivery rate</div>
 							<div class="mt-0.5 text-xl font-semibold tabular-nums">{mailStats.rate === null ? '—' : `${mailStats.rate}%`}</div>
 						</div>
-						<div>
-							<div class="text-muted-foreground text-xs">Reputation (24h)</div>
-							<div class="mt-0.5 text-xl font-semibold tabular-nums {repTone(reputation?.h24.rate ?? null)}">
-								{reputation?.h24.rate == null ? '—' : `${reputation.h24.rate}%`}
-							</div>
-						</div>
-						<div>
-							<div class="text-muted-foreground text-xs">Reputation (7d)</div>
-							<div class="mt-0.5 text-xl font-semibold tabular-nums {repTone(reputation?.d7.rate ?? null)}">
-								{reputation?.d7.rate == null ? '—' : `${reputation.d7.rate}%`}
-							</div>
-						</div>
 					</div>
 					{#if mailChart.length}
 						<DeliveryChart data={mailChart} days={7} class="aspect-[5/1] w-full" />
 					{/if}
+				{/if}
+			</Card.CardContent>
+		</Card.Card>
+
+		<Card.Card>
+			<Card.CardContent class="flex flex-col gap-4 py-5">
+				<div class="flex flex-col gap-0.5">
+					<span class="text-sm font-medium">Sending reputation</span>
+					<span class="text-muted-foreground text-xs">{org.domain} · how mailbox providers see this domain</span>
+				</div>
+				{#if !reputation}
+					<div class="text-muted-foreground flex items-center gap-2 py-4 text-sm">
+						<Spinner /> Loading…
+					</div>
+				{:else}
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}
+							<div class="rounded-lg border p-4">
+								<div class="text-muted-foreground text-xs">{w.label}</div>
+								<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(w.rep.rate)}">
+									{w.rep.rate === null ? '—' : `${w.rep.rate}%`}
+								</div>
+								<div class="text-faint mt-0.5 text-[11px] tabular-nums">
+									{#if w.rep.total === 0}
+										No sends in this window
+									{:else}
+										{w.rep.delivered.toLocaleString()} delivered · {w.rep.failed.toLocaleString()} failed · {w.rep.spam.toLocaleString()} spam-rejected
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
 				{/if}
 			</Card.CardContent>
 		</Card.Card>

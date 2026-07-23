@@ -85,10 +85,11 @@
 
 <div class="flex flex-col gap-3">
 	{#if searchCol || actions}
-		<div class="flex items-center justify-between gap-2">
+		<!-- flex-wrap: search + actions stack instead of squeezing at phone widths. -->
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			{#if searchCol}
 				<Input
-					class="max-w-xs"
+					class="w-56 max-w-full"
 					placeholder={filterPlaceholder}
 					value={(searchCol.getFilterValue() as string) ?? ''}
 					oninput={(e) => searchCol.setFilterValue(e.currentTarget.value)}
