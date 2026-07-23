@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { useDebounce } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import FromSelector from './from-selector.svelte';
@@ -9,6 +10,9 @@
 	import { toast } from 'svelte-sonner';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import XIcon from '@lucide/svelte/icons/x';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ReplyIcon from '@lucide/svelte/icons/reply';
+	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 	import {
 		startDraft,
 		autosaveDraft,
@@ -69,10 +73,18 @@
 	// The body is HTML; "has content" ignores tags/whitespace.
 	const hasBody = $derived(body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0);
 
+	// Collapsible: on phones the full composer eats most of the thread view, so
+	// it starts as a one-row "Reply…" bar; desktop starts open and can collapse
+	// too. Collapsing only CSS-hides the body — the editor stays mounted, so an
+	// in-progress draft survives the round trip.
+	const isMobile = new IsMobile();
+	let collapsed = $state(false);
+
 	// Seed the sending identity from the parent thread (remounted per {#key}).
 	onMount(() => {
 		sendMailboxId = mailboxId;
 		aliasId = defaultAliasId;
+		collapsed = isMobile.current;
 	});
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
@@ -200,7 +212,35 @@
 	}
 </script>
 
-<div class="bg-card border-t p-3 shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)]">
+<div
+	class="bg-card border-t shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)] transition-[padding] duration-200 motion-reduce:transition-none {collapsed
+		? 'p-2'
+		: 'p-3'}"
+>
+	{#if collapsed}
+		<!-- Re-emerge bar: reads like a chat input; shows draft state so a
+		     half-written reply isn't mistaken for empty. -->
+		<button
+			type="button"
+			transition:slide={{ duration: 150 }}
+			class="text-muted-foreground hover:border-ring/40 flex h-9 w-full items-center gap-2 rounded-full border bg-background px-3.5 text-sm transition-colors"
+			onclick={() => (collapsed = false)}
+		>
+			<ReplyIcon class="size-4 shrink-0" />
+			<span class="truncate">
+				{#if hasBody || attachments.length}Continue draft…{:else}Reply to {toAddress}…{/if}
+			</span>
+		</button>
+	{/if}
+	<!-- 0fr/1fr grid trick: height animates while the editor stays mounted
+	     (an {#if} + slide would unmount it and drop the draft). Popovers inside
+	     survive the overflow-hidden because bits-ui portals them to body. -->
+	<div
+		class="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none {collapsed
+			? 'grid-rows-[0fr]'
+			: 'grid-rows-[1fr]'}"
+	>
+	<div class="min-h-0 overflow-hidden">
 	<div class="space-y-2">
 			<div class="flex items-center gap-2">
 				<span class="text-muted-foreground text-xs">From</span>
@@ -218,6 +258,16 @@
 						Reply all
 					</Button>
 				{/if}
+				<Button
+					variant="ghost"
+					size="icon"
+					class="text-muted-foreground size-7 {canReplyAll ? '' : 'ml-auto'}"
+					title="Collapse reply"
+					onclick={() => (collapsed = true)}
+				>
+					<ChevronDownIcon class="size-4" />
+					<span class="sr-only">Collapse reply</span>
+				</Button>
 			</div>
 			{#if replyAll}
 				<p class="text-muted-foreground font-mono text-[11px]">
@@ -267,5 +317,7 @@
 				</Button>
 			</div>
 			<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
-		</div>
+	</div>
+	</div>
+	</div>
 </div>
