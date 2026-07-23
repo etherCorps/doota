@@ -37,8 +37,10 @@ function toHtmlAndText(body: string | null): { html: string | null; text: string
     return { html: html || null, text: stripHtmlTags(html) || null };
   }
   // Plain text → trim the accidental tail, escape + line breaks so it renders
-  // faithfully on the wire.
-  const trimmed = body.replace(/\s+$/, "");
+  // faithfully on the wire. A plain body should never carry HTML entities, but
+  // `&nbsp;` residue does show up (stripped-HTML sources); left alone it gets
+  // escaped to `&amp;nbsp;` and the recipient reads a literal "&nbsp;".
+  const trimmed = body.replace(/&nbsp;/g, " ").replace(/\s+$/, "");
   if (!trimmed) return { html: null, text: null };
   const esc = trimmed.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return { html: esc.replace(/\r?\n/g, "<br>"), text: trimmed };
