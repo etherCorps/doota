@@ -21,6 +21,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import {
 		mailboxThreads,
 		openThread,
@@ -348,6 +349,49 @@
 			}
 		}
 	);
+
+	// Manual refresh — live push covers updates, but the button gives control
+	// back to the user. Feedback always: what's new, a calm "nothing new", or
+	// the error.
+	let refreshing = $state(false);
+	const CALM = [
+		'Nothing new — enjoy the quiet.',
+		'All caught up. ☕',
+		'Nothing new — your inbox is calm.',
+		'No new mail. A good sign.'
+	];
+	const calm = () => CALM[Math.floor(Math.random() * CALM.length)];
+	async function manualRefresh() {
+		if (refreshing) return;
+		refreshing = true;
+		try {
+			if (isVirtual) {
+				const q = placement === 'drafts' ? myDrafts() : scheduledSends();
+				const before = new Set(
+					(q.current ?? []).map((r) => ('id' in r ? r.id : r.submissionId))
+				);
+				await q.refresh();
+				const after = (q.current ?? []).map((r) => ('id' in r ? r.id : r.submissionId));
+				const changed = after.length !== before.size || after.some((id) => !before.has(id));
+				toast.success(changed ? 'List updated.' : calm());
+			} else {
+				const before = new Map(items.map((t) => [t.threadId, t.lastMessageAt ?? 0]));
+				await loadThreads(true);
+				void refreshUnread();
+				const fresh = items.filter((t) => {
+					const prev = before.get(t.threadId);
+					return prev === undefined || (t.lastMessageAt ?? 0) > prev;
+				}).length;
+				toast.success(
+					fresh > 0 ? `${fresh} ${fresh === 1 ? 'conversation' : 'conversations'} updated.` : calm()
+				);
+			}
+		} catch {
+			toast.error('Refresh failed — check your connection and try again.');
+		} finally {
+			refreshing = false;
+		}
+	}
 
 	function onListScroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
@@ -784,6 +828,18 @@
 					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
 					<span class="text-muted-foreground mt-1 block truncate font-mono text-[11px] leading-none">{activeMailbox?.address ?? '…'}</span>
 				</div>
+			{/if}
+			{#if !searchQ}
+				<button
+					type="button"
+					title="Refresh"
+					aria-label="Refresh"
+					disabled={refreshing}
+					onclick={manualRefresh}
+					class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 disabled:opacity-60"
+				>
+					<RefreshCwIcon class="size-4 {refreshing ? 'animate-spin' : ''}" />
+				</button>
 			{/if}
 			{#if (placement === 'trash' || placement === 'spam') && !searchQ && items.length}
 				<AlertDialog.Root>
