@@ -257,8 +257,17 @@
 			body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0
 	);
 
-	async function ensureDraft(): Promise<string | null> {
-		if (draftId || !mailboxId) return draftId;
+	// Single-flight: debounce flush, blur flush, visibilitychange flush, Send and
+	// attachment upload can all race here — two concurrent startDraft calls would
+	// mint two draft rows and clobber draftId with a stale-content snapshot.
+	let draftPending: Promise<string | null> | null = null;
+	function ensureDraft(): Promise<string | null> {
+		if (draftId || !mailboxId) return Promise.resolve(draftId);
+		draftPending ??= createDraftRow().finally(() => (draftPending = null));
+		return draftPending;
+	}
+	async function createDraftRow(): Promise<string | null> {
+		if (!mailboxId) return null;
 		const sent = snapshot();
 		const d = await startDraft({
 			mailboxId,
@@ -284,8 +293,11 @@
 		debouncedSave.cancel();
 		if (phase !== 'editing' || !mailboxId) return;
 		if (!draftId) {
-			if (hasContent) await ensureDraft();
-			return;
+			if (!hasContent) return;
+			// The create may already be in flight carrying an older snapshot —
+			// fall through and autosave the current content instead of trusting it.
+			await ensureDraft();
+			if (!draftId) return;
 		}
 		const sent = snapshot();
 		const res = await autosaveDraft({

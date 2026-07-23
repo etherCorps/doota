@@ -230,6 +230,31 @@ describe("drafts — send integration & alias defaulting", () => {
   });
 });
 
+describe("drafts — send claim (double-send race)", () => {
+  it("concurrent sends of one draft mint exactly one submission (loser 409s)", async () => {
+    const d = await createDraft(db, ck, "u1", {
+      mailboxId: "mb_alice", kind: "new", to: ["out@ext.com"], body: "once",
+    });
+    const results = await Promise.allSettled([
+      sendDraft(db, env(), ck, "u1", { draftId: d.id }),
+      sendDraft(db, env(), ck, "u1", { draftId: d.id }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const subs = await db.query.submission.findMany({
+      where: eq(schema.submission.createdByUserId, "u1"),
+    });
+    expect(subs).toHaveLength(1);
+  });
+
+  it("a failed send reverts the claim so the draft stays editable", async () => {
+    // No recipients → send rejects after the claim; the draft must come back.
+    const d = await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", body: "stuck?" });
+    await expect(sendDraft(db, env(), ck, "u1", { draftId: d.id })).rejects.toThrow();
+    const row = await db.query.draft.findFirst({ where: eq(schema.draft.id, d.id) });
+    expect(row.status).toBe("editing");
+  });
+});
+
 describe("drafts — undo restores an editable state", () => {
   it("undo cancels the submission, removes the ghost bubble, and reopens the draft", async () => {
     const d = await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", to: ["out@ext.com"], body: "one" });

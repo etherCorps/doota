@@ -110,8 +110,17 @@
 
 	const scheduleSave = useDebounce(() => flushSave(), 800);
 
-	async function ensureDraft(): Promise<string | null> {
-		if (draftId) return draftId;
+	// Single-flight: the debounce flush, the visibilitychange flush, Send and
+	// attachment upload can all race here. Two concurrent startDraft calls mint
+	// two draft rows and the last resolver clobbers draftId — which is how a
+	// stale-body snapshot once went out on the wire while the real text orphaned.
+	let draftPending: Promise<string | null> | null = null;
+	function ensureDraft(): Promise<string | null> {
+		if (draftId) return Promise.resolve(draftId);
+		draftPending ??= createDraftRow().finally(() => (draftPending = null));
+		return draftPending;
+	}
+	async function createDraftRow(): Promise<string | null> {
 		const sentBody = body;
 		const d = await startDraft({
 			mailboxId: sendMailboxId,
@@ -160,8 +169,10 @@
 		scheduleSave.cancel();
 		if (!hasBody) return;
 		if (!draftId) {
+			// The create may already be in flight carrying an older body snapshot —
+			// fall through and autosave the current text instead of trusting it.
 			await ensureDraft();
-			return;
+			if (!draftId) return;
 		}
 		const sentBody = body;
 		const res = await autosaveDraft({

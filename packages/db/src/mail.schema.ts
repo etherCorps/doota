@@ -499,7 +499,7 @@ export const draft = sqliteTable(
     bodyEnc: text("body_enc"),
     // JSON array of { r2Key, filename, contentType, size }.
     attachments: text("attachments").default("[]").notNull(),
-    status: text("status").default("editing").notNull(), // editing | sent
+    status: text("status").default("editing").notNull(), // editing | sending (transient send claim) | sent
     // Set once sent — links the tombstone to its submission (undo restore).
     submissionId: text("submission_id"),
     // Autosave conflict detection (same user, two tabs): a save must present the

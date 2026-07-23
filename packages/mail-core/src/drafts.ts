@@ -555,49 +555,71 @@ export async function sendDraft(
   const row = await ownDraftRow(db, input.draftId, userId);
   if (row.status !== "editing") error(409, "This draft has already been sent.");
 
-  const to = jsonArray<string>(row.toAddrs);
-  const cc = jsonArray<string>(row.ccAddrs);
-  const bcc = jsonArray<string>(row.bccAddrs);
-  if (to.length + cc.length + bcc.length === 0) error(400, "At least one recipient is required.");
-
-  // Same server-side identity re-check the interactive send does.
-  const sender = await resolveSender(db, userId, row.mailboxId, row.fromAliasId);
-  const [subject, body] = await Promise.all([
-    decryptContent(ck, row.subjectEnc),
-    decryptContent(ck, row.bodyEnc),
-  ]);
-
-  const staged = jsonArray<AttachmentRef>(row.attachments);
-  const outboundAttachments = await Promise.all(staged.map((a) => copyToOutbound(env, row.orgId, a)));
-  const { html, text } = toHtmlAndText(body);
-
-  const res = await enqueueSend(db, env, {
-    orgId: sender.orgId,
-    mailboxId: row.mailboxId,
-    createdByUserId: userId,
-    fromAddress: sender.fromAddress,
-    fromName: sender.fromName,
-    fromAliasId: sender.fromAliasId,
-    to,
-    cc,
-    bcc,
-    subject: subject ?? "",
-    text,
-    html,
-    parentMessageId: row.inReplyToMessageId,
-    attachments: outboundAttachments,
-    sendAt: input.sendAt ?? null,
-    idempotencyKey: crypto.randomUUID(),
-    undoSeconds: input.undoSeconds,
-  });
-
-  // Retain as a tombstone linked to the submission (undo can restore it).
-  await db
+  // Claim the draft (editing → sending) with a compare-and-set BEFORE building
+  // the submission. Two concurrent Sends of the same draft both pass the status
+  // read above; without the claim both would enqueue — duplicate mail on the
+  // wire. The loser of the CAS gets a 409 instead.
+  const claimed = await db
     .update(mail.draft)
-    .set({ status: "sent", submissionId: res.submissionId })
-    .where(eq(mail.draft.id, input.draftId));
+    .set({ status: "sending" })
+    .where(and(eq(mail.draft.id, input.draftId), eq(mail.draft.status, "editing")))
+    .returning({ id: mail.draft.id });
+  if (!claimed[0]) error(409, "This draft has already been sent.");
 
-  return { submissionId: res.submissionId, threadId: res.threadId };
+  try {
+    const to = jsonArray<string>(row.toAddrs);
+    const cc = jsonArray<string>(row.ccAddrs);
+    const bcc = jsonArray<string>(row.bccAddrs);
+    if (to.length + cc.length + bcc.length === 0) error(400, "At least one recipient is required.");
+
+    // Same server-side identity re-check the interactive send does.
+    const sender = await resolveSender(db, userId, row.mailboxId, row.fromAliasId);
+    const [subject, body] = await Promise.all([
+      decryptContent(ck, row.subjectEnc),
+      decryptContent(ck, row.bodyEnc),
+    ]);
+
+    const staged = jsonArray<AttachmentRef>(row.attachments);
+    const outboundAttachments = await Promise.all(staged.map((a) => copyToOutbound(env, row.orgId, a)));
+    const { html, text } = toHtmlAndText(body);
+
+    const res = await enqueueSend(db, env, {
+      orgId: sender.orgId,
+      mailboxId: row.mailboxId,
+      createdByUserId: userId,
+      fromAddress: sender.fromAddress,
+      fromName: sender.fromName,
+      fromAliasId: sender.fromAliasId,
+      to,
+      cc,
+      bcc,
+      subject: subject ?? "",
+      text,
+      html,
+      parentMessageId: row.inReplyToMessageId,
+      attachments: outboundAttachments,
+      sendAt: input.sendAt ?? null,
+      idempotencyKey: crypto.randomUUID(),
+      undoSeconds: input.undoSeconds,
+    });
+
+    // Retain as a tombstone linked to the submission (undo can restore it).
+    await db
+      .update(mail.draft)
+      .set({ status: "sent", submissionId: res.submissionId })
+      .where(eq(mail.draft.id, input.draftId));
+
+    return { submissionId: res.submissionId, threadId: res.threadId };
+  } catch (e) {
+    // Nothing was enqueued — hand the draft back to the editor.
+    // ponytail: a crash between claim and this revert strands the row in
+    // 'sending' (hidden from Drafts); teach sweepStaleDrafts to rescue if seen.
+    await db
+      .update(mail.draft)
+      .set({ status: "editing" })
+      .where(and(eq(mail.draft.id, input.draftId), eq(mail.draft.status, "sending")));
+    throw e;
+  }
 }
 
 /**
