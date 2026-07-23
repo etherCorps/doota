@@ -6,7 +6,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import DeliveryChart from '$lib/components/admin/delivery-chart.svelte';
-	import { zoneAnalytics, zoneUsage } from '$lib/rpc/cf-insights.remote';
+	import { zoneAnalytics, zoneUsage, sendingReputation } from '$lib/rpc/cf-insights.remote';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import BotIcon from '@lucide/svelte/icons/bot';
@@ -46,6 +46,7 @@
 	// Live email-delivery snapshot (7d) — lazy, once, best-effort (a CF hiccup
 	// must not break the overview). Deep-dive lives on the Insights tab.
 	let mail = $state<{ rows: Awaited<ReturnType<typeof zoneAnalytics>>; usage: Awaited<ReturnType<typeof zoneUsage>> } | null>(null);
+	let reputation = $state<Awaited<ReturnType<typeof sendingReputation>>>(null);
 	let mailLoading = $state(false);
 
 	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
@@ -57,7 +58,15 @@
 			.then(([rows, usage]) => (mail = { rows, usage }))
 			.catch(() => {})
 			.finally(() => (mailLoading = false));
+		sendingReputation(org.id)
+			.then((r) => (reputation = r))
+			.catch(() => {});
 	});
+
+	// Reputation tone: green while healthy, amber when mailbox providers start
+	// pushing back, red when the domain is in trouble.
+	const repTone = (rate: number | null) =>
+		rate === null ? 'text-muted-foreground' : rate >= 95 ? 'text-ok' : rate >= 80 ? 'text-warn' : 'text-destructive';
 
 	const isFail = (s: string) => /fail|bounce|drop|reject/i.test(s);
 	const mailStats = $derived.by(() => {
@@ -161,6 +170,18 @@
 						<div>
 							<div class="text-muted-foreground text-xs">Delivery rate</div>
 							<div class="mt-0.5 text-xl font-semibold tabular-nums">{mailStats.rate === null ? '—' : `${mailStats.rate}%`}</div>
+						</div>
+						<div>
+							<div class="text-muted-foreground text-xs">Reputation (24h)</div>
+							<div class="mt-0.5 text-xl font-semibold tabular-nums {repTone(reputation?.h24.rate ?? null)}">
+								{reputation?.h24.rate == null ? '—' : `${reputation.h24.rate}%`}
+							</div>
+						</div>
+						<div>
+							<div class="text-muted-foreground text-xs">Reputation (7d)</div>
+							<div class="mt-0.5 text-xl font-semibold tabular-nums {repTone(reputation?.d7.rate ?? null)}">
+								{reputation?.d7.rate == null ? '—' : `${reputation.d7.rate}%`}
+							</div>
 						</div>
 					</div>
 					{#if mailChart.length}

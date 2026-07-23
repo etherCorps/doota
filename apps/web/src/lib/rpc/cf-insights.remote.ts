@@ -5,7 +5,14 @@ import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { zoneEmailAnalytics, zoneEmailEvents, zoneAuditLogs, zoneSendUsage, accountSendLimits } from "$lib/server/cloudflare.js";
+import {
+  zoneEmailAnalytics,
+  zoneEmailEvents,
+  zoneAuditLogs,
+  zoneSendUsage,
+  zoneSendingReputation,
+  accountSendLimits,
+} from "$lib/server/cloudflare.js";
 
 /**
  * Per-zone observability for org admins: outbound analytics, email logs, and
@@ -49,6 +56,14 @@ export const zoneEmailLogs = query(arg, async ({ orgId, days }) => {
 export const zoneAudit = query(arg, async ({ orgId, days }) => {
   const org = await orgForInsights(orgId);
   return zoneAuditLogs(org.domain, days);
+});
+
+/** Domain sending reputation (24h + 7d), the Cloudflare dashboard's widget
+ * numbers — delivered vs failed vs spam-rejected, last-event-only, no NDRs. */
+export const sendingReputation = query(z.string().min(1), async (orgId) => {
+  const org = await orgForInsights(orgId);
+  if (!org.zoneId) return null;
+  return zoneSendingReputation(org.zoneId, org.domain);
 });
 
 /** This zone's sends today (per-domain context for the overview). The daily

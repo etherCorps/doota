@@ -475,6 +475,87 @@ export async function zoneEmailAnalytics(zoneId: string, days = 7): Promise<Emai
   });
 }
 
+export type SendingReputation = {
+  delivered: number;
+  failed: number;
+  spam: number;
+  total: number;
+  /** delivered / total as a 0–100 percentage (1 decimal); null with no sends. */
+  rate: number | null;
+};
+
+// Same filters the Cloudflare dashboard's reputation widget uses: last event
+// per message only, no NDRs, and only the three reputation-relevant outcomes.
+const REP_FILTER = `isNDR:0,isLastEvent:1,sendingDomain:$domain,status_in:["delivered","deliveryFailed","spamRejection"]`;
+const REP_7D_Q = `query($zoneTag:string!,$domain:string!,$start:Date!,$end:Date!){
+  viewer{ zones(filter:{zoneTag:$zoneTag}){
+    emailSendingAdaptiveGroups(limit:10000,filter:{${REP_FILTER},date_geq:$start,date_leq:$end}){
+      count dimensions{ status }
+    }
+  }}
+}`;
+const REP_24H_Q = `query($zoneTag:string!,$domain:string!,$start:Time!,$end:Time!){
+  viewer{ zones(filter:{zoneTag:$zoneTag}){
+    emailSendingAdaptiveGroups(limit:10000,filter:{${REP_FILTER},datetimeHour_geq:$start,datetimeHour_leq:$end}){
+      count dimensions{ status }
+    }
+  }}
+}`;
+
+function tallyReputation(rows: { count: number; dimensions: { status: string } }[]): SendingReputation {
+  let delivered = 0,
+    failed = 0,
+    spam = 0;
+  for (const r of rows) {
+    if (r.dimensions.status === "delivered") delivered += r.count;
+    else if (r.dimensions.status === "spamRejection") spam += r.count;
+    else failed += r.count;
+  }
+  const total = delivered + failed + spam;
+  return { delivered, failed, spam, total, rate: total ? Math.round((delivered / total) * 1000) / 10 : null };
+}
+
+/**
+ * Domain sending reputation over the trailing 24h + 7d windows (the same
+ * numbers the Cloudflare dashboard's reputation widget shows). Best-effort:
+ * a failed window tallies as empty rather than erroring the page.
+ */
+export async function zoneSendingReputation(
+  zoneId: string,
+  domain: string,
+): Promise<{ h24: SendingReputation; d7: SendingReputation }> {
+  return memo(`reputation:${zoneId}:${domain}`, 300_000, async () => {
+    type Res = {
+      viewer: { zones: { emailSendingAdaptiveGroups: { count: number; dimensions: { status: string } }[] }[] };
+    };
+    const now = new Date();
+    const day = (x: Date) => x.toISOString().slice(0, 10);
+    const hour = (x: Date) => {
+      const d = new Date(x);
+      d.setUTCMinutes(0, 0, 0);
+      return d.toISOString();
+    };
+    const [d7, h24] = await Promise.all([
+      cfGraphql<Res>(REP_7D_Q, {
+        zoneTag: zoneId,
+        domain,
+        start: day(new Date(now.getTime() - 7 * 864e5)),
+        end: day(now),
+      }),
+      cfGraphql<Res>(REP_24H_Q, {
+        zoneTag: zoneId,
+        domain,
+        start: hour(new Date(now.getTime() - 24 * 3600e3)),
+        end: hour(now),
+      }),
+    ]);
+    return {
+      h24: tallyReputation(h24?.viewer?.zones?.[0]?.emailSendingAdaptiveGroups ?? []),
+      d7: tallyReputation(d7?.viewer?.zones?.[0]?.emailSendingAdaptiveGroups ?? []),
+    };
+  });
+}
+
 /** Per-zone sends TODAY, summed from the analytics dataset (per-domain context
  * for the org overview). The account-wide daily limit lives in accountSendLimits. */
 export async function zoneSendUsage(zoneId: string): Promise<{ today: number }> {
