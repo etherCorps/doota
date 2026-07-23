@@ -60,6 +60,8 @@
 	import ForwardIcon from '@lucide/svelte/icons/forward';
 	import StarIcon from '@lucide/svelte/icons/star';
 	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
+	import UsersIcon from '@lucide/svelte/icons/users';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import ListFilterIcon from '@lucide/svelte/icons/list-filter';
 	import InboxDownIcon from '@lucide/svelte/icons/inbox';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
@@ -553,6 +555,30 @@
 		const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
 		if (named?.[1]?.trim()) return named[1].trim();
 		return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
+	}
+
+	// Everyone the conversation has touched: the union of from/to/cc across ALL
+	// messages — so a bcc'd party who replies-all enters the list the moment
+	// their own message (with them in `from`) lands in the thread.
+	function participants(msgs: MessageDTO[]): { address: string; name: string; mine: boolean }[] {
+		const mine = new Set(
+			[activeMailbox?.address, ...msgs.map((m) => m.viaAlias)]
+				.filter((a): a is string => !!a)
+				.map((a) => a.toLowerCase())
+		);
+		const seen = new Map<string, { address: string; name: string; mine: boolean }>();
+		const add = (raw: string | null) => {
+			if (!raw) return;
+			const address = (raw.match(/<([^>]+)>/)?.[1] ?? raw).trim().toLowerCase();
+			if (!address.includes('@') || seen.has(address)) return;
+			seen.set(address, { address, name: senderName(raw), mine: mine.has(address) });
+		};
+		for (const m of msgs) {
+			add(m.from);
+			for (const a of m.to) add(a);
+			for (const a of m.cc) add(a);
+		}
+		return [...seen.values()];
 	}
 
 	// Two conversation renderings, user-switchable + persisted: 'chat' (default —
@@ -1211,6 +1237,7 @@
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const ctx = replyCtx(msgs)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
+					{@const ppl = participants(msgs)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
 						<Button variant="ghost" size="icon" class="text-muted-foreground @4xl:hidden" onclick={() => nav({ thread: null })}>
 							<ArrowLeftIcon class="size-4" />
@@ -1245,6 +1272,45 @@
 									{/if}
 								</DropdownMenu.Content>
 							</DropdownMenu.Root>
+						{/if}
+
+						<!-- Who's in this conversation — union of every message's from/to/cc,
+						     so late reply-all joiners (even originally bcc'd) show up. -->
+						{#if ppl.length}
+							<Popover.Root>
+								<Popover.Trigger>
+									{#snippet child({ props })}
+										<!-- Plain button, same shape as the attachments-badge button — the
+										     Button component's slot styling displaced the corner badge. -->
+										<button
+											type="button"
+											title="Participants"
+											{...props}
+											class="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 relative grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+										>
+											<UsersIcon class="size-4" />
+											<span class="bg-card text-muted-foreground absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full border text-[9px] font-semibold shadow-xs">{ppl.length > 9 ? '9+' : ppl.length}</span>
+										</button>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-72 p-2" align="end">
+									<p class="text-muted-foreground px-2 pt-1 pb-1.5 text-xs font-medium">In this conversation</p>
+									<div class="flex max-h-64 flex-col gap-0.5 overflow-y-auto overscroll-contain">
+										{#each ppl as p (p.address)}
+											<div class="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+												{@render monogram(p.address, 'size-7 text-[10px]')}
+												<div class="min-w-0 flex-1">
+													<p class="truncate text-sm leading-tight">{p.name}</p>
+													<p class="text-muted-foreground truncate font-mono text-[11px] leading-tight">{p.address}</p>
+												</div>
+												{#if p.mine}
+													<span class="bg-brand/10 text-brand shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium">You</span>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								</Popover.Content>
+							</Popover.Root>
 						{/if}
 
 						<!-- Interact: star + forward (step back on phones — star also lives on list rows) -->

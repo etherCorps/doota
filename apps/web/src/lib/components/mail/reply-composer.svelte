@@ -290,17 +290,37 @@
 				<span class="text-muted-foreground text-xs">From</span>
 				<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
 				{#if canReplyAll}
-					<Button
-						variant={replyAll ? 'secondary' : 'ghost'}
-						size="sm"
-						class="ml-auto h-7 text-xs"
-						onclick={() => {
-							replyAll = !replyAll;
-							scheduleSave();
-						}}
-					>
-						Reply all
-					</Button>
+					<!-- Segmented Reply / Reply all — a mode you can SEE, not a toggle
+					     button whose current state is guesswork. The count says up front
+					     how many people "all" means. -->
+					<div class="bg-muted/60 ml-auto flex items-center gap-0.5 rounded-lg p-0.5 text-xs">
+						<button
+							type="button"
+							aria-pressed={!replyAll}
+							onclick={() => {
+								replyAll = false;
+								scheduleSave();
+							}}
+							class="focus-visible:ring-ring/50 rounded-md px-2.5 py-1 transition-colors outline-none focus-visible:ring-2 {!replyAll
+								? 'bg-card shadow-xs'
+								: 'text-muted-foreground hover:text-foreground'}"
+						>
+							Reply
+						</button>
+						<button
+							type="button"
+							aria-pressed={replyAll}
+							onclick={() => {
+								replyAll = true;
+								scheduleSave();
+							}}
+							class="focus-visible:ring-ring/50 rounded-md px-2.5 py-1 tabular-nums transition-colors outline-none focus-visible:ring-2 {replyAll
+								? 'bg-card shadow-xs'
+								: 'text-muted-foreground hover:text-foreground'}"
+						>
+							Reply all · {toAll.length + ccAll.length}
+						</button>
+					</div>
 				{/if}
 				<Button
 					variant="ghost"
@@ -313,11 +333,20 @@
 					<span class="sr-only">Collapse reply</span>
 				</Button>
 			</div>
-			{#if replyAll}
-				<p class="text-muted-foreground font-mono text-[11px]">
-					to {recips.to.join(', ')}{#if recips.cc.length} · cc {recips.cc.join(', ')}{/if}
-				</p>
-			{/if}
+			<!-- Exactly who receives this reply — visible in BOTH modes, so a send is
+			     never a surprise. -->
+			<div class="flex flex-wrap items-center gap-1">
+				<span class="text-faint text-[11px]">To</span>
+				{#each recips.to as a (a)}
+					<span class="bg-muted rounded-full border px-2 py-0.5 font-mono text-[11px]">{a}</span>
+				{/each}
+				{#if recips.cc.length}
+					<span class="text-faint ml-1 text-[11px]">Cc</span>
+					{#each recips.cc as a (a)}
+						<span class="bg-muted rounded-full border px-2 py-0.5 font-mono text-[11px]">{a}</span>
+					{/each}
+				{/if}
+			</div>
 			{#key editorKey}
 				<RichEditor
 					initial={body}
