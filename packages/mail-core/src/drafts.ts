@@ -315,6 +315,52 @@ export type ScheduledSend = {
   to: string | null;
 };
 
+export type FailedSend = {
+  submissionId: string;
+  threadId: string | null;
+  at: number;
+  subject: string | null;
+  to: string | null;
+  reason: string | null;
+};
+
+/**
+ * The user's recently failed sends (last 7 days) — feeds the client-side
+ * failure notifier. Newest first; the client dedupes what it already toasted.
+ */
+export async function listFailedSends(db: Db, ck: ContentKey, userId: string): Promise<FailedSend[]> {
+  const rows = await db.query.submission.findMany({
+    where: and(
+      eq(schema.submission.createdByUserId, userId),
+      eq(schema.submission.status, "failed"),
+      gt(schema.submission.createdAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    ),
+    orderBy: desc(schema.submission.createdAt),
+    columns: { id: true, messageId: true, lastError: true, createdAt: true },
+    limit: 20,
+  });
+  const out: FailedSend[] = [];
+  for (const r of rows) {
+    const msg = await db.query.message.findFirst({
+      where: eq(schema.message.id, r.messageId),
+      columns: { subjectEnc: true, threadId: true },
+    });
+    const firstRecip = await db.query.submissionRecipient.findFirst({
+      where: eq(schema.submissionRecipient.submissionId, r.id),
+      columns: { address: true },
+    });
+    out.push({
+      submissionId: r.id,
+      threadId: msg?.threadId ?? null,
+      at: r.createdAt.getTime(),
+      subject: await decryptContent(ck, msg?.subjectEnc),
+      to: firstRecip?.address ?? null,
+      reason: r.lastError,
+    });
+  }
+  return out;
+}
+
 /**
  * The user's pending scheduled sends (future send_at, still queued) — a place to
  * see and cancel them. Cancel goes through undoDraftSend (removes the pending

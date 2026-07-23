@@ -17,6 +17,8 @@ export type SendTick = "clock" | "single" | "double" | "warning";
 export type SubmissionState = {
   status: string;
   tick: SendTick;
+  /** Why the send failed (preflight reason / provider error) — warning tick detail. */
+  lastError: string | null;
   /** Per-recipient detail for multi-recipient sends (on demand in the UI). */
   perRecipient: { address: string; role: string; status: string; bounceType: string | null }[];
 };

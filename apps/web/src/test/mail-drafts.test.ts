@@ -14,7 +14,7 @@ import {
   MAX_ATTACHMENT_BYTES,
 } from "@doota/mail-core/drafts";
 import { listSendIdentities } from "@doota/mail-core/identities";
-import { listScheduled, sweepStaleDrafts } from "@doota/mail-core/drafts";
+import { listScheduled, listFailedSends, sweepStaleDrafts } from "@doota/mail-core/drafts";
 import * as mail from "@doota/db/mail.schema";
 import { suggestRecipients } from "@doota/mail-core/contacts";
 import { getThread } from "@doota/mail-core/read";
@@ -310,6 +310,27 @@ describe("scheduled sends", () => {
     expect(list[0].subject).toBe("Later");
     expect(list[0].to).toBe("out@ext.com");
     expect(list[0].sendAt).toBeGreaterThan(Date.now());
+  });
+});
+
+describe("failed sends (notifier feed)", () => {
+  it("lists the user's failed submissions with subject, recipient and reason", async () => {
+    const d = await createDraft(db, ck, "u1", {
+      mailboxId: "mb_alice", kind: "new", to: ["dead@ext.com"], subject: "Doomed", body: "hi",
+    });
+    await sendDraft(db, env(), ck, "u1", { draftId: d.id });
+    await db.update(schema.submission)
+      .set({ status: "failed", lastError: "rate limit exceeded (mailbox)" })
+      .where(eq(schema.submission.createdByUserId, "u1"));
+
+    const failures = await listFailedSends(db, ck, "u1");
+    expect(failures).toHaveLength(1);
+    expect(failures[0].subject).toBe("Doomed");
+    expect(failures[0].to).toBe("dead@ext.com");
+    expect(failures[0].reason).toBe("rate limit exceeded (mailbox)");
+    expect(failures[0].threadId).toBeTruthy();
+    // Another user sees nothing.
+    expect(await listFailedSends(db, ck, "u2")).toEqual([]);
   });
 });
 

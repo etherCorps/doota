@@ -343,7 +343,12 @@ async function loadSubmissionStates(
   const out = new Map<string, SubmissionState>();
   if (!messageIds.length) return out;
   const subs = await db
-    .select({ id: schema.submission.id, messageId: schema.submission.messageId, status: schema.submission.status })
+    .select({
+      id: schema.submission.id,
+      messageId: schema.submission.messageId,
+      status: schema.submission.status,
+      lastError: schema.submission.lastError,
+    })
     .from(schema.submission)
     .where(inArray(schema.submission.messageId, messageIds));
   if (!subs.length) return out;
@@ -369,6 +374,7 @@ async function loadSubmissionStates(
     out.set(s.messageId, {
       status: s.status,
       tick: tickForStatus(s.status),
+      lastError: s.lastError,
       perRecipient: bySub.get(s.id) ?? [],
     });
   }

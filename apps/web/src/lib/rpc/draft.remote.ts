@@ -16,6 +16,7 @@ import {
   sendDraft,
   undoDraftSend,
   listScheduled,
+  listFailedSends,
 } from "@doota/mail-core/drafts";
 
 /**
@@ -74,6 +75,13 @@ export const scheduledSends = query(async () => {
   const user = requireUser();
   const { locals } = getRequestEvent();
   return listScheduled(locals.db, await contentKey(), user.id);
+});
+
+/** Recent failed sends — polled by the app shell's failure notifier. */
+export const failedSends = query(async () => {
+  const user = requireUser();
+  const { locals } = getRequestEvent();
+  return listFailedSends(locals.db, await contentKey(), user.id);
 });
 
 export const draftById = query(z.object({ draftId: z.string().min(1) }), async ({ draftId }) => {

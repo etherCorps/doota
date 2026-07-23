@@ -570,6 +570,25 @@
 	</button>
 {/snippet}
 
+<!-- Why an outbound message shows the warning tick: preflight/provider reason +
+     the recipients that didn't make it. Rendered under bubbles and card headers
+     so a failure is readable without hunting for a 3px icon. -->
+{#snippet sendFailure(sub: NonNullable<MessageDTO['submission']>)}
+	{@const bad = sub.perRecipient.filter((r) => ['failed', 'bounced', 'dropped', 'complained'].includes(r.status))}
+	<div class="border-destructive/30 bg-destructive/10 text-destructive mt-1.5 w-full rounded-lg border px-2.5 py-1.5 text-left text-[11px]">
+		<div class="flex items-center gap-1 font-semibold">
+			<TriangleAlertIcon class="size-3 shrink-0" />
+			{sub.status === 'canceled' ? 'Send canceled' : 'Not delivered'}
+		</div>
+		{#if sub.lastError}<p class="mt-0.5 opacity-90">{sub.lastError}</p>{/if}
+		{#each bad as r (r.address)}
+			<p class="mt-0.5 truncate font-mono opacity-90">
+				{r.address} — {r.status}{r.bounceType ? ` (${r.bounceType} bounce)` : ''}
+			</p>
+		{/each}
+	</div>
+{/snippet}
+
 <!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
 {#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
 	{#if groups.length === 0}
@@ -1114,6 +1133,9 @@
 													{/if}
 												</div>
 											</div>
+											{#if m.submission?.tick === 'warning'}
+												{@render sendFailure(m.submission)}
+											{/if}
 										</div>
 									</div>
 								{:else if item.type === 'external_message'}
@@ -1150,6 +1172,11 @@
 											{/if}
 										</div>
 									</button>
+									{#if m.submission?.tick === 'warning'}
+										<div class="px-3.5 pb-2.5">
+											{@render sendFailure(m.submission)}
+										</div>
+									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
 											{#if m.contentKind === 'card' && m.bodyHtml}
