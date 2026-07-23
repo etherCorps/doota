@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `invited_by_user_id` text;

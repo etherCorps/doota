@@ -8,6 +8,7 @@ import {
   getOnboardingStatus,
   hasSecurityDebt,
   markOnboarded,
+  notifyOnboardingComplete,
   onboardingHome,
 } from "$lib/server/onboarding.js";
 import { initLogLevel } from "@doota/mail-core/log";
@@ -71,6 +72,13 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
         const status = await getOnboardingStatus(db, user);
         if (status.complete) {
           await markOnboarded(auth, user.id);
+          // First completion only (the 2FA-reopen path re-enters here with
+          // onboardedAt already stamped — no duplicate mails).
+          if (!user.onboardedAt) {
+            await notifyOnboardingComplete(db, user.id).catch((e) =>
+              console.error("[onboarding] completion mails failed", e),
+            );
+          }
           // Rewrite the session cookie cache so onboardedAt is reflected NOW.
           // Without this the cache (~5 min) still reports onboardedAt = null and
           // every request re-derives status; refetching fresh makes the server

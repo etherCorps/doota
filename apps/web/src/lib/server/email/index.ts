@@ -6,6 +6,8 @@ import resetLink from "./templates/reset-link.html?raw";
 import resetCode from "./templates/reset-code.html?raw";
 import recoveryVerify from "./templates/recovery-verify.html?raw";
 import invite from "./templates/invite.html?raw";
+import memberJoined from "./templates/member-joined.html?raw";
+import welcome from "./templates/welcome.html?raw";
 
 /**
  * Transactional email templates. HTML lives in `./templates/*.html` (imported
@@ -29,6 +31,16 @@ const TEMPLATES = {
   invite: {
     body: invite,
     subject: (ctx: Ctx) => `You've been invited to ${ctx.brand.name}`,
+  },
+  // Invite-completion pair: the inviter learns their member is in; the
+  // invitee's thank-you is the first mail in their new inbox.
+  "member-joined": {
+    body: memberJoined,
+    subject: (ctx: Ctx) => `${String(ctx.memberName)} joined ${ctx.brand.name}`,
+  },
+  welcome: {
+    body: welcome,
+    subject: (ctx: Ctx) => `Welcome to ${ctx.brand.name}`,
   },
 } satisfies Record<string, Template>;
 

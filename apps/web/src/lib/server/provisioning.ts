@@ -142,6 +142,12 @@ export async function provisionUser(
 
   await setUserAuthFlags(userId, { mustChangePassword: true });
 
+  // Record the invite chain — when this user finishes onboarding, the inviter
+  // gets a "member joined" mail and the invitee a welcome (see onboarding.ts).
+  await tryCatch(
+    db.update(schema.user).set({ invitedByUserId: actor.id }).where(eq(schema.user.id, userId)),
+  );
+
   const { error: memberError } = await tryCatch(
     locals.auth.api.addMember({
       body: {

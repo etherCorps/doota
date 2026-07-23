@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
+import { domainOf, senderAddress } from "@doota/db/org-domains";
 import type { Auth } from "./auth.js";
 import { stampOnboarded } from "./auth/escape-hatches.js";
+import { renderEmail } from "./email/index.js";
+import { sendMailBackground } from "./mailer.js";
 
 export type OnboardingStepId =
   | "verify-email"
@@ -153,4 +156,38 @@ export async function getOnboardingStatus(
 /** Stamps onboardedAt so future requests take the fast path. Idempotent. */
 export async function markOnboarded(auth: Auth, userId: string): Promise<void> {
   await stampOnboarded(auth, userId);
+}
+
+/**
+ * Completion notifications, fired ONCE when an account turns active (first
+ * markOnboarded): the new user always gets a welcome as the first mail in
+ * their inbox — sent from the org's no-reply sender (senderAddress default).
+ * When an invite chain exists, the inviter additionally gets "member joined".
+ * Best-effort: a mail failure never blocks the request.
+ */
+export async function notifyOnboardingComplete(
+  db: DrizzleD1Database<typeof schema>,
+  userId: string,
+): Promise<void> {
+  const u = await db.query.user.findFirst({
+    where: eq(schema.user.id, userId),
+    columns: { name: true, email: true, invitedByUserId: true },
+  });
+  if (!u) return;
+
+  const from = await senderAddress(db, domainOf(u.email));
+  const memberName = u.name || u.email;
+
+  const w = renderEmail("welcome", { from, name: memberName, mailbox: u.email });
+  sendMailBackground({ to: u.email, from, subject: w.subject, text: w.text, html: w.html });
+
+  if (!u.invitedByUserId) return; // self-onboarded — no inviter to notify
+  const inviter = await db.query.user.findFirst({
+    where: eq(schema.user.id, u.invitedByUserId),
+    columns: { email: true },
+  });
+  if (inviter?.email) {
+    const j = renderEmail("member-joined", { from, memberName, memberEmail: u.email });
+    sendMailBackground({ to: inviter.email, from, subject: j.subject, text: j.text, html: j.html });
+  }
 }

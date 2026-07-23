@@ -42,6 +42,9 @@ export const user = sqliteTable("user", {
   // Timestamp the user finished all onboarding steps. Set once, then used as a
   // fast-path so the request hook can skip re-deriving status every request.
   onboardedAt: integer("onboarded_at"),
+  // Who provisioned this account (null = genesis/self). Drives the
+  // "your member joined" notification when the invitee finishes onboarding.
+  invitedByUserId: text("invited_by_user_id"),
 });
 
 export const session = sqliteTable(
