@@ -77,11 +77,19 @@ export const scheduledSends = query(async () => {
   return listScheduled(locals.db, await contentKey(), user.id);
 });
 
-/** Recent failed sends — polled by the app shell's failure notifier. */
-export const failedSends = query(async () => {
+/**
+ * Recent failed sends, streamed to the app shell's failure notifier
+ * (query.live: one streaming fetch per client, auto-reconnect). D1 has no
+ * change feed, so the generator polls server-side; the client just receives.
+ */
+export const failedSends = query.live(async function* () {
   const user = requireUser();
   const { locals } = getRequestEvent();
-  return listFailedSends(locals.db, await contentKey(), user.id);
+  const ck = await contentKey();
+  while (true) {
+    yield await listFailedSends(locals.db, ck, user.id);
+    await new Promise((r) => setTimeout(r, 30_000));
+  }
 });
 
 export const draftById = query(z.object({ draftId: z.string().min(1) }), async ({ draftId }) => {
