@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import { failedSends, mailEvents } from '$lib/rpc/draft.remote.js';
+	import { osNotify } from '$lib/client/os-notify.svelte.js';
 
 	// Failed-send notifier: ticks in the thread view only show on open, so a send
 	// that fails after the composer closed — or bounces hours later — would
@@ -38,6 +39,8 @@
 					description: f.reason ?? 'Unknown error',
 					duration: 10_000
 				});
+				// Same dedup as the toast — the seen-set gates both.
+				osNotify(`Send failed: ${label}`, f.reason ?? undefined, f.submissionId);
 			}
 			// Cap the remembered set so the key doesn't grow forever.
 			if (added) localStorage.setItem(SEEN_KEY, JSON.stringify([...s].slice(-200)));

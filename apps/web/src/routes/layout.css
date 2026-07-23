@@ -179,13 +179,18 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+	/* overscroll-behavior none: the app scrolls in inner panes, never the page —
+	   without it iOS rubber-bands the whole screen when a dialog/drawer scroll
+	   hits its edge (scroll chaining), which reads as "the page behind moved". */
 	body {
 		@apply bg-background text-foreground;
 		overflow-x: clip;
+		overscroll-behavior: none;
 	}
 	html {
 		@apply font-sans;
 		overflow-x: clip;
+		overscroll-behavior: none;
 	}
 	/* Headings ride the friendly rounded display face. */
 	h1, h2, h3, h4 {

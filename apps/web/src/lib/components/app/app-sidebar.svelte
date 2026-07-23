@@ -18,7 +18,9 @@
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
+	import BellIcon from '@lucide/svelte/icons/bell';
 	import { unread } from '$lib/client/unread.svelte.js';
+	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
 
 	let {
 		user,
@@ -107,30 +109,39 @@
 			</Sidebar.GroupContent>
 		</Sidebar.Group>
 
-		{#if user.role === 'admin'}
-			<Sidebar.Group>
-				<Sidebar.GroupContent>
-					<Sidebar.Menu>
-						<Sidebar.MenuItem>
-							<Sidebar.MenuButton tooltipContent="Admin dashboard">
-								{#snippet child({ props })}
-									<a href={resolve('/admin')} {...mergeProps(props, { onclick: closeMobile })}>
-										<ShieldIcon class="size-4" />
-										<span>Admin dashboard</span>
-									</a>
-								{/snippet}
-							</Sidebar.MenuButton>
-						</Sidebar.MenuItem>
-					</Sidebar.Menu>
-				</Sidebar.GroupContent>
-			</Sidebar.Group>
-		{/if}
-	</Sidebar.Content>
+		</Sidebar.Content>
 
 	<Sidebar.Footer>
 		<div class="group-data-[collapsible=icon]:hidden">
 			<RolePreviewSwitcher />
 		</div>
+		<Sidebar.Menu>
+			<!-- One-time affordance: permission prompts need a user gesture, so ask
+			     via a click. Disappears once granted or denied. -->
+			{#if notifPerm.current === 'default'}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton
+						tooltipContent="Enable notifications"
+						onclick={() => void enableOsNotifications()}
+					>
+						<BellIcon class="size-4" />
+						<span>Enable notifications</span>
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{/if}
+			{#if user.role === 'admin'}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton tooltipContent="Admin dashboard">
+						{#snippet child({ props })}
+							<a href={resolve('/admin')} {...mergeProps(props, { onclick: closeMobile })}>
+								<ShieldIcon class="size-4" />
+								<span>Admin dashboard</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{/if}
+		</Sidebar.Menu>
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
 				<UserChip name={user.name} email={user.email} role={user.role} image={user.image} />

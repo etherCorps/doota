@@ -61,28 +61,24 @@
 			</Sidebar.GroupContent>
 		</Sidebar.Group>
 
-		{#if user.role === 'admin'}
-			<Sidebar.Group>
-				<Sidebar.GroupContent>
-					<Sidebar.Menu>
-						<Sidebar.MenuItem>
-							<Sidebar.MenuButton>
-								{#snippet child({ props })}
-									<a href={resolve('/app')} {...props}>
-										<MailIcon class="size-4" />
-										<span>Back to mailbox</span>
-									</a>
-								{/snippet}
-							</Sidebar.MenuButton>
-						</Sidebar.MenuItem>
-					</Sidebar.Menu>
-				</Sidebar.GroupContent>
-			</Sidebar.Group>
-		{/if}
 	</Sidebar.Content>
 
 	<Sidebar.Footer>
 		<RolePreviewSwitcher />
+		{#if user.role === 'admin'}
+			<Sidebar.Menu>
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton>
+						{#snippet child({ props })}
+							<a href={resolve('/app')} {...props}>
+								<MailIcon class="size-4" />
+								<span>Back to mailbox</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			</Sidebar.Menu>
+		{/if}
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
 				<UserChip name={user.name} email={user.email} role={user.role} image={user.image}/>

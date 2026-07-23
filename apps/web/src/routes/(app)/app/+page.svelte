@@ -39,6 +39,7 @@
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, mailEvents } from '$lib/rpc/draft.remote';
+	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
@@ -164,6 +165,9 @@
 				return;
 			}
 			if (evt.mailboxId !== mailboxId) return;
+			// Thin event — no subject on it; tag by thread so a burst of replies
+			// collapses into one OS notification per thread. No-op when focused.
+			osNotify('New mail', undefined, `inbound-${evt.threadId}`);
 			void refreshUnread();
 			if (evt.threadId === threadId) void threadQ?.refresh();
 			// ponytail: full first-page reload on inbound — fine at inbox scale;
