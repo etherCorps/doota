@@ -36,7 +36,7 @@
 	import { toast } from 'svelte-sonner';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
-	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts } from '$lib/rpc/draft.remote';
+	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, mailEvents } from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
@@ -127,6 +127,16 @@
 	// Open-thread pane renders from `.current` so a refresh() updates in place
 	// instead of blanking (which read like a full reload).
 	const openDto = $derived(threadQ?.current ?? null);
+
+	// Live send-state (MailEventHub push): when an event lands in the thread
+	// that's open, refresh it in place — ticks flip clock→sent→delivered (and
+	// failure banners appear) without reopening. Toasting lives in the app
+	// shell's notifier; this only keeps the visible thread honest.
+	const liveEvents = mailEvents();
+	$effect(() => {
+		const evt = liveEvents.current;
+		if (evt && evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
+	});
 
 	// Thread list — infinite scroll. Pages accumulate into `items`; the next page
 	// loads when the list nears the bottom, and the list resets when the mailbox

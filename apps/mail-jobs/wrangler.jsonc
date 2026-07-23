@@ -9,6 +9,23 @@
   // Deploys wipe dashboard-set plaintext vars unless kept (secrets survive).
   "keep_vars": true,
   "main": "src/index.ts",
+  // Per-user mail event hub: the consumer notifies it on send failure; the web
+  // Worker long-polls it (cross-script binding) so failure streams are pushed,
+  // not DB-polled.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAIL_EVENTS",
+        "class_name": "MailEventHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MailEventHub"]
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true,
@@ -34,6 +51,15 @@
     "consumers": [
       {
         "queue": "doota-mail-outbound",
+        "max_batch_size": 10,
+        "max_retries": 5
+      },
+      // Email Service event subscriptions (delivered/bounced/complained/…)
+      // publish here. Prereqs: `wrangler queues create doota-mail-events` +
+      // an event subscription on the sending domain pointing at this queue
+      // (dash → Email Service → Event subscriptions).
+      {
+        "queue": "doota-mail-events",
         "max_batch_size": 10,
         "max_retries": 5
       }

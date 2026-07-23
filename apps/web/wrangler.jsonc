@@ -87,4 +87,16 @@
       "id": "9f20318e054a4f56a03e594eedd32c60",
     },
   ],
+  // Per-user mail event hub (lives in doota-mail-jobs). The failedSends
+  // query.live generator long-polls it so failure toasts are event-driven —
+  // the DB is read only on stream connect and on an actual failure.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAIL_EVENTS",
+        "class_name": "MailEventHub",
+        "script_name": "doota-mail-jobs",
+      },
+    ],
+  },
 }

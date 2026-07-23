@@ -11,6 +11,7 @@ import {
   type PlacementPolicy,
 } from "./materialize";
 import { mintMessageId, threadingHeaders } from "./mail-thread-contract";
+import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
 import { log } from "./log";
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -30,6 +31,8 @@ export type OutboundEnv = {
   MAIL_SEARCH_KEY: string;
   MAIL_RAW: R2Bucket;
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
+  /** Optional per-user event hub — cancel/state writes announce through it. */
+  MAIL_EVENTS?: EventHubNamespace;
 };
 
 export type SendRequest = {
@@ -271,8 +274,14 @@ export async function sweepDueSubmissions(
  * is the source of truth, not the queue delay — so this is authoritative even if
  * the job is already in flight (the consumer re-reads status and acks a canceled
  * submission without sending). Returns whether the cancel took effect.
+ * `canceled` is a status write like any other, so it announces itself — other
+ * devices / an open thread flip the clock tick to warning live.
  */
-export async function cancelSend(db: Db, submissionId: string): Promise<boolean> {
+export async function cancelSend(
+  db: Db,
+  submissionId: string,
+  hub?: EventHubNamespace,
+): Promise<boolean> {
   const sub = await db.query.submission.findFirst({
     where: eq(schema.submission.id, submissionId),
     columns: { status: true, undoUntil: true },
@@ -283,5 +292,6 @@ export async function cancelSend(db: Db, submissionId: string): Promise<boolean>
     .update(mail.submission)
     .set({ status: "canceled" })
     .where(and(eq(mail.submission.id, submissionId), eq(mail.submission.status, "queued")));
+  await notifySubmissionState(db, hub, submissionId, "canceled");
   return true;
 }

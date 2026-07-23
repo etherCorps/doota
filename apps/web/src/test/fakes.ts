@@ -57,3 +57,18 @@ export function installEvent(db: unknown, ctx: unknown) {
 export function clearEvent() {
   setRequestEvent(undefined);
 }
+
+/** Fake MailEventHub namespace: records every /notify body for assertions. */
+export function fakeHub() {
+  const notified: { url: string; body: any }[] = [];
+  return {
+    notified,
+    idFromName: (n: string) => n,
+    get: () => ({
+      async fetch(url: string, init?: { body?: string }) {
+        notified.push({ url, body: init?.body ? JSON.parse(init.body) : null });
+        return new Response("ok");
+      },
+    }),
+  };
+}

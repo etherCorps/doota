@@ -30,6 +30,17 @@
       "bucket_name": "doota-mail-raw"
     }
   ],
+  // Per-user mail event hub (lives in doota-mail-jobs): DSN-fallback bounces
+  // notify the sending user's live stream through it.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAIL_EVENTS",
+        "class_name": "MailEventHub",
+        "script_name": "doota-mail-jobs"
+      }
+    ]
+  },
   "queues": {
     // email() enqueues to MAIL_QUEUE; this Worker also consumes it.
     "producers": [

@@ -23,6 +23,13 @@ export type SubmissionState = {
   perRecipient: { address: string; role: string; status: string; bounceType: string | null }[];
 };
 
+/**
+ * Submission statuses that mean "this send went wrong" — the single source for
+ * failure toasts (notifier), the failed-sends list (drafts), and any future
+ * consumer. `canceled` is deliberately absent: a user cancel is not a failure.
+ */
+export const FAILED_SEND_STATUSES = ["failed", "bounced_hard", "bounced_soft", "complained"] as const;
+
 /** Map a submission/recipient status onto a tick glyph. */
 export function tickForStatus(status: string): SendTick {
   switch (status) {

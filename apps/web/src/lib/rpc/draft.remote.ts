@@ -6,6 +6,7 @@ import type { OutboundEnv } from "@doota/mail-core/outbound";
 import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { listSendIdentities } from "@doota/mail-core/identities";
 import { suggestRecipients } from "@doota/mail-core/contacts";
+import { mailEventStream } from "@doota/mail-core/events-hub";
 import {
   createDraft,
   saveDraft,
@@ -47,6 +48,7 @@ function outboundEnv(): OutboundEnv {
     MAIL_SEARCH_KEY: env.MAIL_SEARCH_KEY,
     MAIL_RAW: env.MAIL_RAW,
     MAIL_OUT_QUEUE: env.MAIL_OUT_QUEUE,
+    MAIL_EVENTS: env.MAIL_EVENTS,
   };
 }
 
@@ -77,18 +79,37 @@ export const scheduledSends = query(async () => {
   return listScheduled(locals.db, await contentKey(), user.id);
 });
 
-/**
- * Recent failed sends, streamed to the app shell's failure notifier
- * (query.live: one streaming fetch per client, auto-reconnect). D1 has no
- * change feed, so the generator polls server-side; the client just receives.
- */
-export const failedSends = query.live(async function* () {
+/** Recent failed sends (incl. bounces/complaints) — the notifier's catch-up
+ * read on mount and after each live failure event. */
+export const failedSends = query(async () => {
   const user = requireUser();
   const { locals } = getRequestEvent();
-  const ck = await contentKey();
+  return listFailedSends(locals.db, await contentKey(), user.id);
+});
+
+/**
+ * Live send-state events (query.live). The generator subscribes to the user's
+ * MailEventHub (Durable Object in doota-mail-jobs, hibernatable WebSocket) and
+ * yields each pushed transition — no DB polling anywhere: producers (outbound
+ * consumer, event-subscriptions consumer, DSN fallback) notify the hub only
+ * when a state actually changed. Clients react by refreshing what they show
+ * (ticks in an open thread, failure toasts). Without the binding (vite dev)
+ * the stream is silent and the UI falls back to read-time state.
+ */
+export const mailEvents = query.live(async function* () {
+  const user = requireUser();
+  const { platform } = getRequestEvent();
+  const hub = platform?.env?.MAIL_EVENTS;
+  if (!hub) return;
   while (true) {
-    yield await listFailedSends(locals.db, ck, user.id);
-    await new Promise((r) => setTimeout(r, 30_000));
+    try {
+      for await (const evt of mailEventStream(hub, user.id)) {
+        yield evt;
+      }
+    } catch {
+      // Hub unreachable — back off, then reconnect.
+    }
+    await new Promise((r) => setTimeout(r, 5_000));
   }
 });
 

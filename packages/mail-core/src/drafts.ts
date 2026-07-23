@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, lt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { error } from "@sveltejs/kit";
 import * as schema from "@doota/db/schema";
@@ -6,7 +6,7 @@ import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
-import { stripHtmlTags } from "./mail-thread-contract";
+import { FAILED_SEND_STATUSES, stripHtmlTags } from "./mail-thread-contract";
 
 /** A draft body is HTML (rich composer). Detect plain-text bodies so legacy/
  * plain content isn't mangled — wrap them into minimal HTML on send. */
@@ -326,13 +326,14 @@ export type FailedSend = {
 
 /**
  * The user's recently failed sends (last 7 days) — feeds the client-side
- * failure notifier. Newest first; the client dedupes what it already toasted.
+ * failure notifier. Includes post-send failures (bounces/complaints), which can
+ * arrive hours after "sent". Newest first; the client dedupes what it toasted.
  */
 export async function listFailedSends(db: Db, ck: ContentKey, userId: string): Promise<FailedSend[]> {
   const rows = await db.query.submission.findMany({
     where: and(
       eq(schema.submission.createdByUserId, userId),
-      eq(schema.submission.status, "failed"),
+      inArray(schema.submission.status, [...FAILED_SEND_STATUSES]),
       gt(schema.submission.createdAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
     ),
     orderBy: desc(schema.submission.createdAt),
@@ -345,17 +346,21 @@ export async function listFailedSends(db: Db, ck: ContentKey, userId: string): P
       where: eq(schema.message.id, r.messageId),
       columns: { subjectEnc: true, threadId: true },
     });
-    const firstRecip = await db.query.submissionRecipient.findFirst({
+    // One read for both: first address for the label, and (bounces/complaints
+    // record their reason per-recipient, not on lastError) a reason fallback.
+    const recips = await db.query.submissionRecipient.findMany({
       where: eq(schema.submissionRecipient.submissionId, r.id),
-      columns: { address: true },
+      columns: { address: true, bounceReason: true },
     });
+    const reason = r.lastError ?? recips.find((x) => x.bounceReason)?.bounceReason ?? null;
+    const firstRecip = recips[0];
     out.push({
       submissionId: r.id,
       threadId: msg?.threadId ?? null,
       at: r.createdAt.getTime(),
       subject: await decryptContent(ck, msg?.subjectEnc),
       to: firstRecip?.address ?? null,
-      reason: r.lastError,
+      reason,
     });
   }
   return out;
@@ -613,7 +618,7 @@ export async function undoDraftSend(
   if (!sub) error(404, "Submission not found");
   if (sub.createdByUserId !== userId) error(403, "Not your send to undo.");
 
-  const canceled = await cancelSend(db, submissionId);
+  const canceled = await cancelSend(db, submissionId, env.MAIL_EVENTS);
   if (!canceled) return null; // window closed / already sending — not undoable
 
   // Remove the sender's timeline copy so no ghost bubble remains.

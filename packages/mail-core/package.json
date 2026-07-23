@@ -11,6 +11,8 @@
     "./cron": "./src/cron.ts",
     "./crypto": "./src/crypto.ts",
     "./drafts": "./src/drafts.ts",
+    "./events-consumer": "./src/events-consumer.ts",
+    "./events-hub": "./src/events-hub.ts",
     "./identities": "./src/identities.ts",
     "./inbound-worker": "./src/inbound-worker.ts",
     "./inline-images": "./src/inline-images.ts",

@@ -17,6 +17,9 @@ declare global {
     CRON_SECRET?: string;
     /** Optional log-level override for @doota/mail-core/log (debug|info|warn|error). */
     LOG_LEVEL?: string;
+    /** Per-user mail event hub DO (lives in doota-mail-jobs; cross-script binding).
+     * Absent under vite dev — consumers must degrade gracefully. */
+    MAIL_EVENTS?: import("@doota/mail-core/events-hub").EventHubNamespace;
   }
 
   namespace App {

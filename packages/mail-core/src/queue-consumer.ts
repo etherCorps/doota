@@ -5,6 +5,7 @@ import * as schema from "@doota/db/schema";
 import { importKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
+import { notifySubmissionState } from "./events-hub";
 import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
@@ -118,7 +119,13 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           returnPathDomain: rp?.returnPathDomain ?? null,
         })
       ) {
-        await applyBounce(db, job.orgId, parseBounce(new TextDecoder().decode(buf)));
+        // DSN fallback path (structured event subscriptions are primary; a DSN
+        // that slips through still updates state and wakes the user's stream —
+        // client-side dedupe absorbs any double notification).
+        const applied = await applyBounce(db, job.orgId, parseBounce(new TextDecoder().decode(buf)));
+        if (applied.matchedSubmission && applied.worstStatus) {
+          await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
+        }
         m.ack();
         continue;
       }

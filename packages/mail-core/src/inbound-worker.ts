@@ -21,6 +21,8 @@ export type MailEnv = {
   MAIL_QUEUE: Queue<InboundJob>;
   MAIL_DEK: string;
   MAIL_SEARCH_KEY: string;
+  /** Per-user event hub (DO in doota-mail-jobs) — DSN bounces notify through it. */
+  MAIL_EVENTS?: import("./events-hub").EventHubNamespace;
   LOG_LEVEL?: string;
 };
 

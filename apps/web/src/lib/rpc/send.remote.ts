@@ -116,6 +116,6 @@ export const undoSend = command(z.object({ submissionId: z.string().min(1) }), a
   );
   if (!allowed) error(403, "You can't cancel this send.");
 
-  const canceled = await cancelSend(locals.db, submissionId);
+  const canceled = await cancelSend(locals.db, submissionId, getRequestEvent().platform?.env?.MAIL_EVENTS);
   return { canceled };
 });

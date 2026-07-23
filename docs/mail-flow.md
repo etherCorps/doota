@@ -133,9 +133,31 @@ status and acks without sending.
      Permanent → chunk's recipients `failed`, continue with the rest.
 6. `rollup`: any sent/delivered → submission `sent`; all-terminal-none-failed
    (internal-only or fully suppressed) → still `sent` (a deliberate drop is not
-   a failure); else `failed`. DSN bounces later flip individual recipients
-   (`bounce.ts`) → WhatsApp-style ticks (`tickForStatus`: clock/single/double/
-   warning).
+   a failure); else `failed` (+ first recipient's bounce reason as lastError) →
+   WhatsApp-style ticks (`tickForStatus`: clock/single/double/warning).
+
+## Post-send lifecycle + live updates (added 2026-07-23)
+
+- **Event subscriptions (primary)**: Email Service publishes
+  delivered/deferred/bounced/failed/rejected/complained to the
+  `doota-mail-events` queue; `events-consumer.ts` (in doota-mail-jobs)
+  correlates via `submission_recipient.provider_message_id` + address (0012
+  indexes), updates recipient/submission state (all delivered → submission
+  `delivered` = double tick; hard bounce/complaint → suppression), then
+  notifies the hub. **Prereqs**: `wrangler queues create doota-mail-events` +
+  an event subscription on the sending domain pointing at that queue.
+- **DSN parsing (fallback)**: `looksLikeBounce`/`applyBounce` in the inbound
+  consumer still catch DSNs that arrive as plain mail; they too notify the hub.
+- **MailEventHub (DO, doota-mail-jobs)**: one instance per user, hibernatable
+  WebSockets (≈$0 idle). Producers POST `/notify` (`notifyMailState` — thin
+  `MailStateEvent {submissionId, threadId, status, reason}`); the web Worker's
+  `mailEvents` query.live generator subscribes as a WS client and streams
+  events to the browser. Cross-script bindings from web + mail-in.
+  **Deploy order once**: doota-mail-jobs (defines the class) before web/mail-in.
+- **Client**: `SendFailureNotifier` toasts failure statuses (catch-up read on
+  mount + event-driven; localStorage dedupe); the open thread refreshes in
+  place when an event targets it — ticks flip clock→single→double live, and
+  failure banners appear without reopening. No DB polling anywhere.
 
 ## Reply construction contract
 

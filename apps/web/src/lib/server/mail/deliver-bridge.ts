@@ -27,6 +27,7 @@ export function deliverInBackground(submissionId: string, undoSeconds: number): 
     MAIL_SEARCH_KEY: env.MAIL_SEARCH_KEY,
     EMAIL_SENDER: env.EMAIL_SENDER,
     MAIL_OUT_QUEUE: env.MAIL_OUT_QUEUE,
+    MAIL_EVENTS: env.MAIL_EVENTS,
   };
 
   console.log(`[mailer:bridge] queued ${submissionId} — delivering in ${undoSeconds}s (undo window)`);

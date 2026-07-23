@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
+import { fakeHub } from "./fakes";
 import { invalidateDomainCache } from "@doota/db/org-domains";
 import { importKey } from "@doota/mail-core/crypto";
 import { enqueueSend, cancelSend, sweepDueSubmissions } from "@doota/mail-core/outbound";
@@ -277,6 +278,25 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(sub.lastError).toMatch(/visible recipients/);
   });
 
+  it("notifies the user's event hub on failure AND on successful send", async () => {
+    const hub = fakeHub();
+    // Preflight failure path (>50 visible recipients).
+    const to = Array.from({ length: 60 }, (_, i) => `r${i}@ext.com`);
+    const id = await ready({ to });
+    await processSubmission(db, { ...consEnv(fakeSender()), MAIL_EVENTS: hub as never }, ck, msg(id));
+    expect(hub.notified).toHaveLength(1);
+    expect(hub.notified[0].url).toContain("/notify");
+    expect(hub.notified[0].body).toMatchObject({ type: "send_state", submissionId: id, status: "failed" });
+    expect(hub.notified[0].body.threadId).toBeTruthy();
+
+    // Success path: rollup pushes `sent` so an open thread flips its tick live.
+    hub.notified.length = 0;
+    const okId = await ready({ to: ["out@ext.com"] });
+    await processSubmission(db, { ...consEnv(fakeSender()), MAIL_EVENTS: hub as never }, ck, msg(okId));
+    expect(hub.notified).toHaveLength(1);
+    expect(hub.notified[0].body).toMatchObject({ submissionId: okId, status: "sent" });
+  });
+
   it("charges the rate limit once per submission, not per retry", async () => {
     const id = await ready({ to: ["out@ext.com"] });
     const softThenOk = fakeSender((_b, n) => {
@@ -356,6 +376,13 @@ describe("undo (Part I)", () => {
     await processSubmission(db, consEnv(sender), ck, m);
     expect(sender.calls.length).toBe(0);
     expect(m.ack).toHaveBeenCalled();
+  });
+
+  it("cancel announces the state change through the hub", async () => {
+    const { submissionId } = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"], undoSeconds: 30 }));
+    const hub = fakeHub();
+    expect(await cancelSend(db, submissionId, hub as never)).toBe(true);
+    expect(hub.notified[0].body).toMatchObject({ submissionId, status: "canceled" });
   });
 
   it("cannot cancel once the window has closed", async () => {

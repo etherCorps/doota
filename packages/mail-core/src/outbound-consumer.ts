@@ -12,6 +12,7 @@ import { buildQuotedText, buildQuotedHtml } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
+import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
 import { log, errInfo } from "./log";
 import type { OutboundJob } from "./outbound";
 
@@ -31,6 +32,8 @@ export type OutboundConsumerEnv = {
   MAIL_SEARCH_KEY: string;
   EMAIL_SENDER?: SendEmail;
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
+  /** Per-user event hub (Durable Object) — wakes live failure streams. */
+  MAIL_EVENTS?: EventHubNamespace;
   LOG_LEVEL?: string;
 };
 
@@ -128,6 +131,7 @@ export async function processSubmission(
       .update(mail.submissionRecipient)
       .set({ status: "failed", bounceReason: reason })
       .where(and(eq(mail.submissionRecipient.submissionId, sub.id), notTerminalRecipient()));
+    await notifySubmissionState(db, env.MAIL_EVENTS, sub.id, "failed", { userId: sub.createdByUserId });
     m.ack();
   };
 
@@ -325,7 +329,13 @@ export async function processSubmission(
     }
   }
 
-  await rollup(db, sub.id);
+  const rolled = await rollup(db, sub.id);
+  // Push the final state either way — a failure raises a toast, a success
+  // flips the clock tick to sent live in an open thread.
+  await notifySubmissionState(db, env.MAIL_EVENTS, sub.id, rolled.status, {
+    userId: sub.createdByUserId,
+    threadId: message.threadId,
+  });
   m.ack();
 }
 
@@ -336,10 +346,11 @@ function notTerminalRecipient() {
   return sql`${mail.submissionRecipient.status} not in ('sent','delivered','dropped','bounced','complained')`;
 }
 
-async function setRecipient(
+/** Exported for the event-subscriptions consumer — one recipient-patch seam. */
+export async function setRecipient(
   db: Db,
   id: string,
-  patch: { status: string; bounceReason?: string; providerMessageId?: string },
+  patch: { status: string; bounceType?: string; bounceReason?: string; providerMessageId?: string },
 ): Promise<void> {
   await db.update(mail.submissionRecipient).set(patch).where(eq(mail.submissionRecipient.id, id));
 }
@@ -409,13 +420,19 @@ async function loadAttachments(
  * suppressed/dropped) → still `sent` — a deliberate drop is not a failure. Only
  * an actual failure with nothing delivered rolls up to `failed`.
  */
-async function rollup(db: Db, submissionId: string): Promise<void> {
+export async function rollup(
+  db: Db,
+  submissionId: string,
+): Promise<{ status: "sent" | "failed"; reason: string | null }> {
   const rows = await db.query.submissionRecipient.findMany({
     where: eq(schema.submissionRecipient.submissionId, submissionId),
-    columns: { status: true },
+    columns: { status: true, bounceReason: true },
   });
   const anySent = rows.some((r) => r.status === "sent" || r.status === "delivered");
   const anyFailed = rows.some((r) => r.status === "failed");
   const status = anySent || (rows.length > 0 && !anyFailed) ? "sent" : "failed";
-  await db.update(mail.submission).set({ status }).where(eq(mail.submission.id, submissionId));
+  const reason =
+    status === "failed" ? (rows.find((r) => r.status === "failed")?.bounceReason ?? null) : null;
+  await db.update(mail.submission).set({ status, lastError: reason ?? undefined }).where(eq(mail.submission.id, submissionId));
+  return { status, reason };
 }

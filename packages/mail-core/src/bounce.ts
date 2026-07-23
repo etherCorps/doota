@@ -97,12 +97,15 @@ const WORST_STATUS = ["complained", "bounced_hard", "bounced_soft"] as const;
  * submission rolls up to its worst outcome. Idempotent — re-applying a duplicate
  * DSN converges (upserts + fixed status transitions).
  */
-export async function applyBounce(
-  db: Db,
-  orgId: string,
-  parsed: ParsedBounce,
-): Promise<{ matchedSubmission: string | null; suppressed: string[] }> {
-  if (parsed.failures.length === 0) return { matchedSubmission: null, suppressed: [] };
+export type AppliedBounce = {
+  matchedSubmission: string | null;
+  suppressed: string[];
+  /** The status the submission rolled to — the caller's notification payload. */
+  worstStatus: (typeof WORST_STATUS)[number] | null;
+};
+
+export async function applyBounce(db: Db, orgId: string, parsed: ParsedBounce): Promise<AppliedBounce> {
+  if (parsed.failures.length === 0) return { matchedSubmission: null, suppressed: [], worstStatus: null };
 
   // Link to the submission via our original Message-ID → message → submission.
   let submissionId: string | null = null;
@@ -146,16 +149,17 @@ export async function applyBounce(
     }
   }
 
+  let worstStatus: AppliedBounce["worstStatus"] = null;
   if (submissionId) {
-    const worst = parsed.isComplaint
+    worstStatus = parsed.isComplaint
       ? "complained"
       : parsed.failures.some((f) => f.kind === "hard")
         ? "bounced_hard"
         : "bounced_soft";
-    await rollupToWorst(db, submissionId, worst);
+    await rollupToWorst(db, submissionId, worstStatus);
   }
 
-  return { matchedSubmission: submissionId, suppressed };
+  return { matchedSubmission: submissionId, suppressed, worstStatus };
 }
 
 /** Upsert a suppression, bumping last_seen_at on repeat. Exported so manual
@@ -179,8 +183,9 @@ export async function unsuppress(db: Db, orgId: string, address: string): Promis
   return deleted.length > 0;
 }
 
-/** Move the submission status to `candidate` only if it's worse than current. */
-async function rollupToWorst(
+/** Move the submission status to `candidate` only if it's worse than current.
+ * Exported for the structured event-subscriptions consumer (same transition rules). */
+export async function rollupToWorst(
   db: Db,
   submissionId: string,
   candidate: (typeof WORST_STATUS)[number],

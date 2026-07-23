@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { handleOutboundQueue, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
+import { handleMailEventsQueue } from "@doota/mail-core/events-consumer";
 import { runScheduledSweeps } from "@doota/mail-core/cron";
 import { type OutboundEnv, type OutboundJob } from "@doota/mail-core/outbound";
 import { initLogLevel } from "@doota/mail-core/log";
@@ -16,9 +17,20 @@ import { initLogLevel } from "@doota/mail-core/log";
  * EMAIL_SENDER (Cloudflare Email Service) binding for delivery.
  * Vars: LOG_LEVEL (optional, debug|info|warn|error, default info).
  */
+// Per-user mail event hub (one DO instance per user). Lives in THIS script;
+// the web Worker reaches it via a cross-script binding (script_name).
+export { MailEventHub } from "@doota/mail-core/events-hub";
+
 export default {
   async queue(batch, env): Promise<void> {
     initLogLevel(env);
+    // Two consumed queues, routed by name: outbound sends + Email Service
+    // event subscriptions (delivery lifecycle).
+    if (batch.queue === "doota-mail-events") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await handleMailEventsQueue(batch as any, env);
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleOutboundQueue(batch as any, env);
   },
