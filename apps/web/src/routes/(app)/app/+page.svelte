@@ -59,6 +59,7 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ForwardIcon from '@lucide/svelte/icons/forward';
 	import StarIcon from '@lucide/svelte/icons/star';
+	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 	import ListFilterIcon from '@lucide/svelte/icons/list-filter';
 	import InboxDownIcon from '@lucide/svelte/icons/inbox';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
@@ -1184,15 +1185,18 @@
 			{/if}
 		</div>
 
-		<!-- Mobile compose FAB — the top bar drops its Compose button below `sm` to
-		     give the search field the width back; composing moves here. Lives inside
-		     the list pane so opening a thread (which hides the pane) hides it too. -->
+		<!-- Compose FAB for every single-pane width: the sidebar (and its Compose)
+		     is a sheet until md, and the top bar carries no compose — without this
+		     there is NO way to start a mail on phones/small tablets. Hidden only
+		     once the container splits two-pane (@4xl), where the docked sidebar's
+		     Compose takes over. Lives inside the list pane so opening a thread
+		     (which hides the pane) hides it too. -->
 		{#if mailboxId}
 			<button
 				type="button"
 				aria-label="Compose"
 				onclick={composeNew}
-				class="bg-brand text-brand-foreground focus-visible:ring-ring/50 absolute right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 grid size-13 place-items-center rounded-full shadow-lg transition-transform outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-95 sm:hidden"
+				class="bg-brand text-brand-foreground focus-visible:ring-ring/50 @4xl:hidden absolute right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 grid size-13 place-items-center rounded-full shadow-lg transition-transform outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-95"
 			>
 				<PencilIcon class="size-5" />
 			</button>
@@ -1276,8 +1280,10 @@
 							</button>
 						</div>
 
-						<!-- Triage: grouped as one control cluster, separate from interact -->
-						<div class="bg-muted/60 flex items-center gap-0.5 rounded-xl p-0.5">
+						<!-- Triage: grouped as one control cluster, separate from interact.
+						     Below sm the whole cluster (plus star/forward) folds into the
+						     kebab menu — the bar was overflowing and star fell off entirely. -->
+						<div class="bg-muted/60 hidden items-center gap-0.5 rounded-xl p-0.5 sm:flex">
 							{#if placement !== 'inbox'}
 								<button type="button" title="Move to inbox" onclick={() => move('inbox')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg shadow-none transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 									<InboxDownIcon class="size-4" />
@@ -1299,6 +1305,51 @@
 								</button>
 							{/if}
 						</div>
+
+						<!-- Phone overflow menu: everything the narrow bar can't fit —
+						     star, forward, and the triage actions. -->
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button variant="ghost" size="icon" class="text-muted-foreground size-8 sm:hidden" title="More actions" {...props}>
+										<EllipsisVerticalIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content class="w-48" align="end">
+								<DropdownMenu.Item onSelect={() => toggleStar(thread.isStarred)}>
+									<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
+									{thread.isStarred ? 'Unstar' : 'Star'}
+								</DropdownMenu.Item>
+								{#if ctx.parent}
+									{@const p = ctx.parent}
+									<DropdownMenu.Item onSelect={() => forward(p, thread.subject)}>
+										<ForwardIcon class="size-4" /> Forward
+									</DropdownMenu.Item>
+								{/if}
+								<DropdownMenu.Separator />
+								{#if placement !== 'inbox'}
+									<DropdownMenu.Item onSelect={() => move('inbox')}>
+										<InboxDownIcon class="size-4" /> Move to inbox
+									</DropdownMenu.Item>
+								{/if}
+								{#if placement !== 'archived'}
+									<DropdownMenu.Item onSelect={() => move('archived')}>
+										<ArchiveIcon class="size-4" /> Archive
+									</DropdownMenu.Item>
+								{/if}
+								{#if placement !== 'spam'}
+									<DropdownMenu.Item onSelect={() => move('spam')}>
+										<ShieldAlertIcon class="size-4" /> Mark spam
+									</DropdownMenu.Item>
+								{/if}
+								{#if placement !== 'trash'}
+									<DropdownMenu.Item variant="destructive" onSelect={() => move('trash')}>
+										<Trash2Icon class="size-4" /> Trash
+									</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					</div>
 
 					<!-- Middle row: message stream + (optional) docked attachments column.
