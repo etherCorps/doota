@@ -529,7 +529,7 @@
 		const imgSrc = allowRemote ? "img-src 'self' data: https:;" : "img-src 'self' data:;";
 		const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src data:; media-src data:;`;
 		const color = dark ? '#e8e8ee' : '#25252c';
-		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}</head><body style="margin:0;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
+		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}</head><body style="margin:0;display:flow-root;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
 	}
 
 	function fmtTime(ms: number | null): string {

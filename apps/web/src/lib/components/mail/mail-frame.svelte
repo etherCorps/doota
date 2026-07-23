@@ -32,18 +32,14 @@
 	);
 
 	function measure() {
-		const d = frame?.contentDocument;
-		if (!d?.body || !d.documentElement) return;
-		// body.scrollHeight alone under-measures: the last element's bottom margin
-		// collapses out of it, so the frame ended a few px short and the final
-		// line hid under the rounded corner / whatever sits below the frame.
-		const h = Math.max(
-			d.body.scrollHeight,
-			d.body.offsetHeight,
-			d.documentElement.scrollHeight,
-			d.documentElement.offsetHeight
-		);
-		contentH = Math.ceil(h) + 8;
+		const body = frame?.contentDocument?.body;
+		if (!body) return;
+		// Measure the BODY only — html stretches to the iframe viewport, so any
+		// documentElement metric echoes the current frame height back (short mail
+		// then locks at the initial floor with a big empty gap). The frame doc
+		// gives body `display:flow-root`, so child margins can't collapse out and
+		// the rect height is the true content height.
+		contentH = Math.ceil(body.getBoundingClientRect().height) + 4;
 	}
 
 	$effect(() => {
