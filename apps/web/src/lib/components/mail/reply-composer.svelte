@@ -22,6 +22,7 @@
 	} from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
+	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 
 	// Inline reply docked at the bottom of an open thread — the primary compose
 	// surface, and the one that should feel like a chat input. Replies default
@@ -80,11 +81,26 @@
 	const isMobile = new IsMobile();
 	let collapsed = $state(false);
 
+	// Local-first crash buffer: every keystroke mirrors to localStorage; the
+	// mirror is cleared once the server acks, so on mount its presence means
+	// unsaved text — restore it. Keyed by thread (draftId doesn't exist yet
+	// while the loss window is open).
+	const mirrorKey = $derived(`reply:${threadId}`);
+
 	// Seed the sending identity from the parent thread (remounted per {#key}).
 	onMount(() => {
 		sendMailboxId = mailboxId;
 		aliasId = defaultAliasId;
 		collapsed = isMobile.current;
+		sweepMirrors();
+		const local = readMirror(mirrorKey);
+		if (local?.body) {
+			body = local.body;
+			editorKey++;
+			collapsed = false;
+			toast('Restored unsaved reply');
+			scheduleSave();
+		}
 	});
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
@@ -96,6 +112,7 @@
 
 	async function ensureDraft(): Promise<string | null> {
 		if (draftId) return draftId;
+		const sentBody = body;
 		const d = await startDraft({
 			mailboxId: sendMailboxId,
 			kind: replyAll ? 'reply_all' : 'reply',
@@ -108,6 +125,9 @@
 		});
 		draftId = d.id;
 		clientRevision = d.clientRevision;
+		// Server has this text now — drop the crash buffer (unless more was
+		// typed while the request was in flight).
+		if (body === sentBody) clearMirror(mirrorKey);
 		return draftId;
 	}
 
@@ -143,6 +163,7 @@
 			await ensureDraft();
 			return;
 		}
+		const sentBody = body;
 		const res = await autosaveDraft({
 			draftId,
 			clientRevision,
@@ -151,8 +172,10 @@
 			cc: recips.cc,
 			fromAliasId: aliasId ?? null
 		});
-		if (res.ok) clientRevision = res.clientRevision;
-		else {
+		if (res.ok) {
+			clientRevision = res.clientRevision;
+			if (body === sentBody) clearMirror(mirrorKey);
+		} else {
 			clientRevision = res.draft.clientRevision;
 			body = res.draft.body ?? body;
 		}
@@ -177,6 +200,7 @@
 		}
 		// Gmail-style: the composer frees instantly; the toast carries Undo for
 		// the send-delay window. Undo restores the draft back into the editor.
+		clearMirror(mirrorKey);
 		const submissionId = res.submissionId;
 		draftId = null;
 		clientRevision = 0;
@@ -211,6 +235,15 @@
 		}
 	}
 </script>
+
+<!-- Tab going hidden is the last reliable moment to reach the network — flush
+     immediately instead of waiting out the debounce (best-effort; the local
+     mirror covers whatever doesn't make it). -->
+<svelte:document
+	onvisibilitychange={() => {
+		if (document.visibilityState === 'hidden') void flushSave();
+	}}
+/>
 
 <div
 	class="bg-card border-t shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)] transition-[padding] duration-200 motion-reduce:transition-none {collapsed
@@ -280,6 +313,7 @@
 					placeholder="Reply to {toAddress}…"
 					oninput={(html) => {
 						body = html;
+						mirrorDraft(mirrorKey, { body: html });
 						scheduleSave();
 					}}
 					onattach={() => fileInput?.click()}

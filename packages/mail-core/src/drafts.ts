@@ -108,9 +108,11 @@ function jsonArray<T>(raw: string | null | undefined, fallback: T[] = []): T[] {
   }
 }
 
+// Draft bodies are rich-composer HTML — strip to text so list rows never show
+// markup. Harmless on already-plain text.
 function preview(text: string | null, n = 140): string | null {
   if (!text) return null;
-  const clean = text.replace(/\s+/g, " ").trim();
+  const clean = stripHtmlTags(text).replace(/\s+/g, " ").trim();
   return clean.length > n ? clean.slice(0, n) + "…" : clean;
 }
 

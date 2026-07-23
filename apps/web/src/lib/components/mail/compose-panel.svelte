@@ -43,6 +43,7 @@
 		draftById
 	} from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '@doota/mail-core/identities';
+	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
 
 	type Prefill = {
@@ -118,7 +119,31 @@
 		};
 	});
 
+	// A surviving mirror = text the server never acked (tab died / offline
+	// before the debounce flushed). Pull it back over whatever loaded.
+	function restoreMirror() {
+		const local = readMirror(mirrorKey);
+		if (!local) return;
+		const text = (local.body ?? '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+		const meaningful =
+			text.length > 0 ||
+			(local.subject ?? '').trim().length > 0 ||
+			(local.to?.length ?? 0) + (local.cc?.length ?? 0) + (local.bcc?.length ?? 0) > 0;
+		if (!meaningful) return;
+		if (local.body !== undefined) body = local.body;
+		if (local.subject !== undefined) subject = local.subject;
+		if (local.to) to = local.to;
+		if (local.cc) cc = local.cc;
+		if (local.bcc) bcc = local.bcc;
+		showCc = showCc || cc.length > 0;
+		showBcc = showBcc || bcc.length > 0;
+		editorKey++;
+		toast('Restored unsaved draft');
+		scheduleSave();
+	}
+
 	onMount(async () => {
+		sweepMirrors();
 		identities = await sendIdentities();
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
@@ -135,6 +160,7 @@
 			showCc = d.cc.length > 0;
 			showBcc = d.bcc.length > 0;
 			editorKey++;
+			restoreMirror();
 			return;
 		}
 		if (prefill) {
@@ -152,6 +178,7 @@
 			mailboxId = chosen.mailboxId;
 			aliasId = chosen.aliasId;
 		}
+		restoreMirror();
 	});
 
 	const canSend = $derived(phase === 'editing' && !!mailboxId && to.length + cc.length + bcc.length > 0);
@@ -204,9 +231,17 @@
 		}
 	}
 
+	// Local-first crash buffer: every edit mirrors synchronously to localStorage
+	// (cleared on server ack), so the 800ms debounce window can't lose text.
+	// ponytail: key 'new' is shared by concurrent new composes across tabs —
+	// last writer wins; key by a session nonce if that ever bites.
+	const mirrorKey = $derived(resumeDraftId ?? 'new');
+	const snapshot = () => JSON.stringify([body, subject, to, cc, bcc]);
+
 	function scheduleSave() {
 		if (phase !== 'editing') return;
 		saved = false;
+		mirrorDraft(mirrorKey, { body, subject, to, cc, bcc });
 		debouncedSave();
 	}
 
@@ -224,6 +259,7 @@
 
 	async function ensureDraft(): Promise<string | null> {
 		if (draftId || !mailboxId) return draftId;
+		const sent = snapshot();
 		const d = await startDraft({
 			mailboxId,
 			kind: prefill?.kind === 'forward' ? 'forward' : 'new',
@@ -238,6 +274,9 @@
 		});
 		draftId = d.id;
 		clientRevision = d.clientRevision;
+		// Server has this content now — drop the crash buffer (unless more was
+		// typed while the request was in flight).
+		if (snapshot() === sent) clearMirror(mirrorKey);
 		return draftId;
 	}
 
@@ -248,6 +287,7 @@
 			if (hasContent) await ensureDraft();
 			return;
 		}
+		const sent = snapshot();
 		const res = await autosaveDraft({
 			draftId,
 			clientRevision,
@@ -261,6 +301,7 @@
 		if (res.ok) {
 			clientRevision = res.clientRevision;
 			saved = true;
+			if (snapshot() === sent) clearMirror(mirrorKey);
 		} else {
 			const d = res.draft;
 			clientRevision = d.clientRevision;
@@ -373,6 +414,7 @@
 		// Emptied-out draft = no longer a draft: delete the husk instead of saving it.
 		if (draftId && !hasContent) {
 			debouncedSave.cancel();
+			clearMirror(mirrorKey);
 			await discardDraftById({ draftId });
 			draftId = null;
 		} else {
@@ -389,6 +431,7 @@
 	}
 
 	function reset() {
+		clearMirror(mirrorKey);
 		draftId = null;
 		clientRevision = 0;
 		phase = 'editing';
@@ -455,6 +498,14 @@
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
+<!-- Tab going hidden is the last reliable moment to reach the network — flush
+     immediately instead of waiting out the debounce (best-effort; the local
+     mirror covers whatever doesn't make it). -->
+<svelte:document
+	onvisibilitychange={() => {
+		if (open && document.visibilityState === 'hidden') void flushSave();
+	}}
+/>
 
 <!-- The panel interior (attachments rail + editor column) is one snippet shared
      by the three containers: docked window, full-screen overlay, bottom drawer.

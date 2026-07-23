@@ -5,11 +5,14 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
@@ -185,18 +188,32 @@
 	let reachedEnd = $state(false);
 	let loadingList = $state(false);
 
+	let pendingReload = false;
 	async function loadThreads(reset: boolean) {
-		if (!mailboxId || isVirtual || loadingList) return;
+		if (!mailboxId || isVirtual) return;
+		if (loadingList) {
+			// A reset that lands mid-load (live event during initial fetch) must
+			// not be dropped — run it again once the current load settles.
+			if (reset) pendingReload = true;
+			return;
+		}
 		if (!reset && reachedEnd) return;
 		loadingList = true;
 		try {
 			const offset = reset ? 0 : nextOffset;
-			const page = await mailboxThreads({ mailboxId, placement: placement as never, offset });
+			const q = mailboxThreads({ mailboxId, placement: placement as never, offset });
+			// Same-args query calls are deduped/cached — a plain re-await can hand
+			// back the stale page. Resets come from live events, so force the read.
+			const page = reset ? ((await q.refresh(), q.current) ?? []) : await q;
 			items = reset ? page : [...items, ...page];
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
 		} finally {
 			loadingList = false;
+			if (pendingReload) {
+				pendingReload = false;
+				void loadThreads(true);
+			}
 		}
 	}
 
@@ -221,16 +238,53 @@
 	// like the single-thread actions do (no refetch/flash).
 	const threadSel = new SvelteSet<string>();
 	let bulkBusy = $state(false);
+
+	// Action feedback on rows. Leaving rows play ONE continuous exit: height
+	// collapses while the row slides toward where it's going (trash/spam left,
+	// archive/inbox right), so rows below track the shrink instead of jumping
+	// after a separate fade. The exit only plays when rowFx names the row —
+	// removals from plain refreshes/live reloads stay instant. Read/unread
+	// keeps the row and pulses a ring instead.
+	type RowFx = 'delete' | 'spam' | 'archived' | 'inbox' | 'pulse';
+	const PULSE_CLASS = 'ring-brand/40 ring-2 ring-inset transition-all duration-300';
+	const rowFx = new SvelteMap<string, RowFx>();
+
+	function exitFx(node: HTMLElement, { kind }: { kind?: RowFx }) {
+		if (!kind || kind === 'pulse') return { duration: 0 };
+		const dx = kind === 'archived' || kind === 'inbox' ? 40 : -40;
+		const h = node.offsetHeight;
+		const cs = getComputedStyle(node);
+		const pt = parseFloat(cs.paddingTop);
+		const pb = parseFloat(cs.paddingBottom);
+		return {
+			duration: 280,
+			easing: cubicOut,
+			css: (t: number, u: number) =>
+				`overflow:hidden; opacity:${t}; transform:translateX(${dx * u}px); height:${h * t}px; padding-top:${pt * t}px; padding-bottom:${pb * t}px; min-height:0;`
+		};
+	}
+
 	async function bulkMove(pl: 'inbox' | 'archived' | 'spam' | 'trash') {
 		if (!mailboxId || bulkBusy) return;
 		const ids = [...threadSel];
+		const mb = mailboxId;
 		bulkBusy = true;
+		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
+		for (const id of ids) rowFx.set(id, fx);
+		// Optimistic: rows leave immediately (exit transition reads rowFx); the
+		// server write settles behind the animation and reloads on failure.
+		items = items.filter((t) => !threadSel.has(t.threadId));
+		if (threadId && threadSel.has(threadId)) nav({ thread: null });
+		threadSel.clear();
 		try {
-			await bulkMoveThreads({ mailboxId, threadIds: ids, placement: pl });
-			items = items.filter((t) => !threadSel.has(t.threadId));
-			if (threadId && threadSel.has(threadId)) nav({ thread: null });
-			threadSel.clear();
+			await bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl });
+		} catch {
+			toast.error('Action failed — restoring the list.');
+			void loadThreads(true);
 		} finally {
+			setTimeout(() => {
+				for (const id of ids) rowFx.delete(id);
+			}, 350);
 			bulkBusy = false;
 		}
 	}
@@ -238,12 +292,16 @@
 		if (!mailboxId || bulkBusy) return;
 		const ids = [...threadSel];
 		bulkBusy = true;
+		for (const id of ids) rowFx.set(id, 'pulse');
 		try {
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
 			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
 			threadSel.clear();
 			void refreshUnread();
 		} finally {
+			setTimeout(() => {
+				for (const id of ids) rowFx.delete(id);
+			}, 400);
 			bulkBusy = false;
 		}
 	}
@@ -263,11 +321,17 @@
 	let deletingDrafts = $state(false);
 	async function deleteDrafts(ids: string[]) {
 		deletingDrafts = true;
+		for (const id of ids) rowFx.set(id, 'delete');
 		try {
 			await discardDrafts({ draftIds: ids });
 			for (const id of ids) draftSel.delete(id);
+			// refresh removes the rows — their exit transition reads rowFx and
+			// plays the same collapse as threads.
 			await myDrafts().refresh();
 		} finally {
+			setTimeout(() => {
+				for (const id of ids) rowFx.delete(id);
+			}, 350);
 			deletingDrafts = false;
 		}
 	}
@@ -754,44 +818,7 @@
 
 		<!-- Filter rail — folder nav lives in the sidebar (this row used to duplicate
 		     it); the list's own row narrows what's shown instead. -->
-		{#if !isVirtual && !searchQ && threadSel.size}
-			<!-- Selection toolbar — takes the filter rail's row while anything is
-			     selected. Same fixed h-10 as the rail: swapping causes no shift. -->
-			<div class="bg-card/60 flex h-10 items-center gap-1 border-b px-2">
-				<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => threadSel.clear()}>
-					<XIcon class="size-4" />
-				</Button>
-				<span class="text-muted-foreground text-xs tabular-nums">{threadSel.size}</span>
-				<div class="ml-auto flex items-center gap-0.5">
-					<Button variant="ghost" size="icon" class="size-7" title="Mark read" disabled={bulkBusy} onclick={() => bulkRead(true)}>
-						<MailOpenIcon class="size-4" />
-					</Button>
-					<Button variant="ghost" size="icon" class="size-7" title="Mark unread" disabled={bulkBusy} onclick={() => bulkRead(false)}>
-						<MailIcon class="size-4" />
-					</Button>
-					{#if placement !== 'inbox'}
-						<Button variant="ghost" size="icon" class="size-7" title="Move to inbox" disabled={bulkBusy} onclick={() => bulkMove('inbox')}>
-							<InboxIcon class="size-4" />
-						</Button>
-					{/if}
-					{#if placement !== 'archived'}
-						<Button variant="ghost" size="icon" class="size-7" title="Archive" disabled={bulkBusy} onclick={() => bulkMove('archived')}>
-							<ArchiveIcon class="size-4" />
-						</Button>
-					{/if}
-					{#if placement !== 'spam'}
-						<Button variant="ghost" size="icon" class="size-7" title="Mark spam" disabled={bulkBusy} onclick={() => bulkMove('spam')}>
-							<ShieldAlertIcon class="size-4" />
-						</Button>
-					{/if}
-					{#if placement !== 'trash'}
-						<Button variant="ghost" size="icon" class="size-7 hover:text-destructive" title="Trash" disabled={bulkBusy} onclick={() => bulkMove('trash')}>
-							<Trash2Icon class="size-4" />
-						</Button>
-					{/if}
-				</div>
-			</div>
-		{:else if !isVirtual && !searchQ}
+		{#if !isVirtual && !searchQ}
 			<div class="flex h-10 items-center gap-2 border-b px-3">
 				<div class="bg-muted/60 flex items-center gap-0.5 rounded-full p-0.5 text-xs">
 					{#each [['all', 'All'], ['unread', 'Unread'], ['starred', 'Starred']] as [id, label] (id)}
@@ -820,24 +847,77 @@
 			</div>
 		{/if}
 
-		{#if placement === 'drafts' && draftSel.size}
-			<!-- Floats over the list top (pane is relative; header is h-14) so the
-			     bar's appearance pushes nothing — same zero-shift rule as threads. -->
-			<div class="bg-card/85 absolute inset-x-0 top-14 z-10 flex h-10 items-center gap-1 border-b px-2 shadow-xs backdrop-blur">
-				<Button variant="ghost" size="icon" class="size-7" title="Clear selection" onclick={() => draftSel.clear()}>
-					<XIcon class="size-4" />
-				</Button>
-				<span class="text-muted-foreground text-xs tabular-nums">{draftSel.size} selected</span>
-				<Button
-					variant="ghost"
-					size="sm"
-					class="text-destructive hover:text-destructive ml-auto gap-1.5"
-					disabled={deletingDrafts}
-					onclick={() => deleteDrafts([...draftSel])}
-				>
-					{#if deletingDrafts}<Spinner class="size-3.5" />{:else}<Trash2Icon class="size-3.5" />{/if}
-					Delete
-				</Button>
+		<!-- Persistent selection bar (threads + drafts): select-all always
+		     available, actions disabled until something is selected, count shown
+		     in the bar and as a badge on Delete. Always mounted → zero shift. -->
+		{#if (!isVirtual && !searchQ) || placement === 'drafts'}
+			{@const inDrafts = placement === 'drafts'}
+			{@const visibleIds = inDrafts
+				? (myDrafts().current ?? []).map((d) => d.id)
+				: applyListFilters(items).map((t) => t.threadId)}
+			{@const sel = inDrafts ? draftSel : threadSel}
+			{@const n = sel.size}
+			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
+			<div class="bg-card/60 flex h-10 items-center gap-2 border-b px-3">
+				<!-- Gmail semantics: empty → select all visible; anything → clear. -->
+				<Checkbox
+					checked={allSelected}
+					indeterminate={n > 0 && !allSelected}
+					aria-label={n > 0 ? 'Clear selection' : 'Select all'}
+					onCheckedChange={() => {
+						if (n > 0) sel.clear();
+						else for (const id of visibleIds) sel.add(id);
+					}}
+				/>
+				<span class="text-muted-foreground text-xs tabular-nums">
+					{n > 0 ? `${n} selected` : 'Select all'}
+				</span>
+				<div class="ml-auto flex items-center gap-0.5">
+					{#if !inDrafts}
+						<Button variant="ghost" size="icon" class="size-7" title="Mark read" disabled={!n || bulkBusy} onclick={() => bulkRead(true)}>
+							<MailOpenIcon class="size-4" />
+						</Button>
+						<Button variant="ghost" size="icon" class="size-7" title="Mark unread" disabled={!n || bulkBusy} onclick={() => bulkRead(false)}>
+							<MailIcon class="size-4" />
+						</Button>
+						{#if placement !== 'inbox'}
+							<Button variant="ghost" size="icon" class="size-7" title="Move to inbox" disabled={!n || bulkBusy} onclick={() => bulkMove('inbox')}>
+								<InboxIcon class="size-4" />
+							</Button>
+						{/if}
+						{#if placement !== 'archived'}
+							<Button variant="ghost" size="icon" class="size-7" title="Archive" disabled={!n || bulkBusy} onclick={() => bulkMove('archived')}>
+								<ArchiveIcon class="size-4" />
+							</Button>
+						{/if}
+						{#if placement !== 'spam'}
+							<Button variant="ghost" size="icon" class="size-7" title="Mark spam" disabled={!n || bulkBusy} onclick={() => bulkMove('spam')}>
+								<ShieldAlertIcon class="size-4" />
+							</Button>
+						{/if}
+					{/if}
+					{#if inDrafts || placement !== 'trash'}
+						<Button
+							variant="ghost"
+							size="icon"
+							class="hover:text-destructive relative size-7"
+							title="Delete"
+							disabled={!n || (inDrafts ? deletingDrafts : bulkBusy)}
+							onclick={() => (inDrafts ? deleteDrafts([...draftSel]) : bulkMove('trash'))}
+						>
+							{#if inDrafts && deletingDrafts}
+								<Spinner class="size-4" />
+							{:else}
+								<Trash2Icon class="size-4" />
+							{/if}
+							{#if n > 0}
+								<span class="bg-destructive text-destructive-foreground absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full px-0.5 text-[9px] leading-4 font-semibold tabular-nums">
+									{n > 99 ? '99+' : n}
+								</span>
+							{/if}
+						</Button>
+					{/if}
+				</div>
 			</div>
 		{/if}
 		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
@@ -882,7 +962,12 @@
 					{@const drafts = draftsQ.current}
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
-							<div class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-colors {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}">
+							{@const dfx = rowFx.get(d.id)}
+							<div
+								animate:flip={{ duration: 200 }}
+								out:exitFx={{ kind: dfx }}
+								class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-colors {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}"
+							>
 								{@render selectAvatar(
 									d.to[0] ?? null,
 									draftSel.has(d.id),
@@ -948,7 +1033,12 @@
 						{#each applyListFilters(items) as t (t.threadId)}
 							{@const selected = threadId === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
-							<div class="group/row relative flex items-start border-b py-2.5 pl-3 transition-colors {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : 'hover:bg-muted/50'}">
+							{@const fx = rowFx.get(t.threadId)}
+							<div
+								animate:flip={{ duration: 200 }}
+								out:exitFx={{ kind: fx }}
+								class="group/row relative flex items-start border-b py-2.5 pl-3 transition-colors {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : 'hover:bg-muted/50'} {fx === 'pulse' ? PULSE_CLASS : ''}"
+							>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
 									t.from,

@@ -5,6 +5,7 @@ import { decryptContent, type ContentKey } from "./crypto";
 import { listNotes, threadHasNotes } from "./notes";
 import { listSystemEvents } from "./collab";
 import {
+  stripHtmlTags,
   tickForStatus,
   type MessageDTO,
   type SubmissionState,
@@ -37,9 +38,11 @@ export type ThreadSummary = {
   assigneeUserId: string | null;
 };
 
+// stripHtmlTags: stored stripped bodies are plain text by construction, but
+// odd senders ship HTML inside text/plain — never let markup reach a list row.
 function preview(text: string | null, n = 140): string | null {
   if (!text) return null;
-  const clean = text.replace(/\s+/g, " ").trim();
+  const clean = stripHtmlTags(text).replace(/\s+/g, " ").trim();
   return clean.length > n ? clean.slice(0, n) + "…" : clean;
 }
 
