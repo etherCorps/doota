@@ -233,6 +233,7 @@ export async function getThread(
     ? await db
         .select({
           messageId: schema.delivery.messageId,
+          role: schema.delivery.role,
           isRead: schema.delivery.isRead,
           keywords: schema.delivery.keywords,
           viaAliasId: schema.delivery.viaAliasId,
@@ -246,6 +247,11 @@ export async function getThread(
         )
     : [];
   const deliveryByMsg = new Map(deliveries.map((d) => [d.messageId, d]));
+  // Messages THIS mailbox sent (it holds the `from` receipt). A message can
+  // carry both `from` and `to` receipts here (self-send), so check the set —
+  // and never infer "mine" from the submission row: a colleague's send in a
+  // shared thread has a submission too, but it is not this mailbox's bubble.
+  const sentFromHere = new Set(deliveries.filter((d) => d.role === "from").map((d) => d.messageId));
 
   // Resolve any alias ids → addresses (usually none).
   const aliasIds = [...new Set(deliveries.map((d) => d.viaAliasId).filter(Boolean))] as string[];
@@ -313,6 +319,7 @@ export async function getThread(
       bodyHtml: html,
       keywords: safeJsonArray(d?.keywords),
       isRead,
+      outbound: sentFromHere.has(m.id),
       viaAlias: d?.viaAliasId ? (aliasAddr.get(d.viaAliasId) ?? null) : null,
       viaAliasId: d?.viaAliasId ?? null,
       attachments: (attByMsg.get(m.id) ?? []).map((a) => ({

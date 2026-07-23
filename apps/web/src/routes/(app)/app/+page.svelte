@@ -484,7 +484,7 @@
 
 	// Reply context (computed from the loaded thread).
 	function replyCtx(msgs: MessageDTO[]) {
-		const lastInbound = [...msgs].reverse().find((m) => !m.submission);
+		const lastInbound = [...msgs].reverse().find((m) => !m.outbound);
 		const parent = msgs.at(-1);
 		const target = lastInbound?.replyTo || lastInbound?.from || parent?.from || '';
 		const self = new Set(identities.map((i) => i.address.toLowerCase()));
@@ -1318,7 +1318,7 @@
 								{/if}
 								{#if item.type === 'external_message' && threadView.current === 'chat'}
 									{@const m = item}
-									{@const outbound = !!m.submission}
+									{@const outbound = m.outbound}
 									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
 										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
@@ -1387,7 +1387,7 @@
 									</div>
 								{:else if item.type === 'external_message'}
 								{@const m = item}
-								{@const outbound = !!m.submission}
+								{@const outbound = m.outbound}
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
 								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">

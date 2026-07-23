@@ -42,7 +42,7 @@
 	<EdgeSwipeOpen />
 	<SendFailureNotifier />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
-	<Sidebar.Inset class="relative flex h-svh flex-col overflow-hidden">
+	<Sidebar.Inset class="relative flex h-svh min-w-0 flex-col overflow-hidden">
 		<TopBar>
 			{#snippet action()}
 				<!-- Below `sm` the list pane's floating compose button takes over and the

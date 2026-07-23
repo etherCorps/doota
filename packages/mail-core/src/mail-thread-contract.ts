@@ -69,6 +69,10 @@ export type MessageDTO = {
   bodyHtml: string | null;
   keywords: string[];
   isRead: boolean;
+  /** True when the VIEWING mailbox sent this message (it holds the `from`
+   * receipt). Drives which side a bubble renders on — presence of `submission`
+   * is NOT enough: a colleague's send in a shared thread carries one too. */
+  outbound: boolean;
   viaAlias: string | null;
   /** Alias id the mail was delivered through — lets a reply default its From to
    * that alias (otherwise hide-my-email leaks the real address on first reply). */
