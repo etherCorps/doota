@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { cn } from "$lib/utils/ui.js";
 	import type { Snippet } from "svelte";

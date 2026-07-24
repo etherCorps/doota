@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Hallmark · component: attachment tile · genre: inherited (app system)
      states: default · hover · focus · active · loading (pdf render) · error (fallback icon)
      Visual preview for any attachment type: real pixels where the browser can

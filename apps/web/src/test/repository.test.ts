@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, beforeEach } from "vitest";
 import { fakeCtx, fakeDb, installEvent, clearEvent } from "./fakes";
 import { getUserForRecovery } from "$lib/server/auth/repository.js";

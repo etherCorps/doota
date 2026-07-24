@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./sheet.svelte";
 import Portal from "./sheet-portal.svelte";
 import Trigger from "./sheet-trigger.svelte";

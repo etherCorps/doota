@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Sheet from "$lib/components/ui/sheet/index.js";
 	import { cn, type WithElementRef } from "$lib/utils/ui.js";
 	import type { HTMLAttributes } from "svelte/elements";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import ApiKeysCard from '$lib/components/account/api-keys-card.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import TerminalIcon from '@lucide/svelte/icons/terminal';

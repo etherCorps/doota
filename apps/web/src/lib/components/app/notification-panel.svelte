@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { onMount } from 'svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';

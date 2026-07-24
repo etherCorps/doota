@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Root /llms.txt — sectioned index for AI agents.
 import { getIndexedTopLevel } from "@cloudflare/nimbus-docs";
 import { config } from "virtual:nimbus/config";

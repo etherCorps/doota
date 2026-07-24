@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { THEMES, type ChartConfig } from "./chart-utils.js";
 
 	let { id, config }: { id: string; config: ChartConfig } = $props();

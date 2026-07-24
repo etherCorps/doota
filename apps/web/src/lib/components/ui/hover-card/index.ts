@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./hover-card.svelte";
 import Content from "./hover-card-content.svelte";
 import Trigger from "./hover-card-trigger.svelte";

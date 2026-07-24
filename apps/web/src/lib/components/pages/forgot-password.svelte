@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import MailCheckIcon from '@lucide/svelte/icons/mail-check';
 	import { resolve } from '$app/paths';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./collapsible.svelte";
 import Trigger from "./collapsible-trigger.svelte";
 import Content from "./collapsible-content.svelte";

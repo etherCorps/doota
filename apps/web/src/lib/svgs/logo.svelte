@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { SVGAttributes } from "svelte/elements";
 
 	let { ...props }: SVGAttributes<SVGSVGElement> = $props();

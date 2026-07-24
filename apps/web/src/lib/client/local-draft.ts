@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Crash buffer for composer text. Written synchronously on every edit, cleared
 // the moment the server acks an autosave — so a mirror's presence means
 // "content the server hasn't seen yet". Survives tab kill / crash / offline,

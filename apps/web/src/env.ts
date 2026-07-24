@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { dev } from '$app/env';
 import { defineEnvVars } from '@sveltejs/kit/hooks';
 import { z } from 'zod';

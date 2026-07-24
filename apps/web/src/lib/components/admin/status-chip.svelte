@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	// Small status pill for DKIM / sending / user state. Neutral by default;
 	// ok = green, warn = amber, bad = destructive. Accent stays reserved for
 	// interactive elements, so statuses use their own semantic hues.

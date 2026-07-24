@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./navigation-menu.svelte";
 import Content from "./navigation-menu-content.svelte";
 import Indicator from "./navigation-menu-indicator.svelte";

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Hallmark · component: mail HTML frame · genre: inherited (app system)
      states: measuring (skeleton height) · fitted · collapsed+fade · expanded
      Sandboxed message HTML that sizes itself to its content instead of forcing

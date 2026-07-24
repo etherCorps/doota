@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
 	import type { Component } from "svelte";
 	// Use LucideIcon type if using lucide icons

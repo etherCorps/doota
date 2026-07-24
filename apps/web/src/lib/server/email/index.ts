@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { render } from "@ethercorps/un-jinja";
 import type { MailFrom } from "@doota/db/org-domains";
 import layout from "./templates/_layout.html?raw";

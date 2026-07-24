@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Button } from "$lib/components/ui/button";
 	import { cn } from "$lib/utils/ui";
 	import { XIcon } from "@lucide/svelte";

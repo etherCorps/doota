@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./item.svelte";
 import Group from "./item-group.svelte";
 import Separator from "./item-separator.svelte";

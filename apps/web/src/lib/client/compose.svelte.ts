@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Single compose controller. One ComposePanel is mounted in the (app) layout and
 // bound to this store; every entry point (sidebar / top bar / ⌘K / `c` key /
 // forward / resume-draft / empty-state CTA) routes through `compose.start(...)`

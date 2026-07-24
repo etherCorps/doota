@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { compose } from '$lib/client/compose.svelte.js';
 

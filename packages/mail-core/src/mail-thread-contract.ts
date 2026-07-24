@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * The shared mail contract: DTO shapes (modeled on JMAP Email/Thread so a future
  * JMAP API is a thin mapping) + pure, DB-free helpers for threading, quote

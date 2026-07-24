@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Programmatic bearer API keys for external send (Part I). App-owned (Better
  * Auth's apiKey plugin isn't present at the pinned better-auth version) but kept

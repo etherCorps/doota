@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Storage key: `nb-banner-dismissed-{id}`. Value is "0" for permanent,
  * or a future timestamp (ms) for time-limited dismissal.

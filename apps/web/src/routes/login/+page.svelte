@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { toast } from 'svelte-sonner';
 	import Login from '$lib/components/pages/login.svelte';
 

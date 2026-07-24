@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./card.svelte";
 import Content from "./card-content.svelte";
 import Description from "./card-description.svelte";

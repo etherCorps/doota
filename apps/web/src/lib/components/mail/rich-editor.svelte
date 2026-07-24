@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { onMount, onDestroy } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Toggle } from '$lib/components/ui/toggle/index.js';

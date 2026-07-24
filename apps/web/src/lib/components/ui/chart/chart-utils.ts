@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Tooltip } from "layerchart";
 import { getContext, setContext, type Component, type Snippet } from "svelte";
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { ColumnDef } from '@tanstack/table-core';
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import EyeIcon from '@lucide/svelte/icons/eye';

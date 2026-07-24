@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Calendar as CalendarPrimitive } from "bits-ui";
 	import CaretLeftIcon from 'phosphor-svelte/lib/CaretLeft';
 	import { buttonVariants, type ButtonVariant } from "$lib/components/ui/button/index.js";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import Setup from '$lib/components/pages/setup.svelte';
 
 	let { data } = $props();

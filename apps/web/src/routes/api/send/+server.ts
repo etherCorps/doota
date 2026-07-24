@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { bearerFromHeaders, verifyApiKey } from "$lib/server/auth/api-key.js";
 import { enqueueSend, type OutboundEnv } from "@doota/mail-core/outbound";

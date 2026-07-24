@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Cloudflare KV as Better Auth secondary storage — a fast, edge-local read cache
  * in front of the durable D1 store.

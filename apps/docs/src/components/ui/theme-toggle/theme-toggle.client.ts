@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * theme-toggle.client.ts — light/dark toggle. Writes pref to localStorage
  * ("ui-mode"); BaseLayout's pre-paint script owns DOM application so view

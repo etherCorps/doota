@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Command as CommandPrimitive } from "bits-ui";
 
 	let { ref = $bindable(null), ...restProps }: CommandPrimitive.LoadingProps = $props();

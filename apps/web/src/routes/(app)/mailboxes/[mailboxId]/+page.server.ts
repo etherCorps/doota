@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { error, redirect } from "@sveltejs/kit";
 import { loadMailboxDetail, isMailboxManager } from "@doota/mail-core/mailbox-detail";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";

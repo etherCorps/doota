@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { HTMLTableAttributes } from "svelte/elements";
 	import { cn, type WithElementRef } from "$lib/utils/ui.js";
 

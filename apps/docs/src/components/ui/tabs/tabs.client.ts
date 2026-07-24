@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /** Wires <Tabs>; auto-detects manual triggers vs. synthesized-from-TabItem mode. */
 
 import { mount, initTabs } from "@cloudflare/nimbus-docs/client";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { getRequestEvent } from "$app/server";
 import { deliverSubmissionNow, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Pagination as PaginationPrimitive } from "bits-ui";
 	import CaretRightIcon from 'phosphor-svelte/lib/CaretRight';
 	import { cn } from "$lib/utils/ui.js";

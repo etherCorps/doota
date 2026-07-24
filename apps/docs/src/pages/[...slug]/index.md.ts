@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Per-page `/<slug>/index.md` — the clean-markdown alternate for every
  * indexable entry of the primary `docs` collection.

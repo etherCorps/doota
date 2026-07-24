@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Zero-access content encryption (ARCHITECTURE.md §1). Subject and bodies are
  * encrypted at rest with AES-256-GCM (WebCrypto). Routing/threading metadata

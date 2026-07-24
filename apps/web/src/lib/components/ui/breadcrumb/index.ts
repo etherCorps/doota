@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./breadcrumb.svelte";
 import Ellipsis from "./breadcrumb-ellipsis.svelte";
 import Item from "./breadcrumb-item.svelte";

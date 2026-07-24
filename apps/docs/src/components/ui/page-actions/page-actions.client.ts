@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { mount } from "@cloudflare/nimbus-docs/client";
 
 function initPageActions(root: HTMLElement): () => void {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { redirect } from "@sveltejs/kit";
 
 // /account → Profile is the landing sub-page.

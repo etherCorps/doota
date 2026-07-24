@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./tooltip.svelte";
 import Trigger from "./tooltip-trigger.svelte";
 import Content from "./tooltip-content.svelte";

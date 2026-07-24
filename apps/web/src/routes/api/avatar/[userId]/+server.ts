@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { error, type RequestHandler } from "@sveltejs/kit";
 
 /** Serve a user's uploaded avatar from R2. Any signed-in user may view avatars. */

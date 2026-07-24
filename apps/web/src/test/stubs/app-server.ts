@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Test stub for SvelteKit's `$app/server`. Boundary functions read
 // getRequestEvent().locals; tests inject a fake event via setRequestEvent().
 type FakeEvent = { locals: Record<string, unknown> } & Record<string, unknown>;

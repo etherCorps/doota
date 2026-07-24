@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import ChartContainer from "./chart-container.svelte";
 import ChartTooltip from "./chart-tooltip.svelte";
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { RequestHandler } from '@sveltejs/kit';
 import { ImageResponse } from '@ethercorps/sveltekit-og/takumi';
 import { GoogleFont, resolveFonts } from '@ethercorps/sveltekit-og/fonts';

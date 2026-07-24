@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { PersistedState } from 'runed';
 	import AdminSidebar from '$lib/components/admin/admin-sidebar.svelte';

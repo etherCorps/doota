@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	// SPDX-License-Identifier: Apache-2.0
 	import { cn, type WithElementRef } from "$lib/utils/ui.js";
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
 	import { type VariantProps, tv } from "tailwind-variants";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import * as Kbd from "$lib/components/ui/kbd/index.js";

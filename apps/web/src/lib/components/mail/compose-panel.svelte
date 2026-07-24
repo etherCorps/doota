@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { onMount } from 'svelte';
 	import { useDebounce } from 'runed';
 	import { fade } from 'svelte/transition';

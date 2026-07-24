@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Cloudflare from "cloudflare";
 import { APP_CLOUDFLARE_ACCOUNT_ID, APP_CLOUDFLARE_API_TOKEN } from "$app/env/private";
 

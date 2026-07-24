@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { ORIGIN } from "$app/env/public";
 import { sendMail } from "./mailer";
 import { renderEmail } from "./email";

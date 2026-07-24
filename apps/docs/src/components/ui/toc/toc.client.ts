@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Scroll-spy + animated rail indicator. Active heading tracked via a single
  * IntersectionObserver; the dash slides by arc-length so it weaves through the

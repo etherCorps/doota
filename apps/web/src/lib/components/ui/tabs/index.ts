@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./tabs.svelte";
 import Content from "./tabs-content.svelte";
 import List, { tabsListVariants, type TabsListVariant } from "./tabs-list.svelte";

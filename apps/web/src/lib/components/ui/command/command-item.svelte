@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Command as CommandPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils/ui.js";
 	import CheckIcon from 'phosphor-svelte/lib/Check';

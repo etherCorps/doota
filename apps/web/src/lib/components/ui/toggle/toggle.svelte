@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	// SPDX-License-Identifier: Apache-2.0
 	import { type VariantProps, tv } from "tailwind-variants";
 
 	export const toggleVariants = tv({

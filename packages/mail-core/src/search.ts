@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";

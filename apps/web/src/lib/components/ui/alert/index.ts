@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./alert.svelte";
 import Description from "./alert-description.svelte";
 import Title from "./alert-title.svelte";

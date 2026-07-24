@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createAvatar } from "@dicebear/core";
 import { glass } from "@dicebear/collection";
 

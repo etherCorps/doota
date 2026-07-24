@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { IsMobile } from "$lib/utils/hooks/is-mobile.svelte.js";
 import { getContext, setContext } from "svelte";
 import { SIDEBAR_KEYBOARD_SHORTCUT } from "./constants.js";

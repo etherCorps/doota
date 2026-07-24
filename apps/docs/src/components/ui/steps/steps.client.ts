@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * steps.client.ts — Safari list-role restoration.
  *

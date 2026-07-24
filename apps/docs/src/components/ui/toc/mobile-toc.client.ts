@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Mobile TOC — keeps the "jump to section" <select> in sync with the page.
  *

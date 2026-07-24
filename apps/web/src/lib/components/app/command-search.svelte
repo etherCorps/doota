@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import * as Command from '$lib/components/ui/command/index.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';

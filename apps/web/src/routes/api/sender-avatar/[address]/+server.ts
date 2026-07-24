@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";

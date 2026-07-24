@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { vi } from "vitest";
 import { setRequestEvent } from "./stubs/app-server";
 

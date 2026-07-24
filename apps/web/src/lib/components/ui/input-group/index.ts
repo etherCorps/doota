@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./input-group.svelte";
 import Addon from "./input-group-addon.svelte";
 import Button from "./input-group-button.svelte";

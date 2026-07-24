@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import CopyIcon from '@lucide/svelte/icons/copy';

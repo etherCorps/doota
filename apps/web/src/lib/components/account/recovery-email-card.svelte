@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import { setRecoveryEmail } from '$lib/rpc/recovery-email.remote';
 	import { Badge } from '$lib/components/ui/badge';

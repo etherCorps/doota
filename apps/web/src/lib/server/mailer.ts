@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { getRequestEvent } from "$app/server";
 
 type MailFrom = { name: string; email: string; logo?: string | null };

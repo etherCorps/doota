@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { redirect } from "@sveltejs/kit";
 
 const ADMIN_ROLES = ["admin", "superadmin"];

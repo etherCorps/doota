@@ -1,4 +1,5 @@
 <script module lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	// Module-scope reputation cache: the number moves slowly and the CF GraphQL
 	// read is rate-limited, so navigating back to an overview must not refetch.
 	// 2.5h TTL, survives navigation (module scope), cleared on full reload.

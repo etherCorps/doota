@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { onMount, untrack } from 'svelte';
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';

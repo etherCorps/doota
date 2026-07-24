@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Button } from "$lib/components/ui/button";
 	import { DecorIcon } from "$lib/components/ui/decor-icon";
 	import { Separator } from "$lib/components/ui/separator";

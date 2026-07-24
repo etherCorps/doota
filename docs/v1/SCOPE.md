@@ -215,31 +215,40 @@ minimally), per-alias rules/labels, presence & collision detection on shared mai
   provisioned users. *Closes in the mailbox task.*
 - **Timeline item storage** — `internal_note` and `system_event` need a home: sibling
   tables, or one `thread_items` table that external messages also register in.
-- **LICENSE + CONTRIBUTING** — license direction leaning Apache-2.0 + CLA (see
-  Governance); text needs counsel review, files not yet added.
+- **LICENSE + CONTRIBUTING** — decided (Apache-2.0 + Ethercorps + DCO, see Governance);
+  files not yet added.
 
 ---
 
 ## Governance
 
-- **License: leaning Apache-2.0 with a license-grant CLA** — *not yet final.*
-  Apache-2.0 over MIT for the explicit patent grant, the trademark clause protecting the
-  Doota name, and §5's default inbound-contribution terms.
-- **CLA over DCO, for one specific reason: transferability.** Under a DCO contributors
-  retain copyright, so the project becomes a mosaic of rights and neither Ethercorps nor a
-  successor can relicense or cleanly hand over the whole thing without unanimous consent. A
-  license-grant CLA (broad, irrevocable, **sublicensable**) preserves that option. The CLA
-  text must be explicitly **assignable to a successor entity** — templates that grant rights
-  to a named company without an assignment clause defeat the purpose.
+**Decided: Apache-2.0, copyright Ethercorps, contributions under a DCO.**
+
+- **License: Apache-2.0.** Chosen over MIT for the explicit patent grant, the trademark
+  clause protecting the Doota name, and §5, which sets default inbound-contribution terms
+  (contributions arrive under the same license).
 - **Copyright held by Ethercorps**, not personally — a company asset transfers far more
-  cleanly, and allows selling the entity rather than the code.
+  cleanly, allows selling the entity rather than the code, and matches the story that Doota
+  is Ethercorps' work. Copyright notices *reflect* ownership rather than create it; if the
+  work vested in the company by default, the notice should say so.
+- **DCO, not a CLA.** Apache-2.0 §5 already covers inbound license and patent terms, so a
+  CLA's usual argument is largely redundant here. The DCO adds provenance — a per-commit
+  `Signed-off-by:` certifying the contributor had the right to submit — at near-zero
+  friction, where a CLA deters drive-by fixes and can require corporate legal review.
+- **Known limit, accepted:** a DCO grants no rights beyond the license, so relicensing
+  *external contributions* later would need unanimous consent. In a transfer a successor
+  still gets full ownership of Ethercorps' code (the overwhelming majority) plus an
+  Apache-2.0 licence to any external patches — enough to continue, extend, sell, or
+  commercialize. The only foreclosed option is taking contributed portions proprietary.
 - **The Doota name is a separate asset** from the code copyright; hold it deliberately.
-- This reverses the earlier AGPL-3.0 + DCO position. Consequence to accept knowingly:
-  going permissive means anyone may run Doota as a hosted SaaS without sharing changes
-  back — exactly what AGPL would have prevented.
-- *Open: have counsel review the CLA text before publishing. A defective CLA is worse than
-  none — it creates the appearance of protection without the substance. Add LICENSE and
-  CONTRIBUTING.md once settled.*
+  Apache-2.0's trademark clause helps, but does not substitute for holding the mark.
+- **Timing:** relicensing is free before publication and permanent after — anyone who
+  receives a published version keeps those rights to it forever. This is settled; do not
+  reopen it after the first tag.
+- Consequence accepted knowingly: permissive licensing means anyone may run Doota as a
+  hosted SaaS without contributing changes back — the thing AGPL would have prevented.
+- *Action: add `LICENSE` (Apache-2.0, copyright line naming Ethercorps), `NOTICE`, and the
+  DCO requirement in `CONTRIBUTING.md`.*
 
 ## Known risks (named, accepted)
 
@@ -262,4 +271,4 @@ minimally), per-alias rules/labels, presence & collision detection on shared mai
    limiting, internal short-circuit *(**next** — prompt written)*
 4. Compose + drafts + from-selector (completes hide-my-email) *(prompt written)*
 5. Collaboration layer: internal notes + assignment in the timeline *(prompt written)*
-6. OSS packaging: deploy button, README, dev story, LICENSE + CLA
+6. OSS packaging: deploy button, README, dev story, LICENSE + DCO

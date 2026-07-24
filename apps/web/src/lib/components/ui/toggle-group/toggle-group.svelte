@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	// SPDX-License-Identifier: Apache-2.0
 	import { getContext, setContext } from "svelte";
 	import type { VariantProps } from "tailwind-variants";
 	import { toggleVariants } from "$lib/components/ui/toggle/index.js";

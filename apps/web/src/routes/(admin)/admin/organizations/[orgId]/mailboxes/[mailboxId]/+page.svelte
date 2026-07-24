@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { resolve } from '$app/paths';
 	import MailboxManager from '$lib/components/admin/mailbox-manager.svelte';
 

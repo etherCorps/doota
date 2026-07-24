@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./drawer.svelte";
 import Content from "./drawer-content.svelte";
 import Description from "./drawer-description.svelte";

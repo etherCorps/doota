@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { beforeEach, describe, expect, it } from "vitest";
 import { mirrorDraft, readMirror, clearMirror } from "$lib/client/local-draft";
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { cn, type WithElementRef } from "$lib/utils/ui.js";
 	import { Skeleton } from "$lib/components/ui/skeleton/index.js";
 	import type { HTMLAttributes } from "svelte/elements";

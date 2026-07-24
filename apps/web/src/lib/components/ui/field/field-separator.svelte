@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Separator } from "$lib/components/ui/separator/index.js";
 	import { cn, type WithElementRef } from "$lib/utils/ui.js";
 	import type { HTMLAttributes } from "svelte/elements";

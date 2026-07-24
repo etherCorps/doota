@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Field from "./field.svelte";
 import Set from "./field-set.svelte";
 import Legend from "./field-legend.svelte";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import Lock from '@lucide/svelte/icons/lock';
 	import User from '@lucide/svelte/icons/user';

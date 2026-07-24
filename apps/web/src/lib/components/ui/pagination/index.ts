@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./pagination.svelte";
 import Content from "./pagination-content.svelte";
 import Item from "./pagination-item.svelte";

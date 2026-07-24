@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./empty.svelte";
 import Header from "./empty-header.svelte";
 import Media from "./empty-media.svelte";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /** Wires Collapsible via the disclosure module. */
 
 import { mount, makeDisclosure } from "@cloudflare/nimbus-docs/client";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Structured logging for the mail pipeline. In Workers, console.* is captured
  * asynchronously by the runtime (no syscall/stdout write), so the only real

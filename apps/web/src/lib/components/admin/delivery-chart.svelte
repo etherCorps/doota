@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { BarChart } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart/index.js';
 	import type { ChartConfig } from '$lib/components/ui/chart/index.js';

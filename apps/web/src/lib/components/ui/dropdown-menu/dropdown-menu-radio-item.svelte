@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import CheckIcon from 'phosphor-svelte/lib/Check';
 	import { cn, type WithoutChild } from "$lib/utils/ui.js";

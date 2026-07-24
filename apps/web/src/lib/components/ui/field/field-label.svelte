@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Label } from "$lib/components/ui/label/index.js";
 	import { cn } from "$lib/utils/ui.js";
 	import type { ComponentProps } from "svelte";

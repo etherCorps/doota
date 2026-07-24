@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Provider seam. Cloudflare Email Service is the sole provider (public beta — a
  * named dependency risk), behind the `MailProvider` interface. Nothing

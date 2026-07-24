@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { redirect } from "@sveltejs/kit";
 import { desc, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
