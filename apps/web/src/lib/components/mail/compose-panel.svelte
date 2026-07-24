@@ -16,6 +16,7 @@
 	import { toLocalDatetime } from '$lib/utils/parse-when';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import { portal } from '$lib/client/portal';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
@@ -61,11 +62,19 @@
 		open = $bindable(false),
 		prefill = undefined,
 		resumeDraftId = undefined,
+		// Pre-fill the schedule picker (epoch ms) — set when editing a scheduled send.
+		scheduleAt: scheduleAtMs = undefined,
 		// Single-pane mail region (list OR thread): compose in a bottom drawer
 		// instead of the docked window / overlay. Passed down from the layout,
 		// which measures the content region (same 56rem line as the pane split).
 		asDrawer = false
-	}: { open?: boolean; prefill?: Prefill; resumeDraftId?: string; asDrawer?: boolean } = $props();
+	}: {
+		open?: boolean;
+		prefill?: Prefill;
+		resumeDraftId?: string;
+		scheduleAt?: number;
+		asDrawer?: boolean;
+	} = $props();
 
 	const UNDO_SECONDS = 10;
 	const title = $derived(
@@ -180,6 +189,8 @@
 			showCc = d.cc.length > 0;
 			showBcc = d.bcc.length > 0;
 			editorKey++;
+			// Editing a scheduled send: keep its original time in the picker.
+			if (scheduleAtMs) armSchedule(new Date(scheduleAtMs));
 			restoreMirror();
 			return;
 		}
@@ -412,12 +423,19 @@
 			return;
 		}
 		if (sendAt && sendAt > Date.now() + UNDO_SECONDS * 1000) {
-			const submissionId = res.submissionId;
 			reset();
 			open = false;
-			toast('Send scheduled', {
-				duration: UNDO_SECONDS * 1000,
-				action: { label: 'Undo', onClick: () => undoSend(submissionId) }
+			// Scheduled sends don't get an undo countdown — they sit in the Scheduled
+			// folder where they can be canceled or edited any time before they fire.
+			const when = new Date(sendAt).toLocaleString(undefined, {
+				weekday: 'short',
+				month: 'short',
+				day: 'numeric',
+				hour: 'numeric',
+				minute: '2-digit'
+			});
+			toast(`Scheduled for ${when}`, {
+				action: { label: 'View', onClick: () => goto('/app?folder=scheduled') }
 			});
 			return;
 		}

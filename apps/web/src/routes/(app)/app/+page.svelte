@@ -206,12 +206,17 @@
 		}
 		if (!reset && reachedEnd) return;
 		loadingList = true;
+		const forMailbox = mailboxId;
+		const forPlacement = placement;
 		try {
 			const offset = reset ? 0 : nextOffset;
 			const q = mailboxThreads({ mailboxId, placement: placement as never, offset });
 			// Same-args query calls are deduped/cached — a plain re-await can hand
 			// back the stale page. Resets come from live events, so force the read.
 			const page = reset ? ((await q.refresh(), q.current) ?? []) : await q;
+			// The user may have switched folders/mailboxes while this was in flight —
+			// drop the late page rather than paint the wrong folder's mail.
+			if (forMailbox !== mailboxId || forPlacement !== placement) return;
 			items = reset ? page : [...items, ...page];
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
@@ -231,12 +236,13 @@
 		([mb, virt]) => {
 			draftSel.clear();
 			threadSel.clear();
+			// Clear the previous folder's rows up front so the switch shows a skeleton,
+			// not stale mail. Live-event refreshes call loadThreads directly (not via
+			// this watch), so in-place updates never flash.
+			items = [];
+			nextOffset = 0;
+			reachedEnd = false;
 			if (mb && !virt) loadThreads(true);
-			else {
-				items = [];
-				nextOffset = 0;
-				reachedEnd = false;
-			}
 		}
 	);
 
@@ -704,9 +710,39 @@
 		if (!mailboxId) return;
 		compose.start({ prefill: { kind: 'new', mailboxId } });
 	}
+	// Optimistic: hide the row the instant Cancel/Edit is clicked so it feels
+	// instant, while the undo RPC (which does a chain of DB work) runs in the
+	// background. On failure we restore the row.
+	let hiddenScheduled = $state<string[]>([]);
 	async function cancelScheduled(submissionId: string) {
-		await undoDraftById({ submissionId });
+		hiddenScheduled = [...hiddenScheduled, submissionId];
+		try {
+			await undoDraftById({ submissionId });
+		} catch {
+			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			toast.error('Could not cancel — it may have already sent.');
+			return;
+		}
 		await scheduledSends().refresh();
+	}
+	async function editScheduled(submissionId: string, sendAt: number) {
+		hiddenScheduled = [...hiddenScheduled, submissionId];
+		let res: Awaited<ReturnType<typeof undoDraftById>>;
+		try {
+			res = await undoDraftById({ submissionId });
+		} catch {
+			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			toast.error('Could not edit — it may have already sent.');
+			return;
+		}
+		if (res.restored && res.draft) {
+			// Reopen the restored draft with its original send time preserved.
+			compose.start({ resumeDraftId: res.draft.id, scheduleAt: sendAt });
+			await scheduledSends().refresh();
+		} else {
+			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			toast.error('This send already went out.');
+		}
 	}
 
 	// Escape walks back out: attachments panel first, then the open thread.
@@ -1124,7 +1160,7 @@
 			{:else if placement === 'scheduled'}
 				{@const schedQ = scheduledSends()}
 				{#if schedQ.current}
-					{@const items = schedQ.current}
+					{@const items = schedQ.current.filter((s) => !hiddenScheduled.includes(s.submissionId))}
 					{#if items.length}
 						{#each items as s (s.submissionId)}
 							<div class="flex gap-3 border-b px-3 py-2.5">
@@ -1134,7 +1170,10 @@
 									<span class="block truncate text-[13px] text-muted-foreground">{s.subject || '(no subject)'}</span>
 									<div class="mt-1 flex items-center justify-between">
 										<span class="text-brand inline-flex items-center gap-1 text-xs font-medium"><ClockIcon class="size-3" /> Sends {fmtTime(s.sendAt)}</span>
-										<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
+										<div class="flex items-center gap-3">
+												<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => editScheduled(s.submissionId, s.sendAt)}>Edit</button>
+												<button type="button" class="text-muted-foreground hover:text-destructive text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
+											</div>
 									</div>
 								</div>
 							</div>

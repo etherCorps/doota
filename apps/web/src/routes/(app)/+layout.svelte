@@ -66,6 +66,7 @@
 				bind:open={compose.open}
 				prefill={compose.prefill as never}
 				resumeDraftId={compose.resumeDraftId}
+				scheduleAt={compose.scheduleAt}
 				asDrawer={singlePane}
 			/>
 		{/key}
