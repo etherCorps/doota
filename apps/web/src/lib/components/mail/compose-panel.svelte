@@ -100,10 +100,43 @@
 	let saved = $state(false);
 	const debouncedSave = useDebounce(() => flushSave(), 800);
 
-	// iOS keyboard handling is owned by vaul's `repositionInputs` (default on):
-	// on visualViewport resize it lifts the drawer above the keyboard and shrinks
-	// its height so content stays scrollable. A manual inset here double-lifts and
-	// breaks the layout — so we don't. See Drawer.Root below.
+	// iOS keyboard. Vaul's own `repositionInputs` shrinks the sheet to
+	// `visualViewport - offsetFromTop`, which collapses the editor to a thin strip
+	// at the top of the screen. We turn it OFF (Drawer.Root below) and instead
+	// size the sheet to the *visible* viewport: full height above the keyboard,
+	// anchored just over it — so the editor keeps all the leftover space.
+	// visualViewport is the only signal that reflects the keyboard; rAF-batch its
+	// resize/scroll bursts so we set style once per frame, not per event.
+	let keyboardInset = $state(0);
+	let viewportH = $state(0);
+	$effect(() => {
+		const vv = window.visualViewport;
+		if (!vv || !asDrawer) return;
+		let raf = 0;
+		const measure = () => {
+			keyboardInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+			viewportH = Math.round(vv.height);
+		};
+		const update = () => {
+			cancelAnimationFrame(raf);
+			raf = requestAnimationFrame(measure);
+		};
+		update();
+		vv.addEventListener('resize', update);
+		vv.addEventListener('scroll', update);
+		return () => {
+			cancelAnimationFrame(raf);
+			vv.removeEventListener('resize', update);
+			vv.removeEventListener('scroll', update);
+		};
+	});
+	// Only override the sheet box while the keyboard is actually up. `m-2` on the
+	// content is 8px each side → subtract 16 so the sheet + margins fit the gap.
+	const drawerStyle = $derived(
+		keyboardInset > 0
+			? `height:${Math.max(viewportH - 16, 160)}px;max-height:none;bottom:${keyboardInset}px`
+			: undefined
+	);
 
 	// A surviving mirror = text the server never acked (tab died / offline
 	// before the debounce flushed). Pull it back over whatever loaded.
@@ -759,12 +792,15 @@
 	{#if asDrawer}
 		<!-- Single-pane region: bottom drawer, ~full height so typing space matches
 		     the full-screen panel. Swipe-down/Esc close keeps the draft (autosave). -->
-		<Drawer.Root open={true} onOpenChange={(v) => { if (!v) close(); }}>
+		<!-- repositionInputs off: vaul's keyboard resize collapses the sheet; we size
+		     it ourselves via drawerStyle (visible viewport above the keyboard). -->
+		<Drawer.Root open={true} repositionInputs={false} onOpenChange={(v) => { if (!v) close(); }}>
 			<!-- interactOutsideBehavior="ignore": a stray tap outside must not dismiss
 			     mid-composition — closing is deliberate (swipe, Esc, or the ✕). -->
 			<Drawer.Content
 				interactOutsideBehavior="ignore"
 				class="h-[94svh] p-0 data-[vaul-drawer-direction=bottom]:max-h-[94svh]"
+				style={drawerStyle}
 			>
 				<div class="mt-2 flex min-h-0 flex-1 items-stretch overflow-hidden">
 					{@render panelInner(true)}
