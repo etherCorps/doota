@@ -4,6 +4,7 @@
 	import { useDebounce } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import FromSelector from './from-selector.svelte';
+	import RecipientInput from './recipient-input.svelte';
 	import RichEditor from './rich-editor.svelte';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
@@ -12,6 +13,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ReplyIcon from '@lucide/svelte/icons/reply';
+	import ReplyAllIcon from '@lucide/svelte/icons/reply-all';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 	import {
 		startDraft,
@@ -55,10 +57,43 @@
 		onchange?: () => void;
 	} = $props();
 
+	// Gmail model: an explicit Reply / Reply all switch so the sender always KNOWS
+	// the scope — one person vs everyone on the thread. The switch DRIVES the
+	// recipient fields (Reply all pre-fills To with everyone AND Cc from the
+	// conversation), and those fields stay editable underneath for fine-tuning.
 	let replyAll = $state(false);
-	const recips = $derived(replyAll ? { to: toAll, cc: ccAll } : { to, cc: [] as string[] });
-	// Offer reply-all only when it would actually add recipients.
+	let toList = $state<string[]>([]);
+	let ccList = $state<string[]>([]);
+	let showCc = $state(false);
+	const recips = $derived({ to: toList, cc: ccList });
+	// Offer the switch only when reply-all would actually reach more people.
 	const canReplyAll = $derived(toAll.length + ccAll.length > to.length);
+	// A mail needs a To; Cc is optional. Send stays disabled until a To exists,
+	// but you can edit down to empty and re-type — never a dead end.
+	const hasRecipient = $derived(toList.length > 0);
+
+	const lc = (a: string) => a.toLowerCase();
+	const uniqLc = (xs: string[]) => {
+		const seen = new Set<string>();
+		return xs.filter((a) => (seen.has(lc(a)) ? false : (seen.add(lc(a)), true)));
+	};
+	// Switching mode repopulates the fields (like picking Gmail's Reply vs Reply
+	// all). Reply = just the target; Reply all = everyone + the thread's Cc.
+	function pickReply() {
+		if (!replyAll && toList.length) return;
+		replyAll = false;
+		toList = uniqLc([...to]);
+		ccList = [];
+		showCc = false;
+		scheduleSave();
+	}
+	function pickReplyAll() {
+		replyAll = true;
+		toList = uniqLc([...to, ...toAll]);
+		ccList = uniqLc([...ccAll]);
+		showCc = ccList.length > 0;
+		scheduleSave();
+	}
 
 	const UNDO_SECONDS = 10;
 
@@ -91,6 +126,10 @@
 	onMount(() => {
 		sendMailboxId = mailboxId;
 		aliasId = defaultAliasId;
+		replyAll = false;
+		toList = uniqLc([...to]);
+		ccList = [];
+		showCc = false;
 		collapsed = isMobile.current;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
@@ -192,7 +231,7 @@
 		}
 	}
 
-	const canSend = $derived(hasBody || attachments.length > 0);
+	const canSend = $derived((hasBody || attachments.length > 0) && hasRecipient);
 
 	async function send() {
 		if (!canSend || sending) return;
@@ -286,46 +325,47 @@
 	>
 	<div class="min-h-0 overflow-hidden">
 	<div class="space-y-2">
-			<div class="flex items-center gap-2">
-				<span class="text-muted-foreground text-xs">From</span>
-				<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-muted-foreground shrink-0 text-xs">From</span>
+				<div class="min-w-0 flex-1">
+					<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
+				</div>
 				{#if canReplyAll}
-					<!-- Segmented Reply / Reply all — a mode you can SEE, not a toggle
-					     button whose current state is guesswork. The count says up front
-					     how many people "all" means. -->
-					<div class="bg-muted/60 ml-auto flex items-center gap-0.5 rounded-lg p-0.5 text-xs">
+					<!-- Explicit scope switch (Gmail's Reply / Reply all): the sender
+					     always sees whether this goes to one person or everyone. Picking
+					     a side repopulates the fields below — Reply all pre-fills Cc from
+					     the thread. Own full-width row on mobile, inline at sm. -->
+					<div
+						role="group"
+						aria-label="Reply scope"
+						class="border-border bg-muted order-last flex w-full items-center gap-1 rounded-lg border p-1 sm:order-none sm:w-auto"
+					>
 						<button
 							type="button"
 							aria-pressed={!replyAll}
-							onclick={() => {
-								replyAll = false;
-								scheduleSave();
-							}}
-							class="focus-visible:ring-ring/50 rounded-md px-2.5 py-1 transition-colors outline-none focus-visible:ring-2 {!replyAll
-								? 'bg-card shadow-xs'
+							onclick={pickReply}
+							class="focus-visible:ring-ring flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 sm:flex-none {!replyAll
+								? 'bg-background text-foreground shadow-sm'
 								: 'text-muted-foreground hover:text-foreground'}"
 						>
-							Reply
+							<ReplyIcon class="size-3.5 shrink-0" /> Reply
 						</button>
 						<button
 							type="button"
 							aria-pressed={replyAll}
-							onclick={() => {
-								replyAll = true;
-								scheduleSave();
-							}}
-							class="focus-visible:ring-ring/50 rounded-md px-2.5 py-1 tabular-nums transition-colors outline-none focus-visible:ring-2 {replyAll
-								? 'bg-card shadow-xs'
+							onclick={pickReplyAll}
+							class="focus-visible:ring-ring flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap tabular-nums transition-colors outline-none focus-visible:ring-2 sm:flex-none {replyAll
+								? 'bg-background text-foreground shadow-sm'
 								: 'text-muted-foreground hover:text-foreground'}"
 						>
-							Reply all · {toAll.length + ccAll.length}
+							<ReplyAllIcon class="size-3.5 shrink-0" /> Reply all · {toAll.length + ccAll.length}
 						</button>
 					</div>
 				{/if}
 				<Button
 					variant="ghost"
 					size="icon"
-					class="text-muted-foreground size-7 {canReplyAll ? '' : 'ml-auto'}"
+					class="text-muted-foreground size-7 shrink-0"
 					title="Collapse reply"
 					onclick={() => (collapsed = true)}
 				>
@@ -333,20 +373,41 @@
 					<span class="sr-only">Collapse reply</span>
 				</Button>
 			</div>
-			<!-- Exactly who receives this reply — visible in BOTH modes, so a send is
-			     never a surprise. -->
-			<div class="flex flex-wrap items-center gap-1">
-				<span class="text-faint text-[11px]">To</span>
-				{#each recips.to as a (a)}
-					<span class="bg-muted rounded-full border px-2 py-0.5 font-mono text-[11px]">{a}</span>
-				{/each}
-				{#if recips.cc.length}
-					<span class="text-faint ml-1 text-[11px]">Cc</span>
-					{#each recips.cc as a (a)}
-						<span class="bg-muted rounded-full border px-2 py-0.5 font-mono text-[11px]">{a}</span>
-					{/each}
+			<!-- Recipient fields reflect the scope choice and stay editable for
+			     fine-tuning: type anyone in, drop a chip, add/remove Cc. -->
+			<div class="flex items-start gap-2">
+				<span class="text-muted-foreground w-6 shrink-0 pt-2 text-xs">To</span>
+				<div class="min-w-0 flex-1">
+					<RecipientInput bind:value={toList} placeholder="Add recipients" onchange={scheduleSave} />
+				</div>
+				{#if !showCc}
+					<button
+						type="button"
+						class="text-muted-foreground hover:text-foreground shrink-0 pt-2 text-xs font-medium"
+						onclick={() => (showCc = true)}>Cc</button
+					>
 				{/if}
 			</div>
+			{#if showCc}
+				<div class="flex items-start gap-2">
+					<span class="text-muted-foreground w-6 shrink-0 pt-2 text-xs">Cc</span>
+					<div class="min-w-0 flex-1">
+						<RecipientInput bind:value={ccList} placeholder="Cc recipients" onchange={scheduleSave} />
+					</div>
+					<button
+						type="button"
+						class="text-muted-foreground hover:text-foreground shrink-0 pt-2"
+						title="Remove Cc"
+						onclick={() => {
+							showCc = false;
+							ccList = [];
+							scheduleSave();
+						}}
+					>
+						<XIcon class="size-3.5" />
+					</button>
+				</div>
+			{/if}
 			{#key editorKey}
 				<RichEditor
 					initial={body}
