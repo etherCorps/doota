@@ -19,14 +19,18 @@ class ComposeStore {
 	open = $state(false);
 	prefill = $state<ComposePrefill | undefined>(undefined);
 	resumeDraftId = $state<string | undefined>(undefined);
+	// Pre-fill the schedule picker (epoch ms) — set when editing a scheduled send
+	// so its original send time is preserved.
+	scheduleAt = $state<number | undefined>(undefined);
 	// Bumped on every start() so the layout can {#key} the panel — each compose
 	// gets a fresh instance instead of reusing stale editor state.
 	nonce = $state(0);
 
 	/** Open the compose panel. No args = blank new message. */
-	start(opts?: { prefill?: ComposePrefill; resumeDraftId?: string }) {
+	start(opts?: { prefill?: ComposePrefill; resumeDraftId?: string; scheduleAt?: number }) {
 		this.prefill = opts?.prefill;
 		this.resumeDraftId = opts?.resumeDraftId;
+		this.scheduleAt = opts?.scheduleAt;
 		this.nonce++;
 		this.open = true;
 	}
