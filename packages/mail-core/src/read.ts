@@ -3,7 +3,7 @@ import { and, desc, eq, exists, inArray, isNull, lt, notInArray, or, sql } from 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
-import { listNotes, threadHasNotes } from "./notes";
+import { listNotes } from "./notes";
 import { listSystemEvents } from "./collab";
 import {
   stripHtmlTags,
@@ -125,25 +125,56 @@ export async function listThreads(
     for (const r of reads) if (r.lastReadAt) readByThread.set(r.threadId, r.lastReadAt.getTime());
   }
 
-  // Latest message per thread for subject + snippet. N+1 is fine for a list page;
-  // ponytail: swap for a window function if a mailbox ever holds huge threads.
+  // Latest message per thread (subject + snippet + from) in ONE window-function
+  // query instead of a findFirst per row — uses message_thread_sent_idx.
+  const threadIds = states.map((s) => s.threadId);
+  type LatestRow = {
+    threadId: string;
+    subjectEnc: string | null;
+    bodyStrippedEnc: string | null;
+    fromAddr: string | null;
+    sentAt: number | null;
+  };
+  const latestByThread = new Map<string, LatestRow>();
+  if (threadIds.length) {
+    const idList = sql.join(threadIds.map((id) => sql`${id}`), sql`, `);
+    const rows = await db.all<LatestRow>(sql`
+      SELECT thread_id AS "threadId", subject_enc AS "subjectEnc", body_stripped_enc AS "bodyStrippedEnc",
+             from_addr AS "fromAddr", sent_at AS "sentAt"
+      FROM (
+        SELECT thread_id, subject_enc, body_stripped_enc, from_addr, sent_at,
+               ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sent_at DESC, rowid DESC) AS rn
+        FROM message
+        WHERE thread_id IN (${idList})
+      ) WHERE rn = 1
+    `);
+    for (const r of rows) latestByThread.set(r.threadId, r);
+  }
+
+  // Which of these threads carry notes — one IN query, not a findFirst per row.
+  const notedThreads = new Set<string>();
+  if (input.includeCollab && threadIds.length) {
+    const noteRows = await db
+      .selectDistinct({ threadId: schema.internalNote.threadId })
+      .from(schema.internalNote)
+      .where(
+        and(
+          eq(schema.internalNote.mailboxId, input.mailboxId),
+          inArray(schema.internalNote.threadId, threadIds),
+          isNull(schema.internalNote.deletedAt),
+        ),
+      );
+    for (const n of noteRows) notedThreads.add(n.threadId);
+  }
+
   const out: ThreadSummary[] = [];
   for (const s of states) {
-    const latest = await db.query.message.findFirst({
-      where: eq(schema.message.threadId, s.threadId),
-      orderBy: desc(schema.message.sentAt),
-      columns: {
-        subjectEnc: true,
-        bodyStrippedEnc: true,
-        fromAddr: true,
-        sentAt: true,
-      },
-    });
+    const latest = latestByThread.get(s.threadId);
     const [subject, body] = await Promise.all([
       decryptContent(input.ck, latest?.subjectEnc),
       decryptContent(input.ck, latest?.bodyStrippedEnc),
     ]);
-    const lastMessageAt = latest?.sentAt ? latest.sentAt.getTime() : null;
+    const lastMessageAt = latest?.sentAt != null ? Number(latest.sentAt) : null;
     const lastReadAt = readByThread.get(s.threadId);
     out.push({
       threadId: s.threadId,
@@ -153,7 +184,7 @@ export async function listThreads(
       lastMessageAt,
       isStarred: s.isStarred,
       unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),
-      hasNotes: input.includeCollab ? await threadHasNotes(db, s.threadId, input.mailboxId) : false,
+      hasNotes: notedThreads.has(s.threadId),
       assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
     });
   }

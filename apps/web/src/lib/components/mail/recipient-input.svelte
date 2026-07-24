@@ -1,6 +1,7 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { recipientSuggestions } from '$lib/rpc/draft.remote';
+	import { onMount } from 'svelte';
+	import { recipientCandidates, recipientSuggestions } from '$lib/rpc/draft.remote';
 	import SenderAvatar from './sender-avatar.svelte';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { RecipientSuggestion } from '@doota/mail-core/contacts';
@@ -22,6 +23,27 @@
 	let seq = 0; // drop out-of-order fetch results
 	const uid = $props.id();
 
+	// Prefetch the user's top contacts once, then filter locally per keystroke —
+	// keystrokes don't hit the server (that was the slow part). The server is a
+	// fallback only for prefixes the cached list doesn't cover.
+	let candidates = $state<RecipientSuggestion[]>([]);
+	onMount(async () => {
+		try {
+			candidates = await recipientCandidates();
+		} catch {
+			// Non-fatal — the server fallback in onInput still answers.
+		}
+	});
+	function localMatches(q: string): RecipientSuggestion[] {
+		return candidates
+			.filter(
+				(s) =>
+					!value.includes(s.address) &&
+					(s.address.includes(q) || (s.name?.toLowerCase().includes(q) ?? false))
+			)
+			.slice(0, 8);
+	}
+
 	function commit(addr: string) {
 		const a = addr.trim().toLowerCase();
 		if (a && a.includes('@') && !value.includes(a)) {
@@ -39,23 +61,30 @@
 	}
 	function onInput() {
 		clearTimeout(timer);
-		const q = text.trim();
+		const mySeq = ++seq; // invalidate any in-flight server response
+		const q = text.trim().toLowerCase();
 		if (!q) {
 			suggestions = [];
 			open = false;
 			active = -1;
 			return;
 		}
-		timer = setTimeout(async () => {
-			const mySeq = ++seq;
-			const res = (await recipientSuggestions(q)).filter((s) => !value.includes(s.address));
-			// A slower earlier response must not clobber a newer one — that's the
-			// "list flickers back" glitch.
-			if (mySeq !== seq) return;
-			suggestions = res;
-			open = res.length > 0;
-			active = -1;
-		}, 200);
+		// Local filter over the prefetched candidates — instant, no round-trip.
+		const local = localMatches(q);
+		suggestions = local;
+		open = local.length > 0;
+		active = -1;
+		// Only reach for the server when the cache yields nothing (a prefix beyond
+		// the cached top-N). Debounced + seq-guarded so it can't clobber newer input.
+		if (local.length === 0) {
+			timer = setTimeout(async () => {
+				const res = (await recipientSuggestions(q)).filter((s) => !value.includes(s.address));
+				if (mySeq !== seq) return;
+				suggestions = res;
+				open = res.length > 0;
+				active = -1;
+			}, 200);
+		}
 	}
 	function moveActive(delta: number) {
 		// Cycle over n+1 states (suggestions plus the -1 "free text" state): shift

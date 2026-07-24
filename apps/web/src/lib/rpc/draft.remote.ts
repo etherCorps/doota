@@ -6,7 +6,7 @@ import { importKey } from "@doota/mail-core/crypto";
 import type { OutboundEnv } from "@doota/mail-core/outbound";
 import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { listSendIdentities } from "@doota/mail-core/identities";
-import { suggestRecipients } from "@doota/mail-core/contacts";
+import { suggestRecipients, topRecipients, type RecipientSuggestion } from "@doota/mail-core/contacts";
 import { mailEventStream } from "@doota/mail-core/events-hub";
 import {
   createDraft,
@@ -62,6 +62,37 @@ export const sendIdentities = query(async () => {
   return listSendIdentities(locals.db, user.id);
 });
 
+// Contact-cache TTL. Staleness ceiling for the prefetched candidate list; a
+// fresh send also busts the key (invalidateContacts) so a just-mailed address
+// shows up immediately.
+const CONTACTS_TTL = 600; // seconds
+const contactsKey = (userId: string) => `contacts:${userId}`;
+
+async function invalidateContacts(userId: string): Promise<void> {
+  const kv = getRequestEvent().platform?.env?.AUTH_KV;
+  if (kv) await kv.delete(contactsKey(userId));
+}
+
+// The client prefetches this once per composer, then filters locally — so
+// keystrokes never hit the server. KV serves it without touching D1 on the
+// common path; on a miss (or no KV binding, e.g. tests) it falls back to the
+// bounded D1 query and repopulates.
+export const recipientCandidates = query(async () => {
+  const user = requireUser();
+  const { locals, platform } = getRequestEvent();
+  const kv = platform?.env?.AUTH_KV;
+  const key = contactsKey(user.id);
+  if (kv) {
+    const cached = (await kv.get(key, "json")) as RecipientSuggestion[] | null;
+    if (cached) return cached;
+  }
+  const list = await topRecipients(locals.db, user.id);
+  if (kv) await kv.put(key, JSON.stringify(list), { expirationTtl: CONTACTS_TTL });
+  return list;
+});
+
+// Type-ahead fallback for prefixes the prefetched list doesn't cover (rare, but
+// large histories can exceed the cached top-N).
 export const recipientSuggestions = query(z.string(), async (prefix) => {
   const user = requireUser();
   const { locals } = getRequestEvent();
@@ -216,6 +247,8 @@ export const sendDraftById = command(
     if (!sendAt || sendAt <= Date.now() + undo * 1000) {
       deliverInBackground(res.submissionId, undo);
     }
+    // Just mailed someone new — drop the cached candidates so they appear next time.
+    await invalidateContacts(user.id);
     return res;
   },
 );
