@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { ColumnDef } from '@tanstack/table-core';
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';

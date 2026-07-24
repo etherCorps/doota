@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export const DATABASE_URL = "test";
 export const BETTER_AUTH_SECRET = "test-secret-0000000000000000000000000000";
 export const SETUP_TOKEN = "test-setup-token";

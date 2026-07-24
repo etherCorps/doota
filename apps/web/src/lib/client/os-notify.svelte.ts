@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Tab-open OS notifications (Notification API). Events only arrive over the
 // mailEvents live stream, so these fire while some tab is open but hidden or
 // unfocused — which is exactly when in-app toasts/badges are invisible.

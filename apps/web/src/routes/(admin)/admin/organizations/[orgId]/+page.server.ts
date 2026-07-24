@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { and, count, eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./dialog.svelte";
 import Portal from "./dialog-portal.svelte";
 import Title from "./dialog-title.svelte";

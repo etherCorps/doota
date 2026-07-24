@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Gentle scroll-into-view reveal. One-shot, reduced-motion aware.
 // ponytail: IntersectionObserver over a scroll library — zero deps.
 export function reveal(node: HTMLElement, delay = 0) {

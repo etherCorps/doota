@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Single authorization chokepoint — route EVERY permission decision
  * through can() so there is one place to audit and log.

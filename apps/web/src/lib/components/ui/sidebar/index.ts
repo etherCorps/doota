@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useSidebar } from "./context.svelte.js";
 import Content from "./sidebar-content.svelte";
 import Footer from "./sidebar-footer.svelte";

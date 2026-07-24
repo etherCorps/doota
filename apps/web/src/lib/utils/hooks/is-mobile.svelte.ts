@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { MediaQuery } from "svelte/reactivity";
 
 const DEFAULT_MOBILE_BREAKPOINT = 768;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Shared button styling — the single source of truth for both <Button>
  * (a real button) and <LinkButton> (an anchor styled as a button), so the

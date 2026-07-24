@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { DecorIcon } from '$lib/components/ui/decor-icon';
 	import { cn } from '$lib/utils/ui.js';
 	import type { HTMLAttributes } from 'svelte/elements';

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { AlertDialog as AlertDialogPrimitive } from "bits-ui";
 	import AlertDialogPortal from "./alert-dialog-portal.svelte";
 	import AlertDialogOverlay from "./alert-dialog-overlay.svelte";

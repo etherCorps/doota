@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Cheap Tiny-PS + safety validation for uploaded BIMI logos, string checks only
  * (no SVG parser). This is a security boundary: the SVG is served from our own

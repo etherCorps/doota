@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { Tabs as TabsPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils/ui.js";
 

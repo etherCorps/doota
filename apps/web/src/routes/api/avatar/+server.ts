@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 
 /**

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { verifyRecoveryEmailToken } from "$lib/server/recovery-email.js";
 
 export const load = async ({ url, locals, request }) => {

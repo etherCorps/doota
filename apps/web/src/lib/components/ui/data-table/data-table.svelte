@@ -1,4 +1,5 @@
 <script lang="ts" generics="TData">
+	// SPDX-License-Identifier: Apache-2.0
 	import {
 		type ColumnDef,
 		type ColumnFiltersState,

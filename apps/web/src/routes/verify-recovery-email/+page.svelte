@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import MailCheckIcon from '@lucide/svelte/icons/mail-check';
 	import MailXIcon from '@lucide/svelte/icons/mail-x';
 	import { resolve } from '$app/paths';

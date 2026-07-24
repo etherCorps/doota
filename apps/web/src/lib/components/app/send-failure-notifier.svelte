@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';

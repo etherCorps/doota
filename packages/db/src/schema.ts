@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const task = sqliteTable('task', {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import { authClient } from '$lib/client/auth-client';
 	import { toast } from 'svelte-sonner';

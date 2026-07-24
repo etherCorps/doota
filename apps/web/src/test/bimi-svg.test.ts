@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { svgProblem } from "$lib/server/bimi/validate";

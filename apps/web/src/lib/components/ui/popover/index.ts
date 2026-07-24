@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./popover.svelte";
 import Close from "./popover-close.svelte";
 import Content from "./popover-content.svelte";

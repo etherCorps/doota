@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { cn } from '$lib/utils/ui.js';

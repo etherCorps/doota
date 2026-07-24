@@ -1,4 +1,5 @@
 <script lang='ts'>
+	// SPDX-License-Identifier: Apache-2.0
 	import { enhance } from '$app/forms';
 	import type { PageServerData } from './$types';
 

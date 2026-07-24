@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Per-page `/<slug>/index.mdx` — the raw authored source for every
  * indexable entry of the primary `docs` collection that has a string body.

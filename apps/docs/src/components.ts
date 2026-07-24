@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * MDX globals registry — components available inside MDX without `import`.
  * Wired via `<Content components={components} />` in `[...slug].astro`.

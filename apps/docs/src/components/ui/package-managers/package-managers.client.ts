@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Sync key `ui-pm-tab` (sessionStorage) is shared with the
  * `<nb-pm-restore>` early-paint element to avoid flash across navigations.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { dicebearFor, noServerAvatar } from '$lib/client/dicebear';
 
 	// Sender avatar with a three-step fallback: our user's uploaded image (via

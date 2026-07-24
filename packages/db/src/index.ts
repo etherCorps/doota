@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from './schema';
 

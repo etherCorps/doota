@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { cn } from "$lib/utils/ui.js";
 	import SpinnerIcon from 'phosphor-svelte/lib/Spinner';
 	import type { SVGAttributes } from "svelte/elements";

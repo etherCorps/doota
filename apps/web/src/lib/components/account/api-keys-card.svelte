@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';

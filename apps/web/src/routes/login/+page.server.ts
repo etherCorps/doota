@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { redirect } from "@sveltejs/kit";
 import { onboardingHome } from "$lib/server/onboarding.js";
 

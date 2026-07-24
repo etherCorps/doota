@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./alert-dialog.svelte";
 import Portal from "./alert-dialog-portal.svelte";
 import Trigger from "./alert-dialog-trigger.svelte";

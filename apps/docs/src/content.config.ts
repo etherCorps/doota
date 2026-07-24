@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { defineCollection } from "astro:content";
 // `z` re-exported from `astro:content` is deprecated; import it from
 // `astro/zod` (the pattern nimbus-docs' own schema helpers document).

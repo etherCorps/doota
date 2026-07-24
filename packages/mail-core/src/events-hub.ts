@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Per-user mail event hub — a Durable Object (one instance per user id via
  * idFromName) that turns "a send failed" into a push instead of a DB poll.

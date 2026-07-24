@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
     import { Toaster } from "$lib/components/ui/sonner/index.js";

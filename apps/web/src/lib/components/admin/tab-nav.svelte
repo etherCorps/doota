@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { cn } from '$lib/utils/ui.js';
 
 	// Underline tab strip shared by the org + account section layouts. The parent

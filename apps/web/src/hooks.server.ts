@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { redirect, type Handle } from "@sveltejs/kit";
 import { building } from "$app/env";
 import { createAuth } from "$lib/server/auth.js";

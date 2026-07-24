@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";

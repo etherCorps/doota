@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { handleEmail, type InboundJob, type MailEnv } from "@doota/mail-core/inbound-worker";
 import { handleQueue } from "@doota/mail-core/queue-consumer";
 import { initLogLevel } from "@doota/mail-core/log";

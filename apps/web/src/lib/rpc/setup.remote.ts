@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { form, getRequestEvent } from '$app/server';
 import { getDiceBearURL } from '$lib/utils/dice-bear.js';
 import { tryCatch } from '$lib/utils/try-catch.js';

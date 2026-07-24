@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { ColumnDef } from '@tanstack/table-core';
 	import { toast } from 'svelte-sonner';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';

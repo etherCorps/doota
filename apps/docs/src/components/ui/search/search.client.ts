@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { SearchProvider, SearchResult } from "@cloudflare/nimbus-docs/types";
 
 export interface SearchConfig {

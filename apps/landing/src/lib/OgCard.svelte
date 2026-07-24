@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <!--
 	Social share card — 1200×630, rendered to og.png by /og.png/+server.ts (takumi).
 	Takumi is Satori-style: NO Tailwind / external CSS, so every style is inline.

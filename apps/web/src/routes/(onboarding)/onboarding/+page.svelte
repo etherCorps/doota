@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
     import CheckIcon from "@lucide/svelte/icons/check";
     import RecoveryEmailCard from "$lib/components/account/recovery-email-card.svelte";
     import TwoFactorCard from "$lib/components/account/two-factor-card.svelte";

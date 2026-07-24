@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type DiceBearOptions = {
 	seed: string;
 	style?: 'thumbs' | 'bottts-neutral';

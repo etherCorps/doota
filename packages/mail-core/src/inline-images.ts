@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Inline `data:` image handling for outbound HTML. The composer embeds pasted /
  * inserted images as base64 `data:` URIs (see tiptap-editor). Cloudflare Email

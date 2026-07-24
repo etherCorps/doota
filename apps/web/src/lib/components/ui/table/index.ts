@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./table.svelte";
 import Body from "./table-body.svelte";
 import Caption from "./table-caption.svelte";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { ScrollArea as ScrollAreaPrimitive } from "bits-ui";
 	import { cn, type WithoutChild } from "$lib/utils/ui.js";
 

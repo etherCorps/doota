@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { recipientSuggestions } from '$lib/rpc/draft.remote';
 	import SenderAvatar from './sender-avatar.svelte';
 	import XIcon from '@lucide/svelte/icons/x';

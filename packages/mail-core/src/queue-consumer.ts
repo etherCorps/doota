@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";

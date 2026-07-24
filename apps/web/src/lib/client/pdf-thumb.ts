@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // First-page PDF thumbnails, rendered entirely in the browser. pdfjs-dist is
 // dynamically imported only when a PDF tile actually mounts (~350KB chunk that
 // most sessions never pay for); Workers have no canvas, so server-side

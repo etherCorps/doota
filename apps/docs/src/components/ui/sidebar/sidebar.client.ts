@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /** Sidebar runtime: filter, persistence, "/" shortcut. */
 
 import { mount } from "@cloudflare/nimbus-docs/client";

@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import FingerprintIcon from '@lucide/svelte/icons/fingerprint';
 	import { invalidateAll } from '$app/navigation';
 	import { authClient } from '$lib/client/auth-client';

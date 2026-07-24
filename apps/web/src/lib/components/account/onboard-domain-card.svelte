@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { invalidateAll } from '$app/navigation';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import * as Card from '$lib/components/ui/card/index.js';

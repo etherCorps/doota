@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { error, redirect } from "@sveltejs/kit";
 import { loadMailboxDetail } from "@doota/mail-core/mailbox-detail";
 

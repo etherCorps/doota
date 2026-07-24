@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Natural-language → Date for the composer's schedule picker. Covers the common
 // phrasings (today/tomorrow, tonight, "next friday", "in 2 hours", "fri 5pm",
 // "17:30") and falls back to Date.parse for ISO-ish input. Returns null when

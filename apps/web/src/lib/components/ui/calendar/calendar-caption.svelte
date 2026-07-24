@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import type { ComponentProps } from "svelte";
 	import type Calendar from "./calendar.svelte";
 	import CalendarMonthSelect from "./calendar-month-select.svelte";

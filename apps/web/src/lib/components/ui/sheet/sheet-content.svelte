@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	// SPDX-License-Identifier: Apache-2.0
 	export type Side = "top" | "right" | "bottom" | "left";
 </script>
 

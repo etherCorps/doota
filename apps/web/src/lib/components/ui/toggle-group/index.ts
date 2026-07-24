@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Root from "./toggle-group.svelte";
 import Item from "./toggle-group-item.svelte";
 

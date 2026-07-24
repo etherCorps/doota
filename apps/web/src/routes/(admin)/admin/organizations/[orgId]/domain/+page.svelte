@@ -1,4 +1,5 @@
 <script module lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	type DnsRecord = { type: string; name: string; content: string; priority?: number; ttl?: number; proxied?: boolean };
 	// Session-lived cache so revisiting the Domain tab doesn't re-hit the Cloudflare
 	// API each mount. 3-min TTL; survives navigation (module scope), cleared on reload.

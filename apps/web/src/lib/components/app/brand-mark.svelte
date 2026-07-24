@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	// Doota mark — speech bubble + envelope flap, identical to the landing favicon.
 	// Bubble fills with the brand token (#0E7AE6 light / lighter blue dark); the
 	// flap knocks out in the surface color both modes.

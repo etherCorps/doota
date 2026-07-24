@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export { default as Sidebar } from "./Sidebar.astro";
 export { default as SidebarFilter } from "./SidebarFilter.astro";
 export { default as SidebarGroup } from "./SidebarGroup.astro";

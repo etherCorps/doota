@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { sweepDueSubmissions, type OutboundEnv } from "./outbound";

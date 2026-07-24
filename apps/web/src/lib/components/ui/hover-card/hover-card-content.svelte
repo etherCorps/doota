@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { LinkPreview as HoverCardPrimitive } from "bits-ui";
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils/ui.js";
 	import HoverCardPortal from "./hover-card-portal.svelte";

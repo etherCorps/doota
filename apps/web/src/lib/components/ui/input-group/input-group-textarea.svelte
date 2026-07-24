@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import { cn } from "$lib/utils/ui.js";
 	import { Textarea } from "$lib/components/ui/textarea/index.js";
 	import type { ComponentProps } from "svelte";

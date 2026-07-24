@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	// SPDX-License-Identifier: Apache-2.0
 	import { tv, type VariantProps } from "tailwind-variants";
 
 	export const sidebarMenuButtonVariants = tv({

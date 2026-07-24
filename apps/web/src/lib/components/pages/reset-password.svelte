@@ -1,4 +1,5 @@
 <script lang="ts">
+	// SPDX-License-Identifier: Apache-2.0
 	import Lock from '@lucide/svelte/icons/lock';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
