@@ -6,7 +6,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import FromSelector from './from-selector.svelte';
 	import RecipientInput from './recipient-input.svelte';
-	import RichEditor from './rich-editor.svelte';
+	import TiptapEditor from './tiptap-editor.svelte';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { toast } from 'svelte-sonner';
@@ -278,13 +278,6 @@
 		onchange?.(); // the timeline bubble was removed (undo) — refresh
 	}
 
-	function onKeydown(e: KeyboardEvent) {
-		// Keyboard-first: ⌘/Ctrl+Enter sends.
-		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-			e.preventDefault();
-			send();
-		}
-	}
 </script>
 
 <!-- Tab going hidden is the last reliable moment to reach the network — flush
@@ -410,16 +403,17 @@
 				</div>
 			{/if}
 			{#key editorKey}
-				<RichEditor
+				<TiptapEditor
 					initial={body}
 					placeholder="Reply to {toAddress}…"
+					bodyClass="max-h-[45svh]"
 					oninput={(html) => {
 						body = html;
 						mirrorDraft(mirrorKey, { body: html });
 						scheduleSave();
 					}}
 					onattach={() => fileInput?.click()}
-					onkeydown={onKeydown}
+					onsend={send}
 				/>
 			{/key}
 			{#if attachments.length}
