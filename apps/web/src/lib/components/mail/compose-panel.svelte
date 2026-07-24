@@ -100,24 +100,10 @@
 	let saved = $state(false);
 	const debouncedSave = useDebounce(() => flushSave(), 800);
 
-	// iOS keyboard overlays the layout viewport without resizing it, so a
-	// bottom-anchored 94svh drawer keeps its send bar hidden under the keyboard.
-	// visualViewport is the only signal that shrinks; pad the drawer's content
-	// by the covered gap so everything stays above the keyboard.
-	let keyboardInset = $state(0);
-	$effect(() => {
-		const vv = window.visualViewport;
-		if (!vv || !asDrawer) return;
-		const update = () =>
-			(keyboardInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
-		update();
-		vv.addEventListener('resize', update);
-		vv.addEventListener('scroll', update);
-		return () => {
-			vv.removeEventListener('resize', update);
-			vv.removeEventListener('scroll', update);
-		};
-	});
+	// iOS keyboard handling is owned by vaul's `repositionInputs` (default on):
+	// on visualViewport resize it lifts the drawer above the keyboard and shrinks
+	// its height so content stays scrollable. A manual inset here double-lifts and
+	// breaks the layout — so we don't. See Drawer.Root below.
 
 	// A surviving mirror = text the server never acked (tab died / offline
 	// before the debounce flushed). Pull it back over whatever loaded.
@@ -780,10 +766,7 @@
 				interactOutsideBehavior="ignore"
 				class="h-[94svh] p-0 data-[vaul-drawer-direction=bottom]:max-h-[94svh]"
 			>
-				<div
-					class="mt-2 flex min-h-0 flex-1 items-stretch overflow-hidden"
-					style:padding-bottom={keyboardInset ? `${keyboardInset}px` : undefined}
-				>
+				<div class="mt-2 flex min-h-0 flex-1 items-stretch overflow-hidden">
 					{@render panelInner(true)}
 				</div>
 			</Drawer.Content>
