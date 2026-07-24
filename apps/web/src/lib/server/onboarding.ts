@@ -181,12 +181,19 @@ export async function notifyOnboardingComplete(
   const w = renderEmail("welcome", { from, name: memberName, mailbox: u.email });
   sendMailBackground({ to: u.email, from, subject: w.subject, text: w.text, html: w.html });
 
-  if (!u.invitedByUserId) return; // self-onboarded — no inviter to notify
-  const inviter = await db.query.user.findFirst({
-    where: eq(schema.user.id, u.invitedByUserId),
-    columns: { email: true },
-  });
-  if (inviter?.email) {
+  // "Member joined" goes to the inviter — or, when no invite chain exists
+  // (account created outside provisioning), to the superadmin running the
+  // instance. Never to the new member themselves (superadmin self-onboarding).
+  const inviter = u.invitedByUserId
+    ? await db.query.user.findFirst({
+        where: eq(schema.user.id, u.invitedByUserId),
+        columns: { email: true },
+      })
+    : await db.query.user.findFirst({
+        where: eq(schema.user.role, "superadmin"),
+        columns: { email: true },
+      });
+  if (inviter?.email && inviter.email !== u.email) {
     const j = renderEmail("member-joined", { from, memberName, memberEmail: u.email });
     sendMailBackground({ to: inviter.email, from, subject: j.subject, text: j.text, html: j.html });
   }
