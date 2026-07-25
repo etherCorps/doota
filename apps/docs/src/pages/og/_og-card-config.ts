@@ -17,7 +17,10 @@ export const ogCardConfig = {
     [11, 11, 12],
     [26, 26, 28],
   ],
-  border: { color: [39, 39, 42], width: 2, side: "inline-start" },
+  // Doota brand mark, above the title.
+  logo: { path: "./public/og-logo.png", size: [88, 88] },
+  // Brand-blue accent bar down the leading edge (#0e7ae6).
+  border: { color: [14, 122, 230], width: 12, side: "inline-start" },
   padding: 96,
   fonts: ["./public/fonts/Inter-Bold.ttf"],
   font: {
