@@ -85,6 +85,7 @@
     "@tiptap/extension-placeholder": "^3.28.0",
     "@tiptap/pm": "^3.28.0",
     "@tiptap/starter-kit": "^3.28.0",
+    "harper.js": "^2.4.0",
     "pdfjs-dist": "^6.1.200",
     "postal-mime": "^2.7.5",
     "runed": "^0.37.1",

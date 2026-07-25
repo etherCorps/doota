@@ -5,6 +5,8 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
 	import { ResizableImage } from './resizable-image.js';
+	import { HarperGrammar, applyHarperFix, type ActiveLint, type HarperSuggestion } from './harper-extension.js';
+	import { portal } from '$lib/client/portal';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Toggle } from '$lib/components/ui/toggle/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -23,6 +25,8 @@
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import Link2OffIcon from '@lucide/svelte/icons/link-2-off';
+	import SpellCheckIcon from '@lucide/svelte/icons/spell-check';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 
 	// TipTap (ProseMirror) rich-text body — real document model, proper a11y, no
 	// execCommand. Titled links, pasted/inserted inline images (base64), live
@@ -32,7 +36,8 @@
 		placeholder = 'Write your message…',
 		oninput,
 		onattach,
-		onsend
+		onsend,
+		bodyClass = ''
 	}: {
 		initial?: string;
 		placeholder?: string;
@@ -40,6 +45,8 @@
 		onattach?: () => void;
 		/** ⌘/Ctrl+Enter inside the editor. */
 		onsend?: () => void;
+		/** Extra classes for the scrollable body — e.g. a max-height cap when inlined. */
+		bodyClass?: string;
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
@@ -51,6 +58,45 @@
 	let linkUrl = $state('');
 	let linkText = $state('');
 	let editingLink = $state(false);
+
+	// Harper grammar check (lazy WASM). Underlines flag issues; clicking an
+	// underlined word opens a suggestion menu — pick one to apply + flash green.
+	let harperStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let harperCount = $state(0);
+	let activeLint = $state<ActiveLint | null>(null);
+	// Only surface the grammar pill once there's text — a spinner on an empty
+	// composer is meaningless.
+	let hasContent = $state(false);
+
+	function pickSuggestion(s: HarperSuggestion) {
+		if (editor && activeLint) applyHarperFix(editor.view, activeLint.lint, s);
+		activeLint = null;
+	}
+	function suggestionLabel(s: HarperSuggestion): string {
+		if (s.kind === 'remove') return 'Remove';
+		if (s.kind === 'insert') return `Insert “${s.text}”`;
+		return s.text;
+	}
+
+	$effect(() => {
+		if (!activeLint) return;
+		const close = () => (activeLint = null);
+		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+		const onDown = (e: PointerEvent) => {
+			if (!(e.target as Element)?.closest?.('[data-harper-menu]')) close();
+		};
+		window.addEventListener('keydown', onKey);
+		window.addEventListener('pointerdown', onDown, true);
+		window.addEventListener('resize', close);
+		// Capture scrolls anywhere (composer body scrolls) so the menu can't float away.
+		window.addEventListener('scroll', close, true);
+		return () => {
+			window.removeEventListener('keydown', onKey);
+			window.removeEventListener('pointerdown', onDown, true);
+			window.removeEventListener('resize', close);
+			window.removeEventListener('scroll', close, true);
+		};
+	});
 
 	const active = (name: string, attrs?: Record<string, unknown>) => {
 		void tick;
@@ -123,7 +169,13 @@
 			extensions: [
 				StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
 				Placeholder.configure({ placeholder }),
-				ResizableImage.configure({ inline: true, allowBase64: true })
+				ResizableImage.configure({ inline: true, allowBase64: true }),
+				HarperGrammar.configure({
+					debounceMs: 600,
+					onStatus: (s) => (harperStatus = s),
+					onCount: (n) => (harperCount = n),
+					onActiveLint: (p) => (activeLint = p)
+				})
 			],
 			content: initial,
 			editorProps: {
@@ -131,6 +183,9 @@
 					role: 'textbox',
 					'aria-multiline': 'true',
 					'aria-label': 'Message body',
+					// Harper owns the squiggles; native spellcheck would draw its own
+					// (unhookable) red underlines over the same words.
+					spellcheck: 'false',
 					class:
 						'tiptap prose-sm min-h-[200px] max-w-none px-3 py-2 text-base outline-none focus:outline-none md:text-sm'
 				},
@@ -158,9 +213,13 @@
 					return true;
 				}
 			},
-			onUpdate: ({ editor }) => oninput?.(editor.getHTML()),
+			onUpdate: ({ editor }) => {
+				oninput?.(editor.getHTML());
+				hasContent = editor.getText().trim().length > 0;
+			},
 			onTransaction: () => (tick += 1)
 		});
+		hasContent = editor.getText().trim().length > 0; // seed (a reply prefills quoted text)
 	});
 	onDestroy(() => editor?.destroy());
 </script>
@@ -246,6 +305,19 @@
 		</Button>
 		</div>
 
+		{#if hasContent && harperStatus !== 'idle'}
+			<div class="text-muted-foreground mr-0.5 flex shrink-0 items-center gap-1 text-xs" title="Grammar check runs on-device (Harper)">
+				{#if harperStatus === 'loading'}
+					<Loader2Icon class="size-3.5 animate-spin" />
+				{:else if harperStatus === 'error'}
+					<SpellCheckIcon class="text-destructive size-3.5" />
+				{:else}
+					<SpellCheckIcon class="size-3.5 {harperCount ? 'text-amber-500' : 'text-emerald-500'}" />
+					{#if harperCount}<span class="tabular-nums">{harperCount}</span>{/if}
+				{/if}
+			</div>
+		{/if}
+
 		{#if onattach}
 			<Button variant="ghost" size="icon" class="mx-1 size-8 shrink-0" title="Attach file" onclick={onattach}>
 				<PaperclipIcon class="size-4" />
@@ -253,8 +325,33 @@
 		{/if}
 	</div>
 
-	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto"></div>
+	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto {bodyClass}"></div>
 	<input bind:this={imageInput} type="file" accept="image/*" multiple class="hidden" onchange={onImageFiles} />
+
+	{#if activeLint}
+		<!-- Portaled to <body>: the compose drawer is transformed, which would make a
+		     fixed element position against the drawer box instead of the viewport. -->
+		<div
+			use:portal
+			data-harper-menu
+			role="menu"
+			tabindex="-1"
+			class="bg-popover text-popover-foreground fixed z-50 max-h-64 w-56 max-w-[calc(100vw-1rem)] overflow-auto rounded-lg border p-1 shadow-md"
+			style="left:{Math.min(activeLint.left, window.innerWidth - 232)}px; top:{activeLint.bottom + 6}px"
+		>
+			<p class="text-muted-foreground px-2 pt-1 pb-1.5 text-xs">{activeLint.lint.message}</p>
+			{#each activeLint.lint.suggestions.slice(0, 6) as s (s.kind + s.text)}
+				<button
+					type="button"
+					role="menuitem"
+					class="hover:bg-accent hover:text-accent-foreground flex w-full items-center rounded px-2 py-1.5 text-left text-sm"
+					onclick={() => pickSuggestion(s)}
+				>
+					{suggestionLabel(s)}
+				</button>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -276,6 +373,34 @@
 	:global(.tiptap a) {
 		color: var(--accent);
 		text-decoration: underline;
+	}
+	/* Harper grammar underlines. Spelling/typos red; everything else amber. */
+	:global(.tiptap .harper-underline) {
+		text-decoration: underline wavy #eab308;
+		text-decoration-skip-ink: none;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+	:global(.tiptap .harper-spelling),
+	:global(.tiptap .harper-typo),
+	:global(.tiptap .harper-malapropism) {
+		text-decoration-color: var(--destructive);
+	}
+	/* Transient green flash after an auto-fix, then fades out. */
+	:global(.tiptap .harper-fixed) {
+		border-radius: 3px;
+		background-color: color-mix(in oklch, var(--color-emerald-500, #22c55e) 32%, transparent);
+		box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-emerald-500, #22c55e) 22%, transparent);
+		animation: harper-fix-fade 1.1s ease-out forwards;
+	}
+	@keyframes harper-fix-fade {
+		0% {
+			background-color: color-mix(in oklch, var(--color-emerald-500, #22c55e) 45%, transparent);
+		}
+		100% {
+			background-color: transparent;
+			box-shadow: none;
+		}
 	}
 	:global(.tiptap .img-resizer) {
 		position: relative;
