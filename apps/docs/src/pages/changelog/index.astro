@@ -1,0 +1,61 @@
+---
+import { Icon } from "astro-icon/components";
+import { getCollection } from "astro:content";
+import ChangelogLayout from "@/layouts/ChangelogLayout.astro";
+import ChangelogFeed from "@/components/changelog/ChangelogFeed.astro";
+import ChangelogFilter from "@/components/changelog/ChangelogFilter.astro";
+
+export const prerender = true;
+
+const PAGE_SIZE = 20;
+
+const entries = await getCollection("changelog", (e) => !e.data.draft);
+const tags = [...new Set(entries.flatMap((e) => e.data.tags))].sort();
+
+const title = "Changelog";
+const description = "New features, improvements, and fixes.";
+---
+
+{/* RSS only — if the user declined RSS, drop the `head={[...]}` RSS link
+    below and the RSS `<a>` button in the header. */}
+<ChangelogLayout
+  title={title}
+  description={description}
+  head={[
+    {
+      tag: "link",
+      attrs: {
+        rel: "alternate",
+        type: "application/rss+xml",
+        title: `${title} RSS`,
+        href: "/changelog/rss.xml",
+      },
+    },
+  ]}
+>
+  <header class="mb-14">
+    <div class="flex items-center justify-between gap-4">
+      {/* h1 token trio via inline style — site-wide page-title convention. */}
+      <h1
+        class="m-0 text-balance leading-[1.1] text-foreground"
+        style="font-size:var(--nb-h1-size);font-weight:var(--nb-h1-weight);letter-spacing:var(--nb-h1-tracking)"
+      >
+        {title}
+      </h1>
+      {/* RSS only — omit this button if the user declined RSS. */}
+      <a
+        href="/changelog/rss.xml"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-[0.625rem] border border-border py-1.5 pr-3 pl-2.5 text-[0.8125rem] font-medium text-muted-foreground no-underline transition-[color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-border-strong hover:text-foreground active:scale-[0.97] motion-reduce:active:scale-100"
+      >
+        <Icon name="ph:rss" class="h-4 w-4" />
+        <span>RSS</span>
+      </a>
+    </div>
+    <p class="mt-2.5 text-pretty text-[1.0625rem] leading-normal text-muted-foreground">
+      {description}
+    </p>
+    <ChangelogFilter tags={tags} />
+  </header>
+
+  <ChangelogFeed entries={entries} pageSize={PAGE_SIZE} />
+</ChangelogLayout>

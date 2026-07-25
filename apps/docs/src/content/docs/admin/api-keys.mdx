@@ -1,0 +1,91 @@
+---
+title: API keys
+description: Mint bearer API keys and send mail programmatically through the same pipeline as the UI.
+sidebar:
+  order: 3
+---
+
+Doota can send mail from scripts, agents, and other apps via a bearer API key.
+A key goes through the **same** authorization (`can()` mailbox SEND capability)
+and the **same** submission pipeline as an interactive session — there's no
+parallel permission path.
+
+<Aside type="note" title="An SDK is on the way">
+  Today you call the HTTP endpoint directly (below). A Resend-style client SDK
+  is planned for the near future to make programmatic sending a one-liner —
+  until then, the `POST /api/send` contract here is stable to build against.
+</Aside>
+
+## Mint a key
+
+Create keys from **`/account/developer`**. A key:
+
+- Is presented as a bearer token prefixed `dk_…` — shown once at creation, so
+  copy it immediately. Only a hash is stored.
+- Can be **mailbox-scoped** — bound to a single mailbox, and may only send as
+  that mailbox.
+- Resolves to its owning user (or, for a **service** key, authorizes the mailbox
+  directly).
+
+<Aside type="caution">
+  Treat the key like a password. It can send mail as you. Scope it to a single
+  mailbox where possible, and revoke it from `/account/developer` if it leaks.
+</Aside>
+
+## Send a message
+
+`POST /api/send` with `Authorization: Bearer dk_…` and a JSON body.
+
+```sh title="Send via curl"
+curl -X POST https://mail.acme.com/api/send \
+  -H "Authorization: Bearer dk_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mailboxId": "mbx_123",
+    "to": ["someone@example.com"],
+    "cc": [],
+    "subject": "Hello from Doota",
+    "text": "Plain-text body.",
+    "html": "<p>Or an <b>HTML</b> body.</p>",
+    "idempotencyKey": "order-4571-receipt"
+  }'
+```
+
+A successful call returns **202 Accepted**:
+
+```json
+{ "submissionId": "sub_…", "deduped": false }
+```
+
+The message is now in the outbound pipeline; track its
+`queued → sending → sent → delivered` (or `bounced`) status by the returned
+`submissionId`.
+
+## Request body
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `mailboxId` | string | Required unless the key is mailbox-scoped. If the key is bound, this must match the bound mailbox. |
+| `to` / `cc` / `bcc` | string[] | At least one recipient across the three is required. |
+| `subject` | string | Defaults to empty. |
+| `text` | string | Plain-text body (or `null`). |
+| `html` | string | HTML body (or `null`). |
+| `fromAliasId` | string | Send as an [alias](/guide/aliases) instead of the mailbox's primary address. |
+| `parentMessageId` | string | Thread the send onto an existing message (a reply). |
+| `sendAt` | number | Unix epoch (ms) for a [scheduled send](/guide/composing#scheduled-send). Released on the next 5-minute cron tick. |
+| `idempotencyKey` | string | Dedupes retries. If omitted, a random one is generated — so **always set your own** for safe retries. |
+
+## Idempotency
+
+Reusing an `idempotencyKey` returns the original submission with
+`"deduped": true` instead of sending twice. Set a stable key per logical message
+(an order id, a notification id) so a network retry never double-sends.
+
+## Errors
+
+| Status | Meaning |
+| --- | --- |
+| `401` | Missing or invalid API key. |
+| `403` | Key is mailbox-scoped and `mailboxId` doesn't match its bound mailbox. |
+| `400` | Bad JSON, missing `mailboxId`, or no recipients. |
+| `500` | Outbound mail isn't configured on the Worker (missing bindings/secrets). |

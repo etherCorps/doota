@@ -1,0 +1,127 @@
+---
+title: Operations
+description: Backup and restore, key management, running migrations, and recovery hatches for a Doota instance.
+sidebar:
+  order: 5
+---
+
+Running Doota is mostly hands-off, but three things are on you: keeping the
+encryption keys safe, backing up all state together, and applying migrations
+carefully.
+
+## Key management
+
+Doota holds two content secrets, both instance-level Worker secrets, **never in
+D1**:
+
+- **`MAIL_DEK`** — AES-256-GCM key that encrypts every subject and body in D1.
+- **`MAIL_SEARCH_KEY`** — HMAC key for the blind-token search index.
+
+<Aside type="danger" title="Lose MAIL_DEK, lose every message">
+  A D1 backup without `MAIL_DEK` is useless — the encrypted columns can never be
+  decrypted again. Store `MAIL_DEK` and `MAIL_SEARCH_KEY` in a password manager
+  or secrets vault the moment you generate them, independent of any D1 backup.
+  This is the single most important operator instruction in the project.
+</Aside>
+
+### Rotation
+
+The encryption envelope is versioned and key-id-tagged
+(`v1.<keyId>.<iv>.<ciphertext>`), so rotation is additive — a new key can
+decrypt old rows by looking up the tagged key id, without a bulk re-encrypt.
+Keep retired keys until every row they tagged has been re-encrypted or expired.
+
+## What "encrypted at rest" means here
+
+Be precise about the posture — this is **zero-access at rest, not end-to-end
+encryption**. The operator can decrypt content by design (operator oversight is
+intended).
+
+| Data | Location | At rest |
+| --- | --- | --- |
+| Subject, body (text + HTML) | D1 (`*_enc` columns) | **Encrypted** (AES-256-GCM, `MAIL_DEK`) |
+| Routing + threading metadata (from, to, message-id, thread) | D1 | Cleartext by design — the hot path never decrypts |
+| Search index tokens | D1 (`message_fts`) | HMAC blind tokens (`MAIL_SEARCH_KEY`) — reveal no plaintext |
+| **Raw RFC 5322 message + attachments** | R2 (`MAIL_RAW`) | **Cleartext** — the canonical blob is stored as-is |
+
+<Aside type="caution" title="R2 raw is the plaintext of every message">
+  The raw MIME blob in R2 is **not** encrypted. It's the source of truth and
+  holds the full plaintext of every message and attachment. Treat R2 access
+  controls as security-critical, and factor this into your threat model — D1
+  content encryption does not protect what's in R2.
+</Aside>
+
+## Backup and restore
+
+State lives in **three places that must be backed up together** — a partial
+backup is not recoverable:
+
+<Steps>
+  <Step title="D1 (metadata + encrypted content)">
+    Export the database:
+
+    ```sh
+    wrangler d1 export doota --remote --output doota-backup.sql
+    ```
+  </Step>
+  <Step title="R2 (raw messages, attachments, drafts)">
+    Sync the bucket to durable storage with `wrangler r2 object get` /
+    `rclone` / the S3-compatible API. Everything under `raw/<orgId>/…` is the
+    canonical message store.
+  </Step>
+  <Step title="Secrets (MAIL_DEK, MAIL_SEARCH_KEY, BETTER_AUTH_SECRET)">
+    Back these up out-of-band, in a password manager or vault. D1 + R2 without
+    `MAIL_DEK` cannot be read.
+  </Step>
+</Steps>
+
+Restore is the reverse: recreate resources, import the D1 dump, restore R2
+objects, and re-set the **same** secrets on all three Workers.
+
+## Running migrations
+
+Migrations live in `drizzle/` and apply with:
+
+```sh
+pnpm db:migrate:remote     # wrangler d1 migrations apply doota --remote
+pnpm db:migrate:local      # local database
+```
+
+<Aside type="caution" title="D1 has no cross-statement transactions">
+  If a multi-statement migration fails partway, D1 does **not** roll it back —
+  earlier statements have already committed. Before migrating a database with
+  real data: back up D1 first, and if a migration fails midway, inspect the
+  applied-migrations table and reconcile by hand rather than blindly re-running.
+  Test migrations on a copy first.
+</Aside>
+
+## Recovery hatches
+
+If someone is locked out, in order of preference:
+
+1. **Backup codes** — the lost-authenticator path, generated at TOTP
+   enrollment.
+2. **In-app change-password dialog** — self-service; needs an emailed code plus
+   the current password.
+3. **Forgot password** — sends a reset link to the verified external recovery
+   address (never the Doota address).
+4. **CLI `reset-admin`** — the floor for a super-admin, with no email or network
+   dependency:
+
+   ```sh
+   pnpm --filter doota reset-admin you@external-example.com 'new-password' --remote --clear-2fa
+   ```
+
+   `--clear-2fa` resets the authenticator too. This always works as long as you
+   hold deploy access.
+
+## Logs and observability
+
+Set `LOG_LEVEL` (`debug` / `info` / `warn` / `error`) per Worker to control
+mail-pipeline verbosity. Worker logs are enabled and persisted in the committed
+`wrangler.jsonc` — tail them live with:
+
+```sh
+wrangler tail doota-mail-inbound
+wrangler tail doota-mail-jobs
+```

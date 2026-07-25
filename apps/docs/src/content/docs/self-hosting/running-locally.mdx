@@ -1,0 +1,112 @@
+---
+title: Run Doota locally
+description: Clone, install, migrate, and run Doota on your machine in a few minutes.
+sidebar:
+  order: 0
+---
+
+Get Doota running on `localhost` — no Cloudflare account required for the app
+UI, auth, and the local D1 database. (Sending and receiving real mail needs a
+deployed instance with a domain; see [Self-hosting](/self-hosting).)
+
+## Requirements
+
+- **Node 22+**
+- **[pnpm](https://pnpm.io)** (the repo is a pnpm workspace)
+- A **Cloudflare account** — only needed later, for deploying and for real mail.
+
+## Set up
+
+<Steps>
+  <Step title="Install dependencies">
+    From the repository root:
+
+    <PackageManagers type="run" args="install" />
+
+    ```sh
+    pnpm install
+    ```
+  </Step>
+
+  <Step title="Create your env file">
+    ```sh
+    cp .env.example .env
+    ```
+
+    For local dev you only need two values filled in:
+
+    ```sh title=".env"
+    ORIGIN="http://localhost:5173"
+    BETTER_AUTH_SECRET="<32+ random chars>"
+    ```
+
+    Generate a secret with:
+
+    ```sh
+    openssl rand -base64 32
+    ```
+
+    <Aside type="caution" title="ORIGIN must match your dev port">
+      better-auth mounts its routes at `ORIGIN`. If `ORIGIN` doesn't match the
+      port the dev server actually runs on, `/api/auth/*` returns 404. The dev
+      server defaults to `http://localhost:5173`.
+    </Aside>
+
+    See [Configuration](/self-hosting/configuration) for every variable.
+  </Step>
+
+  <Step title="Apply database migrations">
+    Create and migrate the local D1 database:
+
+    ```sh
+    pnpm db:migrate:local
+    ```
+  </Step>
+
+  <Step title="Start the dev server">
+    ```sh
+    pnpm dev
+    ```
+
+    The app is now at [http://localhost:5173](http://localhost:5173).
+  </Step>
+
+  <Step title="Create the first admin (genesis)">
+    Doota has no email path until a domain is onboarded, so the first
+    super-admin is created **without email** — trust comes from your possession
+    of the instance. Use the CLI:
+
+    ```sh
+    pnpm --filter doota reset-admin you@external-example.com 'a-strong-password' --name "Your Name"
+    ```
+
+    This creates the super-admin, links the password, enrolls TOTP, and prints
+    an `otpauth://` URI plus backup codes to scan into your authenticator. Use
+    an **external** address (not one on a domain Doota serves).
+
+    Now sign in at `/login`.
+  </Step>
+</Steps>
+
+<Aside type="tip" title="Alternative: the /setup wizard">
+  Prefer a browser flow? Set a one-time `SETUP_TOKEN` in `.env`, then open
+  `/setup?token=<that value>`. It renders only while zero users exist and locks
+  out permanently once the first account is created. The CLI above is always
+  the guaranteed floor.
+</Aside>
+
+## Handy scripts
+
+| Script                     | Does                                       |
+| -------------------------- | ------------------------------------------ |
+| `pnpm dev`                 | Run the web app at `localhost:5173`        |
+| `pnpm db:migrate:local`    | Apply D1 migrations to the local database  |
+| `pnpm --filter doota db:studio` | Open Drizzle Studio                   |
+| `pnpm check`               | Auth-boundary check + `svelte-check`       |
+| `pnpm test`                | Run the Vitest suite                       |
+| `pnpm --filter doota reset-admin` | Create / reset the super-admin      |
+
+## Next steps
+
+- Ready to receive real mail? Follow [Self-hosting](/self-hosting).
+- Want to explore the app first? See [Using Doota](/guide).

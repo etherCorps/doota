@@ -1,0 +1,76 @@
+---
+title: Configuration
+description: Every Doota environment variable and secret — what it does, whether it's required, and how to generate it.
+sidebar:
+  order: 3
+---
+
+Doota reads a small set of variables. In local dev they live in `.env`; in
+production, sensitive values are **Worker secrets** (`wrangler secret put`) and
+the rest are plain vars (`wrangler.jsonc` `vars` or the dashboard, protected by
+`keep_vars: true`).
+
+## Web app (`doota`)
+
+| Variable | Required | Secret | What it does |
+| --- | :-: | :-: | --- |
+| `ORIGIN` | ✓ | — | The app's canonical URL. better-auth mounts `/api/auth/*` here — a mismatch causes 404s. Must match the dev port locally. |
+| `BETTER_AUTH_SECRET` | ✓ | ✓ | Signs sessions and tokens. 32+ chars, high entropy. |
+| `MAIL_DEK` | ✓ | ✓ | AES-256-GCM data-encryption key for subjects and bodies in D1. Base64, decodes to exactly 32 bytes. |
+| `MAIL_SEARCH_KEY` | ✓ | ✓ | HMAC key for blind-token search. Instance secret, distinct from `MAIL_DEK`. |
+| `APP_CLOUDFLARE_ACCOUNT_ID` | ✓ | ✓ | Cloudflare account the domain-onboarding flow provisions in. |
+| `APP_CLOUDFLARE_API_TOKEN` | ✓ | ✓ | **Scoped** API token for onboarding. Never the Global API Key. See [token scopes](/self-hosting/cloudflare-api-token). |
+| `MAIL_IN_WORKER_NAME` | ✓ | — | Name of the deployed inbound Worker (`doota-mail-inbound`) that the catch-all routing rule targets. |
+| `CRON_SECRET` | ✓ | ✓ | Bearer secret the cron trigger presents to `POST /api/cron` for maintenance sweeps. |
+| `SETUP_TOKEN` | — | ✓ | One-time token that gates the `/setup` genesis wizard. Leave unset to disable the web wizard (use the CLI instead). |
+| `LOG_LEVEL` | — | — | Mail-pipeline log level: `debug` \| `info` \| `warn` \| `error`. Defaults to `info`. |
+| `DATABASE_URL` | dev only | — | Local Drizzle target (`file:local.db`). Production uses the D1 binding. |
+
+## Mail Workers (`doota-mail-inbound`, `doota-mail-jobs`)
+
+Both mail Workers touch encrypted content, so both need the content keys:
+
+| Variable | Required | Secret | What it does |
+| --- | :-: | :-: | --- |
+| `MAIL_DEK` | ✓ | ✓ | Same key as the web app — must be identical across all three Workers. |
+| `MAIL_SEARCH_KEY` | ✓ | ✓ | Same key as the web app. |
+| `CRON_SECRET` | ✓ (jobs) | ✓ | `doota-mail-jobs` presents this when calling the web app's `/api/cron`. |
+| `LOG_LEVEL` | — | — | Per-Worker log level, as above. |
+
+<Aside type="danger" title="The three Workers must share MAIL_DEK and MAIL_SEARCH_KEY">
+  `doota-mail-inbound` writes encrypted rows, `doota-mail-jobs` reads and writes
+  them, and the web app renders them. If the keys differ between Workers,
+  decryption fails and search silently returns nothing. Set the **same**
+  `MAIL_DEK` and `MAIL_SEARCH_KEY` everywhere.
+</Aside>
+
+## Generating values
+
+```sh
+# Any 32-byte, base64 secret — used for BETTER_AUTH_SECRET, MAIL_DEK,
+# MAIL_SEARCH_KEY, CRON_SECRET, SETUP_TOKEN.
+openssl rand -base64 32
+```
+
+`MAIL_DEK` is validated on use: it must decode to exactly 32 bytes, or the
+Worker throws `MAIL_DEK must decode to 32 bytes`. base64url and stray whitespace
+are tolerated, so any of the common generators work.
+
+## Local `.env` example
+
+```sh title=".env"
+DATABASE_URL=file:local.db
+ORIGIN="http://localhost:5173"
+BETTER_AUTH_SECRET="<32+ chars>"
+MAIL_DEK="<base64 32 bytes>"
+MAIL_SEARCH_KEY="<base64 32 bytes>"
+SETUP_TOKEN=""                 # set to enable /setup, or use pnpm reset-admin
+APP_CLOUDFLARE_ACCOUNT_ID=""
+APP_CLOUDFLARE_API_TOKEN=""
+MAIL_IN_WORKER_NAME="doota-mail-inbound"
+CRON_SECRET=""
+LOG_LEVEL=""                   # defaults to info
+```
+
+For the mail Workers in local dev, put `MAIL_DEK` / `MAIL_SEARCH_KEY` /
+`LOG_LEVEL` in each Worker's `.dev.vars`.

@@ -3,6 +3,7 @@ import icon from "astro-icon";
 import tailwindcss from "@tailwindcss/vite";
 import nimbus, { defineConfig as defineNimbusConfig } from "@cloudflare/nimbus-docs";
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
+import { mermaidBlocks } from "./src/lib/mermaid-mdast";
 
 const nimbusConfig = defineNimbusConfig({
   // CHANGE_ME: your site's canonical origin (no trailing slash). Drives
@@ -12,10 +13,10 @@ const nimbusConfig = defineNimbusConfig({
   // CHANGE_ME: your project's name — used for <title>, the home H1, and OG.
   title: "Doota Mail",
   // CHANGE_ME: a one-line description of your docs — used for meta + OG.
-  description: "Doota Mail client for cloudflare email",
+  description: "Self-hosted email that reads like a chat — your email, finally yours. Runs on your own Cloudflare account.",
   locale: "en",
   github: null,
-  socialImageAlt: "Doota Mail",
+  socialImageAlt: "Doota — your email, finally yours",
 });
 
 export default defineConfig({
@@ -46,9 +47,12 @@ export default defineConfig({
         "nimbus/internal-link": "error",
       },
       // Wrap wide tables so they scroll instead of overflowing the page
-      // (styled by `.nb-table-scroll` in src/styles/prose.css).
+      // (styled by `.nb-table-scroll` in src/styles/prose.css). The mdast
+      // plugin rewrites ```mermaid fences to `<pre class="mermaid">` before
+      // Shiki runs; the client runtime in BaseLayout renders them to SVG.
       markdown: {
         hastPlugins: [tableScroll()],
+        mdastPlugins: [mermaidBlocks()],
       },
     }),
   ],

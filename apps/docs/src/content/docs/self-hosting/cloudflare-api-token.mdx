@@ -1,0 +1,65 @@
+---
+title: Cloudflare API token
+description: The scoped token Doota uses to onboard domains — required permissions, and why the Global API Key must never be used.
+sidebar:
+  order: 1
+---
+
+Doota calls the Cloudflare API to onboard domains: create (or reuse) the zone,
+enable Email Routing, write MX / SPF / DKIM / DMARC records, and point the
+catch-all rule at the mail-in Worker. This is the **only** place Doota touches
+the CF API — never on the inbound hot path or during login.
+
+<Aside type="danger" title="Never use the Global API Key">
+  Use a **scoped API token** (a Bearer token). The Global API Key grants full
+  account access and cannot be scoped down — a leak would compromise your entire
+  Cloudflare account. Doota reads a token, not the Global Key, by design.
+</Aside>
+
+## Create the token
+
+<Steps>
+  <Step title="Open the token page">
+    In the Cloudflare dashboard: **My Profile → API Tokens → Create Token →
+    Create Custom Token**.
+  </Step>
+  <Step title="Grant the permissions below">
+    Add each permission at the scope noted. Restrict **Zone Resources** to the
+    account (or specific zones) that will host Doota domains.
+  </Step>
+  <Step title="Store it as a secret">
+    Copy the token once — it's shown only at creation — and set it as the
+    `APP_CLOUDFLARE_API_TOKEN` Worker secret (see
+    [Deploy](/self-hosting/deploy)). Never commit it.
+  </Step>
+</Steps>
+
+## Required permissions
+
+| Permission | Scope | Why |
+| --- | --- | --- |
+| **Zone → Zone → Edit** | Account | Read zone status; needed to wire records. |
+| **Zone → DNS → Edit** | Account | Write MX, SPF, DKIM, DMARC, return-path records. |
+| **Zone → Email Routing Rules → Edit** | Account | Enable routing and set the catch-all rule. |
+| **Account → Email Routing Addresses → Edit** | Account | Manage routing destinations. |
+| **Zone → Zone → Create** | Account | Only if Doota should add **brand-new** domains not already on your account. |
+
+<Aside type="tip" title="You can drop Zone:Create">
+  If you only ever onboard domains that are **already zones on your Cloudflare
+  account**, omit **Zone:Create** entirely. Doota detects the existing zone and
+  reuses it — no creation call is made. Grant Zone:Create only if you want Doota
+  to add new domains for you.
+</Aside>
+
+## The account ID
+
+You also need your **Account ID** (`APP_CLOUDFLARE_ACCOUNT_ID`). Find it in the
+dashboard on any domain's **Overview** page (right sidebar) or under **Workers &
+Pages → Account details**.
+
+## Rotation
+
+Rotate the token if it may have leaked, and on a regular cadence for hygiene.
+Create the replacement first, update the `APP_CLOUDFLARE_API_TOKEN` secret, then
+revoke the old token — nothing on the mail hot path depends on it, so rotation
+has no user-facing impact.

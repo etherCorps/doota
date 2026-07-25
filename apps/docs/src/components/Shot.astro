@@ -1,0 +1,54 @@
+---
+/**
+ * Product screenshot in a bordered figure. Theme-aware: pass `dark` for a
+ * second image swapped in under `[data-mode="dark"]`. No drawn browser/phone
+ * chrome — the capture stands on its own inside a hairline frame.
+ */
+interface Props {
+  light: string;
+  dark?: string;
+  alt: string;
+  caption?: string;
+}
+const { light, dark, alt, caption } = Astro.props;
+---
+
+<figure class="my-6 overflow-hidden rounded-xl border border-border bg-card">
+  <img
+    src={light}
+    alt={alt}
+    class="shot-light block w-full h-auto"
+    loading="lazy"
+    decoding="async"
+  />
+  {
+    dark && (
+      <img
+        src={dark}
+        alt={alt}
+        class="shot-dark block w-full h-auto"
+        loading="lazy"
+        decoding="async"
+      />
+    )
+  }
+  {
+    caption && (
+      <figcaption class="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
+        {caption}
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .shot-dark {
+    display: none;
+  }
+  :global([data-mode="dark"]) .shot-light {
+    display: none;
+  }
+  :global([data-mode="dark"]) .shot-dark {
+    display: block;
+  }
+</style>

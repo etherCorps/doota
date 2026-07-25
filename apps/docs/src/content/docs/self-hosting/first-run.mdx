@@ -1,0 +1,126 @@
+---
+title: First run
+description: Create the super-admin, onboard a domain, make a mailbox, and send a test message.
+sidebar:
+  order: 4
+---
+
+Your Workers are deployed but no mail flows yet. This page brings the first
+domain online end to end.
+
+## 1. Create the super-admin (genesis)
+
+At genesis no domain is onboarded, so there's no way to deliver a verification
+email. The trust root is **deploy access** — whoever holds the instance
+secrets. Two surfaces, both gated on "zero users exist":
+
+<Tabs>
+  <TabItem label="CLI (recommended)">
+    The guaranteed floor — works with no mail path:
+
+    ```sh
+    pnpm --filter doota reset-admin you@external-example.com 'strong-password' --name "Your Name" --remote
+    ```
+
+    In genesis mode it creates the super-admin, links the password, and enrolls
+    TOTP — printing an `otpauth://` URI and backup codes. Scan the URI into your
+    authenticator and **save the backup codes**. Use `--remote` to target the
+    production database.
+  </TabItem>
+  <TabItem label="/setup wizard">
+    If you set `SETUP_TOKEN`, open:
+
+    ```
+    https://your-app/setup?token=<SETUP_TOKEN>
+    ```
+
+    It renders only while zero users exist and re-checks the token server-side.
+    It creates the super-admin and password; TOTP is added later via the
+    onboarding "secure account" step. Once any user exists, the wizard locks out
+    permanently.
+  </TabItem>
+</Tabs>
+
+<Aside type="caution" title="Use an external email">
+  The super-admin's address must be **external** — not on a domain Doota serves
+  (that address doesn't exist yet, and recovery to it would be circular). It's
+  stored unverified; verifying it is an optional step available later, once a
+  domain is active.
+</Aside>
+
+Now sign in at `/login`. As super-admin your only onboarding step is **secure
+account** (TOTP or passkey), which genesis already handled.
+
+## 2. Onboard your domain
+
+Go to **`/admin/domains`** (super-admin only). This uses your scoped Cloudflare
+token to provision everything.
+
+<Steps>
+  <Step title="Pick a zone">
+    Doota lists every zone on your Cloudflare account and flags which are
+    already onboarded — pick one instead of typing it. A manual field remains
+    for a domain not yet on Cloudflare. Optionally supply a **sending
+    subdomain** (outbound DKIM host, e.g. `send.acme.com`) within the domain.
+  </Step>
+  <Step title="Zone creation (new domains only)">
+    If the domain is already a zone on your account, Doota **reuses it** — no
+    error. A brand-new domain triggers a zone create and returns the assigned
+    **nameservers**; point your registrar at them. The request isn't blocked on
+    activation — status is tracked in D1.
+  </Step>
+  <Step title="Wait for active, then Refresh">
+    Once the zone is `active`, hit **Refresh** (`refreshDomain`). Doota then
+    wires mail **idempotently**: enables Email Routing, writes MX + SPF
+    (inbound), onboards the sending domain (DKIM + DMARC + return-path), and
+    points the catch-all rule at `MAIL_IN_WORKER_NAME`.
+  </Step>
+  <Step title="Add DNS records if your DNS is elsewhere">
+    For a Cloudflare-hosted zone the records are created automatically. If your
+    DNS lives elsewhere, the screen shows the exact DKIM / DMARC / return-path
+    records to add — they're fetched live per domain, never persisted.
+  </Step>
+</Steps>
+
+The domain moves through `pending_zone → pending_nameservers → wiring →
+active`. Only `domain`, `zone_id`, the org mapping, and this status live in D1;
+all DNS/routing state is fetched live from Cloudflare for the settings screens.
+
+<Aside type="note" title="Catch-all is zone-level">
+  Inbound routing is a zone-level catch-all (apex), so `*@acme.com` reaches
+  Doota. Per-subdomain inbound routing (e.g. `*@mail.acme.com`) isn't built —
+  the optional sending subdomain is for **outbound DKIM only**.
+</Aside>
+
+## 3. Create the first mailbox and user
+
+Once the domain is `active`, provision a user through the organization:
+
+**`/admin/organizations`** → pick the org (one org = one domain) → manage
+members → create user. Because the org pins the domain, you supply only the
+**local part** — Doota builds `<username>@<domain>`. Set the role (member or
+admin) and an **external recovery email**.
+
+Doota creates the user with a random temp password and emails an invite to the
+recovery address: the login email, the temp password, and a recovery-verification
+link. On first sign-in the onboarding gate forces **set password** + **verify
+recovery** (+ **secure account** for admins).
+
+See [Managing users](/admin/users) for the full flow.
+
+## 4. Send and receive a test message
+
+<Steps>
+  <Step title="Receive">
+    From any external account (Gmail, Outlook), email the new mailbox
+    (`you@acme.com`). It should appear as a new thread within seconds. If not,
+    see [Troubleshooting](/self-hosting/troubleshooting).
+  </Step>
+  <Step title="Send">
+    Reply from Doota, or compose a new message to an external address. Watch the
+    submission tick from queued → sent → delivered in the composer.
+  </Step>
+</Steps>
+
+That's a working instance. From here, explore [Using Doota](/guide) or read up
+on [Operations](/self-hosting/operations).

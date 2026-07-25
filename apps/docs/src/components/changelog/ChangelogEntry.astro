@@ -1,0 +1,61 @@
+---
+/**
+ * ChangelogEntry — one entry in the feed. Renders the date marker, a
+ * permalink title, tag pills, and the entry's full MDX body inline (rendered
+ * with the site's MDX globals). `data-tags` feeds the filter; entries past
+ * the initial page are `data-overflow` + hidden until "load older" reveals
+ * them (older entries also reachable via /changelog/page/<n> with no JS).
+ */
+import { render } from "astro:content";
+import type { CollectionEntry } from "astro:content";
+import DateRail from "./DateRail.astro";
+import { Badge } from "@/components/ui/badge";
+import { components } from "@/components";
+
+interface Props {
+  entry: CollectionEntry<"changelog">;
+  overflow?: boolean;
+  /** Last visible entry — drops its trailing rail segment so the timeline
+   *  closes at the final dot. The controller keeps this in sync. */
+  railEnd?: boolean;
+}
+
+const { entry, overflow = false, railEnd = false } = Astro.props;
+const { title, date, tags } = entry.data;
+const href = `/changelog/${entry.id}`;
+const { Content } = await render(entry);
+---
+
+<article
+  class="nb-cl-entry"
+  data-entry
+  data-tags={tags.join(",")}
+  data-overflow={overflow ? "" : undefined}
+  data-rail-end={railEnd ? "" : undefined}
+  hidden={overflow}
+>
+  <DateRail date={date} />
+
+  {/* `nb-cl-title-link` / `nb-cl-title` stay class-based: the title's size is
+      coupled to the rail's --cl-title-line, and the dot lights up via
+      `:has(.nb-cl-title-link:hover)` — both live in ChangelogFeed's styles. */}
+  <div>
+    <a href={href} class="nb-cl-title-link">
+      <h2 class="nb-cl-title">{title}</h2>
+    </a>
+
+    {
+      tags.length > 0 && (
+        <div class="mt-[0.6875rem] flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <Badge text={tag} variant="default" size="small" />
+          ))}
+        </div>
+      )
+    }
+
+    <div class="docs-content nb-cl-prose mt-[1.125rem] max-w-none">
+      <Content components={components} />
+    </div>
+  </div>
+</article>

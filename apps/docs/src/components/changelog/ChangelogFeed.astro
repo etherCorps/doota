@@ -1,0 +1,197 @@
+---
+/**
+ * ChangelogFeed — the reverse-chronological timeline. Sorts newest first and
+ * renders every entry on one continuous rail. Each entry's date carries its
+ * year, so there are no year dividers. Owns the timeline layout and the
+ * "load older" control.
+ */
+import { Icon } from "astro-icon/components";
+import type { CollectionEntry } from "astro:content";
+import ChangelogEntry from "./ChangelogEntry.astro";
+
+interface Props {
+  entries: CollectionEntry<"changelog">[];
+  pageSize?: number;
+  loadMoreHref?: string;
+}
+
+const { entries, pageSize, loadMoreHref = "/changelog/page/2" } = Astro.props;
+
+const sorted = [...entries].sort(
+  (a, b) => b.data.date.getTime() - a.data.date.getTime(),
+);
+
+const cap = pageSize ?? sorted.length;
+const hasOverflow = sorted.length > cap;
+// Last initially-visible entry — its rail segment is dropped so the line ends
+// at the final dot. The controller updates this as entries filter/reveal.
+const lastVisibleIndex = Math.min(cap, sorted.length) - 1;
+---
+
+<div class="nb-cl-feed" data-changelog-feed data-page-size={pageSize ?? ""}>
+  {
+    sorted.map((entry, i) => (
+      <ChangelogEntry entry={entry} overflow={i >= cap} railEnd={i === lastVisibleIndex} />
+    ))
+  }
+
+  {/* `--body-x` aligns these with the entry content; they reset on mobile. */}
+  <p
+    class="pl-[var(--body-x)] pb-8 text-[0.9375rem] text-pretty text-muted-foreground max-sm:pl-0"
+    data-changelog-empty
+    hidden
+  >
+    No entries match the selected filter.
+  </p>
+
+  {
+    hasOverflow && (
+      <div class="mt-2 pl-[var(--body-x)] max-sm:pl-0">
+        <a
+          href={loadMoreHref}
+          class="inline-flex items-center gap-[0.4375rem] rounded-[0.625rem] border border-border bg-card py-2 pr-3 pl-3.5 text-sm font-medium text-foreground no-underline transition-[background-color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-border-strong hover:bg-accent active:scale-[0.97] motion-reduce:active:scale-100"
+          data-load-more
+        >
+          <span>Load older entries</span>
+          <Icon name="ph:arrow-down" class="h-4 w-4 text-muted-foreground" />
+        </a>
+      </div>
+    )
+  }
+</div>
+
+<script src="./changelog.client.ts"></script>
+
+<style>
+  /* Geometry is driven by three tokens so the date, dot, line, and content
+     stay in lockstep — change one number, the whole rail re-aligns.
+       --date-w   width of the right-aligned date column (left edge = 0)
+       --rail-x   x of the vertical line + dot center
+       --body-x   x where entry content begins */
+  .nb-cl-feed {
+    /* Wide enough for a full right-aligned date ("Jun 12, 2026"). */
+    --date-w: 5.75rem;
+    --rail-x: 6.5rem;
+    --body-x: 8rem;
+    /* Title's first line box (font 1.375rem × lh 1.25). The rail matches it
+       so the date, dot, and title's first line share one horizontal axis. */
+    --cl-title-line: calc(1.375rem * 1.25);
+    position: relative;
+  }
+
+  /* On larger viewports, open up the gap between the rail and the entry
+     content — only --body-x moves; the date, dot, and line stay put. */
+  @media (min-width: 1024px) {
+    .nb-cl-feed {
+      --body-x: 10rem;
+    }
+  }
+
+  :global(.nb-cl-entry) {
+    position: relative;
+    padding-left: var(--body-x);
+    padding-bottom: 3.25rem;
+  }
+  /* Centered on the dot (translateX(-50%) at --rail-x); runs dot-center to
+     dot-center so it threads every node. */
+  :global(.nb-cl-entry)::before {
+    content: "";
+    position: absolute;
+    left: var(--rail-x);
+    top: calc(var(--cl-title-line) / 2);
+    bottom: calc(var(--cl-title-line) / -2);
+    width: 1px;
+    transform: translateX(-50%);
+    background: var(--nb-border);
+  }
+  /* Last visible entry: no next node to reach, so the rail runs to the bottom
+     of the entry and fades out — a soft close-off for the end of the timeline. */
+  :global(.nb-cl-entry[data-rail-end])::before {
+    bottom: 0;
+    background: linear-gradient(
+      to bottom,
+      var(--nb-border) 0,
+      var(--nb-border) calc(100% - 4rem),
+      transparent 100%
+    );
+  }
+
+  /* Rail height = title's first line; centers its contents so the date sits
+     on the same axis as the title. */
+  :global(.nb-cl-rail) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--rail-x);
+    height: var(--cl-title-line);
+    display: flex;
+    align-items: center;
+  }
+  :global(.nb-cl-date) {
+    width: var(--date-w);
+    text-align: right;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--nb-muted-foreground);
+    white-space: nowrap;
+  }
+  :global(.nb-cl-dot) {
+    position: absolute;
+    /* Dead-center of the rail box → on the title's axis and the line. */
+    left: var(--rail-x);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 9px;
+    height: 9px;
+    border-radius: 9999px;
+    background: var(--nb-background);
+    border: 1.5px solid var(--nb-border-strong);
+    box-sizing: border-box;
+    transition:
+      border-color 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  /* Light up the dot when its entry is hovered. */
+  :global(.nb-cl-entry:has(.nb-cl-title-link:hover)) :global(.nb-cl-dot) {
+    border-color: var(--nb-foreground);
+    background-color: var(--nb-foreground);
+  }
+
+  /* Entry title — class-based because its size defines --cl-title-line (the
+     rail's alignment unit) and it drives the dot's :has() hover above. */
+  :global(.nb-cl-title-link) { display: inline-block; text-decoration: none; color: inherit; }
+  :global(.nb-cl-title) {
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--nb-foreground);
+    margin: 0;
+    text-wrap: balance;
+  }
+  :global(.nb-cl-title-link:hover .nb-cl-title) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+
+  @media (max-width: 640px) {
+    :global(.nb-cl-entry) { padding-left: 0; padding-bottom: 2.75rem; }
+    :global(.nb-cl-entry)::before,
+    :global(.nb-cl-dot) { display: none; }
+    :global(.nb-cl-rail) {
+      position: static;
+      display: block;
+      width: auto;
+      height: auto;
+      margin-bottom: 0.5rem;
+    }
+    :global(.nb-cl-date) { width: auto; text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.nb-cl-dot) { transition: none; }
+  }
+</style>

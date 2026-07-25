@@ -1,0 +1,47 @@
+---
+/**
+ * Doota brand mark — speech bubble + envelope flap (email rendered as
+ * conversation), identical to the landing favicon. Bubble fills with the brand
+ * token; the flap knocks out in the page background, both modes.
+ */
+interface Props {
+  size?: number;
+  wordmark?: boolean;
+  class?: string;
+}
+const { size = 24, wordmark = true, class: cls } = Astro.props;
+---
+
+<span class:list={["inline-flex items-center gap-2 leading-none", cls]}>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 32 32"
+    fill="none"
+    role="img"
+    aria-label="Doota"
+    class="shrink-0"
+  >
+    <path
+      d="M9 4h14a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-9l-6 4v-4H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z"
+      fill="var(--nb-primary)"
+    />
+    <path
+      d="M9.5 11 16 15.5 22.5 11"
+      stroke="var(--nb-background)"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+  {
+    wordmark && (
+      <span
+        class="font-semibold tracking-tight text-foreground"
+        style={`font-size:${size * 0.72}px`}
+      >
+        Doota
+      </span>
+    )
+  }
+</span>

@@ -1,0 +1,85 @@
+---
+title: Troubleshooting
+description: Mail not arriving, sending failing, auth 404s, and where to look.
+sidebar:
+  order: 6
+---
+
+Common failure modes and where to check. The onboarding health view on
+`/admin/domains` surfaces domain and DNS state live from Cloudflare.
+
+## Mail not arriving
+
+<Steps>
+  <Step title="Is the domain active?">
+    On `/admin/domains`, the domain must show `active`. If it's stuck at
+    `pending_nameservers`, your registrar isn't pointing at the assigned
+    Cloudflare nameservers yet. Hit **Refresh** after DNS propagates.
+  </Step>
+  <Step title="Is the catch-all rule set?">
+    Doota points the Email Routing catch-all at `MAIL_IN_WORKER_NAME`. Confirm
+    that variable is the deployed inbound Worker's name (`doota-mail-inbound`),
+    and that Email Routing is enabled on the zone. Re-running onboarding is
+    idempotent — safe to retry.
+  </Step>
+  <Step title="Is MX present and correct?">
+    Check the zone's DNS for Cloudflare's Email Routing MX records. If your DNS
+    is external, add the records shown on the domain screen.
+  </Step>
+  <Step title="Tail the inbound Worker">
+    ```sh
+    wrangler tail doota-mail-inbound
+    ```
+    A message to an unknown or disabled recipient is rejected cleanly and stores
+    nothing — check the local part actually maps to a mailbox or active alias.
+  </Step>
+</Steps>
+
+## Sending failing
+
+- **Domain not `active`** — outbound needs a working sending path. Provisioning
+  and sending are blocked until the domain is active.
+- **DKIM missing** — the sending domain/subdomain must have DKIM + DMARC +
+  return-path records. For external DNS, add the records from the domain screen.
+- **Rate limited** — sends are counted per scope; a burst can hit the send
+  counter. Check `doota-mail-jobs` logs.
+- **Recipient suppressed** — a prior hard bounce or complaint adds the address
+  to the suppression list, and later sends to it are dropped. Remove the
+  suppression if it was transient.
+- **Tail the jobs Worker**:
+  ```sh
+  wrangler tail doota-mail-jobs
+  ```
+  The submission status (`queued → sending → sent → delivered → bounced`) tells
+  you how far a message got.
+
+## Auth routes return 404 (`/api/auth/*`)
+
+`ORIGIN` doesn't match the URL the app is actually served on. better-auth
+mounts its routes at `ORIGIN`. In dev, set it to `http://localhost:5173` (the
+default dev port); in production, to your real app URL. Redeploy after changing.
+
+## Can't decrypt messages / search returns nothing
+
+The three Workers don't share the same keys. `MAIL_DEK` and `MAIL_SEARCH_KEY`
+must be **identical** on `doota`, `doota-mail-inbound`, and `doota-mail-jobs`.
+Re-set them everywhere and redeploy. If `MAIL_DEK` decodes to the wrong length
+the Worker throws `MAIL_DEK must decode to 32 bytes` — regenerate with
+`openssl rand -base64 32`.
+
+## Locked out of the super-admin
+
+Use the CLI recovery floor — no email or network needed:
+
+```sh
+pnpm --filter doota reset-admin you@external-example.com 'new-password' --remote --clear-2fa
+```
+
+See [Operations → Recovery hatches](/self-hosting/operations).
+
+## Live ticks (delivery/read status) not updating
+
+The `MailEventHub` Durable Object lives in `doota-mail-jobs`; the web and
+inbound Workers bind to it by `script_name`. If ticks stall, confirm
+`doota-mail-jobs` is deployed and its DO migration applied — deploy it first on
+a cold account.

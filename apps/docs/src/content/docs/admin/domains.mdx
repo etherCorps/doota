@@ -1,0 +1,65 @@
+---
+title: Domains
+description: Onboard a domain through Cloudflare, take it active, and wire inbound and outbound mail.
+sidebar:
+  order: 1
+---
+
+Domain onboarding is super-admin only, at **`/admin/domains`**. It uses your
+scoped [Cloudflare API token](/self-hosting/cloudflare-api-token) to do all the
+provisioning — you don't touch the Cloudflare dashboard.
+
+## Onboard a domain
+
+<Steps>
+  <Step title="Pick a zone (don't type it)">
+    Doota lists every zone on your Cloudflare account and flags which are already
+    onboarded. Pick one. A manual field remains for a domain **not yet** on
+    Cloudflare. Optionally add a **sending subdomain** (outbound DKIM host, e.g.
+    `send.acme.com`) within the domain.
+  </Step>
+  <Step title="Zone create or reuse">
+    - **Already a zone on your account** → Doota reuses it and goes straight to
+      wiring, no error.
+    - **Brand new** → Doota creates the zone and returns the assigned
+      **nameservers**. Point your registrar at them. Onboarding isn't blocked on
+      activation — status is tracked asynchronously.
+  </Step>
+  <Step title="Refresh until active">
+    The **Refresh** button re-checks the zone. Statuses:
+    `pending_zone → pending_nameservers → wiring → active`.
+  </Step>
+  <Step title="Mail wiring (automatic, idempotent)">
+    Once active, Doota enables Email Routing, writes MX + SPF (inbound),
+    onboards the sending domain (DKIM + DMARC + return-path), and points the
+    catch-all rule at `MAIL_IN_WORKER_NAME`. Every call is check-then-create, so
+    re-running is safe.
+  </Step>
+</Steps>
+
+## External DNS
+
+For a Cloudflare-hosted zone, all records are created for you. If your DNS lives
+elsewhere, the domain screen shows the exact DKIM / DMARC / return-path records
+to add — fetched **live** from Cloudflare per domain, never stored in Doota.
+
+## What's stored
+
+D1 keeps only the `domain`, `zone_id`, the org mapping, and a `status` enum.
+DNS, DKIM, and routing state are never persisted — they're read live from
+Cloudflare for the settings screens. The CF API is **never** called on the
+inbound-mail hot path or during login; those read a cached `domain → org → zone`
+map.
+
+<Aside type="note" title="Inbound is apex-level">
+  Email Routing's catch-all is zone-level (apex), so `*@acme.com` reaches Doota.
+  Per-subdomain inbound routing isn't built — the optional sending subdomain is
+  outbound DKIM only.
+</Aside>
+
+## After the domain is active
+
+- Provision users (see [Users](/admin/users)) — allowed only once the domain is
+  active, so invite mail can actually be delivered.
+- The super-admin can now verify their own external email if they want (an
+  optional step that unlocks once a sending path exists).

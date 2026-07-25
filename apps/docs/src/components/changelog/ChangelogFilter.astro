@@ -1,0 +1,46 @@
+---
+/**
+ * ChangelogFilter — tag chips that filter the feed client-side. One toggle
+ * per tag plus an "All" reset. The controller reads `data-filter-tag`,
+ * toggles visibility, and syncs the selection to the URL (`?tag=`). Inert
+ * with no JS (every entry stays visible).
+ */
+interface Props {
+  tags: string[];
+}
+
+const { tags } = Astro.props;
+
+// Tailwind v4 auto-gates `hover:` to `@media (hover: hover)`. `aria-pressed:`
+// drives the selected state; `active:` gives press feedback (dropped under
+// `motion-reduce:`).
+const chip = [
+  "inline-flex items-center min-h-8 cursor-pointer rounded-full border border-border",
+  "px-3 py-1 text-[0.8125rem] font-medium leading-tight text-muted-foreground",
+  "transition-[color,background-color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
+  "hover:text-foreground hover:border-border-strong",
+  "active:scale-[0.96] motion-reduce:active:scale-100 motion-reduce:transition-colors",
+  "aria-pressed:bg-foreground aria-pressed:text-background aria-pressed:border-foreground",
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-strong",
+].join(" ");
+---
+
+{
+  tags.length > 0 && (
+    <div
+      class="mt-7 flex flex-wrap gap-2"
+      data-changelog-filter
+      role="group"
+      aria-label="Filter by tag"
+    >
+      <button type="button" class={chip} data-filter-tag="" aria-pressed="true">
+        All
+      </button>
+      {tags.map((tag) => (
+        <button type="button" class={chip} data-filter-tag={tag} aria-pressed="false">
+          {tag}
+        </button>
+      ))}
+    </div>
+  )
+}

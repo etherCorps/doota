@@ -1,0 +1,120 @@
+---
+title: Self-hosting
+description: Deploy Doota to your own Cloudflare account — prerequisites, the deploy path, and what each Worker needs.
+sidebar:
+  order: 3
+  group:
+    label: Self-hosting
+---
+
+Doota is meant to be run by you. This section takes a fresh Cloudflare account
+to a working instance that receives and sends real mail on your own domain.
+
+## Is self-hosting for you?
+
+Be honest with yourself before you start — setting Doota up is a **developer-level
+task**, not a point-and-click install. There's no hosted Doota to sign up for.
+
+You'll be comfortable here if you can:
+
+- Use a **terminal** (run commands, copy output).
+- Install tools like **Node** and **pnpm**, and clone a Git repository.
+- Edit a **config file** and paste in IDs.
+- Manage a **domain's DNS** and a **Cloudflare account**.
+
+Plan for **30–60 minutes** the first time.
+
+<Aside type="note" title="Not comfortable with the above?">
+  That's completely fine — this part just isn't aimed at you yet.
+  - If someone has **already set Doota up** and invited you, you don't need any
+    of this — go to [Getting started](/guide/getting-started) instead.
+  - If you want your **own** instance, the easiest path is to have a technical
+    friend or contractor follow this guide with you. It's a one-time setup.
+</Aside>
+
+Still with us? Here's what you'll need.
+
+## What you'll need
+
+- A **Cloudflare account** (the free tier is enough to start; Workers Paid is
+  recommended for Queues throughput and higher limits).
+- A **domain** you can point at Cloudflare — Doota's model is **one deployment =
+  one company = one mail domain**. You can onboard several domains, each as its
+  own organization.
+- **Node 22+**, **[pnpm](https://pnpm.io)**, and a local clone of the repo.
+- A **scoped Cloudflare API token** — Doota calls the CF API to onboard domains
+  (zone, Email Routing, DNS, DKIM). See
+  [Cloudflare API token](/self-hosting/cloudflare-api-token).
+
+<Aside type="caution" title="Beta dependency">
+  Outbound is sent through Cloudflare Email Sending, which is in public beta.
+  It's the only supported sender — Doota is built for Cloudflare end to end.
+  Factor its beta status into your risk assessment before relying on it for
+  critical mail.
+</Aside>
+
+## The deploy path, end to end
+
+<Steps>
+  <Step title="Provision resources">
+    Create the D1 database, R2 bucket, KV namespace, and Queues, then point the
+    `wrangler.jsonc` files at them.
+  </Step>
+  <Step title="Set secrets">
+    Push `BETTER_AUTH_SECRET`, the Cloudflare API token, and the rest as Worker
+    secrets.
+  </Step>
+  <Step title="Migrate the remote database">
+    `pnpm db:migrate:remote` applies the D1 schema in production.
+  </Step>
+  <Step title="Deploy the Workers">
+    `pnpm deploy:all` builds and ships the web app and both mail Workers.
+  </Step>
+  <Step title="Run genesis and onboard a domain">
+    Create the super-admin, then onboard your first domain so Email Routing and
+    sending come online. See [First run](/self-hosting/first-run).
+  </Step>
+</Steps>
+
+Full walkthrough: [Deploy](/self-hosting/deploy).
+
+## What each Worker binds
+
+Five Workers deploy; three carry state. A queue binds to exactly **one**
+consumer, so the web app only _produces_ — the async handlers live in the mail
+Workers.
+
+| Worker | D1 `DB` | R2 `MAIL_RAW` | KV `AUTH_KV` | DO `MAIL_EVENTS` | `EMAIL_SENDER` | Queues |
+| --- | :-: | :-: | :-: | :-: | :-: | --- |
+| **doota** (web) | ✓ | ✓ | ✓ | ✓ | ✓ | produces `inbound`, `outbound` |
+| **doota-mail-inbound** | ✓ | ✓ | — | ✓ | — | produces + consumes `inbound` |
+| **doota-mail-jobs** | ✓ | ✓ | — | ✓ | ✓ | consumes `outbound` + `events`, produces `outbound`; cron |
+| **doota-landing** | — | — | — | — | — | — |
+| **docs** | — | — | — | — | — | — |
+
+The Durable Object class `MailEventHub` lives in `doota-mail-jobs`; the other
+Workers bind to it by `script_name`. That's why `doota-mail-jobs` deploys the
+DO migration.
+
+## In this section
+
+<CardGrid>
+  <Card title="Cloudflare API token" icon="ph:key">
+    The exact scopes Doota needs, and when you can drop Zone:Create.
+  </Card>
+  <Card title="Deploy" icon="ph:cloud-arrow-up">
+    Provision resources, set secrets, migrate, and ship.
+  </Card>
+  <Card title="Configuration" icon="ph:sliders">
+    Every environment variable and secret, what it does, and how to generate it.
+  </Card>
+  <Card title="First run" icon="ph:flag-checkered">
+    Genesis, onboard a domain, create a mailbox, send a test message.
+  </Card>
+  <Card title="Operations" icon="ph:wrench">
+    Backup and restore, migrations, and key management.
+  </Card>
+  <Card title="Troubleshooting" icon="ph:first-aid-kit">
+    Mail not arriving, sending failing, and where to look.
+  </Card>
+</CardGrid>

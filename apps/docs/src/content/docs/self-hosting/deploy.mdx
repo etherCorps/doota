@@ -1,0 +1,176 @@
+---
+title: Deploy
+description: Provision Cloudflare resources, set secrets, migrate the database, and ship all Workers.
+sidebar:
+  order: 2
+---
+
+This takes a clone of the repo to a live instance. You'll provision resources,
+wire their IDs into the `wrangler.jsonc` files, push secrets, migrate the
+remote database, and deploy.
+
+<Aside type="note" title="Before you start">
+  Have a [Cloudflare API token](/self-hosting/cloudflare-api-token) ready, and
+  make sure you're logged in to Wrangler: `wrangler login`. All commands run
+  from the repository root unless noted.
+</Aside>
+
+## 1. Provision resources
+
+Create the D1 database, R2 bucket, KV namespace, and the three queues. Names
+below match the committed `wrangler.jsonc` files — keep them, or change both
+sides.
+
+```sh
+# D1 database
+wrangler d1 create doota
+
+# R2 bucket for raw messages, attachments, and drafts
+wrangler r2 bucket create doota-mail-raw
+
+# KV namespace for the session read-cache
+wrangler kv namespace create AUTH_KV
+
+# Queues
+wrangler queues create doota-mail-inbound
+wrangler queues create doota-mail-outbound
+wrangler queues create doota-mail-events
+```
+
+Each command prints an **id**. You need the D1 `database_id` and the KV
+namespace `id` for the next step. (Queues and the R2 bucket bind by name, so
+they need no id.)
+
+## 2. Wire the IDs into wrangler config
+
+Open the three Worker configs and replace the committed ids with yours:
+
+- `apps/web/wrangler.jsonc`
+- `apps/mail-in/wrangler.jsonc`
+- `apps/mail-jobs/wrangler.jsonc`
+
+```jsonc title="apps/web/wrangler.jsonc" {4,10}
+"d1_databases": [
+  {
+    "binding": "DB",
+    "database_id": "<your-d1-database-id>", // [!code highlight]
+    "database_name": "doota",
+    "migrations_dir": "../../drizzle"
+  }
+],
+"kv_namespaces": [
+  { "binding": "AUTH_KV", "id": "<your-kv-namespace-id>" } // [!code highlight]
+]
+```
+
+The D1 id must match in **all three** configs — the web app and both mail
+Workers share one database.
+
+<Aside type="tip" title="Custom domain">
+  `apps/web/wrangler.jsonc` has a `routes` entry with a `custom_domain`. Point
+  it at the hostname you'll serve the app on (e.g. `mail.acme.com`), or remove
+  it to use the `*.workers.dev` URL while testing.
+</Aside>
+
+## 3. Set variables and secrets
+
+Non-secret vars (`ORIGIN`, `MAIL_IN_WORKER_NAME`, optional `LOG_LEVEL`) go in
+each Worker's `vars` block or the dashboard — `keep_vars: true` keeps dashboard
+vars from being wiped on deploy. Everything sensitive goes in as a **secret**.
+
+Set secrets per Worker with `wrangler secret put`, pointing `-c` at each config:
+
+<Tabs>
+  <TabItem label="web (doota)">
+    ```sh
+    wrangler secret put BETTER_AUTH_SECRET       -c apps/web/wrangler.jsonc
+    wrangler secret put MAIL_DEK                  -c apps/web/wrangler.jsonc
+    wrangler secret put MAIL_SEARCH_KEY          -c apps/web/wrangler.jsonc
+    wrangler secret put APP_CLOUDFLARE_ACCOUNT_ID -c apps/web/wrangler.jsonc
+    wrangler secret put APP_CLOUDFLARE_API_TOKEN  -c apps/web/wrangler.jsonc
+    wrangler secret put CRON_SECRET              -c apps/web/wrangler.jsonc
+    # optional — enables the /setup web wizard, one-time
+    wrangler secret put SETUP_TOKEN              -c apps/web/wrangler.jsonc
+    ```
+  </TabItem>
+  <TabItem label="mail-in">
+    ```sh
+    wrangler secret put MAIL_DEK        -c apps/mail-in/wrangler.jsonc
+    wrangler secret put MAIL_SEARCH_KEY -c apps/mail-in/wrangler.jsonc
+    ```
+  </TabItem>
+  <TabItem label="mail-jobs">
+    ```sh
+    wrangler secret put MAIL_DEK        -c apps/mail-jobs/wrangler.jsonc
+    wrangler secret put MAIL_SEARCH_KEY -c apps/mail-jobs/wrangler.jsonc
+    wrangler secret put CRON_SECRET     -c apps/mail-jobs/wrangler.jsonc
+    ```
+  </TabItem>
+</Tabs>
+
+Generate the three high-entropy secrets:
+
+```sh
+openssl rand -base64 32   # BETTER_AUTH_SECRET
+openssl rand -base64 32   # MAIL_DEK  (must decode to exactly 32 bytes)
+openssl rand -base64 32   # MAIL_SEARCH_KEY
+```
+
+<Aside type="danger" title="Back up MAIL_DEK and MAIL_SEARCH_KEY now">
+  `MAIL_DEK` encrypts every subject and body in D1; `MAIL_SEARCH_KEY` powers
+  search. They live only as Worker secrets, never in the database. **Lose
+  `MAIL_DEK` and every encrypted message is permanently unrecoverable** — a D1
+  backup without it is useless. Store both in a password manager or secrets
+  vault before you go further. See [Operations](/self-hosting/operations).
+</Aside>
+
+The full list of variables — required vs optional, secret vs plain — is in
+[Configuration](/self-hosting/configuration).
+
+## 4. Migrate the remote database
+
+```sh
+pnpm db:migrate:remote
+```
+
+This runs `wrangler d1 migrations apply doota --remote` against the `drizzle/`
+migrations.
+
+<Aside type="caution" title="D1 has no cross-statement transactions">
+  If a migration fails midway, it does not roll back. See the migration policy
+  in [Operations](/self-hosting/operations) before applying migrations to a
+  database with data in it.
+</Aside>
+
+## 5. Deploy the Workers
+
+```sh
+pnpm deploy:all
+```
+
+That's shorthand for building and shipping the web app plus both mail Workers.
+You can also deploy them individually:
+
+| Command | Deploys |
+| --- | --- |
+| `pnpm deploy` | `doota` (web) |
+| `pnpm deploy:mail-in` | `doota-mail-inbound` |
+| `pnpm deploy:mail-jobs` | `doota-mail-jobs` |
+| `pnpm deploy:workers` | both mail Workers |
+| `pnpm deploy:all` | all three |
+
+<Aside type="note" title="Deploy mail-jobs first if it's a cold start">
+  `doota-mail-jobs` owns the `MailEventHub` Durable Object that the other
+  Workers bind to by `script_name`. On a brand-new account, deploy
+  `mail-jobs` first so the DO class exists, then the rest.
+</Aside>
+
+Set `MAIL_IN_WORKER_NAME` to the deployed inbound Worker's name
+(`doota-mail-inbound`) — the domain-onboarding flow points the Email Routing
+catch-all rule at it.
+
+## 6. Onboard your first domain
+
+Your Workers are live but no mail flows yet — Email Routing and sending come up
+per domain. Continue to [First run](/self-hosting/first-run) to create the
+super-admin, onboard a domain, make a mailbox, and send a test message.

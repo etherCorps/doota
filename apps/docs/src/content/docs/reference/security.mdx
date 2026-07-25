@@ -1,0 +1,93 @@
+---
+title: Security
+description: An honest threat model — what's encrypted, what isn't, who can read what, and how to protect the keys.
+sidebar:
+  order: 1
+---
+
+Doota is an email app with at-rest encryption. Over-claiming here is the fastest
+way to get someone hurt, so this page is deliberately precise about what the
+code actually does.
+
+<Aside type="danger" title="Zero-access at rest is not end-to-end encryption">
+  The **operator can decrypt content by design** — operator oversight is
+  intended. Doota protects your mail from a database leak, not from the person
+  who runs the instance. If you need mail nobody but the recipient can read,
+  Doota is not that tool.
+</Aside>
+
+## What is encrypted, and what is not
+
+| Data | Where | At rest |
+| --- | --- | --- |
+| Subject, text body, HTML body | D1 (`*_enc` columns) | **Encrypted** — AES-256-GCM with `MAIL_DEK`. |
+| Routing + threading metadata (from, to, message-id, thread, timestamps) | D1 | **Cleartext by design** — the hot path and threading never decrypt. |
+| Search tokens | D1 (`message_fts`) | **HMAC blind tokens** (`MAIL_SEARCH_KEY`) — the index reveals no plaintext. |
+| Raw RFC 5322 message + attachments | R2 (`MAIL_RAW`) | **Cleartext.** The canonical blob is stored as-is. |
+
+<Aside type="caution" title="R2 holds the plaintext of every message">
+  The raw MIME blob in R2 is **not** encrypted — it is the full plaintext of
+  every message and attachment, kept as the source of truth. D1 content
+  encryption does **not** protect what's in R2. Treat R2 access controls
+  (bucket permissions, API tokens) as security-critical, and say so in any
+  posture statement you make about your instance.
+</Aside>
+
+## Who can read what
+
+- **You (the user)** — your own mail, decrypted in the app after login.
+- **Teammates on a shared mailbox** — mail in that mailbox (that's the point of
+  a shared inbox).
+- **The operator** — anyone with the Worker secrets (`MAIL_DEK`) and R2 access
+  can decrypt all content. This is intended for operator oversight.
+- **A D1-only leak** — sees encrypted subjects/bodies (useless without
+  `MAIL_DEK`) but **cleartext routing metadata** and thread structure.
+- **An R2-only leak** — sees **everything**, in plaintext.
+
+## Key management
+
+Two instance secrets, both Worker secrets, **never in D1**:
+
+- **`MAIL_DEK`** — content encryption key (AES-256-GCM). Versioned,
+  key-id-tagged envelope (`v1.<keyId>.<iv>.<ciphertext>`) so rotation is
+  additive.
+- **`MAIL_SEARCH_KEY`** — blind-token search HMAC key. Distinct from the DEK.
+
+<Aside type="danger" title="Losing MAIL_DEK is unrecoverable">
+  Every encrypted column in D1 is permanently unreadable without `MAIL_DEK`. A
+  D1 backup without it is useless. Back up `MAIL_DEK` and `MAIL_SEARCH_KEY`
+  out-of-band the moment you generate them. See
+  [Operations](/self-hosting/operations#key-management).
+</Aside>
+
+## Cloudflare API token
+
+Doota uses a **scoped** API token (Bearer) for domain onboarding — never the
+Global API Key, which can't be scoped and would expose your whole account. The
+required permission set and rotation guidance are in
+[Cloudflare API token](/self-hosting/cloudflare-api-token).
+
+## Authentication hardening
+
+- Recovery only ever goes to a **verified external** address — never the Doota
+  address (which is unreadable pre-login), closing the circular-recovery hole.
+- Forgot-password returns a **generic response** and backgrounds the send, so
+  timing and existence can't be probed. Rate limited.
+- A password reset **does not clear 2FA** — a compromised recovery inbox can't
+  become a full 2FA bypass. Lost authenticators recover via **backup codes**.
+- TOTP is mandatory for admins/super-admins; passkeys count as two factors on
+  their own.
+- Every privileged action routes through one authorization chokepoint
+  (`can()`).
+
+## Dependency risk
+
+Outbound is sent through **Cloudflare Email Sending**, which is in public beta.
+It's the only supported sender — Doota runs on Cloudflare end to end, with no
+third-party mail provider. Factor its beta status into your risk assessment.
+
+## Reporting a vulnerability
+
+Found a security issue? Report it privately to the
+[Ethercorps](https://github.com/etherCorps) maintainers rather than opening a
+public issue, and allow time for a fix before disclosure.

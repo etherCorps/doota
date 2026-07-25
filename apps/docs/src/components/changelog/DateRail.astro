@@ -1,0 +1,23 @@
+---
+/**
+ * DateRail — the date marker on the timeline. Renders the full date
+ * ("Jun 12, 2026"); positioning is handled by the parent .nb-cl-entry
+ * (see ChangelogFeed). The year is inline so the feed needs no year dividers.
+ */
+interface Props {
+  date: Date;
+}
+
+const { date } = Astro.props;
+const iso = date.toISOString().slice(0, 10);
+const label = date.toLocaleDateString("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+---
+
+<div class="nb-cl-rail">
+  <time datetime={iso} class="nb-cl-date">{label}</time>
+  <span class="nb-cl-dot" aria-hidden="true"></span>
+</div>

@@ -1,0 +1,50 @@
+---
+title: Administration
+description: Onboard domains, manage organizations and users, and mint API keys.
+sidebar:
+  order: 5
+  group:
+    label: Administration
+---
+
+Admin lives under `/admin`. Doota's model is **one organization = one mail
+domain**, so administration is organized around domains and the people in them.
+
+<Shot
+  light="/media/admin-org-dashboard-light.png"
+  dark="/media/admin-org-dashboard-dark.png"
+  alt="An organization's admin overview: domain status, member and mailbox counts, and a 7-day mail analytics chart"
+  caption="An organization's overview — domain health, members, mailboxes, and live delivery analytics."
+/>
+
+## Roles
+
+| Role | Can |
+| --- | --- |
+| **super-admin** | Everything, incl. onboarding domains and creating orgs. The genesis account. |
+| **admin** | Manage users within organizations they administer. |
+| **member** | Use their mailbox(es); no admin surface. |
+
+Every privileged action routes through a single authorization chokepoint
+(`can()`), so there's no parallel permission path to slip through.
+
+## In this section
+
+<CardGrid>
+  <Card title="Domains" icon="ph:globe">
+    Onboard a domain via Cloudflare, watch it go active, and wire mail.
+  </Card>
+  <Card title="Users" icon="ph:users">
+    Provision members and admins, pause access, and remove people.
+  </Card>
+  <Card title="API keys" icon="ph:key">
+    Mint bearer keys to send mail programmatically.
+  </Card>
+</CardGrid>
+
+## Admin surface
+
+- `/admin/domains` — domain onboarding (super-admin).
+- `/admin/organizations` — orgs and their members, mailboxes, settings,
+  suppressions, insights.
+- `/admin/oversight` — cross-org oversight.

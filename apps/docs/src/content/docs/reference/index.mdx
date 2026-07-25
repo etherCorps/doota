@@ -1,0 +1,98 @@
+---
+title: Architecture
+description: The Workers, shared packages, storage backbone, and the inbound/outbound mail pipelines.
+sidebar:
+  order: 6
+  group:
+    label: Reference
+---
+
+Doota is a monorepo of five deployed Cloudflare Workers over one D1 / R2 / KV /
+Durable-Object backbone, with two shared packages holding the logic.
+
+<Aside type="tip" title="Diagrams">
+  Rendered Mermaid diagrams — component/deployment, the ER data model, both mail
+  sequences, and the mail-core module map — are on
+  [Architecture diagrams](/reference/architecture-diagrams).
+</Aside>
+
+## Workers
+
+| Worker | Package | Role |
+| --- | --- | --- |
+| **doota** | `apps/web` | SvelteKit app: mail UI, admin, onboarding, auth. **Produces** to queues. |
+| **doota-mail-inbound** | `apps/mail-in` | `email()` handler + inbound queue consumer: store raw, dedupe, thread, fan out deliveries. |
+| **doota-mail-jobs** | `apps/mail-jobs` | Outbound consumer + events consumer + 5-min cron. Owns the `MailEventHub` Durable Object. |
+| **doota-landing** | `apps/landing` | Marketing site. |
+| **docs** | `apps/docs` | This documentation. |
+
+## Shared packages
+
+- **`@doota/db`** — Drizzle schema for both namespaces: `auth.*` (better-auth)
+  and `mail.*` (app-owned). One D1 database.
+- **`@doota/mail-core`** — inbound, outbound, threading, crypto, events, drafts,
+  and search. Imported by all three mail-touching Workers.
+
+## Storage backbone
+
+| Store | Binding | Holds |
+| --- | --- | --- |
+| **D1** (SQLite) | `DB` | Auth + mail metadata; encrypted content columns; FTS index. |
+| **R2** | `MAIL_RAW` | Raw RFC 5322 messages, attachments, draft blobs. Source of truth. |
+| **KV** | `AUTH_KV` | Session read-cache over D1. |
+| **Durable Object** | `MAIL_EVENTS` | `MailEventHub` — live delivery/read ticks over WebSocket. |
+| **Queues** | — | `doota-mail-inbound`, `doota-mail-outbound`, `doota-mail-events`. |
+
+A queue binds to exactly **one** consumer, which is why the web app only
+_produces_ — the async work lives in the two mail Workers.
+
+## Data model
+
+Two namespaces share one D1 database. The load-bearing split in `mail.*`:
+
+- **`message`** — one immutable row per unique email (deduped by
+  org + message-id). Content columns (`*_enc`) are encrypted; routing and
+  threading columns are cleartext.
+- **`delivery`** — the per-mailbox receipt; a message fans out to one delivery
+  row per recipient mailbox.
+- **`thread_state`** — per-mailbox triage: placement, star, assignee.
+- **`submission`** — outbound send state, with `undoUntil` and an
+  `idempotencyKey`.
+
+Around them: `mailbox`, `alias`, `label`, `draft`, `attachment`,
+`internalNote`, `systemEvent`, `suppression`, and `apiKey`. See the ER diagram
+in the repo for the full set and relationships.
+
+## Inbound pipeline (receive)
+
+1. Cloudflare Email Routing invokes `email()` on **doota-mail-inbound** with the
+   raw RFC 5322 message.
+2. The Worker buffers the raw, stores it in R2, and enqueues a job on the
+   inbound queue.
+3. The consumer parses it, resolves the org/mailbox, handles DSNs (bounces),
+   upserts the `message` (deduped by org + message-id), matches or creates a
+   thread, and fans out `delivery` rows.
+4. It notifies the `MailEventHub`, which pushes a live tick to the web app over
+   WebSocket.
+
+## Outbound pipeline (send + undo + events)
+
+1. The web app writes the `message` + `submission` (status `queued`, with an
+   `idempotencyKey`), **then** enqueues the send. `submission.undoUntil` is the
+   source of truth for the undo window.
+2. **doota-mail-jobs** consumes after the undo delay, claims the submission with
+   a compare-and-set (`queued → sending`), checks suppression, charges the send
+   counter, and transmits via Cloudflare Email Sending (chunked ≤ 50
+   recipients).
+3. It rolls up submission + recipient status and pushes a live tick.
+4. Provider delivery/bounce/complaint events land on the events queue; the jobs
+   Worker consumes them, updates recipient status, suppresses hard bounces, and
+   ticks the hub.
+5. A 5-minute cron releases scheduled sends and runs garbage collection.
+
+## Security posture
+
+Doota is **zero-access at rest, not end-to-end encrypted** — the operator can
+decrypt by design. What's encrypted, and what isn't, is spelled out in
+[Security](/reference/security). Read it before making any security claims about
+your instance.

@@ -7,6 +7,7 @@
 
 import { Aside } from "./components/ui/aside";
 import Render from "./components/Render.astro";
+import Shot from "./components/Shot.astro";
 import { Card } from "./components/ui/card";
 import { CardGrid } from "./components/ui/card-grid";
 import { PackageManagers } from "./components/ui/package-managers";
@@ -19,6 +20,7 @@ export const components = {
   CardGrid,
   PackageManagers,
   Render,
+  Shot,
   Step,
   Steps,
   TabItem,

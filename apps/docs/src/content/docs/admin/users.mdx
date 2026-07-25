@@ -1,0 +1,60 @@
+---
+title: Users
+description: Provision members and admins under an organization, pause access, and remove people.
+sidebar:
+  order: 2
+---
+
+Users are managed **through an organization** (one org = one domain):
+**`/admin/organizations`** → pick an org → members. Picking the org pins the
+domain, so you supply only the **local part** of the new address.
+
+<Aside type="note" title="Domain must be active">
+  Provisioning is allowed only once the domain is `active` — there has to be a
+  working sending path so the invite email can actually be delivered.
+</Aside>
+
+## Provision a user
+
+<Steps>
+  <Step title="Pick the org and add a user">
+    Enter the **local part** (Doota builds `<username>@<domain>`), the **role**
+    (member or admin), and an **external recovery email**.
+  </Step>
+  <Step title="Doota creates the account">
+    A user is created with a random temporary password (`mustChangePassword`)
+    and the org membership row. On any failure the half-made user is rolled back
+    so a retry isn't wedged.
+  </Step>
+  <Step title="An invite goes to the recovery address">
+    One email to the **external recovery address** carries the login email, the
+    temp password, and a recovery-verification link.
+  </Step>
+  <Step title="First sign-in forces onboarding">
+    The invited user signs in with the temp password; the onboarding gate then
+    forces **set password** + **verify recovery** (+ **secure account** for an
+    admin) before they can reach the app.
+  </Step>
+</Steps>
+
+Authorization runs through `can()`: a super-admin, or an admin/owner of the
+target org, may provision — anyone else is refused. Recovery emails must be
+**external** (a served-domain address is rejected).
+
+## Pause a user
+
+**Pause** bans the user and deletes their session rows, so access is cut
+**immediately** — not after the session-cache window. Useful for offboarding or
+a suspected compromise. You can't pause yourself or a super-admin.
+
+## Remove a user
+
+**Remove** deletes the user; foreign keys cascade their membership, sessions,
+and account rows. Like pause, it re-checks `can()` and refuses to act on
+yourself or a super-admin.
+
+## Suppressions
+
+Each org has a **suppression list** (`/admin/organizations/<org>/suppressions`)
+of addresses that hard-bounced or complained. Sends to a suppressed address are
+dropped. Remove an entry if the bounce was transient and you want to retry.

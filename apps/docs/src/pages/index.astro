@@ -1,46 +1,148 @@
 ---
+/* Hallmark · macrostructure: Split-Path · genre: modern-minimal · tone: technical
+ * theme: Nimbus (system-managed) · enrichment: none · motion: cut
+ * pre-emit critique: P5 H4 E5 S4 R5 V4 */
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Header from "../components/Header.astro";
+import { LinkButton } from "../components/ui/link-button";
+import { Icon } from "astro-icon/components";
 import { config } from "virtual:nimbus/config";
+
+const mono = "font-family: var(--nb-font-mono);";
+
+// Everyday features — real, drawn from the product. No invented metrics.
+const features = [
+  {
+    icon: "ph:chats-circle",
+    title: "Conversations, not folders",
+    body: "Every thread is one running chat — real email underneath, so anyone on Gmail or Outlook can reply.",
+    lead: true,
+  },
+  { icon: "ph:clock-counter-clockwise", title: "Undo & schedule", body: "Pull a message back seconds after sending, or write now and send later." },
+  { icon: "ph:mask-happy", title: "Throwaway addresses", body: "Hand each site its own address. Getting spam? Switch it off." },
+  { icon: "ph:lock-key", title: "Private by default", body: "Message contents are locked when stored — a leak can't read them." },
+  { icon: "ph:fingerprint", title: "Passkeys", body: "Sign in with a fingerprint or face. No password to remember." },
+  { icon: "ph:users-three", title: "Shared inboxes", body: "Assign conversations and leave private notes your team can see." },
+];
 ---
 
 <BaseLayout title={config.title} description={config.description}>
-  <div class="flex flex-col min-h-screen">
-    <Header />
-    <main class="flex-1 mx-auto max-w-2xl w-full px-6 py-24">
-      <h1
-        class="text-foreground leading-tight"
-        style="font-size: var(--nb-h1-size); font-weight: var(--nb-h1-weight); letter-spacing: var(--nb-h1-tracking);"
-      >
-        {config.title}
-      </h1>
-      <p class="mt-2 text-[1.0625rem] text-muted-foreground leading-relaxed">
-        {config.description}
-      </p>
+  <div class="flex flex-col min-h-screen overflow-x-clip">
+    <Header showSidebar={false} />
 
-      <div class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <a
-          href="/welcome"
-          class="block rounded-lg border border-border p-4 transition-colors hover:border-border-strong no-underline"
+    <main class="flex-1 w-full">
+      <!-- Hero -->
+      <section class="mx-auto max-w-5xl w-full px-6 pt-20 pb-14 sm:pt-28 sm:pb-20">
+        <p class="text-sm font-medium text-primary">
+          Your email, finally yours.
+        </p>
+        <h1
+          class="mt-4 max-w-3xl text-foreground leading-[1.05] [overflow-wrap:anywhere] [min-width:0]"
+          style="font-size: var(--nb-h1-size); font-weight: var(--nb-h1-weight); letter-spacing: var(--nb-h1-tracking);"
         >
-          <div class="font-medium text-foreground">Welcome</div>
-          <div class="mt-0.5 text-sm text-muted-foreground">Start here</div>
-        </a>
-        <a
-          href="/getting-started"
-          class="block rounded-lg border border-border p-4 transition-colors hover:border-border-strong no-underline"
-        >
-          <div class="font-medium text-foreground">Getting Started</div>
-          <div class="mt-0.5 text-sm text-muted-foreground">Install + configure</div>
-        </a>
-        <a
-          href="/components"
-          class="block rounded-lg border border-border p-4 transition-colors hover:border-border-strong no-underline"
-        >
-          <div class="font-medium text-foreground">Components</div>
-          <div class="mt-0.5 text-sm text-muted-foreground">See them in action</div>
-        </a>
-      </div>
+          Email that reads like a chat.
+        </h1>
+        <p class="mt-5 max-w-xl text-lg text-muted-foreground leading-relaxed">
+          {config.title} threads every conversation into one simple timeline — on your own
+          address, running entirely on infrastructure only you control.
+        </p>
+
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <LinkButton href="/guide/getting-started" variant="primary">Get started</LinkButton>
+          <LinkButton href="/self-hosting" variant="secondary">Run your own</LinkButton>
+        </div>
+
+        <ul class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground" style={mono}>
+          <li class="flex items-center gap-1.5"><Icon name="ph:cloud" class="w-4 h-4 text-primary" />Runs on Cloudflare</li>
+          <li class="flex items-center gap-1.5"><Icon name="ph:house" class="w-4 h-4 text-primary" />Your domain</li>
+          <li class="flex items-center gap-1.5"><Icon name="ph:git-branch" class="w-4 h-4 text-primary" />Open source</li>
+        </ul>
+      </section>
+
+      <!-- Two-path split — the spine of the page -->
+      <section class="mx-auto max-w-5xl w-full px-6 pb-16">
+        <div class="grid gap-4 md:grid-cols-2">
+          <!-- Users -->
+          <a
+            href="/guide/getting-started"
+            class="group relative flex flex-col rounded-2xl border border-border bg-card p-7 no-underline transition-colors hover:border-border-strong"
+          >
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Icon name="ph:envelope-open" class="w-5 h-5" />
+            </span>
+            <h2 class="mt-5 text-xl font-semibold text-foreground">I have an account</h2>
+            <p class="mt-2 text-[0.95rem] text-muted-foreground leading-relaxed">
+              Someone set up Doota and invited you. Sign in, secure your account, and send
+              your first message.
+            </p>
+            <ul class="mt-5 space-y-2 text-sm text-muted-foreground">
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Finding your invite &amp; signing in</li>
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Reading &amp; writing conversations</li>
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Passkeys, 2FA &amp; recovery</li>
+            </ul>
+            <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+              Start here
+              <Icon name="ph:arrow-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </a>
+
+          <!-- Operators -->
+          <a
+            href="/self-hosting"
+            class="group relative flex flex-col rounded-2xl border border-border bg-card p-7 no-underline transition-colors hover:border-border-strong"
+          >
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-foreground">
+              <Icon name="ph:cloud-arrow-up" class="w-5 h-5" />
+            </span>
+            <h2 class="mt-5 text-xl font-semibold text-foreground">I want to run it myself</h2>
+            <p class="mt-2 text-[0.95rem] text-muted-foreground leading-relaxed">
+              Deploy Doota for yourself or your team — on your own Cloudflare account, start
+              to finish.
+            </p>
+            <ul class="mt-5 space-y-2 text-sm text-muted-foreground">
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Provision, configure &amp; deploy</li>
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Onboard a domain &amp; first mailbox</li>
+              <li class="flex items-center gap-2"><Icon name="ph:arrow-right" class="w-3.5 h-3.5 text-primary" />Backups, keys &amp; operations</li>
+            </ul>
+            <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+              Deploy Doota
+              <Icon name="ph:arrow-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </a>
+        </div>
+      </section>
+
+      <!-- Feature band (bento — lead tile spans wide) -->
+      <section class="mx-auto max-w-5xl w-full px-6 pb-16">
+        <h2 class="text-2xl font-semibold text-foreground">What makes it different</h2>
+        <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f) => (
+            <div class={`rounded-2xl border border-border p-6 ${f.lead ? "sm:col-span-2 bg-card" : ""}`}>
+              <Icon name={f.icon} class="w-5 h-5 text-primary" />
+              <h3 class="mt-3 text-base font-semibold text-foreground">{f.title}</h3>
+              <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed">{f.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- Closing strip: changelog + jump links (not a fake footer) -->
+      <section class="mx-auto max-w-5xl w-full px-6 pb-24">
+        <div class="flex flex-col gap-6 rounded-2xl border border-border bg-card p-7 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs tracking-[0.14em] uppercase text-muted-foreground" style={mono}>Latest</p>
+            <a href="/changelog" class="mt-1 inline-block text-lg font-semibold text-foreground no-underline hover:text-primary">
+              Documentation site is live →
+            </a>
+          </div>
+          <nav class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+            <a href="/guide" class="text-muted-foreground no-underline hover:text-foreground">User guide</a>
+            <a href="/self-hosting" class="text-muted-foreground no-underline hover:text-foreground">Self-hosting</a>
+            <a href="/reference" class="text-muted-foreground no-underline hover:text-foreground">Architecture</a>
+            <a href="/changelog" class="text-muted-foreground no-underline hover:text-foreground">Changelog</a>
+          </nav>
+        </div>
+      </section>
     </main>
   </div>
 </BaseLayout>

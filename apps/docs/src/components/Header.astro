@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { LinkButton } from "./ui/link-button";
 import { ThemeToggle } from "./ui/theme-toggle";
 import { SearchTrigger } from "./ui/search";
+import Logo from "./Logo.astro";
 import { config } from "virtual:nimbus/config";
 import { getSidebarSections } from "@cloudflare/nimbus-docs";
 
@@ -46,10 +47,8 @@ const showSections = sections.length >= 2;
         />
       )}
 
-      <a href="/" class="group">
-        <span class="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-          {config.title}
-        </span>
+      <a href="/" class="group" aria-label="Doota home">
+        <Logo size={22} class="[&_span]:text-[0.9375rem] group-hover:[&_span]:text-primary [&_span]:transition-colors" />
       </a>
 
       {showSections && (
@@ -73,6 +72,12 @@ const showSections = sections.length >= 2;
     </div>
 
     <div class="flex items-center gap-2">
+      <a
+        href="/changelog"
+        class="hidden sm:inline-block px-2 py-1 rounded-md text-[0.8125rem] font-medium text-muted-foreground no-underline transition-colors hover:text-foreground hover:bg-accent/60"
+      >
+        Changelog
+      </a>
       {config.search !== false && <SearchTrigger />}
       {config.github && (
         <LinkButton

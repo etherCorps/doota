@@ -1,5 +1,12 @@
 [
   {
+    "date": "2026-07-25",
+    "macrostructure": "Split-Path",
+    "theme": "Nimbus (system-managed)",
+    "enrichment": "none",
+    "brief": "Doota docs home/landing — hero + two-audience split + feature bento"
+  },
+  {
     "date": "2026-07-22",
     "macrostructure": "app-shell (N/A — product UI)",
     "theme": "custom (soft-round-friendly · indigo-iris)",
