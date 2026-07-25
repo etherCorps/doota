@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "docs",
+  "name": "doota-docs",
   "compatibility_date": "2026-07-23",
   "assets": {
     "directory": "./dist",
