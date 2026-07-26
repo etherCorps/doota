@@ -95,6 +95,7 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
     inReplyTo: parsed.inReplyTo ?? null,
     references: parsed.references ?? null,
     from: parsed.from?.address ?? job.envelopeFrom ?? null,
+    fromName: parsed.from?.name?.trim() || null,
     to: addrList(parsed.to),
     cc: addrList(parsed.cc),
     replyTo: parsed.replyTo?.[0]?.address?.trim().toLowerCase() ?? null,

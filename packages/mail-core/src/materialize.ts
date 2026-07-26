@@ -22,6 +22,8 @@ export type ParsedMessage = {
   inReplyTo: string | null;
   references: string | null;
   from: string | null;
+  /** Sender's display name from the From header, if any (label only). */
+  fromName?: string | null;
   /** Original visible recipients + Reply-To — for reply-all reconstruction. */
   to?: string[];
   cc?: string[];
@@ -204,6 +206,7 @@ export async function materializeMessage(
       inReplyTo: parsed.inReplyTo,
       references: parsed.references,
       fromAddr: parsed.from,
+      fromName: parsed.fromName ?? null,
       toAddrs: JSON.stringify(parsed.to ?? []),
       ccAddrs: JSON.stringify(parsed.cc ?? []),
       replyTo: parsed.replyTo,

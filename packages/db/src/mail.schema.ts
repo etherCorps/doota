@@ -182,6 +182,9 @@ export const message = sqliteTable(
     inReplyTo: text("in_reply_to"),
     references: text("references"),
     fromAddr: text("from_addr"),
+    // Sender's display name from the From header ("Alice" in `Alice <a@x>`).
+    // Cleartext label only — fromAddr stays the identity used for all matching.
+    fromName: text("from_name"),
     // Original visible recipients (JSON arrays) + Reply-To — cleartext routing
     // metadata (like from_addr), kept so reply-all can reconstruct the audience.
     // BCC is NEVER stored here (it lives only as delivery/submission rows).

@@ -717,6 +717,11 @@
 		if (named?.[1]?.trim()) return named[1].trim();
 		return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
 	}
+	// Prefer the display name the sending provider actually put in the mail data
+	// (fromName) over splitting the email — falls back to the header parse / local
+	// part when a bare address is all we have (e.g. pre-fromName mail).
+	const senderLabel = (m: { fromName?: string | null; from: string | null }): string =>
+		m.fromName?.trim() || senderName(m.from);
 
 	// Everyone the conversation has touched: the union of from/to/cc across ALL
 	// messages — so a bcc'd party who replies-all enters the list the moment
@@ -1175,7 +1180,7 @@
 	{@const priv = msgPrivateTo(m, parts)}
 	{#if priv}
 		<span
-			class="text-faint mt-1 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+			class="text-warn border-warn/25 bg-warn/10 mt-1 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
 			title="Not everyone on this thread can see this message"
 		>
 			<LockIcon class="size-2.5 shrink-0" />
@@ -1589,7 +1594,7 @@
 							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
-										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderName(t.from)}</span>
+										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderLabel(t)}</span>
 										<span class="text-faint shrink-0 text-[11px]">{relTime(t.lastMessageAt)}</span>
 									</div>
 									<div class="flex items-center gap-1.5">
@@ -1911,7 +1916,7 @@
 									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
 										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
-											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
+											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderLabel(m)}</span>{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.htmlKind === 'rich'}
@@ -1999,7 +2004,7 @@
 										{@render monogram(m.from, 'size-8 text-[11px]')}
 										<div class="min-w-0 flex-1">
 											<div class="flex items-baseline gap-2">
-												<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderName(m.from)}</span>
+												<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderLabel(m)}</span>
 												{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
 											</div>
 											{#if open}

@@ -59,6 +59,8 @@ export type MessageDTO = {
   /** RFC Message-ID header — the reply target (send contract keys on this, not id). */
   messageIdHeader: string;
   from: string | null;
+  /** Sender's display name from the From header (label only; `from` is identity). */
+  fromName: string | null;
   /** Original visible recipients + Reply-To — the reply-all audience source. */
   to: string[];
   cc: string[];

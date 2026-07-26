@@ -155,6 +155,7 @@ export async function enqueueSend(
     inReplyTo: parent?.messageIdHeader ?? null,
     references: headers.References ?? null,
     from: req.fromAddress,
+    fromName: req.fromName ?? null,
     to: req.to ?? [],
     cc: req.cc ?? [],
     replyTo: null,

@@ -1,0 +1,1 @@
+ALTER TABLE `message` ADD `from_name` text;

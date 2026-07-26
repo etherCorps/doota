@@ -36,6 +36,8 @@ export type ThreadSummary = {
   subject: string | null;
   snippet: string | null;
   from: string | null;
+  /** Latest sender's display name (label only; `from` is the address). */
+  fromName: string | null;
   lastMessageAt: number | null;
   isStarred: boolean;
   unread: boolean;
@@ -143,6 +145,7 @@ export async function listThreads(
     subjectEnc: string | null;
     bodyStrippedEnc: string | null;
     fromAddr: string | null;
+    fromName: string | null;
     sentAt: number | null;
   };
   const latestByThread = new Map<string, LatestRow>();
@@ -161,9 +164,9 @@ export async function listThreads(
       : sql``;
     const rows = await db.all<LatestRow>(sql`
       SELECT thread_id AS "threadId", subject_enc AS "subjectEnc", body_stripped_enc AS "bodyStrippedEnc",
-             from_addr AS "fromAddr", sent_at AS "sentAt"
+             from_addr AS "fromAddr", from_name AS "fromName", sent_at AS "sentAt"
       FROM (
-        SELECT thread_id, subject_enc, body_stripped_enc, from_addr, sent_at,
+        SELECT thread_id, subject_enc, body_stripped_enc, from_addr, from_name, sent_at,
                ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sent_at DESC, rowid DESC) AS rn
         FROM message
         WHERE thread_id IN (${idList}) ${visibleCond}
@@ -202,6 +205,7 @@ export async function listThreads(
       subject,
       snippet: preview(body),
       from: latest?.fromAddr ?? null,
+      fromName: latest?.fromName ?? null,
       lastMessageAt,
       isStarred: s.isStarred,
       unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),
@@ -527,6 +531,7 @@ export async function getThread(
       threadId: m.threadId,
       messageIdHeader: m.messageIdHeader,
       from: m.fromAddr,
+      fromName: m.fromName,
       to: safeJsonArray(m.toAddrs),
       cc: safeJsonArray(m.ccAddrs),
       replyTo: m.replyTo,
