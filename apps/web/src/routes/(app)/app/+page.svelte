@@ -4,7 +4,7 @@
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
-	import { goto, pushState } from '$app/navigation';
+	import { goto, pushState, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { flip } from 'svelte/animate';
@@ -124,6 +124,20 @@
 	);
 	const placement = $derived(params.get('folder') ?? 'inbox');
 	const threadId = $derived(params.get('thread'));
+
+	// Continuation: on a bare /app load the mailbox comes from the persisted pick,
+	// but the URL doesn't show it — so write it back (replace, no history entry).
+	// Now the URL always reflects the active mailbox: refresh/share is stable and
+	// folder links carry the param instead of leaning on the fallback.
+	$effect(() => {
+		const mb = mailboxId;
+		if (!mb || params.get('mailbox')) return;
+		untrack(() => {
+			const sp = new URLSearchParams(page.url.searchParams);
+			sp.set('mailbox', mb);
+			replaceState(`?${sp}`, page.state);
+		});
+	});
 	const isVirtual = $derived(placement === 'drafts' || placement === 'scheduled');
 	const activeMailbox = $derived(mailboxes.find((m) => m.id === mailboxId));
 	const managedIdsQ = myManagedMailboxIds();
