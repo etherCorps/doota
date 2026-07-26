@@ -87,7 +87,26 @@ export class MailEventHub {
   // Push-only hub: subscribers never send, so an inbound frame is a no-op, and
   // the runtime already discards closed sockets from getWebSockets().
   async webSocketMessage(): Promise<void> {}
-  async webSocketClose(): Promise<void> {}
+  async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    // Close our end with a valid code so the pair tears down cleanly. 1005/1006
+    // (no-status / abnormal) aren't sendable — normalize to 1000.
+    try {
+      ws.close(code >= 1000 && code < 5000 && code !== 1005 && code !== 1006 ? code : 1000);
+    } catch {
+      // already closed
+    }
+  }
+  // A parked socket dropped abruptly (client vanished mid-stream). WITHOUT this
+  // handler the Hibernation runtime has nowhere to deliver the error and surfaces
+  // it as an uncaught DO exception ("Worker threw exception"). Absorb it: close
+  // our side; the subscriber's stream reconnects + catch-up reads, losing nothing.
+  async webSocketError(ws: WebSocket): Promise<void> {
+    try {
+      ws.close(1011, "socket error");
+    } catch {
+      // already gone
+    }
+  }
 }
 
 /**
