@@ -381,11 +381,11 @@
 					<!-- Explicit scope switch (Gmail's Reply / Reply all): the sender
 					     always sees whether this goes to one person or everyone. Picking
 					     a side repopulates the fields below — Reply all pre-fills Cc from
-					     the thread. Own full-width row on mobile, inline at sm. -->
+					     the thread. Own full-width row ON TOP on mobile, inline at sm. -->
 					<div
 						role="group"
 						aria-label="Reply scope"
-						class="border-border bg-muted order-last flex w-full items-center gap-1 rounded-lg border p-1 sm:order-none sm:w-auto"
+						class="border-border bg-muted order-first flex w-full items-center gap-1 rounded-lg border p-1 sm:order-none sm:w-auto"
 					>
 						<button
 							type="button"
