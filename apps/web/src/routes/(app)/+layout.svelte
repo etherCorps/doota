@@ -6,6 +6,7 @@
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
 	import EdgeSwipeOpen from '$lib/components/app/edge-swipe-open.svelte';
 	import SendFailureNotifier from '$lib/components/app/send-failure-notifier.svelte';
+	import RealtimeSync from '$lib/components/app/realtime-sync.svelte';
 	import TopBar from '$lib/components/app/top-bar.svelte';
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import ShortcutsDialog from '$lib/components/app/shortcuts-dialog.svelte';
@@ -58,6 +59,7 @@
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
 	<EdgeSwipeOpen />
+	<RealtimeSync />
 	<SendFailureNotifier />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
 	<Sidebar.Inset class="relative flex h-svh min-w-0 flex-col overflow-hidden">

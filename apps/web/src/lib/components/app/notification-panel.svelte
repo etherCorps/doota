@@ -7,7 +7,8 @@
 	import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import { resolve } from '$app/paths';
-	import { failedSends, scheduledSends, mailEvents } from '$lib/rpc/draft.remote.js';
+	import { failedSends, scheduledSends } from '$lib/rpc/draft.remote.js';
+	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import { FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 
 	// In-app notification panel — derived, not stored. Failures (last 7d) and
@@ -24,7 +25,6 @@
 	let seenIds = $state<Set<string>>(new Set());
 	const failuresQ = failedSends();
 	const scheduledQ = scheduledSends();
-	const live = mailEvents();
 
 	onMount(() => {
 		try {
@@ -46,10 +46,11 @@
 		localStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-200)));
 	}
 
-	// Live push: a failure refreshes the list; scheduled leaving the queue
-	// (sent or canceled) refreshes the other.
+	// Live push (shared bus): a failure refreshes the list; scheduled leaving the
+	// queue (sent or canceled) refreshes the other.
 	$effect(() => {
-		const evt = live.current;
+		void realtime.seq;
+		const evt = realtime.event;
 		if (evt?.type !== 'send_state') return;
 		if (FAILED.has(evt.status)) void failuresQ.refresh();
 		else void scheduledQ.refresh();

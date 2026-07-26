@@ -3,7 +3,8 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
-	import { failedSends, mailEvents, retrySendById } from '$lib/rpc/draft.remote.js';
+	import { failedSends, retrySendById } from '$lib/rpc/draft.remote.js';
+	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 
 	// Failed-send notifier: ticks in the thread view only show on open, so a send
@@ -15,7 +16,6 @@
 
 	const SEEN_KEY = 'doota:failed-send-toasted';
 	const FAILED = new Set<string>(FAILED_SEND_STATUSES);
-	const live = mailEvents();
 
 	function seen(): Set<string> {
 		try {
@@ -62,7 +62,8 @@
 	onMount(() => void toastUnseen());
 
 	$effect(() => {
-		const evt = live.current;
+		void realtime.seq;
+		const evt = realtime.event;
 		if (evt?.type === 'send_state' && FAILED.has(evt.status)) void toastUnseen();
 	});
 </script>

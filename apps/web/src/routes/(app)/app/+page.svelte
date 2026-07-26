@@ -49,8 +49,8 @@
 	import { toast } from 'svelte-sonner';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
-	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, mailEvents, retrySendById } from '$lib/rpc/draft.remote';
-	import { osNotify } from '$lib/client/os-notify.svelte.js';
+	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, retrySendById } from '$lib/rpc/draft.remote';
+	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import { replySubject, FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
@@ -174,9 +174,12 @@
 	// mailbox — bump the badge, refresh the visible list, and refresh the open
 	// thread if the reply landed there. Tracks ONLY the event; folder/thread
 	// state is read untracked so navigation doesn't replay the last event.
-	const liveEvents = mailEvents();
+	// Page-specific reactions to the shared realtime bus (RealtimeSync is the sole
+	// subscriber + owns OS-notify and the unread badge). Here we only refresh what
+	// THIS view shows: the open thread's ticks/messages and the list.
 	$effect(() => {
-		const evt = liveEvents.current;
+		void realtime.seq;
+		const evt = realtime.event;
 		if (!evt) return;
 		untrack(() => {
 			if (evt.type === 'send_state') {
@@ -184,10 +187,6 @@
 				return;
 			}
 			if (evt.mailboxId !== mailboxId) return;
-			// Thin event — no subject on it; tag by thread so a burst of replies
-			// collapses into one OS notification per thread. No-op when focused.
-			osNotify('New mail', undefined, `inbound-${evt.threadId}`);
-			void refreshUnread();
 			if (evt.threadId === threadId) void threadQ?.refresh();
 			// ponytail: full first-page reload on inbound — fine at inbox scale;
 			// switch to a prepend-merge if reset scroll ever annoys.
