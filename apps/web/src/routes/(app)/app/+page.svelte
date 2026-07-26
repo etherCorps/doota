@@ -21,6 +21,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Kbd } from '$lib/components/ui/kbd/index.js';
 	import { swipeX } from '$lib/utils/swipe';
+	import { pullToRefresh } from '$lib/utils/pull-refresh';
 	import { pushRecentThread } from '$lib/client/recent-threads';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
@@ -659,6 +660,22 @@
 	const swipeProg = new SvelteMap<string, number>();
 	const coarsePointer = () =>
 		typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
+	// Pull-to-refresh (touch): reloads whatever the list pane currently shows.
+	let pullProg = $state(0);
+	let pullBusy = $state(false);
+	async function refreshCurrentList() {
+		if (searchQ) {
+			await searchResultsQ?.refresh();
+		} else if (placement === 'drafts') {
+			await myDrafts().refresh();
+		} else if (placement === 'scheduled') {
+			await scheduledSends().refresh();
+		} else {
+			await loadThreads(true);
+			void refreshUnread();
+		}
+	}
 
 	// Triage: move to a placement (archive/spam/trash/inbox), then leave the thread.
 	async function move(placement: string) {
@@ -1627,7 +1644,30 @@
 		<!-- min-h-0: without it a flex-1 overflow child won't bound/scroll on iOS
 		     Safari (the dead search scroll). overscroll-contain stops the rubber-band
 		     from propagating to the page (the inbox bounce). -->
-		<div bind:this={listEl} class="min-h-0 flex-1 overflow-y-auto overscroll-contain" onscroll={onListScroll}>
+		<div
+			bind:this={listEl}
+			class="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+			onscroll={onListScroll}
+			use:pullToRefresh={{
+				enabled: coarsePointer,
+				onRefresh: refreshCurrentList,
+				onProgress: (r) => (pullProg = r),
+				onBusy: (b) => (pullBusy = b)
+			}}
+		>
+			<!-- Pull-to-refresh indicator: floats over the list top, travels with the
+			     pull, arms (accent + full rotation) past the threshold, spins while
+			     the reload runs. Zero-height sticky wrapper — no layout shift. -->
+			{#if pullProg > 0 || pullBusy}
+				<div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center">
+					<div
+						class="bg-card grid size-9 place-items-center rounded-full border shadow-sm"
+						style="transform: translateY({Math.round(pullProg * 52 - 44)}px) rotate({Math.round(pullProg * 180)}deg); opacity: {Math.min(pullProg * 1.6, 1)}"
+					>
+						<RefreshCwIcon class="size-4 {pullBusy ? 'animate-spin motion-reduce:animate-none' : ''} {pullProg >= 1 ? 'text-brand' : 'text-muted-foreground'}" />
+					</div>
+				</div>
+			{/if}
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}
