@@ -217,6 +217,75 @@ export async function listThreads(
   return out;
 }
 
+export type UnreadNotice = {
+  threadId: string;
+  mailboxId: string;
+  from: string | null;
+  fromName: string | null;
+  subject: string | null;
+  at: number | null;
+};
+
+/**
+ * Recent unread INBOX threads across the given mailboxes, for the notification
+ * bell. "Unread" keys on last_inbound_at (a recipient-role message newer than
+ * the user's read cursor) so an own send never shows up. Newest first, capped.
+ */
+export async function recentUnread(
+  db: Db,
+  input: { userId: string; ck: ContentKey; mailboxIds: string[]; limit?: number },
+): Promise<UnreadNotice[]> {
+  if (!input.mailboxIds.length) return [];
+  const states = await db
+    .select({
+      threadId: schema.threadState.threadId,
+      mailboxId: schema.threadState.mailboxId,
+    })
+    .from(schema.threadState)
+    .leftJoin(
+      schema.threadRead,
+      and(
+        eq(schema.threadRead.threadId, schema.threadState.threadId),
+        eq(schema.threadRead.mailboxId, schema.threadState.mailboxId),
+        eq(schema.threadRead.userId, input.userId),
+      ),
+    )
+    .where(
+      and(
+        inArray(schema.threadState.mailboxId, input.mailboxIds),
+        eq(schema.threadState.placement, "inbox"),
+        isNull(schema.threadState.hiddenAt),
+        isNotNull(schema.threadState.lastInboundAt),
+        or(
+          isNull(schema.threadRead.lastReadAt),
+          gt(schema.threadState.lastInboundAt, schema.threadRead.lastReadAt),
+        ),
+      ),
+    )
+    .orderBy(desc(schema.threadState.lastInboundAt))
+    .limit(input.limit ?? 8);
+
+  // Display line per thread: newest message's sender + subject. Few rows, so a
+  // parallel findFirst each is cheaper than a window query.
+  return Promise.all(
+    states.map(async (s) => {
+      const m = await db.query.message.findFirst({
+        where: eq(schema.message.threadId, s.threadId),
+        orderBy: desc(schema.message.sentAt),
+        columns: { fromAddr: true, fromName: true, subjectEnc: true, sentAt: true },
+      });
+      return {
+        threadId: s.threadId,
+        mailboxId: s.mailboxId,
+        from: m?.fromAddr ?? null,
+        fromName: m?.fromName ?? null,
+        subject: await decryptContent(input.ck, m?.subjectEnc),
+        at: m?.sentAt ? m.sentAt.getTime() : null,
+      };
+    }),
+  );
+}
+
 /**
  * Unread INBOX threads for (mailbox, user): thread newer than the user's read
  * cursor (or never read). One indexed count — feeds the sidebar badge + title.

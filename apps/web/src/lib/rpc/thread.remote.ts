@@ -9,7 +9,7 @@ import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
-import { listThreads, getThread, countUnread } from "@doota/mail-core/read";
+import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import { trustSenderImages, untrustSenderImages } from "@doota/mail-core/sender-trust";
 import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
@@ -103,6 +103,19 @@ export const unreadCount = query(z.object({ mailboxId: z.string().min(1) }), asy
   await assertMailboxAccess(mailboxId);
   const { locals } = getRequestEvent();
   return countUnread(locals.db, { mailboxId, userId: locals.user!.id });
+});
+
+/** Recent unread mail across ALL the caller's mailboxes — feeds the bell's
+ * "New mail" section. App-wide (not tied to the active mailbox). */
+export const recentUnreadMail = query(async () => {
+  const { locals } = getRequestEvent();
+  if (!locals.user) error(401, "Not authenticated");
+  const mailboxIds = await accessibleMailboxIds(locals.db, locals.user.id);
+  return recentUnread(locals.db, {
+    userId: locals.user.id,
+    ck: await contentKey(),
+    mailboxIds,
+  });
 });
 
 export const openThread = query(
