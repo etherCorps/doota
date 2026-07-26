@@ -47,11 +47,11 @@
 	import { toast } from 'svelte-sonner';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
-	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, mailEvents } from '$lib/rpc/draft.remote';
+	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, mailEvents, retrySendById } from '$lib/rpc/draft.remote';
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
-	import { replySubject } from '@doota/mail-core/mail-thread-contract';
+	import { replySubject, FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
@@ -511,6 +511,11 @@
 		composerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		composerFlash = true;
 		setTimeout(() => (composerFlash = false), 900);
+		// Move focus into the editor (keyboard/screen-reader users otherwise land
+		// nowhere after the scroll). preventScroll: the smooth scroll above owns it.
+		composerEl
+			?.querySelector<HTMLElement>('[contenteditable="true"], textarea, input')
+			?.focus({ preventScroll: true });
 	}
 	// Subaddress-normalize: you+tag@x and you@x are the same inbox, so both count
 	// as "self" — otherwise reply-all to mail sent at you+shop@ mails yourself.
@@ -574,6 +579,22 @@
 	// theme (the iframe element paints bg-card); emails that hardcode their own
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
+
+	// In-thread retry for a failed send (visible to its author only — server
+	// re-checks ownership). The live mailEvents stream refreshes ticks as the
+	// requeued submission moves; the immediate refresh() clears the banner.
+	let retryingSubId = $state<string | null>(null);
+	async function retrySend(submissionId: string) {
+		retryingSubId = submissionId;
+		try {
+			await retrySendById({ submissionId });
+			await refresh();
+		} catch {
+			toast.error('Retry failed — try again in a moment.');
+		} finally {
+			retryingSubId = null;
+		}
+	}
 
 	// "[Message clipped] View entire message" — shallow-routed (back button/swipe
 	// closes it): desktop gets a dialog, mobile the drawer, both loading the
@@ -826,14 +847,48 @@
 
 	// Escape walks back out: attachments panel first, then the open thread.
 	// Dialogs/drawers (composer, palette) preventDefault their own Esc — skip those.
+	// Keyboard shortcuts (Gmail/Superhuman baseline). `c` compose lives in the
+	// (app) layout; ⌘K search in the command palette. Guard: never while typing
+	// or inside a dialog, and only unmodified keys.
 	function onPageKeydown(e: KeyboardEvent) {
-		if (e.key !== 'Escape' || e.defaultPrevented) return;
+		if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement;
 		if (t?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
-		if (attachmentsOpen) {
-			attachmentsOpen = false;
-		} else if (threadId) {
-			nav({ thread: null });
+		if (e.key === 'Escape') {
+			if (attachmentsOpen) {
+				attachmentsOpen = false;
+			} else if (threadId) {
+				nav({ thread: null });
+			}
+			return;
+		}
+		if (e.key === 'j' || e.key === 'k') {
+			// Next/previous conversation in the current list.
+			if (!items.length) return;
+			e.preventDefault();
+			const idx = items.findIndex((x) => x.threadId === threadId);
+			const next = idx === -1 ? 0 : e.key === 'j' ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+			const target = items[next];
+			if (target && target.threadId !== threadId) void selectThread(target.threadId);
+			return;
+		}
+		if (e.key === 'e') {
+			if (!threadId) return;
+			e.preventDefault();
+			void move('archived');
+			return;
+		}
+		if (e.key === 'r' || e.key === 'a' || e.key === 'f') {
+			const msgs = (openDto?.items ?? []).filter((i) => i.type === 'external_message') as MessageDTO[];
+			if (!msgs.length) return;
+			e.preventDefault();
+			if (e.key === 'f') {
+				forward(msgs.at(-1)!, openDto?.subject ?? null);
+			} else {
+				// Same default audience as the docked composer: latest inbound, else newest.
+				const base = [...msgs].reverse().find((m) => !m.outbound) ?? msgs.at(-1)!;
+				void replyTo(base, e.key === 'a' ? 'reply_all' : 'reply');
+			}
 		}
 	}
 </script>
@@ -920,6 +975,16 @@
 				{r.address} — {r.status}{r.bounceType ? ` (${r.bounceType} bounce)` : ''}
 			</p>
 		{/each}
+		{#if sub.mine && (FAILED_SEND_STATUSES as readonly string[]).includes(sub.status)}
+			<button
+				type="button"
+				disabled={retryingSubId === sub.id}
+				onclick={() => retrySend(sub.id)}
+				class="border-destructive/40 hover:bg-destructive/15 focus-visible:ring-ring/50 mt-1.5 rounded border px-2 py-0.5 font-semibold transition-colors outline-none focus-visible:ring-2 disabled:opacity-50"
+			>
+				{retryingSubId === sub.id ? 'Retrying…' : 'Retry send'}
+			</button>
+		{/if}
 	</div>
 {/snippet}
 
@@ -1645,7 +1710,7 @@
 										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
-											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
+											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id)}
@@ -1711,7 +1776,7 @@
 								{@const outbound = m.outbound}
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
-								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs ring-brand transition-shadow duration-300 {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
+								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
 									<button
 										type="button"
 										aria-expanded={open}

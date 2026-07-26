@@ -19,6 +19,7 @@ import {
   undoDraftSend,
   listScheduled,
   listFailedSends,
+  retryFailedSend,
 } from "@doota/mail-core/drafts";
 
 /**
@@ -260,6 +261,20 @@ export const sendDraftById = command(
     }
     // Just mailed someone new — drop the cached candidates so they appear next time.
     await invalidateContacts(user.id);
+    return res;
+  },
+);
+
+/** In-thread "Retry" for a failed send. Ownership + failed-status live in
+ * retryFailedSend — never trust the client's rendering of the button. */
+export const retrySendById = command(
+  z.object({ submissionId: z.string().min(1) }),
+  async ({ submissionId }) => {
+    const user = requireUser();
+    const { locals } = getRequestEvent();
+    const res = await retryFailedSend(locals.db, outboundEnv(), user.id, submissionId);
+    // Same bridge as sendDraftById: drain in-process, no queue consumer here.
+    deliverInBackground(res.submissionId, 0);
     return res;
   },
 );

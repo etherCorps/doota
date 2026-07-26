@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
-	import { failedSends, mailEvents } from '$lib/rpc/draft.remote.js';
+	import { failedSends, mailEvents, retrySendById } from '$lib/rpc/draft.remote.js';
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 
 	// Failed-send notifier: ticks in the thread view only show on open, so a send
@@ -38,7 +38,16 @@
 				const label = f.subject?.trim() || (f.to ? `to ${f.to}` : 'message');
 				toast.error(`Send failed: ${label}`, {
 					description: f.reason ?? 'Unknown error',
-					duration: 10_000
+					duration: 10_000,
+					// One-tap retry from the toast itself; ownership re-checked server-side.
+					action: {
+						label: 'Retry',
+						onClick: () => {
+							void retrySendById({ submissionId: f.submissionId }).catch(() =>
+								toast.error('Retry failed — try again in a moment.')
+							);
+						}
+					}
 				});
 				// Same dedup as the toast — the seen-set gates both.
 				osNotify(`Send failed: ${label}`, f.reason ?? undefined, f.submissionId);

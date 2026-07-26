@@ -372,7 +372,7 @@ export async function getThread(
 
   // Send-state (Part H) for any outbound messages in this thread: submission
   // status → tick, plus per-recipient detail for multi-recipient sends.
-  const submissionByMsg = await loadSubmissionStates(db, messageIds);
+  const submissionByMsg = await loadSubmissionStates(db, messageIds, input.userId ?? null);
 
   // Attachment metadata per message (bytes stay in R2; served on demand).
   const attRows = messageIds.length
@@ -590,6 +590,7 @@ export async function getThread(
 async function loadSubmissionStates(
   db: Db,
   messageIds: string[],
+  userId: string | null,
 ): Promise<Map<string, SubmissionState>> {
   const out = new Map<string, SubmissionState>();
   if (!messageIds.length) return out;
@@ -599,6 +600,7 @@ async function loadSubmissionStates(
       messageId: schema.submission.messageId,
       status: schema.submission.status,
       lastError: schema.submission.lastError,
+      createdByUserId: schema.submission.createdByUserId,
     })
     .from(schema.submission)
     .where(inArray(schema.submission.messageId, messageIds));
@@ -623,9 +625,13 @@ async function loadSubmissionStates(
 
   for (const s of subs) {
     out.set(s.messageId, {
+      id: s.id,
       status: s.status,
       tick: tickForStatus(s.status),
       lastError: s.lastError,
+      // Renders the Retry affordance for the author only. UI hint, not the
+      // authorization — retryFailedSend re-checks ownership server-side.
+      mine: !!userId && s.createdByUserId === userId,
       perRecipient: bySub.get(s.id) ?? [],
     });
   }

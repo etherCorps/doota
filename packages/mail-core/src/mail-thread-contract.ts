@@ -16,10 +16,13 @@ export type TimelineItemType = "external_message" | "internal_note" | "system_ev
 export type SendTick = "clock" | "single" | "double" | "warning";
 
 export type SubmissionState = {
+  id: string;
   status: string;
   tick: SendTick;
   /** Why the send failed (preflight reason / provider error) — warning tick detail. */
   lastError: string | null;
+  /** Reader authored this send — shows the Retry affordance (server re-checks). */
+  mine: boolean;
   /** Per-recipient detail for multi-recipient sends (on demand in the UI). */
   perRecipient: { address: string; role: string; status: string; bounceType: string | null }[];
 };

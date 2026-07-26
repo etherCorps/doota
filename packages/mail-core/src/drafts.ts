@@ -7,6 +7,7 @@ import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
+import { notifySubmissionState } from "./events-hub";
 import { FAILED_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
 
 /** A draft body is HTML (rich composer). Detect plain-text bodies so legacy/
@@ -379,6 +380,46 @@ export async function listFailedSends(db: Db, ck: ContentKey, userId: string): P
     });
   }
   return out;
+}
+
+/**
+ * Re-enqueue a failed send (the in-thread "Retry" button). Ownership + failed
+ * status are checked HERE — the client only renders the button; authorization
+ * never depends on it. Recipients that already went out (sent/delivered) are
+ * left untouched, so retrying a partial failure never double-sends them.
+ */
+export async function retryFailedSend(
+  db: Db,
+  env: OutboundEnv,
+  userId: string,
+  submissionId: string,
+): Promise<{ submissionId: string }> {
+  const sub = await db.query.submission.findFirst({
+    where: and(eq(schema.submission.id, submissionId), eq(schema.submission.createdByUserId, userId)),
+    columns: { id: true, status: true },
+  });
+  if (!sub) error(404, "Send not found.");
+  if (!(FAILED_SEND_STATUSES as readonly string[]).includes(sub.status)) {
+    error(409, "This send isn't in a failed state.");
+  }
+  // Failed/bounced/dropped recipients go back to queued; the consumer re-runs
+  // preflight (suppression included) before anything leaves again.
+  await db
+    .update(mail.submissionRecipient)
+    .set({ status: "queued", bounceType: null, bounceReason: null })
+    .where(
+      and(
+        eq(mail.submissionRecipient.submissionId, submissionId),
+        inArray(mail.submissionRecipient.status, ["failed", "bounced", "complained", "dropped"]),
+      ),
+    );
+  await db
+    .update(mail.submission)
+    .set({ status: "queued", lastError: null })
+    .where(eq(mail.submission.id, submissionId));
+  await notifySubmissionState(db, env.MAIL_EVENTS, submissionId, "queued", { userId });
+  await env.MAIL_OUT_QUEUE.send({ submissionId });
+  return { submissionId };
 }
 
 /**

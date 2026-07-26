@@ -352,6 +352,9 @@
 			saved = true;
 			if (snapshot() === sent) clearMirror(mirrorKey);
 		} else {
+			// Optimistic-concurrency miss: another tab saved a newer revision. Adopt
+			// the server copy (never overwrite it) and SAY so — a silent content swap
+			// under the user's cursor reads as data loss.
 			const d = res.draft;
 			clientRevision = d.clientRevision;
 			to = d.to;
@@ -360,6 +363,7 @@
 			subject = d.subject ?? '';
 			body = d.body ?? '';
 			editorKey++;
+			toast.warning('Draft updated in another tab — loaded the latest version.');
 		}
 	}
 

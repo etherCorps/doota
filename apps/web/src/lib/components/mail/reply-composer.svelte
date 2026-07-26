@@ -261,9 +261,12 @@
 			clientRevision = res.clientRevision;
 			if (body === sentBody) clearMirror(mirrorKey);
 		} else {
+			// Same warn-on-adopt as the compose panel: never silently swap content.
 			clientRevision = res.draft.clientRevision;
 			body = res.draft.body ?? body;
 			subjectText = res.draft.subject ?? subjectText;
+			editorKey++;
+			toast.warning('Draft updated in another tab — loaded the latest version.');
 		}
 	}
 
