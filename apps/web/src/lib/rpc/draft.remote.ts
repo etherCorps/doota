@@ -130,18 +130,29 @@ export const failedSends = query(async () => {
  */
 export const mailEvents = query.live(async function* () {
   const user = requireUser();
-  const { platform } = getRequestEvent();
+  const { platform, request } = getRequestEvent();
   const hub = platform?.env?.MAIL_EVENTS;
   if (!hub) return;
-  while (true) {
+  // Exit cleanly when the client disconnects — otherwise the reconnect backoff's
+  // setTimeout dangles as cancelled waitUntil work (the "did not complete" warning).
+  const signal = request.signal;
+  while (!signal.aborted) {
     try {
       for await (const evt of mailEventStream(hub, user.id)) {
+        if (signal.aborted) return;
         yield evt;
       }
     } catch {
       // Hub unreachable — back off, then reconnect.
     }
-    await new Promise((r) => setTimeout(r, 5_000));
+    if (signal.aborted) return;
+    // Abortable backoff: clear the timer the moment the request ends, and drop the
+    // listener on normal timeout so reconnects don't accumulate listeners.
+    await new Promise<void>((resolve) => {
+      const onAbort = () => { clearTimeout(t); resolve(); };
+      const t = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(); }, 5_000);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
 });
 
