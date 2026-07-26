@@ -181,18 +181,34 @@
 		void realtime.seq;
 		const evt = realtime.event;
 		if (!evt) return;
-		untrack(() => {
-			if (evt.type === 'send_state') {
-				if (evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
-				return;
-			}
-			if (evt.mailboxId !== mailboxId) return;
-			if (evt.threadId === threadId) void threadQ?.refresh();
-			// ponytail: full first-page reload on inbound — fine at inbox scale;
-			// switch to a prepend-merge if reset scroll ever annoys.
-			if (placement === 'inbox' || placement === 'sent') void loadThreads(true);
-		});
+		untrack(() => void onRealtime(evt));
 	});
+	async function onRealtime(evt: NonNullable<typeof realtime.event>) {
+		if (evt.type === 'send_state') {
+			if (evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
+			return;
+		}
+		// Capture reactive scope now — we await below and the user may navigate.
+		const mb = mailboxId;
+		const th = threadId;
+		if (evt.mailboxId !== mb) return;
+		const openHere = evt.threadId === th;
+		if (openHere) void threadQ?.refresh();
+		// A reply landing in the thread you're actively looking at is already on
+		// screen — advance the read cursor so it doesn't resurface as unread in the
+		// list/badge. Only when the tab is actually visible + focused; a hidden tab
+		// means you haven't seen it, so leave it unread.
+		const viewing = openHere && document.visibilityState === 'visible' && document.hasFocus();
+		if (viewing && mb && th) {
+			await markThreadRead({ mailboxId: mb, threadId: th });
+			void refreshUnread();
+		}
+		// ponytail: full first-page reload on inbound — fine at inbox scale; switch
+		// to a prepend-merge if reset scroll ever annoys. Runs after markThreadRead
+		// so the reloaded row reflects the advanced cursor.
+		if (placement === 'inbox' || placement === 'sent') await loadThreads(true);
+		if (viewing && th) patchItem(th, { unread: false });
+	}
 
 	// Thread list — infinite scroll. Pages accumulate into `items`; the next page
 	// loads when the list nears the bottom, and the list resets when the mailbox
@@ -473,14 +489,18 @@
 	const short = (id: string, members: { userId: string; name: string }[]) =>
 		members.find((m) => m.userId === id)?.name ?? 'someone';
 
-	// Open a thread and mark it read (clears the unread dot + badge).
+	// Open a thread and mark it read (clears the unread dot + badge). Skip the
+	// write when we already know the row is read — reopening an already-read
+	// thread shouldn't fire a redundant markThreadRead (a wasted D1 write). An
+	// item we don't have (direct URL / search nav) is treated as maybe-unread.
 	async function selectThread(id: string) {
 		nav({ thread: id });
-		if (mailboxId) {
-			await markThreadRead({ mailboxId, threadId: id });
-			patchItem(id, { unread: false });
-			void refreshUnread();
-		}
+		if (!mailboxId) return;
+		const item = items.find((t) => t.threadId === id);
+		if (item && !item.unread) return;
+		await markThreadRead({ mailboxId, threadId: id });
+		patchItem(id, { unread: false });
+		void refreshUnread();
 	}
 
 	// Triage: move to a placement (archive/spam/trash/inbox), then leave the thread.
