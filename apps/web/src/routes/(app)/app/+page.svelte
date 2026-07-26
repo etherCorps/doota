@@ -801,8 +801,16 @@
 		let primary = base?.outbound
 			? (base.to[0] ?? base.cc[0] ?? '')
 			: base?.replyTo || base?.from || '';
-		const toAll = uniq([primary, base?.from ?? '', ...(base?.to ?? [])]).filter(notSelf);
-		const ccAll = uniq(base?.cc ?? []).filter((a) => notSelf(a) && !toAll.includes(a));
+		// Audience: an explicit per-message Reply(-all) scopes to THAT message; the
+		// default docked composer is thread-level, so its Reply-all reaches every
+		// participant — else a private reply-to-one as the latest inbound would
+		// hide the Reply/Reply-all switch even on a multi-party thread.
+		const audMsgs = chosen ? [chosen] : msgs;
+		const toAll = uniq([
+			primary,
+			...audMsgs.flatMap((m) => [m.from ?? '', ...m.to])
+		]).filter(notSelf);
+		const ccAll = uniq(audMsgs.flatMap((m) => m.cc)).filter((a) => notSelf(a) && !toAll.includes(a));
 		// Last resort (explicitly-targeted message without a From): reply to the
 		// first non-self participant rather than hiding the composer.
 		if (!primary) primary = toAll[0] ?? ccAll[0] ?? '';
