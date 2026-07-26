@@ -193,6 +193,26 @@
 		document.title = unread.count > 0 ? `(${unread.count}) Doota` : 'Doota';
 	});
 
+	// Keep the OPEN thread read: a reply landing while you're viewing it, or your
+	// own send, shouldn't resurface the row as unread in the list/badge. No-op on
+	// a hidden tab (you haven't looked) or when nothing's open.
+	async function markOpenRead() {
+		const mb = mailboxId;
+		const th = threadId;
+		if (!mb || !th || document.hidden) return;
+		await markThreadRead({ mailboxId: mb, threadId: th });
+		patchItem(th, { unread: false });
+		void refreshUnread();
+	}
+	// Returned to the tab with a thread open → treat it as seen.
+	$effect(() => {
+		const onVis = () => {
+			if (!document.hidden) void markOpenRead();
+		};
+		document.addEventListener('visibilitychange', onVis);
+		return () => document.removeEventListener('visibilitychange', onVis);
+	});
+
 	// Live MailEventHub push. send_state: refresh the open thread in place —
 	// ticks flip clock→sent→delivered, failure banners appear without reopening
 	// (toasting lives in the app shell's notifier). inbound: new mail for this
@@ -219,11 +239,11 @@
 		if (evt.mailboxId !== mb) return;
 		const openHere = evt.threadId === th;
 		if (openHere) void threadQ?.refresh();
-		// A reply landing in the thread you're actively looking at is already on
-		// screen — advance the read cursor so it doesn't resurface as unread in the
-		// list/badge. Only when the tab is actually visible + focused; a hidden tab
-		// means you haven't seen it, so leave it unread.
-		const viewing = openHere && document.visibilityState === 'visible' && document.hasFocus();
+		// A reply landing in the thread you're looking at is already on screen —
+		// advance the read cursor so it doesn't resurface as unread. Visible tab is
+		// enough (don't require window focus — the thread is on screen); a hidden
+		// tab means you haven't seen it, so leave it unread.
+		const viewing = openHere && !document.hidden;
 		if (viewing && mb && th) {
 			await markThreadRead({ mailboxId: mb, threadId: th });
 			void refreshUnread();
@@ -503,6 +523,9 @@
 	async function refresh() {
 		await threadQ?.refresh();
 		await loadThreads(true);
+		// Sending a reply bumps the thread's activity; in a shared mailbox the row
+		// would re-derive as unread. Keep the open thread read.
+		await markOpenRead();
 	}
 
 	// Collaboration layer (Task 5). Members drive "is this a shared mailbox?" —
