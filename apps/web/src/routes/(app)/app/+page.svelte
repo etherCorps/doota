@@ -1715,7 +1715,9 @@
 											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id)}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
-												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapsedMax={420} onmailto={openMailto} />
+												<!-- Mail (Gmail) view: the card is the container — render full height,
+												     no second collapse layer. -->
+												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapse={false} onmailto={openMailto} />
 												{#if !allow && m.hasRemoteImages}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images

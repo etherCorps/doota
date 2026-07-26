@@ -8,6 +8,7 @@
 	let {
 		src,
 		collapsedMax = 352,
+		collapse = true,
 		fadeClass = 'from-card',
 		linkClass = 'text-brand',
 		onmailto
@@ -15,6 +16,10 @@
 		/** URL of the sanitized body route (already carries ?images=0|1). */
 		src: string;
 		collapsedMax?: number;
+		/** Self-collapse long content to `collapsedMax` with a "Show full message"
+		 * toggle. OFF in mail (Gmail) view — the expanded card is already the
+		 * container, so a second collapse layer is redundant/confusing. */
+		collapse?: boolean;
 		fadeClass?: string;
 		linkClass?: string;
 		/** A mailto: link was clicked — open Doota's composer instead of the OS handler. */
@@ -27,9 +32,13 @@
 	// Clamp an untrusted height so a hostile value can't blow up the layout.
 	const MAX_H = 20000;
 
-	const overflowing = $derived(contentH > collapsedMax + 48);
+	const overflowing = $derived(collapse && contentH > collapsedMax + 48);
 	const height = $derived(
-		contentH === 0 ? Math.min(collapsedMax, 288) : expanded || !overflowing ? contentH : collapsedMax
+		contentH === 0
+			? Math.min(collapsedMax, 288)
+			: expanded || !overflowing
+				? contentH
+				: collapsedMax
 	);
 
 	// New document → re-measure from scratch.
