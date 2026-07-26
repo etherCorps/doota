@@ -38,7 +38,8 @@
 		bulkMoveThreads,
 		bulkMarkRead,
 		emptyFolder,
-		unreadCount
+		unreadCount,
+		setSenderImageTrust
 	} from '$lib/rpc/thread.remote';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
@@ -579,6 +580,15 @@
 	// theme (the iframe element paints bg-card); emails that hardcode their own
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
+	// "Always load images from this sender" (Gmail/Fastmail): flips the reader's
+	// default for that sender server-side; senderTrusted comes back via getThread.
+	async function setSenderTrust(m: MessageDTO, trusted: boolean) {
+		if (!m.from) return;
+		if (trusted) loadedImages.add(m.id); // instant feedback, refresh confirms
+		else loadedImages.delete(m.id);
+		await setSenderImageTrust({ sender: m.from, trusted });
+		await threadQ?.refresh();
+	}
 
 	// In-thread retry for a failed send (visible to its author only — server
 	// re-checks ownership). The live mailEvents stream refreshes ticks as the
@@ -1713,7 +1723,7 @@
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.htmlKind === 'rich'}
-													{@const allow = loadedImages.has(m.id)}
+													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 													<div class="w-[min(70vw,32rem)]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
@@ -1724,8 +1734,19 @@
 															onviewfull={() => openFullView(m.id, allow)}
 														/>
 														{#if !allow && m.hasRemoteImages}
-															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
-																Images blocked · Load anyway
+															<div class="mt-1 flex flex-wrap gap-x-2 text-xs {outbound ? 'text-background/80' : 'text-brand'}">
+																<button type="button" class="hover:underline" onclick={() => loadedImages.add(m.id)}>
+																	Images blocked · Load anyway
+																</button>
+																{#if !outbound && m.from}
+																	<button type="button" class="opacity-75 hover:underline" onclick={() => setSenderTrust(m, true)}>
+																		Always load from this sender
+																	</button>
+																{/if}
+															</div>
+														{:else if m.senderTrusted && m.hasRemoteImages && !outbound}
+															<button type="button" class="text-faint mt-1 text-[11px] hover:underline" onclick={() => setSenderTrust(m, false)}>
+																Images load automatically · Stop for this sender
 															</button>
 														{/if}
 													</div>
@@ -1812,14 +1833,25 @@
 										<div class="px-3.5 pb-3.5">
 											{@render replyContextNote(m)}
 											{#if m.htmlKind === 'rich'}
-												{@const allow = loadedImages.has(m.id)}
+												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 												<!-- Mail (Gmail) view: the card is the container — render full height,
 												     no second collapse layer. -->
 												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
 												{#if !allow && m.hasRemoteImages}
-													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
-														Load remote images
+													<div class="mt-1.5 flex flex-wrap gap-x-2 text-xs">
+														<button type="button" class="text-brand hover:underline" onclick={() => loadedImages.add(m.id)}>
+															Load remote images
+														</button>
+														{#if !outbound && m.from}
+															<button type="button" class="text-brand opacity-75 hover:underline" onclick={() => setSenderTrust(m, true)}>
+																Always load from this sender
+															</button>
+														{/if}
+													</div>
+												{:else if m.senderTrusted && m.hasRemoteImages && !outbound}
+													<button type="button" class="text-faint mt-1.5 text-[11px] hover:underline" onclick={() => setSenderTrust(m, false)}>
+														Images load automatically · Stop for this sender
 													</button>
 												{/if}
 											{:else}

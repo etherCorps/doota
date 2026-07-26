@@ -11,6 +11,7 @@ import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
 import { listThreads, getThread, countUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
+import { trustSenderImages, untrustSenderImages } from "@doota/mail-core/sender-trust";
 import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
 
 /**
@@ -265,6 +266,19 @@ export const bulkMarkRead = command(
 );
 
 /** Star / unstar a thread for this mailbox. */
+/** "Always load images from this sender" — per-user display preference, keyed
+ * on the caller's identity only (nothing mailbox-scoped to authorize). */
+export const setSenderImageTrust = command(
+  z.object({ sender: z.string().min(3).max(320), trusted: z.boolean() }),
+  async ({ sender, trusted }) => {
+    const { locals } = getRequestEvent();
+    if (!locals.user) error(401, "Not authenticated");
+    if (trusted) await trustSenderImages(locals.db, locals.user.id, sender);
+    else await untrustSenderImages(locals.db, locals.user.id, sender);
+    return { trusted };
+  },
+);
+
 export const starThread = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), starred: z.boolean() }),
   async ({ mailboxId, threadId, starred }) => {

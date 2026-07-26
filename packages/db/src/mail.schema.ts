@@ -712,6 +712,24 @@ export const apiKey = sqliteTable(
   ],
 );
 
+/**
+ * Per-user "always load remote images from this sender" (Gmail/Fastmail
+ * pattern). Presence of a row = trusted; delete to revoke. Address stored
+ * lowercased. Display preference only — never an authorization surface.
+ */
+export const senderImageTrust = sqliteTable(
+  "sender_image_trust",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    senderAddr: text("sender_addr").notNull(),
+    createdAt: now(),
+  },
+  (t) => [uniqueIndex("sender_image_trust_uidx").on(t.userId, t.senderAddr)],
+);
+
 export const mailboxRelations = relations(mailbox, ({ many }) => ({
   access: many(mailboxAccess),
   aliases: many(alias),

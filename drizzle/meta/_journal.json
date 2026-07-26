@@ -127,6 +127,13 @@
       "when": 1785035866339,
       "tag": "0017_smart_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1785061660511,
+      "tag": "0018_perpetual_naoko",
+      "breakpoints": true
     }
   ]
 }

@@ -74,6 +74,8 @@ export type MessageDTO = {
   htmlKind: "rich" | "plain" | null;
   /** The HTML references remote http(s) images — drives the "Load images" opt-in. */
   hasRemoteImages: boolean;
+  /** Reader auto-loads remote images from this sender ("always load" trust). */
+  senderTrusted?: boolean;
   keywords: string[];
   isRead: boolean;
   /** True when the VIEWING mailbox sent this message (it holds the `from`

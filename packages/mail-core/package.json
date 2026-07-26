@@ -29,7 +29,8 @@
     "./read": "./src/read.ts",
     "./resolver": "./src/resolver.ts",
     "./sanitize-email": "./src/sanitize-email.ts",
-    "./search": "./src/search.ts"
+    "./search": "./src/search.ts",
+    "./sender-trust": "./src/sender-trust.ts"
   },
   "dependencies": {
     "@doota/db": "workspace:*",

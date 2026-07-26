@@ -17,6 +17,7 @@ import {
   type ThreadDTO,
   type TimelineItem,
 } from "./mail-thread-contract";
+import { trustedSenders } from "./sender-trust";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -484,6 +485,17 @@ export async function getThread(
     }
   }
 
+  // Per-sender image trust (display default only): which inbound senders this
+  // reader auto-loads remote images from. Server-side lookup so the client
+  // never guesses; the body route still proxies everything.
+  const trustedFrom = input.userId
+    ? await trustedSenders(
+        db,
+        input.userId,
+        messages.map((m) => m.fromAddr ?? "").filter(Boolean),
+      )
+    : new Set<string>();
+
   const items: MessageDTO[] = [];
   let subject: string | null = null;
   for (const m of messages) {
@@ -520,6 +532,7 @@ export async function getThread(
       // The sandboxed /api/messages/[id]/body route decrypts + sanitizes on demand.
       htmlKind: displayHtml ? (isRichHtml(displayHtml) ? "rich" : "plain") : null,
       hasRemoteImages: hasRemoteHttpImages(displayHtml),
+      senderTrusted: !!m.fromAddr && trustedFrom.has(m.fromAddr.toLowerCase()),
       keywords: safeJsonArray(d?.keywords),
       isRead,
       outbound: sentFromHere.has(m.id),
