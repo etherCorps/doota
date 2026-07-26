@@ -67,6 +67,9 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 			}
 			active = true;
 		}
+		// Horizontal intent locked: claim the gesture so pan-y can't keep
+		// vertically drifting the page under the finger (needs passive:false).
+		if (e.cancelable) e.preventDefault();
 		// Resist past the threshold so it feels physical, not slippy.
 		const capped = Math.sign(dx) * Math.min(Math.abs(dx), threshold * 1.6);
 		setX(capped, false);
@@ -92,7 +95,9 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 	}
 
 	node.addEventListener('touchstart', onStart, { passive: true });
-	node.addEventListener('touchmove', onMove, { passive: true });
+	// Non-passive: onMove preventDefaults once the horizontal swipe is locked in,
+	// which stops the vertical page drift during a left/right row swipe.
+	node.addEventListener('touchmove', onMove, { passive: false });
 	node.addEventListener('touchend', onEnd);
 	node.addEventListener('touchcancel', onEnd);
 	return {

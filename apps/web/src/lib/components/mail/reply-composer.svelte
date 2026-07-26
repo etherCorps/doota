@@ -373,9 +373,18 @@
 	<div class="min-h-0 overflow-hidden">
 	<div class="space-y-2">
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-muted-foreground shrink-0 text-xs">From</span>
-				<div class="min-w-0 flex-1">
-					<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
+				<!-- From + selector: own full-width line UNDER the scope row on mobile
+				     (order-2), inline and flex-1 on desktop. With no scope switch it is
+				     the sole line, so it just grows. -->
+				<div
+					class="flex min-w-0 items-center gap-2 {canReplyAll
+						? 'order-2 w-full sm:order-none sm:w-auto sm:flex-1'
+						: 'flex-1'}"
+				>
+					<span class="text-muted-foreground shrink-0 text-xs">From</span>
+					<div class="min-w-0 flex-1">
+						<FromSelector {identities} bind:mailboxId={sendMailboxId} bind:aliasId />
+					</div>
 				</div>
 				{#if canReplyAll}
 					<!-- Explicit scope switch (Gmail's Reply / Reply all): the sender
@@ -385,7 +394,7 @@
 					<div
 						role="group"
 						aria-label="Reply scope"
-						class="border-border bg-muted order-first flex w-full items-center gap-1 rounded-lg border p-1 sm:order-none sm:w-auto"
+						class="border-border bg-muted order-1 flex flex-1 items-center gap-1 rounded-lg border p-1 sm:order-none sm:w-auto sm:flex-none"
 					>
 						<button
 							type="button"
@@ -409,10 +418,12 @@
 						</button>
 					</div>
 				{/if}
+				<!-- With a scope switch present, the chevron rides its top row (order-1)
+				     so it lands top-right; otherwise it trails the From line inline. -->
 				<Button
 					variant="ghost"
 					size="icon"
-					class="text-muted-foreground size-7 shrink-0"
+					class="text-muted-foreground size-7 shrink-0 {canReplyAll ? 'order-1 sm:order-none' : ''}"
 					title="Collapse reply"
 					onclick={() => (collapsed = true)}
 				>
