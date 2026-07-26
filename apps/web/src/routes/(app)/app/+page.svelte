@@ -1643,7 +1643,7 @@
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
-						{:else if reachedEnd && items.length >= PAGE}
+						{:else if reachedEnd && applyListFilters(items).length}
 							{@render listEnd()}
 						{/if}
 					{:else if loadingList}
