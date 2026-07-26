@@ -362,18 +362,18 @@
 		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
-		// Optimistic: rows leave immediately (exit transition reads rowFx); the
-		// server write settles behind the animation and reloads on failure.
+		// Optimistic: rows leave immediately (exit transition reads rowFx); a
+		// loading toast tracks the write, flipping to Undo on success (same flow as
+		// swipe triage), or to an error + list reload on failure.
 		items = items.filter((t) => !threadSel.has(t.threadId));
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
+		const label = MOVE_BUSY[pl] ?? 'Moving…';
+		const busy = ids.length > 1 ? label.replace('…', ` ${ids.length}…`) : label;
 		try {
-			await bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl });
-			toastUndoMove(prevs, pl);
-			void refreshUnread();
-		} catch {
-			toast.error('Action failed — restoring the list.');
-			void loadThreads(true);
+			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (id) => toastUndoMove(prevs, pl, id) });
+			if (ok) void refreshUnread();
+			else void loadThreads(true);
 		} finally {
 			setTimeout(() => {
 				for (const id of ids) rowFx.delete(id);
@@ -400,13 +400,21 @@
 	}
 
 	// "Empty trash/spam" — hides everything at the placement (no hard delete).
+	// Confirmed bulk (AlertDialog) with real latency: loading toast → success,
+	// no Undo. Optimistic clear; reload the list back if the write fails.
 	async function emptyCurrentFolder() {
 		if (!mailboxId || (placement !== 'trash' && placement !== 'spam')) return;
-		await emptyFolder({ mailboxId, placement });
+		const mb = mailboxId;
+		const pl = placement;
+		const name = folder.name;
+		const kept = items;
 		items = [];
 		threadSel.clear();
 		if (threadId) nav({ thread: null });
-		toast.success(`${folder.name} emptied.`);
+		const ok = await runWithToast(`Emptying ${name}…`, `Could not empty ${name.toLowerCase()}.`, () => emptyFolder({ mailboxId: mb, placement: pl }), {
+			done: (id) => toast.success(`${name} emptied.`, { id })
+		});
+		if (!ok) items = kept;
 	}
 
 	// Drafts multi-select. Single-row delete goes through the same bulk call.
@@ -620,6 +628,28 @@
 		trash: 'Moving to trash…',
 		inbox: 'Moving to inbox…'
 	};
+	// Promise-toast helper: a loading toast tracks the write in the background so
+	// the (already-optimistic) UI never blocks. Returns the toast id — pass it to
+	// a follow-up toast (Undo / success) to replace the spinner in place, or let
+	// `error` land on the same toast. `done` closes it silently (caller shows its
+	// own success/Undo); `error` is the rollback message.
+	async function runWithToast(
+		loading: string,
+		error: string,
+		run: () => Promise<unknown>,
+		opts?: { done?: (id: string | number) => void }
+	): Promise<boolean> {
+		const id = toast.loading(loading);
+		try {
+			await run();
+			if (opts?.done) opts.done(id);
+			else toast.dismiss(id);
+			return true;
+		} catch {
+			toast.error(error, { id });
+			return false;
+		}
+	}
 	// `id` updates an existing (loading) toast in place — the promise-toast flow:
 	// spinner while the write is in flight, then this Undo toast replaces it.
 	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, id?: string | number) {
@@ -849,10 +879,12 @@
 	async function retrySend(submissionId: string) {
 		retryingSubId = submissionId;
 		try {
-			await retrySendById({ submissionId });
-			await refresh();
-		} catch {
-			toast.error('Retry failed — try again in a moment.');
+			await runWithToast('Retrying send…', 'Retry failed — try again in a moment.', () => retrySendById({ submissionId }), {
+				done: (id) => {
+					toast.success('Retrying — sending again.', { id });
+					void refresh();
+				}
+			});
 		} finally {
 			retryingSubId = null;
 		}
