@@ -967,11 +967,9 @@
 				<span class="truncate opacity-80">{rc.text}</span>
 			</button>
 		{:else}
-			<div class="border-warn/40 bg-warn/5 text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
-				<div class="text-foreground/80 mb-0.5 font-medium">
-					↳ {senderName(rc.from)} wrote — full message (you were added to this thread):
-				</div>
-				<div class="max-h-56 overflow-y-auto whitespace-pre-wrap opacity-90">{rc.text}</div>
+			<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
+				<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(rc.from)}</div>
+				<div class="max-h-40 overflow-y-auto whitespace-pre-wrap opacity-70">{rc.text}</div>
 			</div>
 		{/if}
 	{/if}

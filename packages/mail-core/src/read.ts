@@ -11,6 +11,7 @@ import {
   isRichHtml,
   hasRemoteHttpImages,
   isCidReferenced,
+  stripQuotesHtml,
   type MessageDTO,
   type SubmissionState,
   type ThreadDTO,
@@ -459,6 +460,11 @@ export async function getThread(
     const d = deliveryByMsg.get(m.id);
     const sentAt = m.sentAt ? m.sentAt.getTime() : null;
     const isRead = readCursor != null && sentAt != null && sentAt <= readCursor;
+    // Render decisions use the QUOTE-STRIPPED html: the prior messages are already
+    // in the timeline, so the quoted reply history is redundant noise — and a reply
+    // that's "rich" only because of its <blockquote> quote should fall back to a
+    // plain bubble, not a heavy sandboxed card. The body route strips the same way.
+    const displayHtml = html ? stripQuotesHtml(html) : null;
     const dto: MessageDTO = {
       type: "external_message",
       id: m.id,
@@ -475,8 +481,8 @@ export async function getThread(
       bodyFull: full,
       // Raw HTML never leaves the server — only the render decision + flags do.
       // The sandboxed /api/messages/[id]/body route decrypts + sanitizes on demand.
-      htmlKind: html ? (isRichHtml(html) ? "rich" : "plain") : null,
-      hasRemoteImages: hasRemoteHttpImages(html),
+      htmlKind: displayHtml ? (isRichHtml(displayHtml) ? "rich" : "plain") : null,
+      hasRemoteImages: hasRemoteHttpImages(displayHtml),
       keywords: safeJsonArray(d?.keywords),
       isRead,
       outbound: sentFromHere.has(m.id),
@@ -488,7 +494,7 @@ export async function getThread(
         filename: a.filename,
         contentType: a.contentType,
         size: a.size,
-        inline: isCidReferenced(html, a.partId),
+        inline: isCidReferenced(displayHtml, a.partId),
       })),
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
       ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),

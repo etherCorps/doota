@@ -341,6 +341,21 @@ describe("inbound HTML render", () => {
     expect(item.attachments.find((a: any) => a.id === "ainl").inline).toBe(true);
     expect(item.attachments.find((a: any) => a.id === "afile").inline).toBe(false);
   });
+
+  it("a reply that's 'rich' only because of its quoted history renders plain (quote stripped)", async () => {
+    await db.insert(schema.thread).values({ id: "thq", orgId: ORG, lastMessageAt: new Date() });
+    await db.insert(schema.message).values({
+      id: "mq", orgId: ORG, threadId: "thq", messageIdHeader: "<q@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
+      bodyStrippedEnc: await encryptContent(ck, "Glad to hear it!"),
+      bodyHtmlEnc: await encryptContent(ck, "<p>Glad to hear it!</p><blockquote>On Sun, ether wrote: Looks fine now</blockquote>"),
+    });
+    await db.insert(schema.delivery).values({ id: "dq", orgId: ORG, messageId: "mq", mailboxId: "mb_alice", role: "to" });
+    await db.insert(schema.threadState).values({ id: "tsq", orgId: ORG, threadId: "thq", mailboxId: "mb_alice", placement: "inbox" });
+
+    const dto = await getThread(db, { threadId: "thq", mailboxId: "mb_alice", ck });
+    // The blockquote is the only "rich" signal — stripped → plain bubble, no white card.
+    expect((dto!.items[0] as any).htmlKind).toBe("plain");
+  });
 });
 
 describe("stale-draft GC", () => {

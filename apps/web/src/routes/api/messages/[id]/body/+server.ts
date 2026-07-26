@@ -5,6 +5,7 @@ import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { sanitizeEmailHtml, buildFramedDocument } from "@doota/mail-core/sanitize-email";
+import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
 
@@ -122,8 +123,11 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
     return a ? `/api/attachments/${a.id}` : null;
   };
 
+  // Strip quoted reply history before rendering — the prior messages are already
+  // in the timeline (matches getThread's render-flag basis).
   let inner: string;
-  const result = rawHtml ? sanitizeEmailHtml(rawHtml, { resolveCid }) : null;
+  const forRender = rawHtml ? stripQuotesHtml(rawHtml) : null;
+  const result = forRender ? sanitizeEmailHtml(forRender, { resolveCid }) : null;
   if (result && result.ok) {
     inner = loadImages ? proxyRemoteImages(result.html) : result.html;
   } else {
