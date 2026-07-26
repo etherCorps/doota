@@ -272,38 +272,40 @@ export async function getThread(
   db: Db,
   input: { threadId: string; mailboxId: string; ck: ContentKey; includeCollab?: boolean; userId?: string },
 ): Promise<ThreadDTO | null> {
-  const state = await db.query.threadState.findFirst({
-    where: and(
-      eq(schema.threadState.threadId, input.threadId),
-      eq(schema.threadState.mailboxId, input.mailboxId),
-    ),
-    columns: { placement: true, isStarred: true, assigneeUserId: true },
-  });
-  if (!state) return null; // not delivered to this mailbox
-
-  // This user's read cursor for the thread — per-message isRead is derived from
-  // it (sent_at <= cursor), so read state is per person, not per mailbox.
-  let readCursor: number | null = null;
-  if (input.userId) {
-    const r = await db.query.threadRead.findFirst({
+  // Preamble: three independent reads in parallel (was three serial round-trips).
+  //  - state gates the whole thing (thread must be in this mailbox);
+  //  - readRow → the user's read cursor (per-message isRead derives from it);
+  //  - mbox.isPersonal drives the visibility model below.
+  const [state, readRow, mbox] = await Promise.all([
+    db.query.threadState.findFirst({
       where: and(
-        eq(schema.threadRead.userId, input.userId),
-        eq(schema.threadRead.threadId, input.threadId),
-        eq(schema.threadRead.mailboxId, input.mailboxId),
+        eq(schema.threadState.threadId, input.threadId),
+        eq(schema.threadState.mailboxId, input.mailboxId),
       ),
-      columns: { lastReadAt: true },
-    });
-    readCursor = r?.lastReadAt ? r.lastReadAt.getTime() : null;
-  }
+      columns: { placement: true, isStarred: true, assigneeUserId: true },
+    }),
+    input.userId
+      ? db.query.threadRead.findFirst({
+          where: and(
+            eq(schema.threadRead.userId, input.userId),
+            eq(schema.threadRead.threadId, input.threadId),
+            eq(schema.threadRead.mailboxId, input.mailboxId),
+          ),
+          columns: { lastReadAt: true },
+        })
+      : Promise.resolve(null),
+    db.query.mailbox.findFirst({
+      where: eq(schema.mailbox.id, input.mailboxId),
+      columns: { isPersonal: true },
+    }),
+  ]);
+  if (!state) return null; // not delivered to this mailbox
+  const readCursor = readRow?.lastReadAt ? readRow.lastReadAt.getTime() : null;
 
   // Visibility model: a SHARED mailbox shows the whole conversation (team
   // transparency, Front/Missive-style); a PERSONAL mailbox shows only the
   // messages it was actually a party to (Gmail-style) — so a colleague's reply
   // that dropped this address never leaks into a coincidentally-shared thread.
-  const mbox = await db.query.mailbox.findFirst({
-    where: eq(schema.mailbox.id, input.mailboxId),
-    columns: { isPersonal: true },
-  });
   let messages: (typeof schema.message.$inferSelect)[];
   if (mbox?.isPersonal) {
     const delivered = await db
@@ -333,32 +335,87 @@ export async function getThread(
   }
   const messageIds = messages.map((m) => m.id);
 
-  // This mailbox's per-message receipts.
-  const deliveries = messageIds.length
-    ? await db
-        .select({
-          messageId: schema.delivery.messageId,
-          role: schema.delivery.role,
-          isRead: schema.delivery.isRead,
-          keywords: schema.delivery.keywords,
-          viaAliasId: schema.delivery.viaAliasId,
-        })
-        .from(schema.delivery)
-        .where(
-          and(
-            eq(schema.delivery.mailboxId, input.mailboxId),
-            inArray(schema.delivery.messageId, messageIds),
-          ),
-        )
-    : [];
+  // Header index + the reply-parents this mailbox can't see (Cc-added case) —
+  // computed now so the hidden-parent fetch joins the one parallel batch below.
+  const visibleByHeader = new Map(messages.map((m) => [m.messageIdHeader, m]));
+  const hiddenHeaders = [
+    ...new Set(
+      messages.map((m) => m.inReplyTo).filter((h): h is string => !!h && !visibleByHeader.has(h)),
+    ),
+  ];
+
+  // ONE parallel batch for everything keyed on the message set — this was a
+  // serial chain of ~6 round-trips and the dominant cost of opening a thread.
+  const [deliveries, submissionByMsg, attRows, trustedFrom, hiddenParentRows, collab] =
+    await Promise.all([
+      messageIds.length
+        ? db
+            .select({
+              messageId: schema.delivery.messageId,
+              role: schema.delivery.role,
+              isRead: schema.delivery.isRead,
+              keywords: schema.delivery.keywords,
+              viaAliasId: schema.delivery.viaAliasId,
+            })
+            .from(schema.delivery)
+            .where(
+              and(
+                eq(schema.delivery.mailboxId, input.mailboxId),
+                inArray(schema.delivery.messageId, messageIds),
+              ),
+            )
+        : Promise.resolve([]),
+      loadSubmissionStates(db, messageIds, input.userId ?? null),
+      messageIds.length
+        ? db
+            .select({
+              id: schema.attachment.id,
+              messageId: schema.attachment.messageId,
+              partId: schema.attachment.partId,
+              filename: schema.attachment.filename,
+              contentType: schema.attachment.contentType,
+              size: schema.attachment.size,
+            })
+            .from(schema.attachment)
+            .where(inArray(schema.attachment.messageId, messageIds))
+        : Promise.resolve([]),
+      // Per-sender image trust (display default only) — the body route still
+      // proxies everything; this just picks the initial images=0|1.
+      input.userId
+        ? trustedSenders(db, input.userId, messages.map((m) => m.fromAddr ?? "").filter(Boolean))
+        : Promise.resolve(new Set<string>()),
+      hiddenHeaders.length
+        ? db.query.message.findMany({
+            where: and(
+              eq(schema.message.threadId, input.threadId),
+              inArray(schema.message.messageIdHeader, hiddenHeaders),
+            ),
+          })
+        : Promise.resolve([] as (typeof messages)),
+      // Notes + system events for grant holders (Task 5) — only for members.
+      input.includeCollab
+        ? Promise.all([
+            listNotes(db, input.ck, input.threadId, input.mailboxId),
+            listSystemEvents(db, input.threadId, input.mailboxId),
+          ])
+        : Promise.resolve(null),
+    ]);
+
   const deliveryByMsg = new Map(deliveries.map((d) => [d.messageId, d]));
   // Messages THIS mailbox sent (it holds the `from` receipt). A message can
   // carry both `from` and `to` receipts here (self-send), so check the set —
   // and never infer "mine" from the submission row: a colleague's send in a
   // shared thread has a submission too, but it is not this mailbox's bubble.
   const sentFromHere = new Set(deliveries.filter((d) => d.role === "from").map((d) => d.messageId));
+  const attByMsg = new Map<string, typeof attRows>();
+  for (const a of attRows) {
+    const l = attByMsg.get(a.messageId) ?? [];
+    l.push(a);
+    attByMsg.set(a.messageId, l);
+  }
 
-  // Resolve any alias ids → addresses (usually none).
+  // Alias ids → addresses (usually none) — depends on `deliveries`, so it trails
+  // the batch; small and rare.
   const aliasIds = [...new Set(deliveries.map((d) => d.viaAliasId).filter(Boolean))] as string[];
   const aliasAddr = new Map<string, string>();
   if (aliasIds.length) {
@@ -367,31 +424,6 @@ export async function getThread(
       .from(schema.alias)
       .where(inArray(schema.alias.id, aliasIds));
     for (const r of rows) aliasAddr.set(r.id, r.address);
-  }
-
-  // Send-state (Part H) for any outbound messages in this thread: submission
-  // status → tick, plus per-recipient detail for multi-recipient sends.
-  const submissionByMsg = await loadSubmissionStates(db, messageIds, input.userId ?? null);
-
-  // Attachment metadata per message (bytes stay in R2; served on demand).
-  const attRows = messageIds.length
-    ? await db
-        .select({
-          id: schema.attachment.id,
-          messageId: schema.attachment.messageId,
-          partId: schema.attachment.partId,
-          filename: schema.attachment.filename,
-          contentType: schema.attachment.contentType,
-          size: schema.attachment.size,
-        })
-        .from(schema.attachment)
-        .where(inArray(schema.attachment.messageId, messageIds))
-    : [];
-  const attByMsg = new Map<string, typeof attRows>();
-  for (const a of attRows) {
-    const l = attByMsg.get(a.messageId) ?? [];
-    l.push(a);
-    attByMsg.set(a.messageId, l);
   }
 
   // Reply context per message. Two shapes:
@@ -413,22 +445,9 @@ export async function getThread(
     }
   >();
   if (messages.length) {
-    const visibleByHeader = new Map(messages.map((m) => [m.messageIdHeader, m]));
-    const hiddenHeaders = [
-      ...new Set(
-        messages.map((m) => m.inReplyTo).filter((h): h is string => !!h && !visibleByHeader.has(h)),
-      ),
-    ];
+    // visibleByHeader + the hidden parents were fetched in the batch above.
     const hiddenByHeader = new Map<string, (typeof messages)[number]>();
-    if (hiddenHeaders.length) {
-      const parents = await db.query.message.findMany({
-        where: and(
-          eq(schema.message.threadId, input.threadId),
-          inArray(schema.message.messageIdHeader, hiddenHeaders),
-        ),
-      });
-      for (const p of parents) hiddenByHeader.set(p.messageIdHeader, p);
-    }
+    for (const p of hiddenParentRows) hiddenByHeader.set(p.messageIdHeader, p);
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
       if (!m.inReplyTo) continue;
@@ -483,27 +502,17 @@ export async function getThread(
     }
   }
 
-  // Per-sender image trust (display default only): which inbound senders this
-  // reader auto-loads remote images from. Server-side lookup so the client
-  // never guesses; the body route still proxies everything.
-  const trustedFrom = input.userId
-    ? await trustedSenders(
-        db,
-        input.userId,
-        messages.map((m) => m.fromAddr ?? "").filter(Boolean),
-      )
-    : new Set<string>();
-
-  const items: MessageDTO[] = [];
-  let subject: string | null = null;
-  for (const m of messages) {
+  // Decrypt + assemble EVERY message in parallel — this was a serial loop that
+  // awaited each message's decrypts before starting the next (N sequential
+  // round-trips of AES-GCM over the bodies).
+  const items: MessageDTO[] = await Promise.all(
+    messages.map(async (m): Promise<MessageDTO> => {
     const [subj, stripped, full, html] = await Promise.all([
       decryptContent(input.ck, m.subjectEnc),
       decryptContent(input.ck, m.bodyStrippedEnc),
       decryptContent(input.ck, m.bodyFullEnc),
       decryptContent(input.ck, m.bodyHtmlEnc),
     ]);
-    if (subject == null) subject = subj;
     const d = deliveryByMsg.get(m.id);
     const sentAt = m.sentAt ? m.sentAt.getTime() : null;
     const isRead = readCursor != null && sentAt != null && sentAt <= readCursor;
@@ -547,8 +556,11 @@ export async function getThread(
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
       ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),
     };
-    items.push(dto);
-  }
+    return dto;
+    }),
+  );
+  // Thread subject = the first message's subject (messages are sent-ordered).
+  const subject = items[0]?.subject ?? null;
 
   const lastMessageAt = items.at(-1)?.sentAt ?? null;
 
@@ -557,11 +569,8 @@ export async function getThread(
   // org-admin read (no mailbox_access) gets messages only: notes/events are
   // never placed in a payload they aren't a member for.
   let timeline: TimelineItem[] = items;
-  if (input.includeCollab) {
-    const [notes, events] = await Promise.all([
-      listNotes(db, input.ck, input.threadId, input.mailboxId),
-      listSystemEvents(db, input.threadId, input.mailboxId),
-    ]);
+  if (collab) {
+    const [notes, events] = collab;
     timeline = [
       ...items,
       ...notes.map((n) => ({
