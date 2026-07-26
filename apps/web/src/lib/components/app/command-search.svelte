@@ -50,6 +50,13 @@
 	const dq = new Debounced(() => q.trim(), 250);
 	const results = $derived(dq.current.length >= 2 ? searchMail({ q: dq.current, mailboxId: activeMailbox }) : null);
 
+	// Clear the query whenever the palette closes (Esc / outside-click / ⌘K —
+	// only `run()` reset it before). Otherwise reopening lands on stale results
+	// instead of the browse view (Actions / Refine / Folders).
+	$effect(() => {
+		if (!open) q = '';
+	});
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
