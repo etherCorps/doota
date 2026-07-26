@@ -71,8 +71,8 @@
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import CheckCheckIcon from '@lucide/svelte/icons/check-check';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+	import LockIcon from '@lucide/svelte/icons/lock';
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -511,6 +511,23 @@
 		setTimeout(() => (composerFlash = false), 900);
 	}
 	const selfSet = () => new Set(identities.map((i) => i.address.toLowerCase()));
+	// Everyone who's appeared on the thread (from/to/cc across all messages).
+	function threadParticipants(msgs: MessageDTO[]): Set<string> {
+		const s = new Set<string>();
+		for (const m of msgs) for (const a of [m.from, ...m.to, ...m.cc]) if (a) s.add(a.toLowerCase());
+		return s;
+	}
+	// A message whose audience is a strict subset of the thread's participants is
+	// PRIVATE — a reply that dropped people. Returns who (besides you) can see it,
+	// or null when everyone on the thread is on the message. Drives the "only
+	// visible to you" chip so a reply-to-one never looks like it reached everyone.
+	function msgPrivateTo(m: MessageDTO, parts: Set<string>): string[] | null {
+		const aud = new Set<string>();
+		for (const a of [m.from, ...m.to, ...m.cc]) if (a) aud.add(a.toLowerCase());
+		if (aud.size >= parts.size) return null; // reaches everyone on the thread
+		const self = selfSet();
+		return [...aud].filter((a) => !self.has(a));
+	}
 	// Reply-all only means something when the message reaches ≥2 people besides you.
 	function msgCanReplyAll(m: MessageDTO): boolean {
 		const self = selfSet();
@@ -949,6 +966,21 @@
 	</div>
 {/snippet}
 
+<!-- "Only visible to you" chip: shows on a message that reached fewer people than
+     the thread has (a reply-to-one), so the sender knows it's private. -->
+{#snippet visibilityChip(m: MessageDTO, parts: Set<string>)}
+	{@const priv = msgPrivateTo(m, parts)}
+	{#if priv}
+		<span
+			class="text-faint mt-1 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+			title="Not everyone on this thread can see this message"
+		>
+			<LockIcon class="size-2.5 shrink-0" />
+			Only you{priv.length ? ` & ${priv.map((a) => senderName(a)).join(', ')}` : ''} can see this
+		</span>
+	{/if}
+{/snippet}
+
 <!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
 {#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
 	{#if groups.length === 0}
@@ -1380,6 +1412,7 @@
 			{#if openDto}
 				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
+					{@const parts = threadParticipants(msgs)}
 					{@const ctx = replyCtx(msgs, replyTarget)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					{@const ppl = participants(msgs)}
@@ -1634,15 +1667,14 @@
 													<span>{fmtTime(m.sentAt)}</span>
 													{#if outbound && m.submission}
 														{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
-														{:else if m.submission.tick === 'single'}<CheckIcon class="size-3" />
-														{:else if m.submission.tick === 'double'}<CheckCheckIcon class="size-3" />
-														{:else}<TriangleAlertIcon class="text-destructive size-3" />{/if}
+														{:else if m.submission.tick === 'warning'}<TriangleAlertIcon class="text-destructive size-3" />{/if}
 													{/if}
 												</div>
 											</div>
 											{#if m.submission?.tick === 'warning'}
 												{@render sendFailure(m.submission)}
 											{/if}
+											{@render visibilityChip(m, parts)}
 											{@render msgActions(m, outbound ? 'end' : 'start', thread.subject)}
 										</div>
 									</div>
@@ -1674,9 +1706,7 @@
 											<span>{fmtTime(m.sentAt)}</span>
 											{#if outbound && m.submission}
 												{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
-												{:else if m.submission.tick === 'single'}<CheckIcon class="size-3" />
-												{:else if m.submission.tick === 'double'}<CheckCheckIcon class="text-brand size-3" />
-												{:else}<TriangleAlertIcon class="text-destructive size-3" />{/if}
+												{:else if m.submission.tick === 'warning'}<TriangleAlertIcon class="text-destructive size-3" />{/if}
 											{/if}
 										</div>
 									</button>
@@ -1712,6 +1742,7 @@
 													</div>
 												{/if}
 											{/if}
+											<div class="flex justify-end">{@render visibilityChip(m, parts)}</div>
 											{@render msgActions(m, 'end', thread.subject)}
 										</div>
 									{/if}

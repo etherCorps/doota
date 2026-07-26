@@ -10,7 +10,7 @@ import {
   materializeDelivery,
   type ParsedMessage,
 } from "@doota/mail-core/materialize";
-import { countUnread } from "@doota/mail-core/read";
+import { countUnread, getThread } from "@doota/mail-core/read";
 import { importKey } from "@doota/mail-core/crypto";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
@@ -244,5 +244,30 @@ describe("materialize idempotency + dedupe (Part D)", () => {
 
     const state = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, m1.threadId) });
     expect(state.placement).toBe("trash");
+  });
+});
+
+describe("thread visibility (personal vs shared)", () => {
+  it("personal mailbox sees only messages it was a party to; shared sees the whole thread", async () => {
+    const ck = deps.ck;
+    // msg1 lands in BOTH the personal (mb_apex) and shared (mb_sub) mailbox.
+    const p1 = parsed({ messageIdHeader: "<v1@ext>", subject: "Project" });
+    const m1 = await materializeMessage(db, ORG, p1, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p1.sentAt });
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p1.sentAt });
+
+    // msg2 is a reply that DROPPED alice — delivered only to the shared mailbox.
+    const p2 = parsed({ messageIdHeader: "<v2@ext>", inReplyTo: "<v1@ext>", subject: "Re: Project", sentAt: Date.now() + 1000 });
+    const m2 = await materializeMessage(db, ORG, p2, deps);
+    expect(m2.threadId).toBe(m1.threadId); // same conversation
+    await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p2.sentAt });
+
+    // Personal alice: only the message she was on — the dropped reply must NOT leak.
+    const alice = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_apex", ck });
+    expect(alice?.items.map((i: any) => i.id)).toEqual([m1.messageId]);
+
+    // Shared support: the whole conversation (team transparency).
+    const support = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_sub", ck });
+    expect(support?.items.map((i: any) => i.id).sort()).toEqual([m1.messageId, m2.messageId].sort());
   });
 });

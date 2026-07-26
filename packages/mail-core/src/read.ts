@@ -138,6 +138,17 @@ export async function listThreads(
   const latestByThread = new Map<string, LatestRow>();
   if (threadIds.length) {
     const idList = sql.join(threadIds.map((id) => sql`${id}`), sql`, `);
+    // Personal mailbox: the preview must be the latest message THIS mailbox was a
+    // party to, not the globally-latest (which could be a colleague's reply it
+    // can't see). Shared mailbox: whole conversation, so globally-latest. Mirrors
+    // getThread's visibility model.
+    const mbox = await db.query.mailbox.findFirst({
+      where: eq(schema.mailbox.id, input.mailboxId),
+      columns: { isPersonal: true },
+    });
+    const visibleCond = mbox?.isPersonal
+      ? sql`AND id IN (SELECT message_id FROM delivery WHERE mailbox_id = ${input.mailboxId})`
+      : sql``;
     const rows = await db.all<LatestRow>(sql`
       SELECT thread_id AS "threadId", subject_enc AS "subjectEnc", body_stripped_enc AS "bodyStrippedEnc",
              from_addr AS "fromAddr", sent_at AS "sentAt"
@@ -145,7 +156,7 @@ export async function listThreads(
         SELECT thread_id, subject_enc, body_stripped_enc, from_addr, sent_at,
                ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sent_at DESC, rowid DESC) AS rn
         FROM message
-        WHERE thread_id IN (${idList})
+        WHERE thread_id IN (${idList}) ${visibleCond}
       ) WHERE rn = 1
     `);
     for (const r of rows) latestByThread.set(r.threadId, r);
@@ -254,10 +265,41 @@ export async function getThread(
     readCursor = r?.lastReadAt ? r.lastReadAt.getTime() : null;
   }
 
-  const messages = await db.query.message.findMany({
-    where: eq(schema.message.threadId, input.threadId),
-    orderBy: schema.message.sentAt,
+  // Visibility model: a SHARED mailbox shows the whole conversation (team
+  // transparency, Front/Missive-style); a PERSONAL mailbox shows only the
+  // messages it was actually a party to (Gmail-style) — so a colleague's reply
+  // that dropped this address never leaks into a coincidentally-shared thread.
+  const mbox = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, input.mailboxId),
+    columns: { isPersonal: true },
   });
+  let messages: (typeof schema.message.$inferSelect)[];
+  if (mbox?.isPersonal) {
+    const delivered = await db
+      .select({ messageId: schema.delivery.messageId })
+      .from(schema.delivery)
+      .innerJoin(schema.message, eq(schema.message.id, schema.delivery.messageId))
+      .where(
+        and(
+          eq(schema.delivery.mailboxId, input.mailboxId),
+          eq(schema.message.threadId, input.threadId),
+        ),
+      );
+    const ids = delivered.map((d) => d.messageId);
+    // Empty is legitimate — a note-only thread, or one where every message
+    // dropped this address. Show no messages but keep the thread (notes/state).
+    messages = ids.length
+      ? await db.query.message.findMany({
+          where: and(eq(schema.message.threadId, input.threadId), inArray(schema.message.id, ids)),
+          orderBy: schema.message.sentAt,
+        })
+      : [];
+  } else {
+    messages = await db.query.message.findMany({
+      where: eq(schema.message.threadId, input.threadId),
+      orderBy: schema.message.sentAt,
+    });
+  }
   const messageIds = messages.map((m) => m.id);
 
   // This mailbox's per-message receipts.
