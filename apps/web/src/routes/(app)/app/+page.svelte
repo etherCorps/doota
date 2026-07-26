@@ -457,10 +457,23 @@
 		}
 	}
 
+	let listEl = $state<HTMLElement>();
 	function onListScroll(e: Event) {
+		// Search has its own (capped) result set — don't fire folder pagination,
+		// which would mutate `items` under the search view.
+		if (searchQ) return;
 		const el = e.currentTarget as HTMLElement;
 		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadThreads(false);
 	}
+	// The list pane and search share one scroll container — reset it to the top
+	// when a search opens (or the query changes) so results never start pinned at
+	// a stale offset from the folder list (iOS reads that as "won't scroll").
+	$effect(() => {
+		void searchQ;
+		untrack(() => {
+			if (searchQ && listEl) listEl.scrollTop = 0;
+		});
+	});
 
 	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
@@ -1488,7 +1501,7 @@
 		<!-- min-h-0: without it a flex-1 overflow child won't bound/scroll on iOS
 		     Safari (the dead search scroll). overscroll-contain stops the rubber-band
 		     from propagating to the page (the inbox bounce). -->
-		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" onscroll={onListScroll}>
+		<div bind:this={listEl} class="min-h-0 flex-1 overflow-y-auto overscroll-contain" onscroll={onListScroll}>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}
