@@ -357,16 +357,20 @@
 	// Drafts multi-select. Single-row delete goes through the same bulk call.
 	const draftSel = new SvelteSet<string>();
 	let deletingDrafts = $state(false);
+	// Rows mid-delete: dimmed + non-interactive so they immediately read as
+	// "going away" during the network round-trip, before the exit collapse.
+	const pendingDelete = new SvelteSet<string>();
 	async function deleteDrafts(ids: string[]) {
 		deletingDrafts = true;
-		for (const id of ids) rowFx.set(id, 'delete');
+		for (const id of ids) pendingDelete.add(id);
 		try {
 			await discardDrafts({ draftIds: ids });
 			for (const id of ids) draftSel.delete(id);
-			// refresh removes the rows — their exit transition reads rowFx and
-			// plays the same collapse as threads.
+			// Now play the exit collapse (threads' `delete` fx) and refresh them out.
+			for (const id of ids) rowFx.set(id, 'delete');
 			await myDrafts().refresh();
 		} finally {
+			for (const id of ids) pendingDelete.delete(id);
 			setTimeout(() => {
 				for (const id of ids) rowFx.delete(id);
 			}, 350);
@@ -1470,10 +1474,12 @@
 					{#if drafts.length}
 						{#each drafts as d (d.id)}
 							{@const dfx = rowFx.get(d.id)}
+							{@const deleting = pendingDelete.has(d.id)}
 							<div
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: dfx }}
-								class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-colors {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}"
+								aria-busy={deleting}
+								class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}"
 							>
 								{@render selectAvatar(
 									d.to[0] ?? null,
@@ -1494,10 +1500,11 @@
 								<button
 									type="button"
 									title="Delete draft"
+									disabled={deleting}
 									onclick={() => deleteDrafts([d.id])}
-									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center self-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
+									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center self-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 {deleting ? 'opacity-100' : ''}"
 								>
-									<Trash2Icon class="size-4" />
+									{#if deleting}<Spinner class="size-4" />{:else}<Trash2Icon class="size-4" />{/if}
 								</button>
 							</div>
 						{/each}
