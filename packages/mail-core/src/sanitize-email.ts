@@ -130,7 +130,11 @@ export function buildFramedDocument(
   const reset =
     "*{resize:none!important}" + // stray editor drag-grips from legacy sends
     "html{color-scheme:light}" + // email's prefers-color-scheme:dark must NOT fire (Part I)
-    "body{margin:0;padding:0;font:14px system-ui,sans-serif;color:#25252c;background:transparent}";
+    // A SOLID light surface: with color-scheme forced light, dark text on a
+    // transparent body would be invisible over a dark app bubble. Renders the
+    // email as its own light card (Gmail-style) regardless of app theme. Small
+    // padding so content isn't flush to the rounded frame; the email brings the rest.
+    "body{margin:0;padding:10px;font:14px system-ui,sans-serif;color:#25252c;background:#ffffff}";
   return (
     `<!doctype html><html><head>` +
     `<meta charset="utf-8">` + // forced: removes charset-confusion ambiguity (Part B)
