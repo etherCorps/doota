@@ -270,4 +270,47 @@ describe("thread visibility (personal vs shared)", () => {
     const support = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_sub", ck });
     expect(support?.items.map((i: any) => i.id).sort()).toEqual([m1.messageId, m2.messageId].sort());
   });
+
+  it("a reply whose parent this mailbox can't see carries replyContext (added on Cc)", async () => {
+    const ck = deps.ck;
+    // Original went to the shared mailbox only — alice was never on it.
+    const p1 = parsed({ messageIdHeader: "<c1@ext>", subject: "Deal", text: "the original context here" });
+    const m1 = await materializeMessage(db, ORG, p1, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p1.sentAt });
+    // The reply adds alice on Cc — she gets m2 but never saw m1.
+    const p2 = parsed({ messageIdHeader: "<c2@ext>", inReplyTo: "<c1@ext>", subject: "Re: Deal", sentAt: Date.now() + 1000, text: "adding you" });
+    const m2 = await materializeMessage(db, ORG, p2, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_apex", role: "cc", viaAliasId: null, subaddressTag: null, sentAt: p2.sentAt });
+
+    const alice = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_apex", ck });
+    expect(alice?.items.map((i: any) => i.id)).toEqual([m2.messageId]); // only the reply is visible
+    const ctx = (alice?.items[0] as any).replyContext;
+    expect(ctx?.from).toBe("ext@sender.com");
+    expect(ctx?.snippet).toContain("original context");
+  });
+
+  it("countUnread: a hidden newer message does NOT phantom-unread a personal mailbox", async () => {
+    await db.insert(schema.user).values({
+      id: "u9", name: "u9", email: "u9@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date(),
+    });
+    const p1 = parsed({ messageIdHeader: "<u1v@ext>" });
+    const m1 = await materializeMessage(db, ORG, p1, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p1.sentAt });
+    await db.insert(schema.threadRead).values({
+      id: "tr9", orgId: ORG, userId: "u9", threadId: m1.threadId, mailboxId: "mb_apex", lastReadAt: new Date(Date.now() + 500),
+    });
+    expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u9" })).toBe(0);
+
+    // Newer reply that DROPPED alice — delivered only to the shared mailbox → hidden.
+    const p2 = parsed({ messageIdHeader: "<u2v@ext>", inReplyTo: "<u1v@ext>", sentAt: Date.now() + 60_000 });
+    const m2 = await materializeMessage(db, ORG, p2, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p2.sentAt });
+    expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u9" })).toBe(0); // NOT phantom-unread
+
+    // A newer reply she IS on flips it unread.
+    const p3 = parsed({ messageIdHeader: "<u3v@ext>", inReplyTo: "<u1v@ext>", sentAt: Date.now() + 120_000 });
+    const m3 = await materializeMessage(db, ORG, p3, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m3, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: p3.sentAt });
+    expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u9" })).toBe(1);
+  });
 });

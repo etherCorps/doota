@@ -981,6 +981,16 @@
 	{/if}
 {/snippet}
 
+<!-- Reply context: the prior message a newly-added Cc can't see as its own item —
+     shown as a compact quoted-antecedent line above the reply. -->
+{#snippet replyContextNote(m: MessageDTO)}
+	{#if m.replyContext}
+		<div class="text-faint mb-1.5 border-l-2 pl-2 text-[11px] leading-snug">
+			<span class="font-medium">↳ {senderName(m.replyContext.from)}</span>{#if m.replyContext.snippet}<span class="opacity-80"> — {m.replyContext.snippet}</span>{/if}
+		</div>
+	{/if}
+{/snippet}
+
 <!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
 {#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
 	{#if groups.length === 0}
@@ -1617,6 +1627,7 @@
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
+												{@render replyContextNote(m)}
 												{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
 													{@const allow = loadedImages.has(m.id)}
 													<!-- Outbound bubbles are ink (inverted vs the app mode), so the frame's
@@ -1717,6 +1728,7 @@
 									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
+											{@render replyContextNote(m)}
 											{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
 												{@const allow = loadedImages.has(m.id)}
 												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote

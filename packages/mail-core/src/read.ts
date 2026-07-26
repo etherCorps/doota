@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, desc, eq, exists, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -210,6 +210,37 @@ export async function countUnread(
   db: Db,
   input: { mailboxId: string; userId: string },
 ): Promise<number> {
+  const mbox = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, input.mailboxId),
+    columns: { isPersonal: true },
+  });
+  // "Unread" = a message newer than the read cursor exists. A SHARED mailbox sees
+  // the whole thread, so the global thread.last_message_at is that newest message.
+  // A PERSONAL mailbox only sees messages it was a party to — so it compares
+  // against the newest VISIBLE message (a delivery for this mailbox), or a
+  // colleague's hidden reply would phantom-unread the thread.
+  const newerThanCursor = mbox?.isPersonal
+    ? exists(
+        db
+          .select({ one: sql`1` })
+          .from(schema.delivery)
+          .innerJoin(schema.message, eq(schema.message.id, schema.delivery.messageId))
+          .where(
+            and(
+              eq(schema.delivery.mailboxId, input.mailboxId),
+              eq(schema.message.threadId, schema.threadState.threadId),
+              or(
+                isNull(schema.threadRead.lastReadAt),
+                gt(schema.message.sentAt, schema.threadRead.lastReadAt),
+              ),
+            ),
+          ),
+      )
+    : or(
+        isNull(schema.threadRead.lastReadAt),
+        lt(schema.threadRead.lastReadAt, schema.thread.lastMessageAt),
+      );
+
   const rows = await db
     .select({ n: sql<number>`count(*)` })
     .from(schema.threadState)
@@ -227,10 +258,7 @@ export async function countUnread(
         eq(schema.threadState.mailboxId, input.mailboxId),
         eq(schema.threadState.placement, "inbox"),
         isNull(schema.threadState.hiddenAt),
-        or(
-          isNull(schema.threadRead.lastReadAt),
-          lt(schema.threadRead.lastReadAt, schema.thread.lastMessageAt),
-        ),
+        newerThanCursor,
       ),
     );
   return rows[0]?.n ?? 0;
@@ -363,6 +391,45 @@ export async function getThread(
     attByMsg.set(a.messageId, l);
   }
 
+  // Reply context: a visible reply whose PARENT this personal mailbox can't see
+  // (it was added on Cc later) gets a compact preview of that parent — the same
+  // context an external Cc gets from quoted history, shown natively instead of
+  // leaking the parent as its own thread item.
+  const replyContextByMsg = new Map<
+    string,
+    { from: string | null; snippet: string; sentAt: number | null }
+  >();
+  if (mbox?.isPersonal && messages.length) {
+    const visibleHeaders = new Set(messages.map((m) => m.messageIdHeader));
+    const wantedParents = [
+      ...new Set(
+        messages
+          .map((m) => m.inReplyTo)
+          .filter((h): h is string => !!h && !visibleHeaders.has(h)),
+      ),
+    ];
+    if (wantedParents.length) {
+      const parents = await db.query.message.findMany({
+        where: and(
+          eq(schema.message.threadId, input.threadId),
+          inArray(schema.message.messageIdHeader, wantedParents),
+        ),
+        columns: { messageIdHeader: true, fromAddr: true, bodyStrippedEnc: true, sentAt: true },
+      });
+      const parentByHeader = new Map(parents.map((p) => [p.messageIdHeader, p]));
+      for (const m of messages) {
+        if (!m.inReplyTo || visibleHeaders.has(m.inReplyTo)) continue;
+        const p = parentByHeader.get(m.inReplyTo);
+        if (!p) continue;
+        replyContextByMsg.set(m.id, {
+          from: p.fromAddr,
+          snippet: preview(await decryptContent(input.ck, p.bodyStrippedEnc)) ?? "",
+          sentAt: p.sentAt ? p.sentAt.getTime() : null,
+        });
+      }
+    }
+  }
+
   const items: MessageDTO[] = [];
   let subject: string | null = null;
   for (const m of messages) {
@@ -404,6 +471,7 @@ export async function getThread(
         size: a.size,
       })),
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
+      ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),
     };
     items.push(dto);
   }

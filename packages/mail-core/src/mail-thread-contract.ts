@@ -82,6 +82,10 @@ export type MessageDTO = {
   attachments: { id: string; partId: string | null; filename: string | null; contentType: string | null; size: number | null }[];
   /** Present only for outbound messages (this mailbox sent it). */
   submission?: SubmissionState;
+  /** Context for a reply whose PARENT this viewer can't see (added on Cc after
+   * the fact): a compact preview of the prior message. Absent when the parent is
+   * visible in the timeline. */
+  replyContext?: { from: string | null; snippet: string; sentAt: number | null };
 };
 
 /** A team-internal note in the timeline (Task 5). Never transmitted; visually
