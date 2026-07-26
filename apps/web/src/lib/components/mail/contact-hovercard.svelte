@@ -51,6 +51,13 @@
 
 	const reduce = () =>
 		typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+	// Touch has no hover — on coarse pointers a tap on the sender name toggles the
+	// card, so the feature isn't hover-locked (Gmail taps open the same card).
+	const coarse = () =>
+		typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+	function onTriggerClick() {
+		if (coarse()) open = !open;
+	}
 
 	function composeTo() {
 		if (!mailboxId) return;
@@ -81,7 +88,7 @@
 		{#snippet child({ props })}
 			<!-- The caller's sender text IS the trigger — a span carrying their
 			     classes, not the primitive's default anchor and not an extra wrapper. -->
-			<span {...props} class={cn('focus-visible:ring-ring/50 cursor-default rounded-sm outline-none focus-visible:ring-2', className)}>{@render children()}</span>
+			<span {...props} onclick={onTriggerClick} class={cn('focus-visible:ring-ring/50 cursor-default rounded-sm outline-none focus-visible:ring-2', className)}>{@render children()}</span>
 		{/snippet}
 	</HoverCard.Trigger>
 	<HoverCard.Content class="w-80 p-0" sideOffset={8}>
@@ -98,6 +105,10 @@
 						>
 							{info.current.isInternal ? 'Team' : 'External'}
 						</span>
+					{:else}
+						<!-- Reserve the chip slot while loading so the name doesn't shift
+						     when the badge resolves (widest label = "External"). -->
+						<span class="invisible shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium">External</span>
 					{/if}
 				</div>
 				<span class="text-muted-foreground block truncate font-mono text-xs">{addr}</span>

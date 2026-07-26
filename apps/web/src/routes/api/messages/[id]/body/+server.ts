@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
-import { sanitizeEmailHtml, buildFramedDocument } from "@doota/mail-core/sanitize-email";
+import { sanitizeEmailHtml, buildFramedDocument, FRAME_RULE } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
@@ -170,7 +170,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     // linking to the full render. The anchor id is handled by the injected script.
     const clippedNote =
       result && !result.ok && !fullView
-        ? `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #e4e4e7;font:12px system-ui,sans-serif">` +
+        ? `<div style="margin-top:12px;padding-top:8px;border-top:1px solid ${FRAME_RULE};font:12px system-ui,sans-serif">` +
           `[Message clipped] <a href="#__viewfull" id="__viewfull">View entire message</a></div>`
         : "";
     inner = `<div style="white-space:pre-wrap;font:14px system-ui,sans-serif">${linkified}</div>${clippedNote}`;

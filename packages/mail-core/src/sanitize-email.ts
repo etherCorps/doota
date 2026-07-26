@@ -54,6 +54,13 @@ const ATTRS: Record<string, string[]> = {
 
 const sanitizer = Sanitizer.builder({ tags: TAGS, attrs: ATTRS }).build();
 
+// Framed-document chrome tones. The opaque-origin iframe can't reach the app's
+// CSS tokens, so these are the one place the email frame's ink/paper/rule live —
+// keep server-injected chrome (e.g. the clipped-message notice) on the same set.
+export const FRAME_INK = "#25252c";
+export const FRAME_PAPER = "#ffffff";
+export const FRAME_RULE = "#e4e4e7";
+
 /** Bodies larger than this are treated as hostile/DoS and fall back to text. */
 export const MAX_HTML_BYTES = 1_000_000;
 /** Rough tag-count ceiling (counts `<`), a cheap guard before the parser runs. */
@@ -140,7 +147,7 @@ export function buildFramedDocument(
     // transparent body would be invisible over a dark app bubble. Renders the
     // email as its own light card (Gmail-style) regardless of app theme. Small
     // padding so content isn't flush to the rounded frame; the email brings the rest.
-    "body{margin:0;padding:10px;font:14px system-ui,sans-serif;color:#25252c;background:#ffffff}";
+    `body{margin:0;padding:10px;font:14px system-ui,sans-serif;color:${FRAME_INK};background:${FRAME_PAPER}}`;
   return (
     `<!doctype html><html><head>` +
     `<meta charset="utf-8">` + // forced: removes charset-confusion ambiguity (Part B)

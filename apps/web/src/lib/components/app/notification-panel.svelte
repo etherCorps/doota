@@ -139,7 +139,10 @@
 						{#if f.reason}
 							<span class="text-muted-foreground block truncate text-xs">{f.reason}</span>
 						{/if}
-						<span class="text-faint block text-xs">{when(f.at)}</span>
+						<!-- Past events read relative (same voice as the New-mail rows);
+						     the absolute stamp stays on hover. Scheduled rows below keep
+						     absolute — they're FUTURE times. -->
+						<span class="text-faint block text-xs" title={when(f.at)}>{relTime(f.at)}</span>
 					</span>
 				</a>
 			{/each}

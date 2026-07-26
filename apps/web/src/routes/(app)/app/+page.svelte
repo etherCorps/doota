@@ -328,7 +328,7 @@
 	// removals from plain refreshes/live reloads stay instant. Read/unread
 	// keeps the row and pulses a ring instead.
 	type RowFx = 'delete' | 'spam' | 'archived' | 'inbox' | 'pulse';
-	const PULSE_CLASS = 'ring-brand/40 ring-2 ring-inset transition-all duration-300';
+	const PULSE_CLASS = 'ring-brand/40 ring-2 ring-inset transition-shadow duration-300';
 	const rowFx = new SvelteMap<string, RowFx>();
 
 	function exitFx(node: HTMLElement, { kind }: { kind?: RowFx }) {
@@ -1667,7 +1667,7 @@
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
 										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderLabel(t)}</span>
-										<span class="text-faint shrink-0 text-[11px]">{relTime(t.lastMessageAt)}</span>
+										<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
 									</div>
 									<div class="flex items-center gap-1.5">
 										{#if t.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
@@ -1942,6 +1942,7 @@
 								type="text"
 								autofocus
 								bind:value={findQ}
+								aria-label="Find in conversation"
 								placeholder="Find in conversation…"
 								onkeydown={(e) => {
 									if (e.key === 'Enter') {
