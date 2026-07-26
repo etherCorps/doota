@@ -1485,7 +1485,10 @@
 				</div>
 			</div>
 		{/if}
-		<div class="flex-1 overflow-y-auto" onscroll={onListScroll}>
+		<!-- min-h-0: without it a flex-1 overflow child won't bound/scroll on iOS
+		     Safari (the dead search scroll). overscroll-contain stops the rubber-band
+		     from propagating to the page (the inbox bounce). -->
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" onscroll={onListScroll}>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}

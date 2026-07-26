@@ -73,8 +73,9 @@
 			{/snippet}
 		</TopBar>
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and scrolls its own
-		     panes, but document-flow pages like /account must scroll here. -->
-		<div class="min-h-0 flex-1 overflow-y-auto" bind:clientWidth={regionW}>
+		     panes, but document-flow pages like /account must scroll here.
+		     overscroll-contain: no iOS rubber-band bleeding to the document. -->
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:clientWidth={regionW}>
 			{@render children()}
 		</div>
 
