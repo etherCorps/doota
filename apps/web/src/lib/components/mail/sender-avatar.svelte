@@ -7,7 +7,12 @@
 	// external senders → initials tint while anything loads.
 	let { from, class: cls = '' }: { from: string | null; class?: string } = $props();
 
-	const addr = $derived(from?.trim().toLowerCase() ?? '');
+	// Extract the bare address from a raw header ("Name <addr>" or a plain
+	// address). Keying the avatar lookup on the whole "Name <addr>" string would
+	// never match an internal user — they'd wrongly fall through to DiceBear.
+	const addr = $derived(
+		(from?.match(/<([^>]+)>/)?.[1] ?? from ?? '').trim().toLowerCase()
+	);
 	let failed = $state(false);
 
 	function senderName(a: string): string {
