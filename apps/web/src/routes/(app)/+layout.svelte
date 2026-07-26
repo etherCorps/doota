@@ -2,6 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Kbd } from '$lib/components/ui/kbd/index.js';
 	import { PersistedState } from 'runed';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
 	import EdgeSwipeOpen from '$lib/components/app/edge-swipe-open.svelte';
@@ -69,6 +70,7 @@
 				     search field gets this width back. -->
 				<Button variant="brand" size="sm" class="hidden gap-1.5 sm:inline-flex" onclick={() => compose.start()}>
 					<PenLineIcon class="size-4" /> Compose
+					<Kbd class="bg-background/20 text-background hidden lg:inline-flex">C</Kbd>
 				</Button>
 			{/snippet}
 		</TopBar>

@@ -19,6 +19,8 @@
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import HistoryIcon from '@lucide/svelte/icons/history';
+	import { recentThreads, pushRecentThread } from '$lib/client/recent-threads';
 	import Highlight from '$lib/components/mail/highlight.svelte';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
@@ -70,10 +72,13 @@
 		fn();
 	}
 
-	function openThread(mailboxId: string, threadId: string) {
+	function openThread(mailboxId: string, threadId: string, meta?: { subject: string | null; from: string | null }) {
+		pushRecentThread({ threadId, mailboxId, subject: meta?.subject ?? null, from: meta?.from ?? null });
 		const sp = new URLSearchParams({ mailbox: mailboxId, thread: threadId });
 		goto(`${resolve('/app')}?${sp}`);
 	}
+	// Re-read on each palette open (device-local, cheap).
+	const recents = $derived(open ? recentThreads() : []);
 </script>
 
 {#snippet searchSkeleton()}
@@ -98,6 +103,17 @@
 	<Command.Input placeholder="Search — from: to: has:attachment is:unread after:7d…" bind:value={q} />
 	<Command.List>
 		{#if q.trim().length < 2}
+			{#if recents.length}
+				<Command.Group heading="Recent">
+					{#each recents.slice(0, 5) as r (r.threadId)}
+						<Command.Item value={`recent-${r.threadId}`} onSelect={() => run(() => openThread(r.mailboxId, r.threadId))}>
+							<HistoryIcon class="text-muted-foreground size-4 shrink-0" />
+							<span class="truncate">{r.subject || '(no subject)'}</span>
+						</Command.Item>
+					{/each}
+				</Command.Group>
+				<Command.Separator />
+			{/if}
 			<Command.Group heading="Actions">
 				<Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('doota:compose')))}>
 					<PenLineIcon class="text-muted-foreground size-4" />
@@ -170,7 +186,7 @@
 						{#each hits as hit (hit.threadId)}
 							<Command.Item
 								value={hit.threadId}
-								onSelect={() => run(() => openThread(hit.mailboxId, hit.threadId))}
+								onSelect={() => run(() => openThread(hit.mailboxId, hit.threadId, { subject: hit.subject, from: hit.from }))}
 							>
 								<SearchIcon class="text-muted-foreground size-4 shrink-0" />
 								<div class="flex min-w-0 flex-col">

@@ -4,7 +4,7 @@
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
-	import { goto, pushState, replaceState } from '$app/navigation';
+	import { goto, pushState, replaceState, onNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { flip } from 'svelte/animate';
@@ -17,6 +17,11 @@
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
 	import ContactHoverCard from '$lib/components/mail/contact-hovercard.svelte';
+	import { AvatarGroup } from '$lib/components/ui/avatar/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import { Kbd } from '$lib/components/ui/kbd/index.js';
+	import { swipeX } from '$lib/utils/swipe';
+	import { pushRecentThread } from '$lib/client/recent-threads';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
@@ -351,6 +356,7 @@
 		const ids = [...threadSel];
 		const mb = mailboxId;
 		bulkBusy = true;
+		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
 		// Optimistic: rows leave immediately (exit transition reads rowFx); the
@@ -360,6 +366,8 @@
 		threadSel.clear();
 		try {
 			await bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl });
+			toastUndoMove(prevs, pl);
+			void refreshUnread();
 		} catch {
 			toast.error('Action failed — restoring the list.');
 			void loadThreads(true);
@@ -584,6 +592,10 @@
 	async function selectThread(id: string) {
 		nav({ thread: id });
 		if (!mailboxId) return;
+		{
+			const row = items.find((t) => t.threadId === id);
+			pushRecentThread({ threadId: id, mailboxId, subject: row?.subject ?? null, from: row?.from ?? null });
+		}
 		const item = items.find((t) => t.threadId === id);
 		if (item && !item.unread) return;
 		await markThreadRead({ mailboxId, threadId: id });
@@ -591,14 +603,74 @@
 		void refreshUnread();
 	}
 
+	// Undo for triage moves (Gmail's safety net): every archive/spam/trash/inbox
+	// move toasts with Undo for ~6s, restoring each thread's PREVIOUS placement.
+	const MOVE_LABEL: Record<string, string> = {
+		archived: 'Archived',
+		spam: 'Marked as spam',
+		trash: 'Moved to trash',
+		inbox: 'Moved to inbox'
+	};
+	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string) {
+		const mb = mailboxId;
+		if (!mb) return;
+		const label = MOVE_LABEL[target] ?? 'Moved';
+		toast(entries.length > 1 ? `${label} · ${entries.length} conversations` : label, {
+			duration: 6000,
+			action: {
+				label: 'Undo',
+				onClick: async () => {
+					for (const e of entries) {
+						try {
+							await moveThread({ mailboxId: mb, threadId: e.threadId, placement: e.prev as never });
+						} catch {
+							// row may have moved again meanwhile — restore the rest
+						}
+					}
+					await loadThreads(true);
+					void refreshUnread();
+				}
+			}
+		});
+	}
+	/** A row's current placement (for undo): the row's own placement (Sent view
+	 * rows differ), else the open folder. */
+	const rowPrev = (id: string) =>
+		items.find((t) => t.threadId === id)?.placement ?? (placement === 'sent' ? 'inbox' : placement);
+
+	// Move one LIST ROW (swipe path — no open-thread nav involved).
+	async function moveRow(id: string, target: 'inbox' | 'archived' | 'spam' | 'trash') {
+		if (!mailboxId) return;
+		const prev = rowPrev(id);
+		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
+		try {
+			await moveThread({ mailboxId, threadId: id, placement: target });
+			items = items.filter((t) => t.threadId !== id);
+			if (threadId === id) nav({ thread: null });
+			toastUndoMove([{ threadId: id, prev }], target);
+			void refreshUnread();
+		} finally {
+			setTimeout(() => rowFx.delete(id), 350);
+		}
+	}
+
+	// Live swipe progress per row (-1..1) — drives the action reveal underneath.
+	// Rendered only while non-zero, so translucent row tints never leak icons.
+	const swipeProg = new SvelteMap<string, number>();
+	const coarsePointer = () =>
+		typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
 	// Triage: move to a placement (archive/spam/trash/inbox), then leave the thread.
 	async function move(placement: string) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
+		const prev = rowPrev(id);
 		await moveThread({ mailboxId, threadId: id, placement: placement as never });
 		nav({ thread: null });
 		// The thread left this folder — drop it from the list without a refetch.
 		items = items.filter((t) => t.threadId !== id);
+		toastUndoMove([{ threadId: id, prev }], placement);
+		void refreshUnread();
 	}
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
@@ -724,9 +796,35 @@
 		}
 	}
 
+	// Single-pane slide (mobile): opening a thread slides it in from the right,
+	// closing slides back — the list↔thread swap reads as navigation instead of a
+	// hard swap. View Transitions API; skipped for two-pane widths, reduced
+	// motion, and unsupported browsers (hard swap remains the fallback).
+	onNavigate((navigation) => {
+		if (!('startViewTransition' in document)) return;
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		if (matchMedia('(min-width: 72rem)').matches) return; // two-pane: no slide
+		const from = navigation.from?.url.searchParams.get('thread');
+		const to = navigation.to?.url.searchParams.get('thread');
+		if (!!from === !!to) return; // only the open/close swap animates
+		document.documentElement.dataset.threadNav = to ? 'open' : 'close';
+		return new Promise((resolve) => {
+			const t = (document as Document & { startViewTransition: (cb: () => Promise<void>) => { finished: Promise<void> } }).startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+			t.finished.finally(() => delete document.documentElement.dataset.threadNav);
+		});
+	});
+
 	// "[Message clipped] View entire message" — shallow-routed (back button/swipe
 	// closes it): desktop gets a dialog, mobile the drawer, both loading the
 	// raised-cap ?full=1 render in the same sandboxed frame.
+	// Image-attachment lightbox — shallow-routed like the full-message view.
+	function openLightbox(att: { id: string; filename: string | null }) {
+		pushState('', { lightbox: { id: att.id, name: att.filename ?? 'image' } });
+	}
+
 	function openFullView(id: string, images: boolean) {
 		pushState('', { fullMessage: { id, images } });
 	}
@@ -1651,11 +1749,35 @@
 							{@const selected = threadId === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
 							{@const fx = rowFx.get(t.threadId)}
+							{@const prog = swipeProg.get(t.threadId) ?? 0}
+							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
 							<div
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
-								class="group/row relative flex items-start border-b py-2.5 pl-3 transition-colors {selected ? 'bg-accent/70' : checked ? 'bg-accent/50' : 'hover:bg-muted/50'} {fx === 'pulse' ? PULSE_CLASS : ''}"
+								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
+								<!-- Swipe action reveal — rendered only mid-gesture, never idle. -->
+								{#if prog > 0}
+									<div class="absolute inset-0 flex items-center {rightTarget === 'inbox' ? 'bg-brand/15' : 'bg-ok/15'} pl-5">
+										{#if rightTarget === 'inbox'}<InboxDownIcon class="text-brand size-5" />{:else}<ArchiveIcon class="text-ok size-5" />{/if}
+									</div>
+								{:else if prog < 0}
+									<div class="bg-destructive/15 absolute inset-0 flex items-center justify-end pr-5">
+										<Trash2Icon class="text-destructive size-5" />
+									</div>
+								{/if}
+								<div
+									use:swipeX={{
+										enabled: () => coarsePointer() && !threadSel.size,
+										onRight: () => moveRow(t.threadId, rightTarget),
+										onLeft: placement === 'trash' ? undefined : () => moveRow(t.threadId, 'trash'),
+										onProgress: (r) => {
+											if (r === 0) swipeProg.delete(t.threadId);
+											else swipeProg.set(t.threadId, r);
+										}
+									}}
+									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
+								>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
 									t.from,
@@ -1683,6 +1805,7 @@
 									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
 							</button>
+								</div>
 							</div>
 						{/each}
 						{#if loadingList}
@@ -1756,7 +1879,24 @@
 								{msgs.length} message{msgs.length === 1 ? '' : 's'}{ctx.target ? ` · ${senderName(ctx.target)}` : ''}
 							</p>
 						</div>
-						{#if isShared}
+						<!-- Who's on the thread, at a glance (group threads read instantly). -->
+						{#if ppl.length > 1}
+							<div class="hidden items-center gap-1.5 md:flex" title={ppl.map((pp) => pp.name).join(', ')}>
+								<AvatarGroup>
+									{#each ppl.slice(0, 4) as pp (pp.address)}
+										<SenderAvatar from={pp.address} class="ring-background size-6 rounded-full text-[9px] ring-2" />
+									{/each}
+								</AvatarGroup>
+								{#if ppl.length > 4}<span class="text-faint text-[10px] tabular-nums">+{ppl.length - 4}</span>{/if}
+							</div>
+						{/if}
+						{#if isShared && !canManageActive}
+							<!-- Assignment is manager-only; everyone else just sees who holds it. -->
+							<span class="text-muted-foreground inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs">
+								<UserRoundIcon class="size-3.5 {openAssignee ? 'text-brand' : ''}" />
+								<span class="max-w-[12ch] truncate">{openAssignee ? short(openAssignee, members) : 'Unassigned'}</span>
+							</span>
+						{:else if isShared}
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger>
 									{#snippet child({ props })}
@@ -1823,9 +1963,19 @@
 
 						<!-- Interact: find-in-thread + star + forward (step back on phones — star also lives on list rows) -->
 						{#if msgs.length}
-							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Find in conversation (/)" aria-pressed={findOpen} onclick={() => (findOpen ? closeFind() : (findOpen = true))}>
-								<SearchIcon class="size-4" />
-							</Button>
+							<Tooltip.Provider delayDuration={600}>
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Button {...props} variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" aria-pressed={findOpen} onclick={() => (findOpen ? closeFind() : (findOpen = true))}>
+												<SearchIcon class="size-4" />
+												<span class="sr-only">Find in conversation</span>
+											</Button>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content class="flex items-center gap-1.5">Find in conversation <Kbd>/</Kbd></Tooltip.Content>
+								</Tooltip.Root>
+							</Tooltip.Provider>
 						{/if}
 						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={openStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(openStarred)}>
 							<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''}" />
@@ -1868,9 +2018,19 @@
 								</button>
 							{/if}
 							{#if placement !== 'archived'}
-								<button type="button" title="Archive" onclick={() => move('archived')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
-									<ArchiveIcon class="size-4" />
-								</button>
+								<Tooltip.Provider delayDuration={600}>
+									<Tooltip.Root>
+										<Tooltip.Trigger>
+											{#snippet child({ props })}
+												<button {...props} type="button" onclick={() => move('archived')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+													<ArchiveIcon class="size-4" />
+													<span class="sr-only">Archive</span>
+												</button>
+											{/snippet}
+										</Tooltip.Trigger>
+										<Tooltip.Content class="flex items-center gap-1.5">Archive <Kbd>E</Kbd></Tooltip.Content>
+									</Tooltip.Root>
+								</Tooltip.Provider>
 							{/if}
 							{#if placement !== 'spam'}
 								<button type="button" title="Mark spam" onclick={() => move('spam')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
@@ -2042,7 +2202,7 @@
 														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
 														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-60 grid-cols-1' : 'max-w-80 grid-cols-2'}">
 															{#each media as a (a.id)}
-																<AttachmentTile att={a} variant="grid" />
+																<AttachmentTile att={a} variant="grid" onpreview={openLightbox} />
 															{/each}
 														</div>
 													{/if}
@@ -2147,7 +2307,7 @@
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as a (a.id)}
-															<AttachmentTile att={a} variant="strip" />
+															<AttachmentTile att={a} variant="strip" onpreview={openLightbox} />
 														{/each}
 													</div>
 												{/if}
@@ -2293,6 +2453,31 @@
 
 <!-- "[Message clipped] → View entire message" — shallow-routed full render
      (?full=1, raised caps, same sandbox). Back button/gesture closes it. -->
+<!-- Image-attachment lightbox — shallow-routed; Esc/backdrop (Dialog) or Back closes. -->
+{#if page.state.lightbox}
+	{@const img = page.state.lightbox}
+	<Dialog.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+		<Dialog.Content class="w-auto max-w-[94vw] border-0 bg-transparent p-0 shadow-none" showCloseButton={false}>
+			<Dialog.Header class="sr-only"><Dialog.Title>{img.name}</Dialog.Title></Dialog.Header>
+			<img
+				src={`/api/attachments/${img.id}`}
+				alt={img.name}
+				class="max-h-[86vh] max-w-full rounded-lg object-contain"
+			/>
+			<div class="mt-2 flex items-center justify-between gap-3 px-1">
+				<span class="truncate text-xs font-medium text-white/90">{img.name}</span>
+				<a
+					href={`/api/attachments/${img.id}`}
+					download={img.name}
+					class="focus-visible:ring-ring/50 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white outline-none backdrop-blur transition-colors hover:bg-white/20 focus-visible:ring-2"
+				>
+					<DownloadIcon class="size-3.5" /> Download
+				</a>
+			</div>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}
+
 {#if page.state.fullMessage}
 	{@const fm = page.state.fullMessage}
 	{#if isMobile.current}

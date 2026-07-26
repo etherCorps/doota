@@ -261,3 +261,43 @@
 		background-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 	}
 }
+
+/* Single-pane thread navigation (mobile): the list↔thread swap slides like a
+   native push/pop. Driven by data-thread-nav set in +page.svelte's onNavigate
+   only for thread open/close at single-pane widths; View Transitions API. */
+@media (max-width: 72rem) {
+	html[data-thread-nav]::view-transition-old(root),
+	html[data-thread-nav]::view-transition-new(root) {
+		animation-duration: 220ms;
+		animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	html[data-thread-nav='open']::view-transition-new(root) {
+		animation-name: doota-slide-in-right;
+	}
+	html[data-thread-nav='open']::view-transition-old(root) {
+		animation-name: doota-fade-back;
+	}
+	html[data-thread-nav='close']::view-transition-new(root) {
+		animation-name: doota-fade-forward;
+	}
+	html[data-thread-nav='close']::view-transition-old(root) {
+		animation-name: doota-slide-out-right;
+		z-index: 1; /* the leaving thread slides over the returning list */
+	}
+}
+@keyframes doota-slide-in-right {
+	from { transform: translateX(28px); opacity: 0.6; }
+	to { transform: translateX(0); opacity: 1; }
+}
+@keyframes doota-slide-out-right {
+	from { transform: translateX(0); opacity: 1; }
+	to { transform: translateX(28px); opacity: 0; }
+}
+@keyframes doota-fade-back {
+	from { opacity: 1; }
+	to { opacity: 0.4; }
+}
+@keyframes doota-fade-forward {
+	from { opacity: 0.6; }
+	to { opacity: 1; }
+}

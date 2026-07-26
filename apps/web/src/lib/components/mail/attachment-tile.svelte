@@ -21,13 +21,18 @@
 	let {
 		att,
 		variant,
-		tone = 'default'
+		tone = 'default',
+		onpreview
 	}: {
 		att: Att;
 		variant: 'grid' | 'row' | 'strip';
 		/** inverse = inside the dark outbound bubble */
 		tone?: 'default' | 'inverse';
+		/** Image tiles: click opens a lightbox instead of downloading (the
+		 * lightbox carries its own Download). Non-images always download. */
+		onpreview?: (att: Att) => void;
 	} = $props();
+
 
 	const href = $derived(`/api/attachments/${att.id}`);
 	const ct = $derived(att.contentType ?? '');
@@ -80,6 +85,12 @@
 	let pdfLoading = $state(false);
 	// Broken image/video sources fall back to the typed tile.
 	let broken = $state(false);
+	const previews = $derived(!!onpreview && kind === 'image' && !broken);
+	function onTileClick(e: MouseEvent) {
+		if (!previews) return;
+		e.preventDefault();
+		onpreview?.(att);
+	}
 	onMount(() => {
 		if (kind === 'pdf' && variant !== 'row') {
 			pdfLoading = true;
@@ -150,6 +161,7 @@
 		target="_blank"
 		rel="noopener"
 		title="Download {name}"
+		onclick={onTileClick}
 		class="focus-visible:ring-ring/50 bg-muted group/att relative block aspect-[4/3] overflow-hidden rounded-lg border outline-none focus-visible:ring-2 active:scale-[0.99]"
 	>
 		{@render previewFace()}
@@ -172,6 +184,7 @@
 		target="_blank"
 		rel="noopener"
 		title="Download {name}"
+		onclick={onTileClick}
 		class="focus-visible:ring-ring/50 bg-card hover:bg-muted/60 block w-36 shrink-0 overflow-hidden rounded-lg border transition-colors outline-none focus-visible:ring-2 active:scale-[0.99]"
 	>
 		<span class="bg-muted relative block h-20 w-full overflow-hidden border-b">
