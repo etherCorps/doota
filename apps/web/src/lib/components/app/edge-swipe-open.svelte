@@ -2,6 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { compose } from '$lib/client/compose.svelte.js';
+	import { page } from '$app/state';
 
 	// Gmail-style edge swipe: a left-edge touch dragged right opens the mobile
 	// sidebar sheet. Must be rendered inside Sidebar.Provider. The touch has to
@@ -19,7 +20,12 @@
 
 	function onTouchStart(e: TouchEvent) {
 		const t = e.touches[0];
-		tracking = sidebar.isMobile && !sidebar.openMobile && !compose.open && t.clientX <= EDGE;
+		// With a thread open, a left-edge drag is the OS/browser back gesture
+		// (thread → list) — opening the sidebar on top of that navigation reads
+		// as two things firing at once. Drawer edge-swipe is a list-level gesture.
+		const threadOpen = page.url.searchParams.has('thread');
+		tracking =
+			sidebar.isMobile && !sidebar.openMobile && !compose.open && !threadOpen && t.clientX <= EDGE;
 		startX = t.clientX;
 		startY = t.clientY;
 	}

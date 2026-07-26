@@ -17,6 +17,10 @@ type SwipeOpts = {
 
 export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 	const threshold = opts.threshold ?? 72;
+	// Screen edges belong to navigation, not rows: left edge is the sidebar
+	// edge-swipe / iOS back gesture, right edge the iOS forward gesture. A row
+	// swipe starting there would double-fire with them (archive + sidebar open).
+	const EDGE_GUARD = 28;
 	let startX = 0;
 	let startY = 0;
 	let dx = 0;
@@ -37,6 +41,7 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 	function onStart(e: TouchEvent) {
 		if (opts.enabled && !opts.enabled()) return;
 		const t = e.touches[0];
+		if (t.clientX <= EDGE_GUARD || t.clientX >= window.innerWidth - EDGE_GUARD) return;
 		startX = t.clientX;
 		startY = t.clientY;
 		dx = 0;

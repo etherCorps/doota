@@ -788,15 +788,24 @@
 	// the rest of that message's To/Cc, minus your own identities.
 	function replyCtx(msgs: MessageDTO[], target: { msgId: string; scope: 'reply' | 'reply_all' } | null) {
 		const chosen = target ? msgs.find((m) => m.id === target.msgId) : undefined;
-		const base = chosen ?? [...msgs].reverse().find((m) => !m.outbound) ?? msgs.at(-1);
+		// A base must yield a reply address, or the whole reply bar vanishes —
+		// e.g. a DSN/bounce with no From as the latest inbound. Skip those.
+		const usable = (m: MessageDTO) =>
+			m.outbound ? !!(m.to[0] ?? m.cc[0]) : !!(m.replyTo || m.from);
+		const rev = [...msgs].reverse();
+		const base =
+			chosen ?? rev.find((m) => !m.outbound && usable(m)) ?? rev.find(usable) ?? msgs.at(-1);
 		const self = selfSet();
 		const notSelf = (a: string) => a && !self.has(baseAddr(a));
 		const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean).map((x) => x.toLowerCase()))];
-		const primary = base?.outbound
+		let primary = base?.outbound
 			? (base.to[0] ?? base.cc[0] ?? '')
 			: base?.replyTo || base?.from || '';
 		const toAll = uniq([primary, base?.from ?? '', ...(base?.to ?? [])]).filter(notSelf);
 		const ccAll = uniq(base?.cc ?? []).filter((a) => notSelf(a) && !toAll.includes(a));
+		// Last resort (explicitly-targeted message without a From): reply to the
+		// first non-self participant rather than hiding the composer.
+		if (!primary) primary = toAll[0] ?? ccAll[0] ?? '';
 		return {
 			target: primary,
 			toAll,
