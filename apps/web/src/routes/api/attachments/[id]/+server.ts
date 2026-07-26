@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
+import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { sanitizeFilename } from "$lib/utils/filename";
 
 // Content types we'll serve as declared. Everything else (HTML, SVG, XML, …) is
@@ -20,7 +21,7 @@ const SAFE_CONTENT_TYPES = new Set([
  * read the message's org through can(). Streams straight from R2 — the raw is
  * canonical, this is just a gated pipe.
  */
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, request, locals, platform }) => {
   const user = locals.user;
   if (!user) error(401, "Not authenticated");
   const env = platform?.env;
@@ -61,6 +62,14 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   }
   if (!allowed) error(403, "You can't access this attachment.");
 
+  // Revalidation after auth (a revoked user 403s, never 304s). The bytes for an
+  // id never change, but no-cache keeps us able to push a serving/security patch
+  // (via RENDER_CACHE_VERSION) and re-check access on every view.
+  const etag = renderETag(att.id);
+  if (isNotModified(request, etag)) {
+    return new Response(null, { status: 304, headers: revalidateHeaders(etag) });
+  }
+
   const obj = await env.MAIL_RAW.get(att.r2Key);
   if (!obj) error(404, "Attachment bytes are missing.");
 
@@ -78,9 +87,10 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Referrer-Policy": "no-referrer",
-      // Bytes for an attachment id never change ("raw is truth") — cache for a
-      // year, browser-private only (same edge-cache stance as the body route).
-      "Cache-Control": "private, max-age=31536000, immutable",
+      // Private + always-revalidate (see render-cache.ts): cache the bytes but
+      // re-check with us every view, so a revoked grant or a serving-rule patch
+      // takes effect on the next view instead of lingering behind a long TTL.
+      ...revalidateHeaders(etag),
     },
   });
 };

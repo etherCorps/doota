@@ -7,6 +7,7 @@ import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { sanitizeEmailHtml, buildFramedDocument } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
+import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
 
 /**
@@ -80,7 +81,7 @@ function proxyRemoteImages(html: string): string {
   });
 }
 
-export const GET: RequestHandler = async ({ params, url, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, url, request, locals, platform }) => {
   const user = locals.user;
   if (!user) error(401, "Not authenticated");
   const dek = platform?.env?.MAIL_DEK;
@@ -113,12 +114,21 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
   }
   if (!allowed) error(403, "You can't access this message.");
 
+  const loadImages = url.searchParams.get("images") === "1";
+  const fullView = url.searchParams.get("full") === "1";
+  // Revalidation: auth passed above, so a 304 here is safe (a revoked user
+  // never reaches this — they 403). Skips the decrypt + sanitize + attachment
+  // reads when the browser's copy is still current; a RENDER_CACHE_VERSION bump
+  // changes the ETag and forces a fresh render on the next view.
+  const etag = renderETag(msg.id, loadImages, fullView);
+  if (isNotModified(request, etag)) {
+    return new Response(null, { status: 304, headers: revalidateHeaders(etag) });
+  }
+
   const ck = await importKey(dek);
   const rawHtml = await decryptContent(ck, msg.bodyHtmlEnc);
-  const loadImages = url.searchParams.get("images") === "1";
-  // "View entire message" (Gmail's clipped-message pattern): raised caps, still
-  // sanitized and sandboxed — only reachable from the clipped notice.
-  const fullView = url.searchParams.get("full") === "1";
+  // fullView ("View entire message", Gmail's clipped-message pattern): raised
+  // caps, still sanitized and sandboxed — only reachable from the clipped notice.
 
   // cid: → our authenticated attachment endpoint, resolved from THIS message's parts.
   const atts = await locals.db
@@ -201,11 +211,12 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
       "Content-Security-Policy": headerCsp,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      // Browser-private cache only (auth runs once per browser; content stays on
-      // device). Deliberately NOT edge/Workers Cache: URL-keyed edge entries
-      // would serve decrypted bodies without our per-user can() check running.
-      // 1h: sanitizer-pipeline changes still propagate same-day.
-      "Cache-Control": "private, max-age=3600",
+      // Private + always-revalidate (see render-cache.ts): the browser caches
+      // the sanitized bytes but re-checks with us every view, so auth + a
+      // RENDER_CACHE_VERSION bump reach the user immediately. NOT edge/Workers
+      // Cache: URL-keyed edge entries would serve decrypted bodies without the
+      // per-user can() check running.
+      ...revalidateHeaders(etag),
     },
   });
 };
