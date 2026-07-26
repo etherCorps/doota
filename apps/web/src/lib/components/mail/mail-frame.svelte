@@ -5,6 +5,7 @@
      clicks over postMessage. Height sizes to content (no inner scrollbar); long mail
      collapses to a cap with a fade and expands inline. -->
 <script lang="ts">
+	import { classifyMailLink } from '$lib/utils/mail-link';
 	let {
 		src,
 		collapsedMax = 352,
@@ -55,37 +56,17 @@
 		return () => window.removeEventListener('message', onMessage);
 	});
 
-	// Part D — the link security gate. Never string-concat a URL from the email.
-	function textHostOf(text: string): string | null {
-		const t = text.trim();
-		if (!t || /\s/.test(t)) return null; // bare URL/domain only
-		const m = t.match(/^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})/i);
-		return m ? m[1] : null;
-	}
+	// Part D — the link security gate (decision logic in mail-link.ts, tested).
 	function handleLink(href: string, text: string) {
-		let u: URL;
-		try {
-			u = new URL(href);
-		} catch {
-			return; // unparseable / relative → drop
-		}
-		const scheme = u.protocol.toLowerCase();
-		if (scheme === 'mailto:') {
-			onmailto?.(decodeURIComponent(u.pathname));
+		const d = classifyMailLink(href, text);
+		if (d.action === 'drop') return;
+		if (d.action === 'mailto') {
+			onmailto?.(d.address);
 			return;
 		}
-		if (scheme !== 'http:' && scheme !== 'https:') return; // everything else dropped
-		const host = u.hostname; // URL already IDNA-encodes to punycode
-		const isIdn = host.split('.').some((l) => l.toLowerCase().startsWith('xn--'));
-		const textHost = textHostOf(text);
-		const mismatch = !!textHost && textHost.toLowerCase() !== host.toLowerCase();
-		if (isIdn || mismatch) {
-			const note = mismatch
-				? `The link text says "${textHost}".`
-				: 'This domain uses non-standard (internationalized) characters.';
-			if (!confirm(`This link actually goes to:\n\n${host}\n\n${note}\n\nOpen it anyway?`)) return;
-		}
-		window.open(u.href, '_blank', 'noopener,noreferrer');
+		// noopener prevents reverse tabnabbing; noreferrer stops leaking the Doota URL.
+		if (d.warn && !confirm(`${d.warn}\n\nOpen it anyway?`)) return;
+		window.open(d.url, '_blank', 'noopener,noreferrer');
 	}
 </script>
 

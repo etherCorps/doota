@@ -66,8 +66,11 @@ export type MessageDTO = {
   /** JMAP bodyValues analogue: stripped is the "reply", full is the original. */
   bodyStripped: string | null;
   bodyFull: string | null;
-  /** Original HTML body, when present — render sandboxed (never raw). */
-  bodyHtml: string | null;
+  /** How to render: `rich` → the sandboxed /api/messages/[id]/body frame, `plain`
+   * → the text bubble, null → no HTML. Raw HTML never leaves the server. */
+  htmlKind: "rich" | "plain" | null;
+  /** The HTML references remote http(s) images — drives the "Load images" opt-in. */
+  hasRemoteImages: boolean;
   keywords: string[];
   isRead: boolean;
   /** True when the VIEWING mailbox sent this message (it holds the `from`
@@ -78,8 +81,10 @@ export type MessageDTO = {
   /** Alias id the mail was delivered through — lets a reply default its From to
    * that alias (otherwise hide-my-email leaks the real address on first reply). */
   viaAliasId: string | null;
-  /** partId carries the MIME contentId for inline parts — the `cid:` target. */
-  attachments: { id: string; partId: string | null; filename: string | null; contentType: string | null; size: number | null }[];
+  /** partId carries the MIME contentId for inline parts — the `cid:` target.
+   * `inline` = referenced by the HTML via cid: (renders in the body, so it's not
+   * listed as a separate download). */
+  attachments: { id: string; partId: string | null; filename: string | null; contentType: string | null; size: number | null; inline: boolean }[];
   /** Present only for outbound messages (this mailbox sent it). */
   submission?: SubmissionState;
   /** Context for a reply whose PARENT this viewer can't see (added on Cc after
@@ -247,6 +252,17 @@ export function isRichHtml(html: string): boolean {
       html,
     ) || /\sstyle\s*=/i.test(html)
   );
+}
+
+/** The HTML references at least one remote http(s) image (a tracking-pixel shape). */
+export function hasRemoteHttpImages(html: string | null | undefined): boolean {
+  return !!html && /\bsrc\s*=\s*["']?https?:\/\//i.test(html);
+}
+
+/** The HTML references this MIME part inline via `cid:` (angle brackets optional). */
+export function isCidReferenced(html: string | null | undefined, partId: string | null): boolean {
+  if (!html || !partId) return false;
+  return html.includes(`cid:${partId.replace(/^<|>$/g, "")}`);
 }
 
 /**

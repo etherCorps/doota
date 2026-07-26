@@ -49,7 +49,7 @@
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
-	import { replySubject, isRichHtml } from '@doota/mail-core/mail-thread-contract';
+	import { replySubject } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
@@ -569,17 +569,6 @@
 	// theme (the iframe element paints bg-card); emails that hardcode their own
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
-
-	/** True when the message HTML references this part inline via cid: — its
-	 * pixels already render in the body, so no separate download tile. */
-	function isInlinePart(html: string | null, partId: string | null): boolean {
-		if (!html || !partId) return false;
-		return html.includes(`cid:${partId.replace(/^<|>$/g, '')}`);
-	}
-
-	// Only offer "Load images" when the mail actually references remote ones —
-	// data:/cid: images render regardless.
-	const hasRemoteImages = (html: string | null) => !!html && /\bsrc\s*=\s*["']?https?:\/\//i.test(html);
 
 	// A mailto: link inside a message opens Doota's composer, not the OS handler.
 	function openMailto(address: string) {
@@ -1608,7 +1597,7 @@
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
-												{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
+												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id)}
 													<div class="w-[min(70vw,32rem)]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
@@ -1618,7 +1607,7 @@
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
 															onmailto={openMailto}
 														/>
-														{#if !allow && hasRemoteImages(m.bodyHtml)}
+														{#if !allow && m.hasRemoteImages}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
 																Images blocked · Load anyway
 															</button>
@@ -1631,7 +1620,7 @@
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
 													     documents as compact rows. Parts the HTML references by cid already
 													     render inline — skip their tiles to avoid doubles. -->
-													{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+													{@const shown = m.attachments.filter((a) => !a.inline)}
 													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
@@ -1706,11 +1695,11 @@
 									{#if open}
 										<div class="px-3.5 pb-3.5">
 											{@render replyContextNote(m)}
-											{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
+											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id)}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapsedMax={420} onmailto={openMailto} />
-												{#if !allow && hasRemoteImages(m.bodyHtml)}
+												{#if !allow && m.hasRemoteImages}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
 													</button>
@@ -1720,7 +1709,7 @@
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
-												{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+												{@const shown = m.attachments.filter((a) => !a.inline)}
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as a (a.id)}
