@@ -286,7 +286,29 @@ describe("thread visibility (personal vs shared)", () => {
     expect(alice?.items.map((i: any) => i.id)).toEqual([m2.messageId]); // only the reply is visible
     const ctx = (alice?.items[0] as any).replyContext;
     expect(ctx?.from).toBe("ext@sender.com");
-    expect(ctx?.snippet).toContain("original context");
+    expect(ctx?.parentId).toBeNull(); // no access → not a jump link
+    expect(ctx?.text).toBe("the original context here"); // FULL parent, not a snippet
+  });
+
+  it("a reply to an OLDER visible message gets a clickable jump; the one above does not", async () => {
+    const ck = deps.ck;
+    const a = parsed({ messageIdHeader: "<a@ext>", subject: "T", text: "first message body" });
+    const ma = await materializeMessage(db, ORG, a, deps);
+    await materializeDelivery(db, { orgId: ORG, ...ma, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: a.sentAt });
+    const b = parsed({ messageIdHeader: "<b@ext>", inReplyTo: "<a@ext>", subject: "Re: T", sentAt: Date.now() + 1000, text: "second" });
+    const mb = await materializeMessage(db, ORG, b, deps);
+    await materializeDelivery(db, { orgId: ORG, ...mb, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: b.sentAt });
+    // c replies to a (the OLDER message), not to b right above it.
+    const c = parsed({ messageIdHeader: "<c@ext>", inReplyTo: "<a@ext>", subject: "Re: T", sentAt: Date.now() + 2000, text: "third" });
+    const mc = await materializeMessage(db, ORG, c, deps);
+    await materializeDelivery(db, { orgId: ORG, ...mc, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: c.sentAt });
+
+    const t = await getThread(db, { threadId: ma.threadId, mailboxId: "mb_sub", ck }); // shared: sees all
+    const byId = new Map(t!.items.map((i: any) => [i.id, i]));
+    expect((byId.get(mb.messageId) as any).replyContext).toBeUndefined(); // parent is directly above
+    const cx = (byId.get(mc.messageId) as any).replyContext;
+    expect(cx?.parentId).toBe(ma.messageId); // clickable jump to the older message
+    expect(cx?.text).toContain("first message");
   });
 
   it("countUnread: a hidden newer message does NOT phantom-unread a personal mailbox", async () => {

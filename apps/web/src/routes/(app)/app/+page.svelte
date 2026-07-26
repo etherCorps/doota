@@ -950,13 +950,30 @@
 	{/if}
 {/snippet}
 
-<!-- Reply context: the prior message a newly-added Cc can't see as its own item —
-     shown as a compact quoted-antecedent line above the reply. -->
+<!-- Reply context above a reply. parentId set → the parent is in this thread: a
+     one-line clickable jump. parentId null → this Cc'd mailbox can't see the
+     parent, so show the FULL prior message (never half). -->
 {#snippet replyContextNote(m: MessageDTO)}
 	{#if m.replyContext}
-		<div class="text-faint mb-1.5 border-l-2 pl-2 text-[11px] leading-snug">
-			<span class="font-medium">↳ {senderName(m.replyContext.from)}</span>{#if m.replyContext.snippet}<span class="opacity-80"> — {m.replyContext.snippet}</span>{/if}
-		</div>
+		{@const rc = m.replyContext}
+		{#if rc.parentId}
+			<button
+				type="button"
+				title="Go to the original message"
+				onclick={() => jumpToMsg(rc.parentId!, false)}
+				class="text-faint hover:text-foreground hover:border-ring/40 mb-1.5 flex w-full max-w-full items-center gap-1 rounded border-l-2 py-0.5 pl-2 text-left text-[11px] leading-snug transition-colors"
+			>
+				<span class="font-medium shrink-0">↳ {senderName(rc.from)}</span>
+				<span class="truncate opacity-80">{rc.text}</span>
+			</button>
+		{:else}
+			<div class="border-warn/40 bg-warn/5 text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
+				<div class="text-foreground/80 mb-0.5 font-medium">
+					↳ {senderName(rc.from)} wrote — full message (you were added to this thread):
+				</div>
+				<div class="max-h-56 overflow-y-auto whitespace-pre-wrap opacity-90">{rc.text}</div>
+			</div>
+		{/if}
 	{/if}
 {/snippet}
 

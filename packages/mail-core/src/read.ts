@@ -394,40 +394,53 @@ export async function getThread(
     attByMsg.set(a.messageId, l);
   }
 
-  // Reply context: a visible reply whose PARENT this personal mailbox can't see
-  // (it was added on Cc later) gets a compact preview of that parent — the same
-  // context an external Cc gets from quoted history, shown natively instead of
-  // leaking the parent as its own thread item.
+  // Reply context per message. Two shapes:
+  //  - parent IS visible (accessible) → a one-line preview that links to it, so a
+  //    reply to an OLDER message can jump back. Skipped when the parent is the
+  //    message right above (redundant in a linear thread).
+  //  - parent NOT visible (a personal mailbox added on Cc) → the FULL parent text,
+  //    because a half-shown message is worse than none.
   const replyContextByMsg = new Map<
     string,
-    { from: string | null; snippet: string; sentAt: number | null }
+    { from: string | null; sentAt: number | null; parentId: string | null; text: string }
   >();
-  if (mbox?.isPersonal && messages.length) {
-    const visibleHeaders = new Set(messages.map((m) => m.messageIdHeader));
-    const wantedParents = [
+  if (messages.length) {
+    const visibleByHeader = new Map(messages.map((m) => [m.messageIdHeader, m]));
+    const hiddenHeaders = [
       ...new Set(
-        messages
-          .map((m) => m.inReplyTo)
-          .filter((h): h is string => !!h && !visibleHeaders.has(h)),
+        messages.map((m) => m.inReplyTo).filter((h): h is string => !!h && !visibleByHeader.has(h)),
       ),
     ];
-    if (wantedParents.length) {
+    const hiddenByHeader = new Map<string, (typeof messages)[number]>();
+    if (hiddenHeaders.length) {
       const parents = await db.query.message.findMany({
         where: and(
           eq(schema.message.threadId, input.threadId),
-          inArray(schema.message.messageIdHeader, wantedParents),
+          inArray(schema.message.messageIdHeader, hiddenHeaders),
         ),
-        columns: { messageIdHeader: true, fromAddr: true, bodyStrippedEnc: true, sentAt: true },
       });
-      const parentByHeader = new Map(parents.map((p) => [p.messageIdHeader, p]));
-      for (const m of messages) {
-        if (!m.inReplyTo || visibleHeaders.has(m.inReplyTo)) continue;
-        const p = parentByHeader.get(m.inReplyTo);
-        if (!p) continue;
+      for (const p of parents) hiddenByHeader.set(p.messageIdHeader, p);
+    }
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (!m.inReplyTo) continue;
+      const visibleParent = visibleByHeader.get(m.inReplyTo);
+      if (visibleParent) {
+        if (messages[i - 1]?.id === visibleParent.id) continue; // the message directly above
         replyContextByMsg.set(m.id, {
-          from: p.fromAddr,
-          snippet: preview(await decryptContent(input.ck, p.bodyStrippedEnc)) ?? "",
-          sentAt: p.sentAt ? p.sentAt.getTime() : null,
+          from: visibleParent.fromAddr,
+          sentAt: visibleParent.sentAt ? visibleParent.sentAt.getTime() : null,
+          parentId: visibleParent.id,
+          text: preview(await decryptContent(input.ck, visibleParent.bodyStrippedEnc), 120) ?? "",
+        });
+      } else {
+        const h = hiddenByHeader.get(m.inReplyTo);
+        if (!h) continue;
+        replyContextByMsg.set(m.id, {
+          from: h.fromAddr,
+          sentAt: h.sentAt ? h.sentAt.getTime() : null,
+          parentId: null,
+          text: (await decryptContent(input.ck, h.bodyStrippedEnc)) ?? "",
         });
       }
     }
