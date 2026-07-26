@@ -88,7 +88,7 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import { searchMail } from '$lib/rpc/search.remote';
-	import { fly } from 'svelte/transition';
+	import { fly, slide } from 'svelte/transition';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 
@@ -1768,7 +1768,10 @@
 					<!-- Find-in-thread bar: locates + jumps between messages matching the
 					     query (plaintext we hold; rich bodies live in the sandboxed frame). -->
 					{#if findOpen}
-						<div class="bg-card/60 flex items-center gap-2 border-b px-3 py-1.5 md:px-4">
+						<div
+							transition:slide={{ duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160, easing: cubicOut }}
+							class="bg-card/60 flex items-center gap-2 border-b px-3 py-1.5 md:px-4"
+						>
 							<SearchIcon class="text-muted-foreground size-4 shrink-0" />
 							<!-- svelte-ignore a11y_autofocus -->
 							<input
