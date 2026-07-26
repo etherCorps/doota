@@ -290,7 +290,7 @@ describe("thread visibility (personal vs shared)", () => {
     expect(ctx?.text).toBe("the original context here"); // FULL parent, not a snippet
   });
 
-  it("a reply to an OLDER visible message gets a clickable jump; the one above does not", async () => {
+  it("every reply to a visible message gets a clickable jump reference (WhatsApp-style)", async () => {
     const ck = deps.ck;
     const a = parsed({ messageIdHeader: "<a@ext>", subject: "T", text: "first message body" });
     const ma = await materializeMessage(db, ORG, a, deps);
@@ -305,9 +305,10 @@ describe("thread visibility (personal vs shared)", () => {
 
     const t = await getThread(db, { threadId: ma.threadId, mailboxId: "mb_sub", ck }); // shared: sees all
     const byId = new Map(t!.items.map((i: any) => [i.id, i]));
-    expect((byId.get(mb.messageId) as any).replyContext).toBeUndefined(); // parent is directly above
+    // b replies to a — the message directly above — and still gets a jump reference.
+    expect((byId.get(mb.messageId) as any).replyContext?.parentId).toBe(ma.messageId);
     const cx = (byId.get(mc.messageId) as any).replyContext;
-    expect(cx?.parentId).toBe(ma.messageId); // clickable jump to the older message
+    expect(cx?.parentId).toBe(ma.messageId); // c jumps to the older message
     expect(cx?.text).toContain("first message");
   });
 

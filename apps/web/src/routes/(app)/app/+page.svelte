@@ -704,6 +704,8 @@
 		if (t.startsWith('text/') || t.includes('word') || t.includes('document') || t.includes('sheet')) return { icon: FileTextIcon, cls: 'bg-brand/10 text-brand' };
 		return { icon: PaperclipIcon, cls: 'bg-muted text-muted-foreground' };
 	}
+	// Briefly highlight a message after jumping to it (WhatsApp reply-jump feel).
+	let flashMsgId = $state<string | null>(null);
 	/** Scroll a message into view; in mail view, expand it first if collapsed.
 	 * On mobile the drawer covers the stream, so jumping closes it. */
 	function jumpToMsg(id: string, isLast: boolean) {
@@ -713,6 +715,10 @@
 		requestAnimationFrame(() => {
 			streamEl?.querySelector(`[data-msg="${id}"]`)?.scrollIntoView({ behavior, block: 'center' });
 		});
+		flashMsgId = id;
+		setTimeout(() => {
+			if (flashMsgId === id) flashMsgId = null;
+		}, 1300);
 	}
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
@@ -959,11 +965,11 @@
 		{#if rc.parentId}
 			<button
 				type="button"
-				title="Go to the original message"
+				title="Go to the replied message"
 				onclick={() => jumpToMsg(rc.parentId!, false)}
-				class="text-faint hover:text-foreground hover:border-ring/40 mb-1.5 flex w-full max-w-full items-center gap-1 rounded border-l-2 py-0.5 pl-2 text-left text-[11px] leading-snug transition-colors"
+				class="border-brand/40 bg-brand/5 text-muted-foreground hover:bg-brand/10 mb-1.5 flex w-full max-w-full items-center gap-1 rounded border-l-2 py-0.5 pr-1 pl-2 text-left text-[11px] leading-snug transition-colors"
 			>
-				<span class="font-medium shrink-0">↳ {senderName(rc.from)}</span>
+				<span class="text-brand shrink-0 font-medium">{senderName(rc.from)}</span>
 				<span class="truncate opacity-80">{rc.text}</span>
 			</button>
 		{:else}
@@ -1610,7 +1616,7 @@
 										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
-											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
+											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id)}
@@ -1675,7 +1681,7 @@
 								{@const outbound = m.outbound}
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
-								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
+								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs ring-brand transition-shadow duration-300 {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
 									<button
 										type="button"
 										aria-expanded={open}

@@ -427,7 +427,8 @@ export async function getThread(
       if (!m.inReplyTo) continue;
       const visibleParent = visibleByHeader.get(m.inReplyTo);
       if (visibleParent) {
-        if (messages[i - 1]?.id === visibleParent.id) continue; // the message directly above
+        // WhatsApp-style: show the quoted reference for every reply (even to the
+        // message directly above) — it's the click target to jump back.
         replyContextByMsg.set(m.id, {
           from: visibleParent.fromAddr,
           sentAt: visibleParent.sentAt ? visibleParent.sentAt.getTime() : null,
