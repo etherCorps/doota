@@ -35,6 +35,8 @@
 	import { activeMailbox as lastMailbox } from '$lib/client/active-mailbox.svelte.js';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import {
 		mailboxThreads,
 		openThread,
@@ -612,11 +614,20 @@
 		trash: 'Moved to trash',
 		inbox: 'Moved to inbox'
 	};
-	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string) {
+	const MOVE_BUSY: Record<string, string> = {
+		archived: 'Archiving…',
+		spam: 'Marking as spam…',
+		trash: 'Moving to trash…',
+		inbox: 'Moving to inbox…'
+	};
+	// `id` updates an existing (loading) toast in place — the promise-toast flow:
+	// spinner while the write is in flight, then this Undo toast replaces it.
+	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, id?: string | number) {
 		const mb = mailboxId;
 		if (!mb) return;
 		const label = MOVE_LABEL[target] ?? 'Moved';
 		toast(entries.length > 1 ? `${label} · ${entries.length} conversations` : label, {
+			id,
 			duration: 6000,
 			action: {
 				label: 'Undo',
@@ -639,17 +650,26 @@
 	const rowPrev = (id: string) =>
 		items.find((t) => t.threadId === id)?.placement ?? (placement === 'sent' ? 'inbox' : placement);
 
-	// Move one LIST ROW (swipe path — no open-thread nav involved).
+	// Move one LIST ROW (swipe path — no open-thread nav involved). Optimistic:
+	// the row leaves the instant the swipe commits (no red-reveal stall while the
+	// server round-trips); a loading toast flips to the Undo toast on success and
+	// the list restores on failure.
 	async function moveRow(id: string, target: 'inbox' | 'archived' | 'spam' | 'trash') {
 		if (!mailboxId) return;
+		const mb = mailboxId;
 		const prev = rowPrev(id);
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
+		items = items.filter((t) => t.threadId !== id);
+		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
+		if (threadId === id) nav({ thread: null });
+		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
 		try {
-			await moveThread({ mailboxId, threadId: id, placement: target });
-			items = items.filter((t) => t.threadId !== id);
-			if (threadId === id) nav({ thread: null });
-			toastUndoMove([{ threadId: id, prev }], target);
+			await moveThread({ mailboxId: mb, threadId: id, placement: target });
+			toastUndoMove([{ threadId: id, prev }], target, tid);
 			void refreshUnread();
+		} catch {
+			toast.error('Action failed — restoring the list.', { id: tid });
+			void loadThreads(true);
 		} finally {
 			setTimeout(() => rowFx.delete(id), 350);
 		}
@@ -678,16 +698,24 @@
 	}
 
 	// Triage: move to a placement (archive/spam/trash/inbox), then leave the thread.
+	// Optimistic like moveRow: leave the thread and drop the row immediately; the
+	// server write settles behind the loading→Undo toast.
 	async function move(placement: string) {
 		if (!mailboxId || !threadId) return;
+		const mb = mailboxId;
 		const id = threadId;
 		const prev = rowPrev(id);
-		await moveThread({ mailboxId, threadId: id, placement: placement as never });
 		nav({ thread: null });
-		// The thread left this folder — drop it from the list without a refetch.
 		items = items.filter((t) => t.threadId !== id);
-		toastUndoMove([{ threadId: id, prev }], placement);
-		void refreshUnread();
+		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
+		try {
+			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
+			toastUndoMove([{ threadId: id, prev }], placement, tid);
+			void refreshUnread();
+		} catch {
+			toast.error('Action failed — restoring the list.', { id: tid });
+			void loadThreads(true);
+		}
 	}
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
@@ -1662,12 +1690,27 @@
 				<div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center">
 					<div
 						class="bg-card grid size-9 place-items-center rounded-full border shadow-sm"
-						style="transform: translateY({Math.round(pullProg * 52 - 44)}px) rotate({Math.round(pullProg * 180)}deg); opacity: {Math.min(pullProg * 1.6, 1)}"
+						style="transform: translateY({Math.round(pullProg * 52 - 44)}px); opacity: {Math.min(pullProg * 1.6, 1)}"
 					>
-						<RefreshCwIcon class="size-4 {pullBusy ? 'animate-spin motion-reduce:animate-none' : ''} {pullProg >= 1 ? 'text-brand' : 'text-muted-foreground'}" />
+						<!-- Arrow tracks the pull (points up once armed), then morphs into
+						     the spinner on release — scale/blur crossfade, no icon jump. -->
+						<ArrowDownIcon
+							class="col-start-1 row-start-1 size-4 transition-all duration-200 motion-reduce:transition-none {pullProg >= 1 ? 'text-brand' : 'text-muted-foreground'} {pullBusy ? 'scale-50 opacity-0 blur-[2px]' : ''}"
+							style="transform: rotate({Math.round(Math.min(pullProg, 1) * 180)}deg)"
+						/>
+						<LoaderCircleIcon
+							class="text-brand col-start-1 row-start-1 size-4 animate-spin transition-all duration-200 motion-reduce:animate-none motion-reduce:transition-none {pullBusy ? '' : 'scale-50 opacity-0 blur-[2px]'}"
+						/>
 					</div>
 				</div>
 			{/if}
+			<!-- The list itself rides the pull (native feel): follows the finger
+			     with no transition mid-drag, holds down while refreshing, eases
+			     back once done. Transform only exists during the gesture. -->
+			<div
+				class={pullBusy || pullProg === 0 ? 'transition-transform duration-200 ease-out motion-reduce:transition-none' : ''}
+				style={pullProg > 0 ? `transform: translateY(${Math.round(pullProg * 56)}px)` : ''}
+			>
 			{#if searchQ && searchResultsQ}
 				{#await searchResultsQ}
 					{@render listSkeleton()}
@@ -1879,6 +1922,7 @@
 						{/if}
 					{/if}
 			{/if}
+			</div>
 		</div>
 
 		<!-- Compose FAB for every single-pane width: the sidebar (and its Compose)

@@ -59,6 +59,29 @@
 		if (!open) q = '';
 	});
 
+	// iOS keyboard shrinks only the visual viewport — dvh/svh don't track it, so
+	// the list's fixed max-h left half the results (and their scroll range)
+	// hidden under the keyboard. Cap the list to the room actually visible below
+	// its top edge. listRef re-binds when bits-ui re-keys the list, re-running this.
+	let listRef = $state<HTMLElement | null>(null);
+	$effect(() => {
+		const el = listRef;
+		if (!open || !el) return;
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const apply = () => {
+			const room = vv.height + vv.offsetTop - el.getBoundingClientRect().top - 12;
+			el.style.maxHeight = `${Math.max(140, Math.min(288, Math.round(room)))}px`;
+		};
+		apply();
+		vv.addEventListener('resize', apply);
+		vv.addEventListener('scroll', apply);
+		return () => {
+			vv.removeEventListener('resize', apply);
+			vv.removeEventListener('scroll', apply);
+		};
+	});
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
@@ -101,7 +124,7 @@
 
 <Command.Dialog bind:open shouldFilter={false}>
 	<Command.Input placeholder="Search — from: to: has:attachment is:unread after:7d…" bind:value={q} />
-	<Command.List>
+	<Command.List bind:ref={listRef}>
 		{#if q.trim().length < 2}
 			{#if recents.length}
 				<Command.Group heading="Recent">

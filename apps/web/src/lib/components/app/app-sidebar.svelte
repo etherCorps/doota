@@ -21,6 +21,7 @@
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import { unread } from '$lib/client/unread.svelte.js';
+	import { fly } from 'svelte/transition';
 	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
 
 	let {
@@ -108,8 +109,16 @@
 								{/snippet}
 							</Sidebar.MenuButton>
 							{#if folder.id === 'inbox' && unread.count > 0}
-								<Sidebar.MenuBadge class="bg-brand/10 text-brand rounded-full group-data-[collapsible=icon]:hidden">
-									{unread.count > 99 ? '99+' : unread.count}
+								<Sidebar.MenuBadge class="bg-brand/10 text-brand overflow-hidden rounded-full group-data-[collapsible=icon]:hidden">
+									<!-- Keyed pop-in: the count drops in from above when it changes. -->
+									{#key unread.count}
+										<span
+											class="inline-block tabular-nums"
+											in:fly={{ y: -10, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220 }}
+										>
+											{unread.count > 99 ? '99+' : unread.count}
+										</span>
+									{/key}
 								</Sidebar.MenuBadge>
 							{/if}
 						</Sidebar.MenuItem>
