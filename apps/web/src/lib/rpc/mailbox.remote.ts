@@ -210,8 +210,10 @@ export const grantMailboxAccess = command(
     userId: z.string().min(1),
     canManage: z.boolean().optional(),
     canSend: z.boolean().optional(),
+    /** Restricted member: sees only threads assigned to them. */
+    assignedOnly: z.boolean().optional(),
   }),
-  async ({ mailboxId, userId, canManage, canSend }) => {
+  async ({ mailboxId, userId, canManage, canSend, assignedOnly }) => {
     const { locals } = getRequestEvent();
     const box = await assertManageMailbox(mailboxId);
     // The grantee must be a member of the same org.
@@ -230,13 +232,18 @@ export const grantMailboxAccess = command(
         eq(schema.mailboxAccess.userId, userId),
         eq(schema.mailboxAccess.mailboxId, mailboxId),
       ),
-      columns: { canManage: true, canSend: true },
+      columns: { canManage: true, canSend: true, assignedOnly: true },
     });
+    // A new grant on a SHARED mailbox starts restricted (assigned-only) unless
+    // told otherwise — access is opened per thread by assignment, not by default.
+    const nextManage = canManage ?? existing?.canManage ?? false;
     await grantAccess(locals.db, {
       userId,
       mailboxId,
-      canManage: canManage ?? existing?.canManage ?? false,
+      canManage: nextManage,
       canSend: canSend ?? existing?.canSend ?? true,
+      assignedOnly:
+        assignedOnly ?? existing?.assignedOnly ?? (!nextManage && !box.isPersonal),
     });
     return { success: true as const };
   },

@@ -26,7 +26,7 @@
  * thus detected and reconnected instead of hanging the stream forever.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 
@@ -162,12 +162,33 @@ export async function notifyInboundMail(
 ): Promise<void> {
   if (!hub) return;
   const users = await db
-    .select({ userId: schema.mailboxAccess.userId })
+    .select({
+      userId: schema.mailboxAccess.userId,
+      canManage: schema.mailboxAccess.canManage,
+      assignedOnly: schema.mailboxAccess.assignedOnly,
+    })
     .from(schema.mailboxAccess)
     .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
   if (!users.length) return;
+  // Assigned-only members are woken only for THEIR threads — a live ping for a
+  // thread they can't open would be both noise and a leak.
+  const restricted = users.filter((u) => u.assignedOnly && !u.canManage);
+  let assigneeUserId: string | null = null;
+  if (restricted.length) {
+    const state = await db.query.threadState.findFirst({
+      where: and(
+        eq(schema.threadState.threadId, threadId),
+        eq(schema.threadState.mailboxId, mailboxId),
+      ),
+      columns: { assigneeUserId: true },
+    });
+    assigneeUserId = state?.assigneeUserId ?? null;
+  }
   const frame = JSON.stringify({ type: "inbound", threadId, mailboxId } satisfies InboundMailEvent);
-  for (const u of users) await post(hub, u.userId, frame);
+  for (const u of users) {
+    if (u.assignedOnly && !u.canManage && u.userId !== assigneeUserId) continue;
+    await post(hub, u.userId, frame);
+  }
 }
 
 /**

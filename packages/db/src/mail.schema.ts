@@ -112,6 +112,12 @@ export const mailboxAccess = sqliteTable(
       .default(false)
       .notNull(),
     canSend: integer("can_send", { mode: "boolean" }).default(true).notNull(),
+    // Restricted grantee: sees ONLY threads assigned to them in this mailbox
+    // (the whole thread once assigned — history included). Ignored when
+    // can_manage is set: a manager always sees the full mailbox.
+    assignedOnly: integer("assigned_only", { mode: "boolean" })
+      .default(false)
+      .notNull(),
     createdAt: now(),
   },
   (t) => [

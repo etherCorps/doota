@@ -65,16 +65,23 @@ export async function upsertMailbox(
  */
 export async function grantAccess(
   db: Db,
-  input: { userId: string; mailboxId: string; canManage?: boolean; canSend?: boolean },
+  input: {
+    userId: string;
+    mailboxId: string;
+    canManage?: boolean;
+    canSend?: boolean;
+    assignedOnly?: boolean;
+  },
 ): Promise<void> {
   const canManage = input.canManage ?? false;
   const canSend = input.canSend ?? true;
+  const assignedOnly = input.assignedOnly ?? false;
   await db
     .insert(mail.mailboxAccess)
-    .values({ userId: input.userId, mailboxId: input.mailboxId, canManage, canSend })
+    .values({ userId: input.userId, mailboxId: input.mailboxId, canManage, canSend, assignedOnly })
     .onConflictDoUpdate({
       target: [mail.mailboxAccess.userId, mail.mailboxAccess.mailboxId],
-      set: { canManage, canSend },
+      set: { canManage, canSend, assignedOnly },
     });
 }
 
@@ -150,6 +157,46 @@ export async function manageGrantUserIds(db: Db, mailboxId: string): Promise<str
       ),
     );
   return rows.map((r) => r.userId);
+}
+
+/**
+ * THE visibility chokepoint for shared mailboxes: `null` → the user sees every
+ * thread in the mailbox; a user id → they see ONLY threads assigned to them
+ * (whole thread, history included). Managers are never restricted.
+ *
+ * Every read path (list, open, counts, search, live events) passes the result
+ * of this through as a thread filter — there is no second definition of
+ * "what can this member see".
+ */
+export async function assignedOnlyFor(
+  db: Db,
+  userId: string,
+  mailboxId: string,
+): Promise<string | null> {
+  const row = await db.query.mailboxAccess.findFirst({
+    where: and(
+      eq(schema.mailboxAccess.userId, userId),
+      eq(schema.mailboxAccess.mailboxId, mailboxId),
+    ),
+    columns: { canManage: true, assignedOnly: true },
+  });
+  return row && row.assignedOnly && !row.canManage ? userId : null;
+}
+
+/** Mailbox ids where this user is assigned-only — the cross-mailbox form of
+ * assignedOnlyFor (bell, search, contacts all span mailboxes). */
+export async function assignedOnlyMailboxIds(db: Db, userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ mailboxId: schema.mailboxAccess.mailboxId })
+    .from(schema.mailboxAccess)
+    .where(
+      and(
+        eq(schema.mailboxAccess.userId, userId),
+        eq(schema.mailboxAccess.assignedOnly, true),
+        eq(schema.mailboxAccess.canManage, false),
+      ),
+    );
+  return rows.map((r) => r.mailboxId);
 }
 
 /** Mailbox ids in an org that the user manages (canManage grants). */

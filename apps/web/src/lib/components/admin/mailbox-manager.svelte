@@ -47,7 +47,7 @@
 			createdAt: number | null;
 		};
 		members: Member[];
-		grants: { userId: string; canManage: boolean; canSend: boolean }[];
+		grants: { userId: string; canManage: boolean; canSend: boolean; assignedOnly: boolean }[];
 		activity: {
 			counts: Record<string, number>;
 			total: number;
@@ -94,14 +94,16 @@
 	let busyUser = $state<string | null>(null);
 
 	const grantsMap = $derived.by(() => {
-		const m = new Map<string, { canManage: boolean; canSend: boolean }>();
-		for (const g of grants) m.set(g.userId, { canManage: g.canManage, canSend: g.canSend });
+		const m = new Map<string, { canManage: boolean; canSend: boolean; assignedOnly: boolean }>();
+		for (const g of grants)
+			m.set(g.userId, { canManage: g.canManage, canSend: g.canSend, assignedOnly: g.assignedOnly });
 		return m;
 	});
 
 	const accessColumns: ColumnDef<Member, unknown>[] = [
 		{ accessorKey: 'name', header: 'Member', cell: ({ row }) => renderSnippet(memberCell, row.original) },
 		{ id: 'access', header: 'Access', enableSorting: false, cell: ({ row }) => renderSnippet(accessCell, row.original) },
+		{ id: 'scope', header: 'Sees all mail', enableSorting: false, cell: ({ row }) => renderSnippet(scopeCell, row.original) },
 		{ id: 'send', header: 'Send', enableSorting: false, cell: ({ row }) => renderSnippet(sendCell, row.original) },
 		{ id: 'manager', header: 'Manager', enableSorting: false, cell: ({ row }) => renderSnippet(managerCell, row.original) }
 	];
@@ -127,6 +129,8 @@
 		run(userId, () => grantMailboxAccess({ mailboxId: mb.id, userId, canSend }));
 	const setManage = (userId: string, canManage: boolean) =>
 		run(userId, () => grantMailboxAccess({ mailboxId: mb.id, userId, canManage }));
+	const setSeesAll = (userId: string, seesAll: boolean) =>
+		run(userId, () => grantMailboxAccess({ mailboxId: mb.id, userId, assignedOnly: !seesAll }));
 
 	// --- Activity ---------------------------------------------------------------
 	const FOLDERS = ['inbox', 'sent', 'archived', 'spam', 'trash'] as const;
@@ -194,6 +198,23 @@
 		onCheckedChange={(v) => setAccess(u.id, v)}
 		aria-label="Access"
 	/>
+{/snippet}
+
+{#snippet scopeCell(u: Member)}
+	{@const grant = grantsMap.get(u.id)}
+	{#if grant}
+		<Switch
+			checked={grant.canManage || !grant.assignedOnly}
+			disabled={busyUser === u.id || grant.canManage}
+			onCheckedChange={(v) => setSeesAll(u.id, v)}
+			aria-label="Sees all mail"
+			title={grant.canManage
+				? 'Managers always see the whole mailbox.'
+				: 'Off: this member sees only threads assigned to them.'}
+		/>
+	{:else}
+		<span class="text-muted-foreground text-xs">—</span>
+	{/if}
 {/snippet}
 
 {#snippet sendCell(u: Member)}

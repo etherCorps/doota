@@ -38,6 +38,7 @@ export async function loadMailboxDetail(db: Db, mailboxId: string, dek: string |
       userId: schema.mailboxAccess.userId,
       canManage: schema.mailboxAccess.canManage,
       canSend: schema.mailboxAccess.canSend,
+      assignedOnly: schema.mailboxAccess.assignedOnly,
     })
     .from(schema.mailboxAccess)
     .where(eq(schema.mailboxAccess.mailboxId, box.id));

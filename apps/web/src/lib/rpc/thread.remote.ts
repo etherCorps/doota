@@ -7,7 +7,12 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import {
+  accessibleMailboxIds,
+  assignedOnlyFor,
+  assignedOnlyMailboxIds,
+  manageGrantUserIds,
+} from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
@@ -28,10 +33,12 @@ function contentKey() {
 }
 
 /**
- * Assert the current user may read this mailbox. Returns the box + whether the
- * user holds an actual mailbox_access GRANT (distinct from org-admin read):
- * internal notes + system events follow the grant, NOT org read — an admin
- * reading a mailbox they aren't a member of sees the mail but never the notes.
+ * Assert the current user may read this mailbox. Returns the box, whether the
+ * user holds an actual mailbox_access GRANT (distinct from org-admin read —
+ * internal notes + system events follow the grant, NOT org read: an admin
+ * reading a mailbox they aren't a member of sees the mail but never the notes),
+ * and `assignedTo`: non-null when this is an assigned-only grantee, in which
+ * case every read is narrowed to threads assigned to them.
  */
 async function assertMailboxAccess(mailboxId: string) {
   const { locals } = getRequestEvent();
@@ -57,14 +64,59 @@ async function assertMailboxAccess(mailboxId: string) {
     );
     if (!orgRead) error(403, "You can't read this mailbox.");
   }
-  return { box, hasGrant };
+  const assignedTo = hasGrant ? await assignedOnlyFor(locals.db, user.id, mailboxId) : null;
+  return { box, hasGrant, assignedTo };
 }
 
 /** Assert the user holds a mailbox_access GRANT (required to read/write notes,
  * assign, or otherwise touch the collaboration layer). */
 async function assertMailboxGrant(mailboxId: string) {
-  const { box, hasGrant } = await assertMailboxAccess(mailboxId);
+  const { box, hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
   if (!hasGrant) error(403, "You need access to this mailbox.");
+  return { ...box, assignedTo };
+}
+
+/**
+ * Grant + per-thread check: an assigned-only member may only act on threads
+ * assigned to them. Every thread-scoped mutation routes through here, so the
+ * restriction can't be dodged by posting a threadId the member can't see.
+ */
+async function assertThreadGrant(mailboxId: string, threadId: string) {
+  const box = await assertMailboxGrant(mailboxId);
+  const { locals } = getRequestEvent();
+  const state = await locals.db.query.threadState.findFirst({
+    where: and(
+      eq(schema.threadState.threadId, threadId),
+      eq(schema.threadState.mailboxId, mailboxId),
+    ),
+    columns: { id: true, placement: true, assigneeUserId: true },
+  });
+  if (!state) error(404, "Thread is not in this mailbox.");
+  if (box.assignedTo && state.assigneeUserId !== box.assignedTo) {
+    error(404, "Thread is not in this mailbox."); // never leak its existence
+  }
+  return { box, state };
+}
+
+/** Assert the user MANAGES this mailbox — a can_manage grant or org-admin.
+ * Assignment is a manager action: restricted members can't hand threads around. */
+async function assertMailboxManage(mailboxId: string) {
+  const { locals } = getRequestEvent();
+  const user = locals.user;
+  if (!user) error(401, "Not authenticated");
+  const box = await locals.db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, mailboxId),
+    columns: { id: true, orgId: true },
+  });
+  if (!box) error(404, "Mailbox not found");
+  const grantedManagerIds = await manageGrantUserIds(locals.db, mailboxId);
+  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const ok = can(
+    { id: user.id, role: user.role, orgAdminOf },
+    "manage",
+    { type: "mailbox", ownerId: "", organizationId: box.orgId, grantedManagerIds },
+  );
+  if (!ok) error(403, "Only a mailbox manager can do that.");
   return box;
 }
 
@@ -83,7 +135,7 @@ export const mailboxThreads = query(
     offset: z.number().int().min(0).default(0),
   }),
   async ({ mailboxId, placement, offset }) => {
-    const { hasGrant } = await assertMailboxAccess(mailboxId);
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
     const { locals } = getRequestEvent();
     const ck = await contentKey();
     return listThreads(locals.db, {
@@ -94,15 +146,16 @@ export const mailboxThreads = query(
       offset,
       includeCollab: hasGrant,
       userId: locals.user!.id,
+      assignedTo,
     });
   },
 );
 
 /** Unread inbox count for the badge/title — refreshed by live inbound events. */
 export const unreadCount = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
-  await assertMailboxAccess(mailboxId);
+  const { assignedTo } = await assertMailboxAccess(mailboxId);
   const { locals } = getRequestEvent();
-  return countUnread(locals.db, { mailboxId, userId: locals.user!.id });
+  return countUnread(locals.db, { mailboxId, userId: locals.user!.id, assignedTo });
 });
 
 /** Recent unread mail across ALL the caller's mailboxes — feeds the bell's
@@ -115,13 +168,14 @@ export const recentUnreadMail = query(async () => {
     userId: locals.user.id,
     ck: await contentKey(),
     mailboxIds,
+    assignedOnlyMailboxIds: await assignedOnlyMailboxIds(locals.db, locals.user.id),
   });
 });
 
 export const openThread = query(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
-    const { hasGrant } = await assertMailboxAccess(mailboxId);
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
     const { locals } = getRequestEvent();
     const ck = await contentKey();
     // Notes/events are included ONLY for grant holders (not org-admin readers).
@@ -131,6 +185,7 @@ export const openThread = query(
       ck,
       includeCollab: hasGrant,
       userId: locals.user!.id,
+      assignedTo,
     });
     if (!dto) error(404, "Thread not found in this mailbox");
     return dto;
@@ -146,14 +201,8 @@ export const openThread = query(
 export const markThreadRead = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
-    const box = await assertMailboxGrant(mailboxId);
+    const { box } = await assertThreadGrant(mailboxId, threadId);
     const { locals } = getRequestEvent();
-    // Thread must actually be in this mailbox (guards a bad threadId).
-    const state = await locals.db.query.threadState.findFirst({
-      where: and(eq(schema.threadState.threadId, threadId), eq(schema.threadState.mailboxId, mailboxId)),
-      columns: { id: true },
-    });
-    if (!state) error(404, "Thread is not in this mailbox.");
     const now = new Date();
     await locals.db
       .insert(mail.threadRead)
@@ -174,12 +223,8 @@ export const moveThread = command(
     placement: z.enum(MOVE_PLACEMENTS),
   }),
   async ({ mailboxId, threadId, placement }) => {
-    const box = await assertMailboxGrant(mailboxId);
+    const { box, state: prev } = await assertThreadGrant(mailboxId, threadId);
     const { locals, locals: { user } } = getRequestEvent();
-    const prev = await locals.db.query.threadState.findFirst({
-      where: and(eq(schema.threadState.threadId, threadId), eq(schema.threadState.mailboxId, mailboxId)),
-      columns: { placement: true },
-    });
     await locals.db
       .update(mail.threadState)
       .set({ placement, hiddenAt: null }) // moving un-hides
@@ -211,12 +256,20 @@ export const bulkMoveThreads = command(
     placement: z.enum(MOVE_PLACEMENTS),
   }),
   async ({ mailboxId, threadIds, placement }) => {
-    await assertMailboxGrant(mailboxId);
+    const box = await assertMailboxGrant(mailboxId);
     const { locals } = getRequestEvent();
     await locals.db
       .update(mail.threadState)
       .set({ placement, hiddenAt: null }) // moving un-hides
-      .where(and(eq(mail.threadState.mailboxId, mailboxId), inArray(mail.threadState.threadId, threadIds)));
+      .where(
+        and(
+          eq(mail.threadState.mailboxId, mailboxId),
+          inArray(mail.threadState.threadId, threadIds),
+          // Assigned-only member: the WHERE itself limits the bulk to their own
+          // threads, so a padded selection silently no-ops on the rest.
+          box.assignedTo ? eq(mail.threadState.assigneeUserId, box.assignedTo) : undefined,
+        ),
+      );
     return { ok: true as const };
   },
 );
@@ -226,7 +279,10 @@ export const bulkMoveThreads = command(
 export const emptyFolder = command(
   z.object({ mailboxId: z.string().min(1), placement: z.enum(["trash", "spam"]) }),
   async ({ mailboxId, placement }) => {
-    await assertMailboxGrant(mailboxId);
+    const box = await assertMailboxGrant(mailboxId);
+    // Emptying hides the folder for everyone — a mailbox-wide act, not one an
+    // assigned-only member may perform.
+    if (box.assignedTo) error(403, "Only a mailbox manager can empty this folder.");
     const { locals } = getRequestEvent();
     await locals.db
       .update(mail.threadState)
@@ -253,6 +309,21 @@ export const bulkMarkRead = command(
     const box = await assertMailboxGrant(mailboxId);
     const { locals } = getRequestEvent();
     const userId = locals.user!.id;
+    if (box.assignedTo) {
+      // Narrow to the member's own threads before writing read cursors.
+      const mine = await locals.db
+        .select({ threadId: schema.threadState.threadId })
+        .from(schema.threadState)
+        .where(
+          and(
+            eq(schema.threadState.mailboxId, mailboxId),
+            inArray(schema.threadState.threadId, threadIds),
+            eq(schema.threadState.assigneeUserId, box.assignedTo),
+          ),
+        );
+      threadIds = mine.map((m) => m.threadId);
+      if (!threadIds.length) return { ok: true as const };
+    }
     if (read) {
       const now = new Date();
       await locals.db
@@ -295,7 +366,7 @@ export const setSenderImageTrust = command(
 export const starThread = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), starred: z.boolean() }),
   async ({ mailboxId, threadId, starred }) => {
-    await assertMailboxGrant(mailboxId);
+    await assertThreadGrant(mailboxId, threadId);
     const { locals } = getRequestEvent();
     await locals.db
       .update(mail.threadState)
@@ -319,13 +390,8 @@ function searchKey(): string {
 export const addNote = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), body: z.string().trim().min(1) }),
   async ({ mailboxId, threadId, body }) => {
-    const box = await assertMailboxGrant(mailboxId);
+    const { box } = await assertThreadGrant(mailboxId, threadId);
     const { locals } = getRequestEvent();
-    const state = await locals.db.query.threadState.findFirst({
-      where: and(eq(schema.threadState.threadId, threadId), eq(schema.threadState.mailboxId, mailboxId)),
-      columns: { id: true },
-    });
-    if (!state) error(404, "Thread is not in this mailbox.");
     return createNote(locals.db, await contentKey(), searchKey(), {
       orgId: box.orgId,
       threadId,
@@ -369,7 +435,11 @@ export const deleteNoteById = command(
   },
 );
 
-/** Assign / reassign / unassign a thread within a mailbox (grant holders only). */
+/**
+ * Assign / reassign / unassign a thread within a mailbox. MANAGERS ONLY
+ * (can_manage grant or org-admin): assignment is what grants an assigned-only
+ * member sight of a thread, so it can't be self-served.
+ */
 export const assignThread = command(
   z.object({
     mailboxId: z.string().min(1),
@@ -377,7 +447,7 @@ export const assignThread = command(
     assigneeUserId: z.string().nullable(),
   }),
   async ({ mailboxId, threadId, assigneeUserId }) => {
-    const box = await assertMailboxGrant(mailboxId);
+    const box = await assertMailboxManage(mailboxId);
     const { locals } = getRequestEvent();
     await doAssign(locals.db, {
       orgId: box.orgId,

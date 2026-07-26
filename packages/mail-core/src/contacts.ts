@@ -2,7 +2,7 @@
 import { and, desc, eq, inArray, like, ne, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
-import { accessibleMailboxIds } from "./mailbox";
+import { accessibleMailboxIds, assignedOnlyMailboxIds } from "./mailbox";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -79,7 +79,12 @@ async function gather(
   for (const r of sent) keep(r.address, null, Number(r.last ?? 0));
 
   // People who have written to the user's mailboxes, most-recent first.
-  const boxIds = await accessibleMailboxIds(db, userId);
+  // ponytail: assigned-only mailboxes are dropped wholesale rather than joined
+  // through thread_state — suggestions lose a few addresses instead of leaking
+  // correspondents from threads the member can't open. Join it in if the
+  // missing suggestions actually bite.
+  const restricted = new Set(await assignedOnlyMailboxIds(db, userId));
+  const boxIds = (await accessibleMailboxIds(db, userId)).filter((id) => !restricted.has(id));
   if (boxIds.length) {
     const recvLast = sql<number>`max(${schema.message.sentAt})`;
     const recv = await db

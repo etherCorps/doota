@@ -77,6 +77,9 @@ export async function listThreads(
     includeCollab?: boolean;
     /** Whose unread state to compute. Absent (no session) → everything unread. */
     userId?: string;
+    /** Assigned-only grantee: show ONLY threads assigned to this user id
+     * (from assignedOnlyFor; null/undefined = full mailbox). */
+    assignedTo?: string | null;
   },
 ): Promise<ThreadSummary[]> {
   const placementCond =
@@ -114,6 +117,9 @@ export async function listThreads(
         eq(schema.threadState.mailboxId, input.mailboxId),
         placementCond,
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
+        input.assignedTo
+          ? eq(schema.threadState.assigneeUserId, input.assignedTo)
+          : undefined,
       ),
     )
     .orderBy(desc(schema.threadState.lastActivityAt))
@@ -233,9 +239,22 @@ export type UnreadNotice = {
  */
 export async function recentUnread(
   db: Db,
-  input: { userId: string; ck: ContentKey; mailboxIds: string[]; limit?: number },
+  input: {
+    userId: string;
+    ck: ContentKey;
+    mailboxIds: string[];
+    /** Mailboxes where this user only sees threads assigned to them. */
+    assignedOnlyMailboxIds?: string[];
+    limit?: number;
+  },
 ): Promise<UnreadNotice[]> {
   if (!input.mailboxIds.length) return [];
+  const restricted = input.assignedOnlyMailboxIds?.length
+    ? or(
+        notInArray(schema.threadState.mailboxId, input.assignedOnlyMailboxIds),
+        eq(schema.threadState.assigneeUserId, input.userId),
+      )
+    : undefined;
   const states = await db
     .select({
       threadId: schema.threadState.threadId,
@@ -255,6 +274,7 @@ export async function recentUnread(
         inArray(schema.threadState.mailboxId, input.mailboxIds),
         eq(schema.threadState.placement, "inbox"),
         isNull(schema.threadState.hiddenAt),
+        restricted,
         isNotNull(schema.threadState.lastInboundAt),
         or(
           isNull(schema.threadRead.lastReadAt),
@@ -292,7 +312,7 @@ export async function recentUnread(
  */
 export async function countUnread(
   db: Db,
-  input: { mailboxId: string; userId: string },
+  input: { mailboxId: string; userId: string; assignedTo?: string | null },
 ): Promise<number> {
   const mbox = await db.query.mailbox.findFirst({
     where: eq(schema.mailbox.id, input.mailboxId),
@@ -334,6 +354,7 @@ export async function countUnread(
         eq(schema.threadState.mailboxId, input.mailboxId),
         eq(schema.threadState.placement, "inbox"),
         isNull(schema.threadState.hiddenAt),
+        input.assignedTo ? eq(schema.threadState.assigneeUserId, input.assignedTo) : undefined,
         newerThanCursor,
       ),
     );
@@ -343,7 +364,15 @@ export async function countUnread(
 /** Full thread DTO for a mailbox: timeline items + this mailbox's triage. */
 export async function getThread(
   db: Db,
-  input: { threadId: string; mailboxId: string; ck: ContentKey; includeCollab?: boolean; userId?: string },
+  input: {
+    threadId: string;
+    mailboxId: string;
+    ck: ContentKey;
+    includeCollab?: boolean;
+    userId?: string;
+    /** Assigned-only grantee: the thread opens only if assigned to this user. */
+    assignedTo?: string | null;
+  },
 ): Promise<ThreadDTO | null> {
   // Preamble: three independent reads in parallel (was three serial round-trips).
   //  - state gates the whole thing (thread must be in this mailbox);
@@ -373,6 +402,9 @@ export async function getThread(
     }),
   ]);
   if (!state) return null; // not delivered to this mailbox
+  // Assigned-only grantee: not theirs → invisible (same 404 as "not in this
+  // mailbox", so the restriction never leaks the thread's existence).
+  if (input.assignedTo && state.assigneeUserId !== input.assignedTo) return null;
   const readCursor = readRow?.lastReadAt ? readRow.lastReadAt.getTime() : null;
 
   // Visibility model: a SHARED mailbox shows the whole conversation (team

@@ -6,7 +6,7 @@ import { and, desc, eq, gte, inArray, isNotNull, like, lte, or } from "drizzle-o
 import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { searchMailbox, words } from "@doota/mail-core/search";
-import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { accessibleMailboxIds, assignedOnlyMailboxIds } from "@doota/mail-core/mailbox";
 import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
 
 /**
@@ -199,6 +199,25 @@ export const searchMail = query(
         const last = readAt.get(`${r.threadId}|${msgToBox.get(r.id)}`);
         const isUnread = last == null || (r.sentAt != null && last < r.sentAt.getTime());
         return unread ? isUnread : !isUnread;
+      });
+    }
+
+    // Assigned-only mailboxes: a hit only survives if the thread is assigned to
+    // the searcher — search must never widen what the mailbox itself shows.
+    const restricted = await assignedOnlyMailboxIds(locals.db, locals.user.id);
+    if (restricted.length && hits.length) {
+      const mine = await locals.db.query.threadState.findMany({
+        where: and(
+          inArray(schema.threadState.mailboxId, restricted),
+          inArray(schema.threadState.threadId, hits.map((r) => r.threadId)),
+          eq(schema.threadState.assigneeUserId, locals.user.id),
+        ),
+        columns: { threadId: true, mailboxId: true },
+      });
+      const ok = new Set(mine.map((s) => `${s.threadId}|${s.mailboxId}`));
+      hits = hits.filter((r) => {
+        const box = msgToBox.get(r.id)!;
+        return !restricted.includes(box) || ok.has(`${r.threadId}|${box}`);
       });
     }
 
