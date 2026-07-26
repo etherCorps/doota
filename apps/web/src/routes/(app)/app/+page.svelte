@@ -439,6 +439,25 @@
 		items = items.map((t) => (t.threadId === id ? { ...t, ...patch } : t));
 	}
 
+	// Coherent star/assignee between the list and the open-thread header: ONE
+	// source, patched in place — never a full thread refetch to flip a boolean.
+	// Priority: optimistic override → the list row (when the open thread is
+	// loaded) → the thread DTO (direct-URL case). Override resets per thread.
+	const openThreadItem = $derived(items.find((t) => t.threadId === threadId));
+	let openFlagOverride = $state<{ isStarred?: boolean; assigneeUserId?: string | null }>({});
+	$effect(() => {
+		void threadId;
+		untrack(() => (openFlagOverride = {}));
+	});
+	const openStarred = $derived(
+		openFlagOverride.isStarred ?? openThreadItem?.isStarred ?? openDto?.isStarred ?? false
+	);
+	const openAssignee = $derived(
+		'assigneeUserId' in openFlagOverride
+			? (openFlagOverride.assigneeUserId ?? null)
+			: (openThreadItem?.assigneeUserId ?? openDto?.assigneeUserId ?? null)
+	);
+
 	async function refresh() {
 		await threadQ?.refresh();
 		await loadThreads(true);
@@ -471,8 +490,12 @@
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
-		await assignThread({ mailboxId, threadId: id, assigneeUserId: userId });
+		// Header + list flip instantly via the overlay; the thread refetch is only
+		// to pull the "assigned to X" system-event into the timeline (a real
+		// server-side effect, unlike star), not to sync the badge.
+		openFlagOverride = { ...openFlagOverride, assigneeUserId: userId };
 		patchItem(id, { assigneeUserId: userId });
+		await assignThread({ mailboxId, threadId: id, assigneeUserId: userId });
 		await threadQ?.refresh();
 	}
 	async function removeNote(noteId: string) {
@@ -515,9 +538,17 @@
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
-		await starThread({ mailboxId, threadId: id, starred: !current });
-		patchItem(id, { isStarred: !current });
-		await threadQ?.refresh();
+		const next = !current;
+		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
+		// failure (star carries no server-side side effects to re-pull).
+		openFlagOverride = { ...openFlagOverride, isStarred: next };
+		patchItem(id, { isStarred: next });
+		try {
+			await starThread({ mailboxId, threadId: id, starred: next });
+		} catch {
+			openFlagOverride = { ...openFlagOverride, isStarred: current };
+			patchItem(id, { isStarred: current });
+		}
 	}
 
 	// Which message the docked composer replies to. null = default (latest
@@ -1616,8 +1647,8 @@
 								<DropdownMenu.Trigger>
 									{#snippet child({ props })}
 										<Button variant="outline" size="sm" class="h-8 gap-1.5" {...props}>
-											<UserRoundIcon class="size-3.5 {thread.assigneeUserId ? 'text-brand' : ''}" />
-											<span class="max-w-[12ch] truncate text-xs">{thread.assigneeUserId ? short(thread.assigneeUserId, members) : 'Unassigned'}</span>
+											<UserRoundIcon class="size-3.5 {openAssignee ? 'text-brand' : ''}" />
+											<span class="max-w-[12ch] truncate text-xs">{openAssignee ? short(openAssignee, members) : 'Unassigned'}</span>
 										</Button>
 									{/snippet}
 								</DropdownMenu.Trigger>
@@ -1626,10 +1657,10 @@
 									{#each members as mem (mem.userId)}
 										<DropdownMenu.Item onSelect={() => assign(mem.userId)}>
 											<span class="flex-1 truncate">{mem.name}</span>
-											{#if thread.assigneeUserId === mem.userId}<CheckIcon class="size-4" />{/if}
+											{#if openAssignee === mem.userId}<CheckIcon class="size-4" />{/if}
 										</DropdownMenu.Item>
 									{/each}
-									{#if thread.assigneeUserId}
+									{#if openAssignee}
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item onSelect={() => assign(null)}>Unassign</DropdownMenu.Item>
 									{/if}
@@ -1682,8 +1713,8 @@
 								<SearchIcon class="size-4" />
 							</Button>
 						{/if}
-						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
-							<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
+						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={openStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(openStarred)}>
+							<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''}" />
 						</Button>
 						{#if msgs.length}
 							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward conversation" onclick={() => forwardThread(msgs, thread.subject)}>
@@ -1750,9 +1781,9 @@
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content class="w-48" align="end">
-								<DropdownMenu.Item onSelect={() => toggleStar(thread.isStarred)}>
-									<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
-									{thread.isStarred ? 'Unstar' : 'Star'}
+								<DropdownMenu.Item onSelect={() => toggleStar(openStarred)}>
+									<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''}" />
+									{openStarred ? 'Unstar' : 'Star'}
 								</DropdownMenu.Item>
 								{#if msgs.length}
 									<DropdownMenu.Item onSelect={() => forwardThread(msgs, thread.subject)}>
