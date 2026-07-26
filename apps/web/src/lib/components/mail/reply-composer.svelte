@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { useDebounce } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -21,10 +21,12 @@
 		autosaveDraft,
 		sendDraftById,
 		undoDraftById,
+		discardDraftById,
 		detachDraftAttachment
 	} from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
+	import { replySubject } from '@doota/mail-core/mail-thread-contract';
 	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 
 	// Inline reply docked at the bottom of an open thread — the primary compose
@@ -36,9 +38,12 @@
 		threadId,
 		parentMessageId,
 		toAddress,
+		subject = null,
 		to,
 		toAll,
 		ccAll,
+		initialScope = 'reply',
+		autoOpen = false,
 		defaultAliasId = null,
 		identities,
 		onchange
@@ -48,6 +53,12 @@
 		parentMessageId: string | null;
 		/** Display label (the reply target). */
 		toAddress: string;
+		/** Thread subject — replies leave with a proper `Re:` (no stacking). */
+		subject?: string | null;
+		/** Opening scope: a per-message "Reply all" click starts in reply_all. */
+		initialScope?: 'reply' | 'reply_all';
+		/** Expand immediately (user explicitly picked a message to reply to). */
+		autoOpen?: boolean;
 		/** Reply recipient set (just the target). */
 		to: string[];
 		/** Reply-all recipient sets (self already excluded, computed by the page). */
@@ -100,6 +111,7 @@
 
 	let sendMailboxId = $state('');
 	let aliasId = $state<string | null | undefined>(undefined);
+	let subjectText = $state('');
 	let body = $state('');
 	let editorKey = $state(0);
 	let attachments = $state<AttachmentRef[]>([]);
@@ -127,11 +139,19 @@
 	onMount(() => {
 		sendMailboxId = mailboxId;
 		aliasId = defaultAliasId;
-		replyAll = false;
-		toList = uniqLc([...to]);
-		ccList = [];
-		showCc = false;
-		collapsed = isMobile.current;
+		subjectText = replySubject(subject, initialScope);
+		if (initialScope === 'reply_all') {
+			replyAll = true;
+			toList = uniqLc([...to, ...toAll]);
+			ccList = uniqLc([...ccAll]);
+			showCc = ccList.length > 0;
+		} else {
+			replyAll = false;
+			toList = uniqLc([...to]);
+			ccList = [];
+			showCc = false;
+		}
+		collapsed = autoOpen ? false : isMobile.current;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
 		if (local?.body) {
@@ -170,6 +190,7 @@
 			fromAliasId: aliasId ?? null,
 			to: recips.to,
 			cc: recips.cc,
+			subject: subjectText,
 			body
 		});
 		draftId = d.id;
@@ -207,7 +228,19 @@
 
 	async function flushSave() {
 		scheduleSave.cancel();
-		if (!hasBody) return;
+		// Cleared out → an empty reply is not a draft. Delete the row if one exists
+		// (Gmail/Superhuman/Fastmail all discard an emptied draft) so it can't linger
+		// in Drafts with stale text. Recipients are auto-filled, so they don't count.
+		if (!hasBody && attachments.length === 0) {
+			if (draftId) {
+				const id = draftId;
+				draftId = null;
+				clientRevision = 0;
+				clearMirror(mirrorKey);
+				await discardDraftById({ draftId: id });
+			}
+			return;
+		}
 		if (!draftId) {
 			// The create may already be in flight carrying an older body snapshot —
 			// fall through and autosave the current text instead of trusting it.
@@ -219,6 +252,7 @@
 			draftId,
 			clientRevision,
 			body,
+			subject: subjectText,
 			to: recips.to,
 			cc: recips.cc,
 			fromAliasId: aliasId ?? null
@@ -229,8 +263,16 @@
 		} else {
 			clientRevision = res.draft.clientRevision;
 			body = res.draft.body ?? body;
+			subjectText = res.draft.subject ?? subjectText;
 		}
 	}
+
+	// Safety net for the race where the reply is cleared then the thread is switched
+	// (this component unmounts) before the debounced flushSave fires — don't strand
+	// an empty husk in Drafts. Best-effort; the component is going away.
+	onDestroy(() => {
+		if (draftId && !hasBody && attachments.length === 0) void discardDraftById({ draftId });
+	});
 
 	const canSend = $derived((hasBody || attachments.length > 0) && hasRecipient);
 
@@ -270,6 +312,7 @@
 			draftId = res.draft.id;
 			clientRevision = res.draft.clientRevision;
 			body = res.draft.body ?? '';
+			subjectText = res.draft.subject ?? subjectText;
 			aliasId = res.draft.fromAliasId;
 			editorKey++;
 		} else {
@@ -402,6 +445,18 @@
 					</button>
 				</div>
 			{/if}
+			<!-- Subject stays editable (Outlook/Apple style). Safe to change: Doota
+			     threads on References/In-Reply-To headers, not the subject line. -->
+			<div class="flex items-center gap-2">
+				<span class="text-muted-foreground w-6 shrink-0 text-xs">Re</span>
+				<input
+					type="text"
+					bind:value={subjectText}
+					oninput={scheduleSave}
+					placeholder="Subject"
+					class="focus-visible:ring-ring/40 min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2"
+				/>
+			</div>
 			{#key editorKey}
 				<TiptapEditor
 					initial={body}

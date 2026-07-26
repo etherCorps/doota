@@ -8,6 +8,7 @@ import { indexMessage, tokensFor } from "./search";
 import {
   candidateParentIds,
   deriveContentKind,
+  htmlToText,
   normalizeSubject,
   stripHtmlTags,
   stripQuotesText,
@@ -178,7 +179,9 @@ export async function materializeMessage(
 
   const threadId = await resolveThreadId(db, orgId, parsed);
   const strippedText = parsed.text ? stripQuotesText(parsed.text) : "";
-  const bodyFull = parsed.text ?? (parsed.html ? stripHtmlTags(parsed.html) : null);
+  // htmlToText (line-preserving), not stripHtmlTags: an HTML-only message's text
+  // twin renders as a plain-text bubble — flattening breaks reads as one run-on line.
+  const bodyFull = parsed.text ?? (parsed.html ? htmlToText(parsed.html) : null);
   const contentKind = deriveContentKind({
     strippedText,
     hasAttachments: parsed.attachments.length > 0,

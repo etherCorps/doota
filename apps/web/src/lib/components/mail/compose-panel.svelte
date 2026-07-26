@@ -8,6 +8,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import FromSelector from './from-selector.svelte';
 	import RecipientInput from './recipient-input.svelte';
@@ -198,6 +199,9 @@
 			to = prefill.to ? [prefill.to.toLowerCase()] : [];
 			subject = prefill.subject ?? '';
 			body = prefill.body ?? '';
+			// The editor only reads `initial` on mount — remount it so a forwarded
+			// body actually renders (resume path already does this above).
+			editorKey++;
 		}
 		const chosen =
 			(prefill?.mailboxId &&
@@ -224,6 +228,8 @@
 					? 'Schedule send'
 					: 'Send  (⌘↵)'
 	);
+	// Gmail-style: an empty subject doesn't block the send, it asks first.
+	let confirmNoSubject = $state(false);
 
 	// Schedule-send presets. Arming one fills the datetime input (reviewable) and
 	// flips the primary button to “Schedule” — it does NOT fire immediately.
@@ -404,8 +410,13 @@
 		attachments = res.attachments;
 	}
 
-	async function send() {
+	async function send(force = false) {
 		if (!canSend) return;
+		// Empty subject: confirm once (Gmail style), then proceed on the retry.
+		if (!force && subject.trim().length === 0) {
+			confirmNoSubject = true;
+			return;
+		}
 		phase = 'sending';
 		let res!: Awaited<ReturnType<typeof sendDraftById>>;
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
@@ -734,7 +745,7 @@
 									scheduleSave();
 								}}
 								onattach={() => fileInput?.click()}
-								onsend={send}
+								onsend={() => send()}
 							/>
 						{/key}
 					</div>
@@ -774,7 +785,7 @@
 					</div>
 					<!-- Split send: primary sends now (⌘↵); caret opens schedule presets. -->
 					<div class="inline-flex">
-						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend || phase === 'sending'} title={sendHint} onclick={send}>
+						<Button variant="brand" size="sm" class="gap-1.5 rounded-r-none" disabled={!canSend || phase === 'sending'} title={sendHint} onclick={() => send()}>
 							{#if phase === 'sending'}
 								<Spinner class="size-4" /> Sending…
 							{:else}
@@ -806,6 +817,19 @@
 		<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFiles} />
 		</div>
 {/snippet}
+
+<AlertDialog.Root bind:open={confirmNoSubject}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Send without a subject?</AlertDialog.Title>
+			<AlertDialog.Description>This message has no subject line.</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Add subject</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={() => send(true)}>Send anyway</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 {#if open}
 	{#if asDrawer}

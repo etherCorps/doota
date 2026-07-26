@@ -7,7 +7,7 @@ import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
-import { FAILED_SEND_STATUSES, stripHtmlTags } from "./mail-thread-contract";
+import { FAILED_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
 
 /** A draft body is HTML (rich composer). Detect plain-text bodies so legacy/
  * plain content isn't mangled — wrap them into minimal HTML on send. */
@@ -38,7 +38,9 @@ function toHtmlAndText(body: string | null): { html: string | null; text: string
     // grip — editor chrome, not content. Left in, the grip renders (and works)
     // in the recipient's view. The chosen width stays; the grip goes.
     const html = trimTrailingHtml(body).replace(/resize:\s*both;?/gi, "");
-    return { html: html || null, text: stripHtmlTags(html) || null };
+    // htmlToText, not stripHtmlTags: the text twin renders as a plain-text bubble,
+    // so paragraph/line breaks must survive (stripHtmlTags flattens them to spaces).
+    return { html: html || null, text: htmlToText(html) || null };
   }
   // Plain text → trim the accidental tail, escape + line breaks so it renders
   // faithfully on the wire. A plain body should never carry HTML entities, but

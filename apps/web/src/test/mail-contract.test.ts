@@ -7,6 +7,9 @@ import {
   stripQuotesText,
   stripQuotesHtml,
   stripHtmlTags,
+  htmlToText,
+  replySubject,
+  isRichHtml,
   deriveContentKind,
 } from "@doota/mail-core/mail-thread-contract";
 import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
@@ -65,6 +68,39 @@ describe("quote stripping", () => {
   });
   it("strips tags to plain text", () => {
     expect(stripHtmlTags("<p>Hello&nbsp;<b>world</b></p>")).toBe("Hello world");
+  });
+  it("htmlToText keeps paragraph/line breaks (bubble render)", () => {
+    expect(htmlToText("<p>line one</p><p>line two</p>")).toBe("line one\nline two");
+    expect(htmlToText("a<br>b<br><br>c")).toBe("a\nb\n\nc");
+    // Runaway blank lines capped at one; stripHtmlTags would flatten all of this.
+    expect(htmlToText("<p>a</p><p></p><p></p><p></p><p>b</p>")).toBe("a\n\nb");
+  });
+});
+
+describe("rich html classification", () => {
+  it("treats plain conversational html as NOT rich (renders as text bubble)", () => {
+    expect(isRichHtml("<p>hey there</p>")).toBe(false);
+    expect(isRichHtml("<p>line one</p><p>line <strong>two</strong></p>")).toBe(false);
+    expect(isRichHtml('<p>see <a href="https://x.com">this</a></p>')).toBe(false);
+    expect(isRichHtml("<p>a<br>b</p>")).toBe(false);
+  });
+  it("treats templates/rich markup as rich (renders as HTML frame)", () => {
+    expect(isRichHtml('<table><tr><td>x</td></tr></table>')).toBe(true);
+    expect(isRichHtml('<p>hi</p><img src="logo.png">')).toBe(true);
+    expect(isRichHtml("<ul><li>one</li></ul>")).toBe(true);
+    expect(isRichHtml("<h1>Newsletter</h1>")).toBe(true);
+    expect(isRichHtml('<div style="background:#eee;padding:20px">promo</div>')).toBe(true);
+  });
+});
+
+describe("reply subject", () => {
+  it("prefixes Re:/Fwd: without stacking", () => {
+    expect(replySubject("Hello", "reply")).toBe("Re: Hello");
+    expect(replySubject("Hello", "reply_all")).toBe("Re: Hello");
+    expect(replySubject("Re: Hello", "reply")).toBe("Re: Hello");
+    expect(replySubject("Fwd: Re: Hi", "forward")).toBe("Fwd: Hi");
+    expect(replySubject("", "reply")).toBe(""); // no-subject thread stays blank
+    expect(replySubject(null, "forward")).toBe("");
   });
 });
 

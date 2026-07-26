@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, tick } from 'svelte';
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
@@ -49,6 +49,7 @@
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
+	import { replySubject, isRichHtml } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
@@ -59,6 +60,8 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ForwardIcon from '@lucide/svelte/icons/forward';
+	import ReplyIcon from '@lucide/svelte/icons/reply';
+	import ReplyAllIcon from '@lucide/svelte/icons/reply-all';
 	import StarIcon from '@lucide/svelte/icons/star';
 	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -492,17 +495,55 @@
 		await threadQ?.refresh();
 	}
 
-	// Reply context (computed from the loaded thread).
-	function replyCtx(msgs: MessageDTO[]) {
-		const lastInbound = [...msgs].reverse().find((m) => !m.outbound);
-		const parent = msgs.at(-1);
-		const target = lastInbound?.replyTo || lastInbound?.from || parent?.from || '';
-		const self = new Set(identities.map((i) => i.address.toLowerCase()));
+	// Which message the docked composer replies to. null = default (latest
+	// inbound); a per-message Reply/Reply-all button sets an explicit target so
+	// the audience is computed from THAT message, not guessed from the thread.
+	let replyTarget = $state<{ msgId: string; scope: 'reply' | 'reply_all' } | null>(null);
+	let composerEl = $state<HTMLElement>();
+	let composerFlash = $state(false);
+	// Every action needs a response: retarget, then scroll the (docked, easy-to-miss)
+	// composer into view and flash it so the click is unmistakably acknowledged.
+	async function replyTo(m: MessageDTO, scope: 'reply' | 'reply_all') {
+		replyTarget = { msgId: m.id, scope };
+		await tick(); // let the composer remount with the new audience first
+		composerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		composerFlash = true;
+		setTimeout(() => (composerFlash = false), 900);
+	}
+	const selfSet = () => new Set(identities.map((i) => i.address.toLowerCase()));
+	// Reply-all only means something when the message reaches ≥2 people besides you.
+	function msgCanReplyAll(m: MessageDTO): boolean {
+		const self = selfSet();
+		const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map((a) => a.toLowerCase()));
+		for (const s of self) all.delete(s);
+		return all.size >= 2;
+	}
+
+	// Reply context. Audience is derived from ONE message — the explicitly chosen
+	// target, else the latest inbound (falling back to the newest). reply-one goes
+	// to the sender (inbound) or the person you wrote to (outbound); reply-all adds
+	// the rest of that message's To/Cc, minus your own identities.
+	function replyCtx(msgs: MessageDTO[], target: { msgId: string; scope: 'reply' | 'reply_all' } | null) {
+		const chosen = target ? msgs.find((m) => m.id === target.msgId) : undefined;
+		const base = chosen ?? [...msgs].reverse().find((m) => !m.outbound) ?? msgs.at(-1);
+		const self = selfSet();
 		const notSelf = (a: string) => a && !self.has(a.toLowerCase());
-		const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.toLowerCase()))];
-		const toAll = uniq([target, ...(lastInbound?.to ?? [])]).filter(notSelf);
-		const ccAll = uniq(lastInbound?.cc ?? []).filter((a) => notSelf(a) && !toAll.includes(a));
-		return { target, toAll, ccAll, aliasId: lastInbound?.viaAliasId ?? null, parent };
+		const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean).map((x) => x.toLowerCase()))];
+		const primary = base?.outbound
+			? (base.to[0] ?? base.cc[0] ?? '')
+			: base?.replyTo || base?.from || '';
+		const toAll = uniq([primary, base?.from ?? '', ...(base?.to ?? [])]).filter(notSelf);
+		const ccAll = uniq(base?.cc ?? []).filter((a) => notSelf(a) && !toAll.includes(a));
+		return {
+			target: primary,
+			toAll,
+			ccAll,
+			aliasId: base?.viaAliasId ?? null,
+			parent: base,
+			// Explicit target drives the composer's opening scope + auto-expand.
+			scope: (chosen ? target!.scope : 'reply') as 'reply' | 'reply_all',
+			autoOpen: !!chosen
+		};
 	}
 
 	// Remote images (tracking pixels) are blocked by default via CSP inside the
@@ -690,18 +731,45 @@
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
 	// the single ComposePanel is mounted in the (app) layout.
-	function forward(parent: MessageDTO, subject: string | null) {
+	// The composer editor reads HTML, so forwarded content is built as HTML — a
+	// plain-text body with \n renders as one flat line. Text twin + <br> keeps it
+	// reliable in the editor (rich-template fidelity is limited by TipTap).
+	const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	function fwdBlock(m: MessageDTO): string {
+		const orig = escHtml(m.bodyFull ?? m.bodyStripped ?? '').replace(/\r?\n/g, '<br>');
+		const header = [
+			`From: ${m.from ?? ''}`,
+			m.sentAt ? `Date: ${new Date(m.sentAt).toLocaleString()}` : '',
+			`Subject: ${m.subject ?? ''}`,
+			m.to.length ? `To: ${m.to.join(', ')}` : ''
+		]
+			.filter(Boolean)
+			.map((l) => `<p>${escHtml(l)}</p>`)
+			.join('');
+		return `${header}<blockquote>${orig}</blockquote>`;
+	}
+	// A forward starts a NEW conversation (Gmail/Superhuman/Fastmail): no threadId,
+	// no In-Reply-To — otherwise it threads into the source conversation.
+	function startForward(subject: string | null, header: string, blocks: string) {
 		if (!mailboxId) return;
 		compose.start({
 			prefill: {
 				kind: 'forward',
 				mailboxId,
-				threadId,
-				inReplyToMessageId: parent.messageIdHeader,
-				subject: `Fwd: ${subject ?? ''}`.trim(),
-				body: `\n\n---------- Forwarded message ----------\nFrom: ${parent.from ?? ''}\n\n${parent.bodyFull ?? parent.bodyStripped ?? ''}`
+				threadId: null,
+				inReplyToMessageId: null,
+				subject: replySubject(subject, 'forward'),
+				body: `<p></p><p>${header}</p>${blocks}`
 			}
 		});
+	}
+	function forward(parent: MessageDTO, subject: string | null) {
+		startForward(parent.subject ?? subject, '---------- Forwarded message ----------', fwdBlock(parent));
+	}
+	// Whole-thread forward: every message stacked oldest→newest as quoted blocks.
+	function forwardThread(msgs: MessageDTO[], subject: string | null) {
+		const blocks = msgs.map((m) => fwdBlock(m)).join('<p></p>');
+		startForward(subject, '---------- Forwarded conversation ----------', blocks);
 	}
 	function openDraft(id: string) {
 		compose.start({ resumeDraftId: id });
@@ -845,6 +913,39 @@
 				{r.address} — {r.status}{r.bounceType ? ` (${r.bounceType} bounce)` : ''}
 			</p>
 		{/each}
+	</div>
+{/snippet}
+
+<!-- Per-message reply/reply-all/forward. Retargets the docked composer to THIS
+     message (unambiguous audience) instead of the thread-level guess. -->
+{#snippet msgActions(m: MessageDTO, align: 'start' | 'end', subject: string | null)}
+	<div class="mt-1 flex items-center gap-0.5 {align === 'end' ? 'justify-end' : ''}">
+		<button
+			type="button"
+			title="Reply"
+			onclick={() => replyTo(m, 'reply')}
+			class="text-faint hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md transition-colors outline-none focus-visible:ring-2"
+		>
+			<ReplyIcon class="size-3.5" />
+		</button>
+		{#if msgCanReplyAll(m)}
+			<button
+				type="button"
+				title="Reply all"
+				onclick={() => replyTo(m, 'reply_all')}
+				class="text-faint hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md transition-colors outline-none focus-visible:ring-2"
+			>
+				<ReplyAllIcon class="size-3.5" />
+			</button>
+		{/if}
+		<button
+			type="button"
+			title="Forward"
+			onclick={() => forward(m, subject)}
+			class="text-faint hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md transition-colors outline-none focus-visible:ring-2"
+		>
+			<ForwardIcon class="size-3.5" />
+		</button>
 	</div>
 {/snippet}
 
@@ -1279,7 +1380,7 @@
 			{#if openDto}
 				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
-					{@const ctx = replyCtx(msgs)}
+					{@const ctx = replyCtx(msgs, replyTarget)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					{@const ppl = participants(msgs)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
@@ -1361,9 +1462,8 @@
 						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
 							<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
 						</Button>
-						{#if ctx.parent}
-							{@const p = ctx.parent}
-							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward" onclick={() => forward(p, thread.subject)}>
+						{#if msgs.length}
+							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward conversation" onclick={() => forwardThread(msgs, thread.subject)}>
 								<ForwardIcon class="size-4" />
 							</Button>
 						{/if}
@@ -1431,10 +1531,9 @@
 									<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
 									{thread.isStarred ? 'Unstar' : 'Star'}
 								</DropdownMenu.Item>
-								{#if ctx.parent}
-									{@const p = ctx.parent}
-									<DropdownMenu.Item onSelect={() => forward(p, thread.subject)}>
-										<ForwardIcon class="size-4" /> Forward
+								{#if msgs.length}
+									<DropdownMenu.Item onSelect={() => forwardThread(msgs, thread.subject)}>
+										<ForwardIcon class="size-4" /> Forward conversation
 									</DropdownMenu.Item>
 								{/if}
 								<DropdownMenu.Separator />
@@ -1485,7 +1584,7 @@
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
-												{#if m.contentKind === 'card' && m.bodyHtml}
+												{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
 													{@const allow = loadedImages.has(m.id)}
 													<!-- Outbound bubbles are ink (inverted vs the app mode), so the frame's
 													     text scheme follows the BUBBLE surface, and the frame stays
@@ -1544,6 +1643,7 @@
 											{#if m.submission?.tick === 'warning'}
 												{@render sendFailure(m.submission)}
 											{/if}
+											{@render msgActions(m, outbound ? 'end' : 'start', thread.subject)}
 										</div>
 									</div>
 								{:else if item.type === 'external_message'}
@@ -1587,7 +1687,7 @@
 									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
-											{#if m.contentKind === 'card' && m.bodyHtml}
+											{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
 												{@const allow = loadedImages.has(m.id)}
 												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
 												     content. allow-same-origin WITHOUT allow-scripts stays inert —
@@ -1612,6 +1712,7 @@
 													</div>
 												{/if}
 											{/if}
+											{@render msgActions(m, 'end', thread.subject)}
 										</div>
 									{/if}
 								</article>
@@ -1708,20 +1809,33 @@
 								<NoteComposer {mailboxId} threadId={thread.id} onchange={refresh} />
 							{/key}
 						{:else if ctx.target}
-							{#key thread.id}
-								<ReplyComposer
-									{mailboxId}
-									threadId={thread.id}
-									parentMessageId={ctx.parent?.messageIdHeader ?? null}
-									toAddress={ctx.target}
-									to={[ctx.target]}
-									toAll={ctx.toAll}
-									ccAll={ctx.ccAll}
-									defaultAliasId={ctx.aliasId}
-									{identities}
-									onchange={refresh}
-								/>
-							{/key}
+							<!-- Re-key on the picked message + scope so a per-message Reply
+							     remounts the composer with THAT message's audience. The wrapper
+							     is the scroll/flash target that acknowledges the click. -->
+							<div
+								bind:this={composerEl}
+								class="transition-shadow duration-300 motion-reduce:transition-none {composerFlash
+									? 'ring-brand/60 rounded-t-2xl ring-2'
+									: ''}"
+							>
+								{#key `${thread.id}:${replyTarget?.msgId ?? ''}:${replyTarget?.scope ?? ''}`}
+									<ReplyComposer
+										{mailboxId}
+										threadId={thread.id}
+										parentMessageId={ctx.parent?.messageIdHeader ?? null}
+										toAddress={ctx.target}
+										subject={thread.subject}
+										to={[ctx.target]}
+										toAll={ctx.toAll}
+										ccAll={ctx.ccAll}
+										initialScope={ctx.scope}
+										autoOpen={ctx.autoOpen}
+										defaultAliasId={ctx.aliasId}
+										{identities}
+										onchange={refresh}
+									/>
+								{/key}
+							</div>
 						{/if}
 					{/if}
 			{:else}

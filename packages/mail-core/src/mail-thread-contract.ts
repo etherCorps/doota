@@ -199,6 +199,64 @@ export function stripQuotesHtml(html: string): string {
   return (at === -1 ? html : html.slice(0, at)).trim();
 }
 
+/**
+ * HTML → text PRESERVING line structure: block-closing tags and <br> become
+ * newlines, only spaces/tabs collapse. Use for a body that gets RENDERED as a
+ * plain-text bubble (composer output, HTML-only inbound) — stripHtmlTags flattens
+ * every break into one space, which reads as a single run-on line. Runs in
+ * Workers + node (no DOM).
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|blockquote|tr|pre)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ \t]+/g, " ") // collapse spaces/tabs, NOT newlines
+    .replace(/[ \t]*\n[ \t]*/g, "\n") // trim padding around each break
+    .replace(/\n{3,}/g, "\n\n") // cap runaway blank-line runs at one
+    .trim();
+}
+
+/**
+ * Is this HTML a "template" (newsletter / marketing / rich transactional) rather
+ * than plain conversational content? Drives render: rich → sandboxed HTML frame
+ * (faithful), normal → plain-text bubble (chatty, uses the line-preserving text
+ * twin). bodyHtml presence can't decide it — our composer wraps even a one-line
+ * reply in <p> — so we look for STRUCTURE/STYLING our replies never emit.
+ *
+ * Biased toward rich: a false positive just renders faithfully in the frame
+ * (harmless); a false negative flattens a real template to text (the bug). Our
+ * Tiptap output (<p>/<strong>/<em>/<u>/<a>/<br>) has no rich tag and no inline
+ * style, so simple replies stay bubbles.
+ * ponytail: tag/attr heuristic. If a real template slips through as text, add its
+ * signal here (or swap to a DOM walk) — no re-materialize needed, it's render-time.
+ */
+export function isRichHtml(html: string): boolean {
+  return (
+    /<(img|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|hr|button|blockquote|figure|video|iframe|style|font|center)\b/i.test(
+      html,
+    ) || /\sstyle\s*=/i.test(html)
+  );
+}
+
+/**
+ * Prefix a reply/forward subject the way every mail client expects — `Re:` for a
+ * reply, `Fwd:` for a forward — WITHOUT stacking (a reply to "Re: hi" stays
+ * "Re: hi", not "Re: Re: hi"). Empty base stays empty (a no-subject thread's
+ * reply carries no subject rather than a bare "Re:").
+ */
+export function replySubject(base: string | null | undefined, kind: string): string {
+  const bare = (base ?? "").replace(/^[ \t]*((re|fwd|fw|aw|sv)(\[\d+\])?:[ \t]*)+/i, "").trim();
+  if (!bare) return "";
+  return `${kind === "forward" ? "Fwd" : "Re"}: ${bare}`;
+}
+
 /** Crude HTML → text: drop tags + decode a few common entities. For search
  * tokens and a text fallback when a message is HTML-only. ponytail: good enough
  * for indexing; the raw HTML stays canonical in R2 for faithful rendering. */
