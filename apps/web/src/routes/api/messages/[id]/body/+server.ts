@@ -8,6 +8,7 @@ import { sanitizeEmailHtml, buildFramedDocument } from "@doota/mail-core/sanitiz
 import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { linkifySegments } from "$lib/utils/linkify.js";
 
 /**
  * Serve ONE message's HTML body, sanitized, as an isolated document for the
@@ -43,6 +44,7 @@ const INJECTED_SCRIPT =
   "var m=t.match(/^(?:https?:\\/\\/)?([a-z0-9.-]+\\.[a-z]{2,})/i);return m?m[1].toLowerCase():null;}" +
   "document.addEventListener('click',function(e){" +
   "var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a)return;e.preventDefault();" +
+  "if(a.id==='__viewfull'){parent.postMessage({__mailframe:1,type:'viewfull'},'*');return;}" +
   "var href=a.getAttribute('href')||'';" +
   "if(!/^[a-z][a-z0-9+.-]*:/i.test(href))return;" + // absolute-scheme only; drop relative
   "var u;try{u=new URL(href);}catch(_){return;}var s=u.protocol.toLowerCase();" +
@@ -68,6 +70,8 @@ async function sha256Base64(s: string): Promise<string> {
 
 const escapeText = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+const escapeAttr = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
  * 'self' and the browser never fetches from the sender directly. */
@@ -113,6 +117,9 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
   const ck = await importKey(dek);
   const rawHtml = await decryptContent(ck, msg.bodyHtmlEnc);
   const loadImages = url.searchParams.get("images") === "1";
+  // "View entire message" (Gmail's clipped-message pattern): raised caps, still
+  // sanitized and sandboxed — only reachable from the clipped notice.
+  const fullView = url.searchParams.get("full") === "1";
 
   // cid: → our authenticated attachment endpoint, resolved from THIS message's parts.
   const atts = await locals.db
@@ -128,13 +135,36 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
   // in the timeline (matches getThread's render-flag basis).
   let inner: string;
   const forRender = rawHtml ? stripQuotesHtml(rawHtml) : null;
-  const result = forRender ? sanitizeEmailHtml(forRender, { resolveCid }) : null;
+  const result = forRender
+    ? sanitizeEmailHtml(forRender, {
+        resolveCid,
+        ...(fullView ? { maxBytes: 5_000_000, maxNodes: 100_000 } : {}),
+      })
+    : null;
   if (result && result.ok) {
     inner = loadImages ? proxyRemoteImages(result.html) : result.html;
   } else {
-    // No HTML, or oversized/hostile (Part F) → fall back to the plain-text body.
+    // No HTML, or oversized/hostile (Part F) → fall back to the plain-text body,
+    // with URLs/emails linkified (anchors are inert data; clicks go through the
+    // injected handler like any other link).
     const text = (await decryptContent(ck, msg.bodyStrippedEnc)) ?? "";
-    inner = `<div style="white-space:pre-wrap;font:14px system-ui,sans-serif">${escapeText(text)}</div>`;
+    const linkified = linkifySegments(text)
+      .map((s) =>
+        s.type === "text"
+          ? escapeText(s.value)
+          : s.type === "link"
+            ? `<a href="${escapeAttr(s.href)}">${escapeText(s.value)}</a>`
+            : `<a href="mailto:${escapeAttr(s.address)}">${escapeText(s.value)}</a>`,
+      )
+      .join("");
+    // Oversized HTML (not merely text-only mail) → Gmail-style clipped notice
+    // linking to the full render. The anchor id is handled by the injected script.
+    const clippedNote =
+      result && !result.ok && !fullView
+        ? `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #e4e4e7;font:12px system-ui,sans-serif">` +
+          `[Message clipped] <a href="#__viewfull" id="__viewfull">View entire message</a></div>`
+        : "";
+    inner = `<div style="white-space:pre-wrap;font:14px system-ui,sans-serif">${linkified}</div>${clippedNote}`;
   }
 
   const scriptHash = await sha256Base64(INJECTED_SCRIPT);

@@ -7,6 +7,7 @@ import { importKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
+import { sendGrantUserIds } from "./mailbox";
 import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
@@ -220,6 +221,18 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
 
       // Live inbox: wake the mailbox's users — list prepends + badge bumps.
       await notifyInboundMail(db, env.MAIL_EVENTS, job.resolvedMailboxId, threadId);
+
+      // A new correspondent just landed — bust the recipients' cached contact
+      // candidates (key shape shared with draft.remote.ts contactsKey) so the
+      // sender shows up in suggestions immediately, not after the KV TTL.
+      if (env.AUTH_KV) {
+        try {
+          const userIds = await sendGrantUserIds(db, job.resolvedMailboxId);
+          await Promise.all(userIds.map((u) => env.AUTH_KV!.delete(`contacts:${u}`)));
+        } catch (e) {
+          log.warn("in.contacts_bust_failed", errInfo(e)); // never fail the delivery over cache hygiene
+        }
+      }
 
       m.ack();
     } catch (e) {

@@ -41,7 +41,10 @@ declare global {
 
     // interface Error {}
     // interface PageData {}
-    // interface PageState {}
+    interface PageState {
+      /** Shallow-routed "view entire message" overlay (clipped-message notice). */
+      fullMessage?: { id: string; images: boolean };
+    }
   }
 }
 

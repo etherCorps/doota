@@ -30,6 +30,15 @@
       "bucket_name": "doota-mail-raw"
     }
   ],
+  // Same namespace as the web app's AUTH_KV: inbound busts the per-user
+  // contact-candidate cache so a new correspondent appears in suggestions
+  // immediately instead of after the TTL.
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_KV",
+      "id": "9f20318e054a4f56a03e594eedd32c60"
+    }
+  ],
   // Per-user mail event hub (lives in doota-mail-jobs): DSN-fallback bounces
   // notify the sending user's live stream through it.
   "durable_objects": {

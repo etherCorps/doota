@@ -24,6 +24,8 @@ export type MailEnv = {
   MAIL_SEARCH_KEY: string;
   /** Per-user event hub (DO in doota-mail-jobs) — DSN bounces notify through it. */
   MAIL_EVENTS?: import("./events-hub").EventHubNamespace;
+  /** Web app's contact-candidate cache — busted when a new correspondent lands. */
+  AUTH_KV?: KVNamespace;
   LOG_LEVEL?: string;
 };
 

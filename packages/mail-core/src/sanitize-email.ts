@@ -90,11 +90,17 @@ function rewriteCids(html: string, resolve: (cid: string) => string | null): str
  */
 export function sanitizeEmailHtml(
   rawHtml: string,
-  opts: { resolveCid?: (cid: string) => string | null } = {},
+  opts: {
+    resolveCid?: (cid: string) => string | null;
+    /** Raised caps for the explicit "view entire message" path — still fully
+     * sanitized + sandboxed, just allowed to be big. */
+    maxBytes?: number;
+    maxNodes?: number;
+  } = {},
 ): SanitizeResult {
-  if (rawHtml.length > MAX_HTML_BYTES) return { ok: false, reason: "too-large" };
+  if (rawHtml.length > (opts.maxBytes ?? MAX_HTML_BYTES)) return { ok: false, reason: "too-large" };
   const nodeApprox = (rawHtml.match(/</g) ?? []).length;
-  if (nodeApprox > MAX_NODES) return { ok: false, reason: "too-many-nodes" };
+  if (nodeApprox > (opts.maxNodes ?? MAX_NODES)) return { ok: false, reason: "too-many-nodes" };
   const withCids = opts.resolveCid ? rewriteCids(rawHtml, opts.resolveCid) : rawHtml;
   // neosanitize already strips data:text/html and keeps inert data:image/* — but
   // blank data:image/svg+xml specifically: SVG-in-<img> is only inert by the

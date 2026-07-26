@@ -11,7 +11,8 @@
 		collapse = true,
 		fadeClass = 'from-card',
 		linkClass = 'text-brand',
-		onmailto
+		onmailto,
+		onviewfull
 	}: {
 		/** URL of the sanitized body route (already carries ?images=0|1). */
 		src: string;
@@ -25,6 +26,8 @@
 		/** A mailto: link was clicked — open Doota's composer instead of the OS handler.
 		 * `subject`/`body` carry the link's ?subject=&body= params (already decoded). */
 		onmailto?: (address: string, extra?: { subject?: string; body?: string }) => void;
+		/** The clipped-message notice was clicked — open the full-message view. */
+		onviewfull?: () => void;
 	} = $props();
 
 	let frame = $state<HTMLIFrameElement>();
@@ -71,6 +74,8 @@
 					subject: typeof d.subject === 'string' ? d.subject : undefined,
 					body: typeof d.body === 'string' ? d.body : undefined
 				});
+			} else if (d.type === 'viewfull') {
+				onviewfull?.();
 			}
 		}
 		window.addEventListener('message', onMessage);

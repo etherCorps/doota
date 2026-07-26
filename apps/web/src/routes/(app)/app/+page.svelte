@@ -4,7 +4,7 @@
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, pushState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { flip } from 'svelte/animate';
@@ -42,6 +42,8 @@
 	} from '$lib/rpc/thread.remote';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { linkifySegments } from '$lib/utils/linkify.js';
 	import { toast } from 'svelte-sonner';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
@@ -573,6 +575,13 @@
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
 
+	// "[Message clipped] View entire message" — shallow-routed (back button/swipe
+	// closes it): desktop gets a dialog, mobile the drawer, both loading the
+	// raised-cap ?full=1 render in the same sandboxed frame.
+	function openFullView(id: string, images: boolean) {
+		pushState('', { fullMessage: { id, images } });
+	}
+
 	// A mailto: link inside a message opens Doota's composer, not the OS handler.
 	// ?subject=&body= params prefill the draft, like OS mail handlers do.
 	function openMailto(address: string, extra?: { subject?: string; body?: string }) {
@@ -960,6 +969,13 @@
 			Only you{priv.length ? ` & ${priv.map((a) => senderName(a)).join(', ')}` : ''} can see this
 		</span>
 	{/if}
+{/snippet}
+
+<!-- Plain-text bodies with URLs/emails made clickable — segment render, no
+     {@html}, so linkification can never introduce markup. Kept on single lines:
+     the container is whitespace-pre-wrap and template newlines would show. -->
+{#snippet linkedText(text: string)}
+	{#each linkifySegments(text) as s, i (i)}{#if s.type === 'link'}<a href={s.href} target="_blank" rel="noopener noreferrer" class="underline underline-offset-2 break-all">{s.value}</a>{:else if s.type === 'email'}<button type="button" class="underline underline-offset-2 break-all" onclick={() => openMailto(s.address)}>{s.value}</button>{:else}{s.value}{/if}{/each}
 {/snippet}
 
 <!-- Reply context above a reply. parentId set → the parent is in this thread: a
@@ -1640,6 +1656,7 @@
 															fadeClass={outbound ? 'from-foreground' : 'from-card'}
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
 															onmailto={openMailto}
+															onviewfull={() => openFullView(m.id, allow)}
 														/>
 														{#if !allow && m.hasRemoteImages}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
@@ -1648,7 +1665,7 @@
 														{/if}
 													</div>
 												{:else}
-													<div class="whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
+													<div class="whitespace-pre-wrap">{@render linkedText(m.bodyStripped ?? m.bodyFull ?? '')}</div>
 												{/if}
 												{#if m.attachments.length}
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
@@ -1734,14 +1751,14 @@
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 												<!-- Mail (Gmail) view: the card is the container — render full height,
 												     no second collapse layer. -->
-												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapse={false} onmailto={openMailto} />
+												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
 												{#if !allow && m.hasRemoteImages}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
 													</button>
 												{/if}
 											{:else}
-												<div class="text-sm whitespace-pre-wrap">{m.bodyStripped ?? m.bodyFull ?? ''}</div>
+												<div class="text-sm whitespace-pre-wrap">{@render linkedText(m.bodyStripped ?? m.bodyFull ?? '')}</div>
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
@@ -1889,3 +1906,26 @@
 		{/if}
 	</div>
 </div>
+
+<!-- "[Message clipped] → View entire message" — shallow-routed full render
+     (?full=1, raised caps, same sandbox). Back button/gesture closes it. -->
+{#if page.state.fullMessage}
+	{@const fm = page.state.fullMessage}
+	{#if isMobile.current}
+		<Drawer.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+			<Drawer.Content>
+				<Drawer.Header class="pb-0"><Drawer.Title>Full message</Drawer.Title></Drawer.Header>
+				<div class="max-h-[80vh] overflow-y-auto p-4">
+					<MailFrame src={`/api/messages/${fm.id}/body?images=${fm.images ? 1 : 0}&full=1`} collapse={false} onmailto={openMailto} />
+				</div>
+			</Drawer.Content>
+		</Drawer.Root>
+	{:else}
+		<Dialog.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+			<Dialog.Content class="max-h-[85vh] w-[min(92vw,56rem)] max-w-none overflow-y-auto">
+				<Dialog.Header><Dialog.Title>Full message</Dialog.Title></Dialog.Header>
+				<MailFrame src={`/api/messages/${fm.id}/body?images=${fm.images ? 1 : 0}&full=1`} collapse={false} onmailto={openMailto} />
+			</Dialog.Content>
+		</Dialog.Root>
+	{/if}
+{/if}
