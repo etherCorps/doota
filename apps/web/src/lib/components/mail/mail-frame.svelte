@@ -1,80 +1,81 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Hallmark · component: mail HTML frame · genre: inherited (app system)
-     states: measuring (skeleton height) · fitted · collapsed+fade · expanded
-     Sandboxed message HTML that sizes itself to its content instead of forcing
-     an inner scrollbar — the nested-scroll trap was the mobile friction. Short
-     mail shrinks to fit; long mail collapses to a cap with a fade and expands
-     INLINE, so the page stays the only scroll axis. -->
+<!-- Sandboxed message HTML, loaded from the server-sanitized /api/messages/[id]/body
+     route as an OPAQUE-origin frame (sandbox="allow-scripts", NO allow-same-origin).
+     The framed doc can't touch the app; it reports its height and forwards link
+     clicks over postMessage. Height sizes to content (no inner scrollbar); long mail
+     collapses to a cap with a fade and expands inline. -->
 <script lang="ts">
+	import { classifyMailLink } from '$lib/utils/mail-link';
 	let {
-		doc,
+		src,
 		collapsedMax = 352,
 		fadeClass = 'from-card',
-		linkClass = 'text-brand'
+		linkClass = 'text-brand',
+		onmailto
 	}: {
-		/** Full srcdoc document (already CSP-framed + cid-rewritten by the caller). */
-		doc: string;
-		/** Collapsed height cap in px (~22rem). */
+		/** URL of the sanitized body route (already carries ?images=0|1). */
+		src: string;
 		collapsedMax?: number;
-		/** Gradient start matching the surface behind the fade. */
 		fadeClass?: string;
-		/** Toggle-button text color (bubbles invert). */
 		linkClass?: string;
+		/** A mailto: link was clicked — open Doota's composer instead of the OS handler. */
+		onmailto?: (address: string) => void;
 	} = $props();
 
 	let frame = $state<HTMLIFrameElement>();
 	let contentH = $state(0);
 	let expanded = $state(false);
+	// Clamp an untrusted height so a hostile value can't blow up the layout.
+	const MAX_H = 20000;
 
-	// Slack so a message a few px over the cap never earns a toggle.
 	const overflowing = $derived(contentH > collapsedMax + 48);
 	const height = $derived(
 		contentH === 0 ? Math.min(collapsedMax, 288) : expanded || !overflowing ? contentH : collapsedMax
 	);
 
-	function measure() {
-		const body = frame?.contentDocument?.body;
-		if (!body) return;
-		// Measure the BODY only — html stretches to the iframe viewport, so any
-		// documentElement metric echoes the current frame height back (short mail
-		// then locks at the initial floor with a big empty gap). The frame doc
-		// gives body `display:flow-root`, so child margins can't collapse out and
-		// the rect height is the true content height.
-		contentH = Math.ceil(body.getBoundingClientRect().height) + 4;
-	}
-
+	// New document → re-measure from scratch.
 	$effect(() => {
-		void doc; // new document → re-measure from scratch
+		void src;
 		contentH = 0;
 		expanded = false;
-		const f = frame;
-		if (!f) return;
-		let ro: ResizeObserver | undefined;
-		const onload = () => {
-			measure();
-			// Inline/remote images load after the doc — track late height changes.
-			const body = f.contentDocument?.body;
-			if (body && typeof ResizeObserver !== 'undefined') {
-				ro = new ResizeObserver(measure);
-				ro.observe(body);
-			}
-		};
-		f.addEventListener('load', onload);
-		// srcdoc may already be loaded by the time the effect runs.
-		if (f.contentDocument?.readyState === 'complete') onload();
-		return () => {
-			f.removeEventListener('load', onload);
-			ro?.disconnect();
-		};
 	});
+
+	$effect(() => {
+		function onMessage(e: MessageEvent) {
+			// Opaque origin: event.origin is "null", so validate the SOURCE window, not the origin.
+			if (!frame || e.source !== frame.contentWindow) return;
+			const d = e.data as { __mailframe?: number; type?: string; value?: unknown; href?: unknown; text?: unknown };
+			if (!d || d.__mailframe !== 1) return;
+			if (d.type === 'height' && typeof d.value === 'number' && Number.isFinite(d.value)) {
+				contentH = Math.max(0, Math.min(MAX_H, Math.ceil(d.value)));
+			} else if (d.type === 'link' && typeof d.href === 'string') {
+				handleLink(d.href, typeof d.text === 'string' ? d.text : '');
+			}
+		}
+		window.addEventListener('message', onMessage);
+		return () => window.removeEventListener('message', onMessage);
+	});
+
+	// Part D — the link security gate (decision logic in mail-link.ts, tested).
+	function handleLink(href: string, text: string) {
+		const d = classifyMailLink(href, text);
+		if (d.action === 'drop') return;
+		if (d.action === 'mailto') {
+			onmailto?.(d.address);
+			return;
+		}
+		// noopener prevents reverse tabnabbing; noreferrer stops leaking the Doota URL.
+		if (d.warn && !confirm(`${d.warn}\n\nOpen it anyway?`)) return;
+		window.open(d.url, '_blank', 'noopener,noreferrer');
+	}
 </script>
 
 <div class="relative">
 	<iframe
 		bind:this={frame}
 		title="Message content"
-		sandbox="allow-same-origin"
-		srcdoc={doc}
+		sandbox="allow-scripts"
+		{src}
 		scrolling="no"
 		style:height={`${height}px`}
 		class="w-full rounded-lg border-0 bg-transparent transition-[height] duration-200 ease-out motion-reduce:transition-none"

@@ -300,11 +300,12 @@ describe("drafts — undo restores an editable state", () => {
 });
 
 describe("inbound HTML render", () => {
-  it("preserves + exposes the HTML body (rendered sandboxed) alongside text", async () => {
+  it("ships render flags, NOT raw HTML (raw is served by the sandboxed route)", async () => {
     await db.insert(schema.thread).values({ id: "thh", orgId: ORG, lastMessageAt: new Date() });
     await db.insert(schema.message).values({
       id: "mh", orgId: ORG, threadId: "thh", messageIdHeader: "<h@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
       bodyStrippedEnc: await encryptContent(ck, "Hello"),
+      // Plain conversational HTML → renders as a text bubble (htmlKind 'plain').
       bodyHtmlEnc: await encryptContent(ck, "<p>Hello <b>world</b></p>"),
     });
     await db.insert(schema.delivery).values({ id: "dh", orgId: ORG, messageId: "mh", mailboxId: "mb_alice", role: "to" });
@@ -312,8 +313,33 @@ describe("inbound HTML render", () => {
 
     const dto = await getThread(db, { threadId: "thh", mailboxId: "mb_alice", ck });
     const item: any = dto!.items[0];
-    expect(item.bodyHtml).toBe("<p>Hello <b>world</b></p>");
+    expect(item.bodyHtml).toBeUndefined(); // raw HTML never leaves the server
+    expect(item.htmlKind).toBe("plain");
+    expect(item.hasRemoteImages).toBe(false);
     expect(item.bodyStripped).toBe("Hello");
+  });
+
+  it("a rich HTML body (table/image) → htmlKind 'rich'; a cid image is flagged inline", async () => {
+    await db.insert(schema.thread).values({ id: "thr", orgId: ORG, lastMessageAt: new Date() });
+    await db.insert(schema.message).values({
+      id: "mr", orgId: ORG, threadId: "thr", messageIdHeader: "<r@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
+      bodyStrippedEnc: await encryptContent(ck, "table"),
+      bodyHtmlEnc: await encryptContent(ck, '<table><tr><td>x</td></tr></table><img src="cid:logo@x"><img src="https://t.co/p.gif">'),
+    });
+    await db.insert(schema.delivery).values({ id: "dr", orgId: ORG, messageId: "mr", mailboxId: "mb_alice", role: "to" });
+    await db.insert(schema.threadState).values({ id: "tsr", orgId: ORG, threadId: "thr", mailboxId: "mb_alice", placement: "inbox" });
+    await db.insert(schema.attachment).values([
+      { id: "ainl", orgId: ORG, messageId: "mr", partId: "logo@x", filename: "logo.png", contentType: "image/png", r2Key: "k1" },
+      { id: "afile", orgId: ORG, messageId: "mr", partId: "9", filename: "report.pdf", contentType: "application/pdf", r2Key: "k2" },
+    ]);
+
+    const dto = await getThread(db, { threadId: "thr", mailboxId: "mb_alice", ck });
+    const item: any = dto!.items[0];
+    expect(item.htmlKind).toBe("rich");
+    expect(item.hasRemoteImages).toBe(true);
+    // The cid-referenced image is inline (not a download); the pdf is not.
+    expect(item.attachments.find((a: any) => a.id === "ainl").inline).toBe(true);
+    expect(item.attachments.find((a: any) => a.id === "afile").inline).toBe(false);
   });
 });
 

@@ -28,11 +28,13 @@
     "./queue-consumer": "./src/queue-consumer.ts",
     "./read": "./src/read.ts",
     "./resolver": "./src/resolver.ts",
+    "./sanitize-email": "./src/sanitize-email.ts",
     "./search": "./src/search.ts"
   },
   "dependencies": {
     "@doota/db": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "neosanitize": "^0.3.0",
     "postal-mime": "^2.7.5"
   },
   "peerDependencies": {
@@ -42,8 +44,8 @@
     "check": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
     "@cloudflare/workers-types": "^4.20260615.1",
-    "@sveltejs/kit": "^2.69.2"
+    "@sveltejs/kit": "^2.69.2",
+    "typescript": "^5.9.3"
   }
 }

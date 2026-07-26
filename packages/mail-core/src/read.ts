@@ -8,6 +8,9 @@ import { listSystemEvents } from "./collab";
 import {
   stripHtmlTags,
   tickForStatus,
+  isRichHtml,
+  hasRemoteHttpImages,
+  isCidReferenced,
   type MessageDTO,
   type SubmissionState,
   type ThreadDTO,
@@ -457,7 +460,10 @@ export async function getThread(
       subject: subj,
       bodyStripped: stripped,
       bodyFull: full,
-      bodyHtml: html,
+      // Raw HTML never leaves the server — only the render decision + flags do.
+      // The sandboxed /api/messages/[id]/body route decrypts + sanitizes on demand.
+      htmlKind: html ? (isRichHtml(html) ? "rich" : "plain") : null,
+      hasRemoteImages: hasRemoteHttpImages(html),
       keywords: safeJsonArray(d?.keywords),
       isRead,
       outbound: sentFromHere.has(m.id),
@@ -469,6 +475,7 @@ export async function getThread(
         filename: a.filename,
         contentType: a.contentType,
         size: a.size,
+        inline: isCidReferenced(html, a.partId),
       })),
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
       ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),

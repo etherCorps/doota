@@ -15,6 +15,7 @@
 	import FileCodeIcon from '@lucide/svelte/icons/file-code';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { pdfThumb } from '$lib/client/pdf-thumb';
+	import { sanitizeFilename } from '$lib/utils/filename';
 
 	type Att = { id: string; filename: string | null; contentType: string | null; size: number | null };
 	let {
@@ -47,12 +48,32 @@
 		js: FileCodeIcon, ts: FileCodeIcon, json: FileCodeIcon, html: FileCodeIcon, css: FileCodeIcon, py: FileCodeIcon
 	};
 	const rawExt = $derived((att.filename?.includes('.') ? att.filename.split('.').pop()! : '').toLowerCase());
-	const ext = $derived((rawExt || ct.split('/')[1] || 'file').slice(0, 5).toUpperCase());
+	// Friendly type label — the file extension when we have one, else a MIME map,
+	// else a short subtype. (Slicing "text/calendar" → "CALEN" was the old bug.)
+	const MIME_LABEL: Record<string, string> = {
+		'application/pdf': 'PDF',
+		'text/calendar': 'ICS', 'application/ics': 'ICS',
+		'text/plain': 'TXT', 'text/html': 'HTML', 'application/json': 'JSON',
+		'application/zip': 'ZIP', 'application/x-zip-compressed': 'ZIP',
+		'application/msword': 'DOC',
+		'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+		'application/vnd.ms-excel': 'XLS',
+		'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+		'application/vnd.ms-powerpoint': 'PPT',
+		'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX'
+	};
+	const ext = $derived(
+		(
+			rawExt.toUpperCase() ||
+			MIME_LABEL[ct] ||
+			(ct.startsWith('image/') ? 'IMG' : ct.split('/')[1] || 'file').toUpperCase()
+		).slice(0, 5)
+	);
 	const Icon = $derived(kind === 'audio' ? FileAudioIcon : (EXT_ICON[rawExt] ?? FileIcon));
 
 	const fmtSize = (n: number | null) =>
 		n == null ? '' : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
-	const name = $derived(att.filename ?? 'attachment');
+	const name = $derived(sanitizeFilename(att.filename)); // strip bidi-override spoofing
 
 	// PDF page-1 thumb — lazy client render; rows keep the icon (cheap).
 	let pdfUrl = $state<string | null>(null);

@@ -14,7 +14,7 @@ import {
 } from "@doota/mail-core/mail-thread-contract";
 import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
 import { tokensFor } from "@doota/mail-core/search";
-import { deriveRole, baseAddress } from "@doota/mail-core/queue-consumer";
+import { deriveRole, baseAddress, isRealAttachment } from "@doota/mail-core/queue-consumer";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef"); // 32 bytes
 
@@ -154,5 +154,17 @@ describe("recipient role derivation", () => {
   it("strips +tag to match header addresses", () => {
     expect(baseAddress("a+sales@acme.com", "sales")).toBe("a@acme.com");
     expect(baseAddress("a@acme.com", null)).toBe("a@acme.com");
+  });
+});
+
+describe("attachment classification (Part H)", () => {
+  it("a text/calendar body-alternative (no filename/cid/disposition) is NOT an attachment", () => {
+    expect(isRealAttachment({ disposition: null })).toBe(false);
+    expect(isRealAttachment({})).toBe(false);
+  });
+  it("real files, inline cid images, and disposition=attachment ARE attachments", () => {
+    expect(isRealAttachment({ filename: "invite.ics" })).toBe(true);
+    expect(isRealAttachment({ contentId: "logo@x" })).toBe(true); // inline cid image
+    expect(isRealAttachment({ disposition: "attachment" })).toBe(true);
   });
 });

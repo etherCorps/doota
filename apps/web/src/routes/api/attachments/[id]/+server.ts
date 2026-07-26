@@ -5,6 +5,15 @@ import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { sanitizeFilename } from "$lib/utils/filename";
+
+// Content types we'll serve as declared. Everything else (HTML, SVG, XML, …) is
+// forced to octet-stream so it can't be rendered/executed even if opened directly.
+// (SVG is deliberately absent — it can carry script when navigated to.)
+const SAFE_CONTENT_TYPES = new Set([
+  "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+  "image/x-icon", "image/vnd.microsoft.icon", "application/pdf",
+]);
 
 /**
  * Serve a message attachment's bytes from R2. Access mirrors thread read: the
@@ -56,11 +65,20 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   const obj = await env.MAIL_RAW.get(att.r2Key);
   if (!obj) error(404, "Attachment bytes are missing.");
 
-  const filename = (att.filename ?? "attachment").replace(/["\\\r\n]/g, "_");
+  // Never trust the email's declared type — serve known-safe media as-is, force
+  // everything else to octet-stream. Disposition:attachment forces a download
+  // (an <img src> still renders images), nosniff stops type-guessing, and the CSP
+  // + no-same-origin sandbox neuter anything the browser might still try to run.
+  const declared = (att.contentType ?? "").split(";")[0].trim().toLowerCase();
+  const serveType = SAFE_CONTENT_TYPES.has(declared) ? declared : "application/octet-stream";
+  const filename = sanitizeFilename(att.filename);
   return new Response(obj.body, {
     headers: {
-      "Content-Type": att.contentType ?? "application/octet-stream",
+      "Content-Type": serveType,
       "Content-Disposition": `attachment; filename="${filename}"`,
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Referrer-Policy": "no-referrer",
       "Cache-Control": "private, max-age=3600",
     },
   });

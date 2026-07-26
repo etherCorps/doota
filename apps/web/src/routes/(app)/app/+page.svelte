@@ -49,7 +49,7 @@
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
-	import { replySubject, isRichHtml } from '@doota/mail-core/mail-thread-contract';
+	import { replySubject } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
@@ -570,41 +570,10 @@
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
 
-	// Inline attachments: external clients embed pasted images as MIME parts and
-	// reference them with src="cid:<contentId>" — unresolvable inside the iframe.
-	// Rewrite each cid: to our attachment endpoint (partId carries the contentId,
-	// with or without angle brackets).
-	function inlineCids(html: string, atts: MessageDTO['attachments']): string {
-		if (!html.includes('cid:')) return html;
-		return html.replace(/(src\s*=\s*["'])cid:([^"']+)(["'])/gi, (m0, pre, cid, post) => {
-			const norm = decodeURIComponent(cid).trim();
-			const att = atts.find((a) => (a.partId ?? '').replace(/^<|>$/g, '') === norm);
-			return att ? `${pre}${resolve('/api/attachments/[id]', { id: att.id })}${post}` : m0;
-		});
-	}
-
-	/** True when the message HTML references this part inline via cid: — its
-	 * pixels already render in the body, so no separate tile. */
-	function isInlinePart(html: string | null, partId: string | null): boolean {
-		if (!html || !partId) return false;
-		return html.includes(`cid:${partId.replace(/^<|>$/g, '')}`);
-	}
-
-	// img-src 'self': inline attachments are part of the mail itself, served
-	// authenticated from our own endpoint — always allowed, unlike remote images
-	// (tracking pixels) which stay opt-in.
-	// Only offer "Load remote images" when the mail actually references any —
-	// data:/cid: images render regardless, and the button was showing on every
-	// HTML mail.
-	const hasRemoteImages = (html: string | null) => !!html && /\bsrc\s*=\s*["']?https?:\/\//i.test(html);
-
-	function frameDoc(html: string, allowRemote: boolean, dark: boolean): string {
-		const imgSrc = allowRemote ? "img-src 'self' data: https:;" : "img-src 'self' data:;";
-		const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; font-src data:; media-src data:;`;
-		const color = dark ? '#e8e8ee' : '#25252c';
-		// resize:none kills the editor-chrome drag grip on image wrappers in mail
-		// sent before the send-time scrub existed (and any sender's stray resize).
-		return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width">${dark ? '<meta name="color-scheme" content="dark">' : ''}<style>*{resize:none!important}</style></head><body style="margin:0;padding:8px;display:flow-root;font:14px system-ui,sans-serif;background:transparent;color:${color}">${html}</body></html>`;
+	// A mailto: link inside a message opens Doota's composer, not the OS handler.
+	function openMailto(address: string) {
+		if (!mailboxId || !address) return;
+		compose.start({ prefill: { kind: 'new', mailboxId, to: address } });
 	}
 
 	function fmtTime(ms: number | null): string {
@@ -1628,22 +1597,19 @@
 											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderName(m.from)}</span>{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
-												{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
+												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id)}
-													<!-- Outbound bubbles are ink (inverted vs the app mode), so the frame's
-													     text scheme follows the BUBBLE surface, and the frame stays
-													     transparent so the bubble color shows through. -->
-													{@const frameDark = outbound ? mode.current !== 'dark' : mode.current === 'dark'}
 													<div class="w-[min(70vw,32rem)]">
-														<!-- Auto-sizing frame: no inner scrollbar, expands inline (MailFrame). -->
+														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
-															doc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, frameDark)}
+															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`}
 															fadeClass={outbound ? 'from-foreground' : 'from-card'}
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
+															onmailto={openMailto}
 														/>
-														{#if !allow && hasRemoteImages(m.bodyHtml)}
+														{#if !allow && m.hasRemoteImages}
 															<button type="button" class="mt-1 text-xs hover:underline {outbound ? 'text-background/80' : 'text-brand'}" onclick={() => loadedImages.add(m.id)}>
-																Load remote images
+																Images blocked · Load anyway
 															</button>
 														{/if}
 													</div>
@@ -1654,7 +1620,7 @@
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
 													     documents as compact rows. Parts the HTML references by cid already
 													     render inline — skip their tiles to avoid doubles. -->
-													{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+													{@const shown = m.attachments.filter((a) => !a.inline)}
 													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
@@ -1729,13 +1695,11 @@
 									{#if open}
 										<div class="px-3.5 pb-3.5">
 											{@render replyContextNote(m)}
-											{#if m.bodyHtml && isRichHtml(m.bodyHtml)}
+											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id)}
-												<!-- Untrusted email HTML: script-less sandbox + CSP blocking remote
-												     content. allow-same-origin WITHOUT allow-scripts stays inert —
-												     needed so inline-attachment requests carry the session cookie. -->
-												<MailFrame doc={frameDoc(inlineCids(m.bodyHtml, m.attachments), allow, mode.current === 'dark')} collapsedMax={420} />
-												{#if !allow && hasRemoteImages(m.bodyHtml)}
+												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
+												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapsedMax={420} onmailto={openMailto} />
+												{#if !allow && m.hasRemoteImages}
 													<button type="button" class="text-brand mt-1.5 text-xs hover:underline" onclick={() => loadedImages.add(m.id)}>
 														Load remote images
 													</button>
@@ -1745,7 +1709,7 @@
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
-												{@const shown = m.attachments.filter((a) => !isInlinePart(m.bodyHtml, a.partId))}
+												{@const shown = m.attachments.filter((a) => !a.inline)}
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as a (a.id)}
