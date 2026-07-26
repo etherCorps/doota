@@ -8,6 +8,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
+	import { activeMailbox } from '$lib/client/active-mailbox.svelte.js';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import MailIcon from '@lucide/svelte/icons/mail';
@@ -18,13 +19,21 @@
 		mailboxes = await myMailboxes();
 	});
 
-	const activeId = $derived(page.url.searchParams.get('mailbox') ?? mailboxes[0]?.id ?? null);
+	// Same fallback order as the mail page: URL → last explicit pick → first.
+	const activeId = $derived(
+		page.url.searchParams.get('mailbox') ??
+			mailboxes.find((m) => m.id === activeMailbox.current)?.id ??
+			mailboxes[0]?.id ??
+			null
+	);
 	const active = $derived(mailboxes.find((m) => m.id === activeId) ?? mailboxes[0]);
 
 	const sidebar = useSidebar();
 	function pick(id: string) {
 		// Switch mailbox on the mail route; reset the open thread. On mobile the
-		// sidebar is a sheet — close it so the list is visible.
+		// sidebar is a sheet — close it so the list is visible. Remember the choice
+		// so a later folder nav / reload stays on it instead of the first mailbox.
+		activeMailbox.current = id;
 		sidebar.setOpenMobile(false);
 		goto(`${resolve('/app')}?mailbox=${id}`, { keepFocus: true });
 	}

@@ -38,6 +38,13 @@
 
 	let q = $state('');
 	const activeMailbox = $derived(page.url.searchParams.get('mailbox') ?? undefined);
+	// Preserve the current mailbox when jumping to a folder (else it drops to the
+	// first mailbox — a surprise auto-switch).
+	const folderHref = (id: string) => {
+		const sp = new URLSearchParams({ folder: id });
+		if (activeMailbox) sp.set('mailbox', activeMailbox);
+		return `${resolve('/app')}?${sp}`;
+	};
 	// Live blind-token search over the user's mailboxes; ≥2 chars to fire.
 	// Debounced so a fast typist costs one request, not one per keystroke.
 	const dq = new Debounced(() => q.trim(), 250);
@@ -129,7 +136,7 @@
 			<Command.Group heading="Folders">
 				{#each FOLDERS as folder (folder.id)}
 					{@const Icon = folder.icon}
-					<Command.Item onSelect={() => run(() => goto(`${resolve('/app')}?folder=${folder.id}`))}>
+					<Command.Item onSelect={() => run(() => goto(folderHref(folder.id)))}>
 						<Icon class="text-muted-foreground size-4" />
 						{folder.name}
 					</Command.Item>

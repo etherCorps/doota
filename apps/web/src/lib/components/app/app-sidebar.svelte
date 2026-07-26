@@ -45,8 +45,16 @@
 
 	// Active folder comes from the ?folder= param; inbox is the default view.
 	const activeFolder = $derived(page.url.searchParams.get('folder') ?? 'inbox');
+	const activeMailbox = $derived(page.url.searchParams.get('mailbox'));
 
-	const folderHref = (id: string) => `${resolve('/app')}?folder=${id}`;
+	// Keep the current mailbox when switching folders — otherwise the mailbox
+	// param drops and the mail page falls back to the first mailbox (a surprise
+	// auto-switch). The switcher is the only thing that changes mailbox.
+	const folderHref = (id: string) => {
+		const sp = new URLSearchParams({ folder: id });
+		if (activeMailbox) sp.set('mailbox', activeMailbox);
+		return `${resolve('/app')}?${sp}`;
+	};
 
 	// On mobile the sidebar is a sheet — navigating from it should close it.
 	// No-op on desktop (openMobile only drives the sheet).

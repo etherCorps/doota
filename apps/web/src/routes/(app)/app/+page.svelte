@@ -25,6 +25,7 @@
 	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
+	import { activeMailbox as lastMailbox } from '$lib/client/active-mailbox.svelte.js';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import {
@@ -112,7 +113,15 @@
 	// URL is the source of truth — shareable, back-button, and lets the sidebar
 	// switcher drive this view by navigation.
 	const params = $derived(page.url.searchParams);
-	const mailboxId = $derived(params.get('mailbox') ?? mailboxes[0]?.id ?? null);
+	// URL is authoritative; when it lacks ?mailbox, fall back to the user's last
+	// explicit pick (validated against current access), NOT blindly mailboxes[0] —
+	// so folder nav / a fresh load never auto-switches the mailbox.
+	const mailboxId = $derived(
+		params.get('mailbox') ??
+			mailboxes.find((m) => m.id === lastMailbox.current)?.id ??
+			mailboxes[0]?.id ??
+			null
+	);
 	const placement = $derived(params.get('folder') ?? 'inbox');
 	const threadId = $derived(params.get('thread'));
 	const isVirtual = $derived(placement === 'drafts' || placement === 'scheduled');
