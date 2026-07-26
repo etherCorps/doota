@@ -119,8 +119,11 @@
 	let sending = $state(false);
 	let uploading = $state(false);
 	const fmtSize = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
-	// The body is HTML; "has content" ignores tags/whitespace.
-	const hasBody = $derived(body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0);
+	// The body is HTML; "has content" ignores tags/whitespace — an empty editor
+	// serializes to "<p></p>", which is a non-empty STRING but no real text.
+	const htmlHasText = (html: string) =>
+		html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0;
+	const hasBody = $derived(htmlHasText(body));
 
 	// Collapsible: on phones the full composer eats most of the thread view, so
 	// it starts as a one-row "Reply…" bar; desktop starts open and can collapse
@@ -154,12 +157,16 @@
 		collapsed = autoOpen ? false : isMobile.current;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
-		if (local?.body) {
+		// Only a mirror with REAL text is a restore — an empty editor mirrors
+		// "<p></p>", which must not resurface as a phantom "Restored" toast.
+		if (local?.body && htmlHasText(local.body)) {
 			body = local.body;
 			editorKey++;
 			collapsed = false;
 			toast('Restored unsaved reply');
 			scheduleSave();
+		} else if (local) {
+			clearMirror(mirrorKey); // sweep the empty husk
 		}
 	});
 	let draftId = $state<string | null>(null);
@@ -467,7 +474,10 @@
 					bodyClass="max-h-[45svh]"
 					oninput={(html) => {
 						body = html;
-						mirrorDraft(mirrorKey, { body: html });
+						// Don't mirror an empty editor ("<p></p>"); clear any prior husk so
+						// emptying a reply doesn't leave a phantom to "restore" next open.
+						if (htmlHasText(html)) mirrorDraft(mirrorKey, { body: html });
+						else clearMirror(mirrorKey);
 						scheduleSave();
 					}}
 					onattach={() => fileInput?.click()}
