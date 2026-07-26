@@ -251,13 +251,18 @@ export async function processSubmission(
   log.info("out.recipients", { subId: sub.id, external: external.length, internal: recipients.length - external.length });
 
   // ---- Rate limit (Part G) — external volume, charged ONCE per submission ----
-  // Only the first attempt pays; a soft-failure retry re-runs this path and
-  // would otherwise charge the same send up to MAX_ATTEMPTS times.
-  // ponytail: a crash between claim and charge skips the charge on retry —
-  // under-counts one send in a rare path, safe direction for abuse control.
-  if (external.length > 0 && sub.attempts === 0) {
+  // Keyed on the rateChargedAt stamp, not attempts: the claim CAS bumps attempts
+  // before we get here, so a crash between claim and charge would make an
+  // attempts-based guard skip the charge on redelivery (uncounted send). The
+  // stamp is written AFTER the charge — a crash between the two re-charges on
+  // retry, which overcounts: the safe direction for abuse control.
+  if (external.length > 0 && !sub.rateChargedAt) {
     const rl = await chargeSend(db, sub.mailboxId, external.length);
     if (!rl.ok) return fail(`rate limit exceeded (${rl.scope})`);
+    await db
+      .update(mail.submission)
+      .set({ rateChargedAt: new Date() })
+      .where(eq(mail.submission.id, sub.id));
   }
 
   // ---- Send external via provider (Part B.4) ----

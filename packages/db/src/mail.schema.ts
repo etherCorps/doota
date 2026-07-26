@@ -567,6 +567,12 @@ export const submission = sqliteTable(
     // `sending` row (must not be re-claimed — that's a double send on the wire)
     // from a stuck one (crashed mid-flight; rescue-eligible after a timeout).
     lastAttemptAt: integer("last_attempt_at", { mode: "timestamp_ms" }),
+    // Stamped right AFTER the send-rate charge succeeds. The charge-once guard
+    // keys on this, not on attempts: a crash between the claim CAS (which bumps
+    // attempts) and the charge would otherwise skip the charge on redelivery.
+    // A crash between charge and stamp re-charges instead — overcounting is the
+    // safe direction for abuse control.
+    rateChargedAt: integer("rate_charged_at", { mode: "timestamp_ms" }),
     lastError: text("last_error"),
     provider: text("provider"),
     providerMessageId: text("provider_message_id"),

@@ -1,0 +1,1 @@
+ALTER TABLE `submission` ADD `rate_charged_at` integer;

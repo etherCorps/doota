@@ -335,6 +335,20 @@ describe("stale-draft GC", () => {
     await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", body: "fresh" });
     expect(await sweepStaleDrafts(db, env(), 14 * 864e5)).toBe(0);
   });
+
+  it("rescues a draft stranded in 'sending' back to editing, keeps a fresh claim", async () => {
+    const stuck = await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", body: "stuck" });
+    const fresh = await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", body: "in flight" });
+    await db.update(mail.draft)
+      .set({ status: "sending", updatedAt: new Date(Date.now() - 20 * 60_000) })
+      .where(eq(mail.draft.id, stuck.id));
+    await db.update(mail.draft).set({ status: "sending" }).where(eq(mail.draft.id, fresh.id));
+    await sweepStaleDrafts(db, env());
+    const stuckRow = await db.query.draft.findFirst({ where: eq(schema.draft.id, stuck.id) });
+    const freshRow = await db.query.draft.findFirst({ where: eq(schema.draft.id, fresh.id) });
+    expect(stuckRow.status).toBe("editing"); // rescued, visible in Drafts again
+    expect(freshRow.status).toBe("sending"); // genuine in-flight claim untouched
+  });
 });
 
 describe("scheduled sends", () => {

@@ -417,11 +417,16 @@ export async function listScheduled(db: Db, ck: ContentKey, userId: string): Pro
 }
 
 const STALE_DRAFT_MS = 14 * 24 * 60 * 60 * 1000; // 14 days untouched
+// A draft's `sending` claim lives for one web request (seconds). Stuck this
+// long = sendDraft crashed between its claim CAS and the revert in its catch.
+const STUCK_SENDING_MS = 15 * 60 * 1000;
 
 /**
  * Garbage-collect abandoned drafts: still-editing rows untouched past the cutoff,
- * plus their staged R2 objects. Meant to run from the scheduled (cron) handler —
- * see sweepDueSubmissions for the same pattern. Returns the count removed.
+ * plus their staged R2 objects. Also rescues drafts stranded in the transient
+ * `sending` claim (crashed sendDraft) back to `editing` so they reappear in
+ * Drafts. Meant to run from the scheduled (cron) handler — see
+ * sweepDueSubmissions for the same pattern. Returns the count removed.
  */
 export async function sweepStaleDrafts(
   db: Db,
@@ -429,6 +434,17 @@ export async function sweepStaleDrafts(
   olderThanMs = STALE_DRAFT_MS,
   limit = 200,
 ): Promise<number> {
+  // Rescue first: the claim CAS bumps updatedAt ($onUpdate), so a `sending` row
+  // past the cutoff is a crash, not an in-flight send. A crash in the sliver
+  // after enqueue but before the `sent` tombstone update reopens an
+  // already-enqueued draft — the user sees it in Sent and would have to resend
+  // by hand to duplicate; better than the draft vanishing forever.
+  const stuckCutoff = new Date(Date.now() - STUCK_SENDING_MS);
+  await db
+    .update(mail.draft)
+    .set({ status: "editing" })
+    .where(and(eq(mail.draft.status, "sending"), lt(mail.draft.updatedAt, stuckCutoff)));
+
   const cutoff = new Date(Date.now() - olderThanMs);
   const stale = await db
     .select({ id: schema.draft.id, orgId: schema.draft.orgId })
@@ -622,9 +638,9 @@ export async function sendDraft(
 
     return { submissionId: res.submissionId, threadId: res.threadId };
   } catch (e) {
-    // Nothing was enqueued — hand the draft back to the editor.
-    // ponytail: a crash between claim and this revert strands the row in
-    // 'sending' (hidden from Drafts); teach sweepStaleDrafts to rescue if seen.
+    // Nothing was enqueued — hand the draft back to the editor. A crash between
+    // claim and this revert strands the row in 'sending'; sweepStaleDrafts
+    // rescues those back to 'editing' after a timeout.
     await db
       .update(mail.draft)
       .set({ status: "editing" })

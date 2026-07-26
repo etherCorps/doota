@@ -339,6 +339,23 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(counter.count).toBe(1); // one external recipient, one charge
   });
 
+  it("still charges when the first attempt crashed between claim and charge", async () => {
+    const id = await ready({ to: ["out@ext.com"] });
+    // Simulate a claim that died before charging: attempts bumped, stale claim
+    // stamp, no rateChargedAt. An attempts-based guard would skip the charge.
+    await db
+      .update(schema.submission)
+      .set({ status: "sending", attempts: 1, lastAttemptAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(schema.submission.id, id));
+    const sender = fakeSender();
+    await processSubmission(db, consEnv(sender), ck, msg(id));
+    expect(sender.calls.length).toBe(1); // rescued and sent
+    const counter = await db.query.sendCounter.findFirst({
+      where: eq(schema.sendCounter.scopeKey, "mb_alice"),
+    });
+    expect(counter.count).toBe(1); // the send got counted
+  });
+
   it("splits mixed internal/external under one submission", async () => {
     const id = await ready({ to: ["bob@acme.com", "out@ext.com"] });
     const sender = fakeSender();
