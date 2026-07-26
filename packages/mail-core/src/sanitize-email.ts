@@ -96,7 +96,14 @@ export function sanitizeEmailHtml(
   const nodeApprox = (rawHtml.match(/</g) ?? []).length;
   if (nodeApprox > MAX_NODES) return { ok: false, reason: "too-many-nodes" };
   const withCids = opts.resolveCid ? rewriteCids(rawHtml, opts.resolveCid) : rawHtml;
-  return { ok: true, html: sanitizer.sanitize(withCids) };
+  // neosanitize already strips data:text/html and keeps inert data:image/* — but
+  // blank data:image/svg+xml specifically: SVG-in-<img> is only inert by the
+  // browser's secure-mode guarantee, so don't lean on it. Plain raster data:
+  // images (logos/signatures) are kept — dropping them all breaks real mail.
+  const html = sanitizer
+    .sanitize(withCids)
+    .replace(/(\bsrc\s*=\s*["'])data:image\/svg\+xml[^"']*(["'])/gi, "$1$2");
+  return { ok: true, html };
 }
 
 /**

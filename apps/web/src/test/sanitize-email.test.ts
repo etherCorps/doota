@@ -71,6 +71,13 @@ describe("email sanitizer — cid rewrite", () => {
     const out = clean('<img src="cid:logo@x">', { resolveCid: (c) => (c === "logo@x" ? "/api/attachments/abc" : null) });
     expect(out).toContain('src="/api/attachments/abc"');
   });
+  it("keeps inert data:image raster but blanks data:image/svg+xml", () => {
+    expect(clean('<img src="data:image/png;base64,AAA">')).toContain("data:image/png");
+    const svg = clean('<img src="data:image/svg+xml,<svg onload=alert(1)>">');
+    expect(svg).not.toContain("svg+xml");
+    expect(svg).toMatch(/<img[^>]*src=""/);
+  });
+
   it("blanks an unresolved cid: image (no cid: string survives)", () => {
     const out = clean('<img src="cid:missing">', { resolveCid: () => null });
     expect(out).not.toContain("cid:");
