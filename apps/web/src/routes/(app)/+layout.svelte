@@ -8,6 +8,7 @@
 	import SendFailureNotifier from '$lib/components/app/send-failure-notifier.svelte';
 	import TopBar from '$lib/components/app/top-bar.svelte';
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
+	import ShortcutsDialog from '$lib/components/app/shortcuts-dialog.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import { onMount } from 'svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
@@ -23,17 +24,33 @@
 	let regionW = $state(0);
 	const singlePane = $derived(regionW > 0 && regionW < 896);
 
-	// ⌘K → "Compose" dispatches this; and a bare `c` composes (Gmail-style).
+	// Global keyboard help — opened by `?` or the palette's "Keyboard shortcuts".
+	let shortcutsOpen = $state(false);
+
+	// ⌘K → "Compose" dispatches this; a bare `c` composes (Gmail-style); the
+	// palette's help action dispatches doota:shortcuts.
 	onMount(() => {
 		const openCompose = () => compose.start();
+		const openShortcuts = () => (shortcutsOpen = true);
 		window.addEventListener('doota:compose', openCompose);
-		return () => window.removeEventListener('doota:compose', openCompose);
+		window.addEventListener('doota:shortcuts', openShortcuts);
+		return () => {
+			window.removeEventListener('doota:compose', openCompose);
+			window.removeEventListener('doota:shortcuts', openShortcuts);
+		};
 	});
 	function onKeydown(e: KeyboardEvent) {
-		if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return;
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement;
-		if (t?.closest('input, textarea, [contenteditable="true"]')) return;
-		compose.start();
+		// Never hijack typing or an open dialog/menu (palette, composer, prompts).
+		if (t?.closest('input, textarea, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
+		// `?` (Shift+/ on most layouts; e.key resolves it) opens the shortcut help.
+		if (e.key === '?') {
+			e.preventDefault();
+			shortcutsOpen = true;
+		} else if (e.key === 'c') {
+			compose.start();
+		}
 	}
 </script>
 
@@ -72,3 +89,5 @@
 		{/key}
 	</Sidebar.Inset>
 </Sidebar.Provider>
+
+<ShortcutsDialog bind:open={shortcutsOpen} />

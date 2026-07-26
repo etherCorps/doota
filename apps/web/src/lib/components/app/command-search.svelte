@@ -22,6 +22,7 @@
 	import Highlight from '$lib/components/mail/highlight.svelte';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
+	import KeyboardIcon from '@lucide/svelte/icons/keyboard';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -87,6 +88,11 @@
 				<Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('doota:compose')))}>
 					<PenLineIcon class="text-muted-foreground size-4" />
 					Compose message
+				</Command.Item>
+				<Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('doota:shortcuts')))}>
+					<KeyboardIcon class="text-muted-foreground size-4" />
+					Keyboard shortcuts
+					<Command.Shortcut class="font-mono">?</Command.Shortcut>
 				</Command.Item>
 			</Command.Group>
 			<Command.Separator />
