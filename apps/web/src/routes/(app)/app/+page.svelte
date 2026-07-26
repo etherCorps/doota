@@ -15,6 +15,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
+	import Highlight from '$lib/components/mail/highlight.svelte';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
@@ -83,6 +84,8 @@
 	import Rows3Icon from '@lucide/svelte/icons/rows-3';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import XIcon from '@lucide/svelte/icons/x';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import { searchMail } from '$lib/rpc/search.remote';
 	import { fly } from 'svelte/transition';
@@ -767,6 +770,55 @@
 		}, 1300);
 	}
 
+	// Find-in-thread: a lightweight Cmd-F scoped to the open conversation. Matches
+	// against the plaintext we already hold (subject / stripped body / sender) and
+	// jumps between matching messages — rich HTML lives in the sandboxed frame, so
+	// this locates the message, it doesn't highlight inside the frame. Client-only.
+	let findOpen = $state(false);
+	let findQ = $state('');
+	let findIdx = $state(0);
+	const threadMsgs = $derived(
+		(openDto?.items ?? []).filter((i): i is MessageDTO => i.type === 'external_message')
+	);
+	const lastMsgId = $derived(threadMsgs.at(-1)?.id);
+	const findMatches = $derived.by(() => {
+		const term = findQ.trim().toLowerCase();
+		if (!term) return [] as string[];
+		return threadMsgs
+			.filter((m) =>
+				[m.subject, m.bodyStripped, m.bodyFull, m.from].some((s) => s?.toLowerCase().includes(term))
+			)
+			.map((m) => m.id);
+	});
+	// Single jump driver: whenever the match set or cursor changes (typing, or
+	// prev/next), clamp and jump to the current match. findStep only moves the
+	// cursor; this effect does the scrolling.
+	$effect(() => {
+		const n = findMatches.length;
+		if (!n) return;
+		if (findIdx >= n) findIdx = 0;
+		const id = findMatches[findIdx];
+		if (id) jumpToMsg(id, id === lastMsgId);
+	});
+	function findStep(dir: 1 | -1) {
+		const n = findMatches.length;
+		if (!n) return;
+		findIdx = (findIdx + dir + n) % n;
+	}
+	function closeFind() {
+		findOpen = false;
+		findQ = '';
+		findIdx = 0;
+	}
+	// Reset find when the open thread changes — a query from one conversation
+	// shouldn't carry into the next.
+	$effect(() => {
+		void openDto?.id;
+		untrack(() => {
+			if (findOpen || findQ) closeFind();
+		});
+	});
+
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
 	// the single ComposePanel is mounted in the (app) layout.
 	// The composer editor reads HTML, so forwarded content is built as HTML — a
@@ -865,11 +917,19 @@
 		const t = e.target as HTMLElement;
 		if (t?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
 		if (e.key === 'Escape') {
-			if (attachmentsOpen) {
+			if (findOpen) {
+				closeFind();
+			} else if (attachmentsOpen) {
 				attachmentsOpen = false;
 			} else if (threadId) {
 				nav({ thread: null });
 			}
+			return;
+		}
+		// `/` opens find-in-thread when a thread is open (Gmail/Superhuman).
+		if (e.key === '/' && threadId) {
+			e.preventDefault();
+			findOpen = true;
 			return;
 		}
 		if (e.key === 'j' || e.key === 'k') {
@@ -1334,8 +1394,10 @@
 										<span class="flex-1 truncate text-sm font-medium">{hit.from ? senderName(hit.from) : '—'}</span>
 										{#if hit.at}<span class="text-faint shrink-0 text-[11px]">{fmtTime(hit.at)}</span>{/if}
 									</div>
-									<span class="block truncate text-[13px] text-muted-foreground">{hit.subject ?? '(no subject)'}</span>
-									<span class="text-muted-foreground line-clamp-1 text-xs">{hit.snippet ?? ''}</span>
+									<span class="block truncate text-[13px] text-muted-foreground">
+										{#if hit.subject}<Highlight text={hit.subject} terms={hit.terms} />{:else}(no subject){/if}
+									</span>
+									<span class="text-muted-foreground line-clamp-1 text-xs"><Highlight text={hit.snippet} terms={hit.terms} /></span>
 								</div>
 							</button>
 						{/each}
@@ -1595,7 +1657,12 @@
 							</Popover.Root>
 						{/if}
 
-						<!-- Interact: star + forward (step back on phones — star also lives on list rows) -->
+						<!-- Interact: find-in-thread + star + forward (step back on phones — star also lives on list rows) -->
+						{#if msgs.length}
+							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Find in conversation (/)" aria-pressed={findOpen} onclick={() => (findOpen ? closeFind() : (findOpen = true))}>
+								<SearchIcon class="size-4" />
+							</Button>
+						{/if}
 						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={thread.isStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(thread.isStarred)}>
 							<StarIcon class="size-4 {thread.isStarred ? 'text-p3 fill-current' : ''}" />
 						</Button>
@@ -1697,6 +1764,43 @@
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 					</div>
+
+					<!-- Find-in-thread bar: locates + jumps between messages matching the
+					     query (plaintext we hold; rich bodies live in the sandboxed frame). -->
+					{#if findOpen}
+						<div class="bg-card/60 flex items-center gap-2 border-b px-3 py-1.5 md:px-4">
+							<SearchIcon class="text-muted-foreground size-4 shrink-0" />
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								type="text"
+								autofocus
+								bind:value={findQ}
+								placeholder="Find in conversation…"
+								onkeydown={(e) => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										findStep(e.shiftKey ? -1 : 1);
+									} else if (e.key === 'Escape') {
+										e.preventDefault();
+										closeFind();
+									}
+								}}
+								class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+							/>
+							<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
+								{findQ.trim() ? (findMatches.length ? `${findIdx + 1}/${findMatches.length}` : '0/0') : ''}
+							</span>
+							<button type="button" title="Previous (Shift+Enter)" disabled={!findMatches.length} onclick={() => findStep(-1)} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors disabled:opacity-40">
+								<ChevronUpIcon class="size-4" />
+							</button>
+							<button type="button" title="Next (Enter)" disabled={!findMatches.length} onclick={() => findStep(1)} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors disabled:opacity-40">
+								<ChevronDownIcon class="size-4" />
+							</button>
+							<button type="button" title="Close (Esc)" onclick={closeFind} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors">
+								<XIcon class="size-4" />
+							</button>
+						</div>
+					{/if}
 
 					<!-- Middle row: message stream + (optional) docked attachments column.
 					     Header above and reply/notes below stay full-width and visible. -->

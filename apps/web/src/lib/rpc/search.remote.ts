@@ -2,11 +2,12 @@
 import { query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, like, lte, or } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
-import { searchMailbox } from "@doota/mail-core/search";
+import { searchMailbox, words } from "@doota/mail-core/search";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
 
 /**
  * Mail search (command palette). Blind-token FTS over the user's OWN mailboxes
@@ -17,7 +18,11 @@ import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
  * Gmail-style operators ride inside the query string: `from:` / `to:` match the
  * plaintext routing columns (from_addr / to_addrs / cc_addrs — substring, so
  * partial addresses work), `is:starred` (aliases: important, flagged) filters on
- * thread_state. Remaining free text goes through blind-token FTS as before.
+ * thread_state, `is:unread` / `is:read` on the caller's thread_read state,
+ * `has:attachment` on a filename'd attachment row, and `after:` / `before:`
+ * (YYYY-MM-DD, YYYY/MM/DD, or a relative `7d`) on sent time. Remaining free text
+ * goes through blind-token FTS. `terms` echoes the FTS words so the client can
+ * bold matches; the snippet is centered on the first match, not the body head.
  */
 
 export type SearchHit = {
@@ -27,39 +32,14 @@ export type SearchHit = {
   snippet: string | null;
   from: string | null;
   at: number | null;
+  /** Lowercased query words the client highlights in subject + snippet. */
+  terms: string[];
 };
 
 function keys() {
   const env = getRequestEvent().platform?.env;
   if (!env?.MAIL_DEK || !env?.MAIL_SEARCH_KEY) error(500, "Search is not configured.");
   return { dek: env.MAIL_DEK, searchKeyB64: env.MAIL_SEARCH_KEY };
-}
-
-function preview(text: string | null, n = 120): string | null {
-  if (!text) return null;
-  const clean = text.replace(/\s+/g, " ").trim();
-  return clean.length > n ? clean.slice(0, n) + "…" : clean;
-}
-
-/** Pull `from:x` / `to:x` / `is:starred|important|flagged` out; rest is FTS text. */
-function parseQuery(raw: string) {
-  let from: string | undefined;
-  let to: string | undefined;
-  let starred = false;
-  const text = raw
-    .replace(/(^|\s)(from|to|is):(\S+)/gi, (_m, pre: string, k: string, v: string) => {
-      const val = v.toLowerCase();
-      const key = k.toLowerCase();
-      if (key === "from") from = val;
-      else if (key === "to") to = val;
-      else if (val === "starred" || val === "important" || val === "flagged") starred = true;
-      return pre;
-    })
-    // A bare operator mid-typing ("from:") is not free text — drop it.
-    .replace(/(^|\s)(from|to|is):(?=\s|$)/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return { text, from, to, starred };
 }
 
 export const searchMail = query(
@@ -79,7 +59,8 @@ export const searchMail = query(
     if (!boxes.length) return [];
 
     const { dek, searchKeyB64 } = keys();
-    const { text, from, to, starred } = parseQuery(q);
+    const { text, from, to, starred, hasAttachment, unread, after, before } = parseSearchQuery(q);
+    const terms = text.length >= 2 ? words(text) : [];
 
     // Candidate message ids, remembering which mailbox surfaced each (for nav).
     const msgToBox = new Map<string, string>();
@@ -92,9 +73,10 @@ export const searchMail = query(
         const ids = await searchMailbox(locals.db, { searchKeyB64, mailboxId: b, queryText: text });
         for (const id of ids) if (!msgToBox.has(id)) msgToBox.set(id, b);
       }
-    } else if (from || to) {
-      // No free text: candidates come straight from the plaintext routing
-      // columns (LIKE is case-insensitive for ASCII in SQLite).
+    } else if (from || to || after != null || before != null || hasAttachment) {
+      // No free text: candidates come from the plaintext columns. from/to (LIKE,
+      // case-insensitive for ASCII) and the sent-time range filter in SQL; the
+      // attachment requirement is a post-filter below.
       const conds = [];
       if (from) conds.push(like(schema.message.fromAddr, `%${from}%`));
       if (to)
@@ -104,6 +86,8 @@ export const searchMail = query(
             like(schema.message.ccAddrs, `%${to}%`),
           ),
         );
+      if (after != null) conds.push(gte(schema.message.sentAt, new Date(after)));
+      if (before != null) conds.push(lte(schema.message.sentAt, new Date(before)));
       const found = await locals.db
         .selectDistinct({
           id: schema.message.id,
@@ -155,12 +139,32 @@ export const searchMail = query(
       for (const r of rows) msgToBox.set(r.id, st.get(r.threadId)!);
     }
 
-    // FTS candidates still need the participant filters applied.
+    // Structured filters that apply to candidates from ANY source (so free text
+    // combines with them). from/to/date already ran in SQL for the routing-column
+    // path but must still be applied to FTS candidates.
     if (from) rows = rows.filter((r) => r.fromAddr?.toLowerCase().includes(from));
     if (to)
       rows = rows.filter(
         (r) => r.toAddrs.toLowerCase().includes(to) || r.ccAddrs.toLowerCase().includes(to),
       );
+    if (after != null) rows = rows.filter((r) => r.sentAt != null && r.sentAt.getTime() >= after);
+    if (before != null) rows = rows.filter((r) => r.sentAt != null && r.sentAt.getTime() <= before);
+
+    // has:attachment — a real file attachment carries a filename; inline cid
+    // images are identified by Content-ID and typically have none.
+    if (hasAttachment && rows.length) {
+      const withAtt = await locals.db
+        .selectDistinct({ mid: schema.attachment.messageId })
+        .from(schema.attachment)
+        .where(
+          and(
+            inArray(schema.attachment.messageId, rows.map((r) => r.id)),
+            isNotNull(schema.attachment.filename),
+          ),
+        );
+      const set = new Set(withAtt.map((a) => a.mid));
+      rows = rows.filter((r) => set.has(r.id));
+    }
 
     // Newest matched message per thread (rows already sorted newest-first).
     const byThread = new Map<string, (typeof rows)[number]>();
@@ -180,6 +184,24 @@ export const searchMail = query(
       hits = hits.filter((r) => ok.has(`${r.threadId}|${msgToBox.get(r.id)}`));
     }
 
+    // is:unread / is:read — per (user, thread, mailbox): unread = no thread_read
+    // row, or last read before the thread's newest matched message.
+    if (unread != null && hits.length) {
+      const reads = await locals.db.query.threadRead.findMany({
+        where: and(
+          eq(schema.threadRead.userId, locals.user.id),
+          inArray(schema.threadRead.threadId, hits.map((r) => r.threadId)),
+        ),
+        columns: { threadId: true, mailboxId: true, lastReadAt: true },
+      });
+      const readAt = new Map(reads.map((r) => [`${r.threadId}|${r.mailboxId}`, r.lastReadAt?.getTime() ?? 0]));
+      hits = hits.filter((r) => {
+        const last = readAt.get(`${r.threadId}|${msgToBox.get(r.id)}`);
+        const isUnread = last == null || (r.sentAt != null && last < r.sentAt.getTime());
+        return unread ? isUnread : !isUnread;
+      });
+    }
+
     const ck = await importKey(dek);
     const top = hits.slice(0, limit ?? 20);
     return Promise.all(
@@ -187,9 +209,10 @@ export const searchMail = query(
         threadId: r.threadId,
         mailboxId: msgToBox.get(r.id)!,
         subject: await decryptContent(ck, r.subjectEnc),
-        snippet: preview(await decryptContent(ck, r.bodyStrippedEnc)),
+        snippet: snippetAround(await decryptContent(ck, r.bodyStrippedEnc), terms),
         from: r.fromAddr,
         at: r.sentAt ? r.sentAt.getTime() : null,
+        terms,
       })),
     );
   },

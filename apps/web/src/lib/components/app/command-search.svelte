@@ -19,6 +19,9 @@
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import Highlight from '$lib/components/mail/highlight.svelte';
+	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
+	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -77,7 +80,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <Command.Dialog bind:open shouldFilter={false}>
-	<Command.Input placeholder="Search mail — from: to: is:starred work too…" bind:value={q} />
+	<Command.Input placeholder="Search — from: to: has:attachment is:unread after:7d…" bind:value={q} />
 	<Command.List>
 		{#if q.trim().length < 2}
 			<Command.Group heading="Actions">
@@ -104,6 +107,16 @@
 					<AtSignIcon class="text-muted-foreground size-4" />
 					To recipient…
 					<Command.Shortcut class="font-mono">to:</Command.Shortcut>
+				</Command.Item>
+				<Command.Item onSelect={() => (q = 'has:attachment')}>
+					<PaperclipIcon class="text-muted-foreground size-4" />
+					Has attachment
+					<Command.Shortcut class="font-mono">has:attachment</Command.Shortcut>
+				</Command.Item>
+				<Command.Item onSelect={() => (q = 'is:unread')}>
+					<MailOpenIcon class="text-muted-foreground size-4" />
+					Unread conversations
+					<Command.Shortcut class="font-mono">is:unread</Command.Shortcut>
 				</Command.Item>
 			</Command.Group>
 			<Command.Separator />
@@ -141,8 +154,10 @@
 							>
 								<SearchIcon class="text-muted-foreground size-4 shrink-0" />
 								<div class="flex min-w-0 flex-col">
-									<span class="truncate">{hit.subject || '(no subject)'}</span>
-									{#if hit.snippet}<span class="text-muted-foreground truncate text-xs">{hit.snippet}</span>{/if}
+									<span class="truncate">
+										{#if hit.subject}<Highlight text={hit.subject} terms={hit.terms} />{:else}(no subject){/if}
+									</span>
+									{#if hit.snippet}<span class="text-muted-foreground truncate text-xs"><Highlight text={hit.snippet} terms={hit.terms} /></span>{/if}
 								</div>
 								{#if hit.from}<Command.Shortcut class="font-mono">{hit.from}</Command.Shortcut>{/if}
 							</Command.Item>
