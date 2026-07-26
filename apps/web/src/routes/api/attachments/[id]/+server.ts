@@ -3,8 +3,7 @@ import { error, type RequestHandler } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { sanitizeFilename } from "$lib/utils/filename";
 
 // Content types we'll serve as declared. Everything else (HTML, SVG, XML, …) is
@@ -40,7 +39,7 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   if (!message) error(404, "Attachment not found");
 
   // Access: a delivery to one of the user's mailboxes, or org-level read.
-  const myBoxes = await accessibleMailboxIds(locals.db, user.id);
+  const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
   let allowed = false;
   if (myBoxes.length) {
     const del = await locals.db.query.delivery.findFirst({
@@ -53,7 +52,7 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
     allowed = !!del;
   }
   if (!allowed) {
-    const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+    const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
     allowed = can(
       { id: user.id, role: user.role, orgAdminOf },
       "read",
@@ -79,7 +78,9 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Referrer-Policy": "no-referrer",
-      "Cache-Control": "private, max-age=3600",
+      // Bytes for an attachment id never change ("raw is truth") — cache for a
+      // year, browser-private only (same edge-cache stance as the body route).
+      "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
 };

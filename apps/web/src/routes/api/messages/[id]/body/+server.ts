@@ -6,8 +6,7 @@ import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { sanitizeEmailHtml, buildFramedDocument } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
 
 /**
@@ -95,7 +94,7 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
 
   // Access mirrors thread read + the attachment endpoint: a delivery to one of
   // the user's mailboxes, or org-level read via can().
-  const myBoxes = await accessibleMailboxIds(locals.db, user.id);
+  const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
   let allowed = false;
   if (myBoxes.length) {
     const del = await locals.db.query.delivery.findFirst({
@@ -105,7 +104,7 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
     allowed = !!del;
   }
   if (!allowed) {
-    const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+    const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
     allowed = can(
       { id: user.id, role: user.role, orgAdminOf },
       "read",
@@ -202,7 +201,11 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
       "Content-Security-Policy": headerCsp,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Cache-Control": "private, no-store",
+      // Browser-private cache only (auth runs once per browser; content stays on
+      // device). Deliberately NOT edge/Workers Cache: URL-keyed edge entries
+      // would serve decrypted bodies without our per-user can() check running.
+      // 1h: sanitizer-pipeline changes still propagate same-day.
+      "Cache-Control": "private, max-age=3600",
     },
   });
 };

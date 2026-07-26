@@ -8,6 +8,7 @@ import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { listSendIdentities } from "@doota/mail-core/identities";
 import { suggestRecipients, topRecipients, type RecipientSuggestion } from "@doota/mail-core/contacts";
 import { mailEventStream } from "@doota/mail-core/events-hub";
+import { TtlCache } from "$lib/server/ttl-cache.js";
 import {
   createDraft,
   saveDraft,
@@ -68,26 +69,39 @@ export const sendIdentities = query(async () => {
 // shows up immediately.
 const CONTACTS_TTL = 600; // seconds
 const contactsKey = (userId: string) => `contacts:${userId}`;
+// First tier: per-isolate memory in front of KV — a warm isolate answers the
+// composer prefetch without any KV read. 60s ceiling; a send in THIS isolate
+// clears it instantly, other isolates converge within the minute. (Inbound
+// deliveries bust KV only — worst case a brand-new correspondent takes ≤60s
+// to appear here, vs ≤10min before.)
+const contactsMem = new TtlCache<RecipientSuggestion[]>(60_000);
 
 async function invalidateContacts(userId: string): Promise<void> {
+  contactsMem.delete(contactsKey(userId));
   const kv = getRequestEvent().platform?.env?.AUTH_KV;
   if (kv) await kv.delete(contactsKey(userId));
 }
 
 // The client prefetches this once per composer, then filters locally — so
-// keystrokes never hit the server. KV serves it without touching D1 on the
-// common path; on a miss (or no KV binding, e.g. tests) it falls back to the
-// bounded D1 query and repopulates.
+// keystrokes never hit the server. Read path: isolate memory → KV → the
+// bounded D1 query (also the fallback when no KV binding, e.g. tests);
+// each tier repopulates the one above it.
 export const recipientCandidates = query(async () => {
   const user = requireUser();
   const { locals, platform } = getRequestEvent();
   const kv = platform?.env?.AUTH_KV;
   const key = contactsKey(user.id);
+  const mem = contactsMem.get(key);
+  if (mem) return mem;
   if (kv) {
     const cached = (await kv.get(key, "json")) as RecipientSuggestion[] | null;
-    if (cached) return cached;
+    if (cached) {
+      contactsMem.set(key, cached);
+      return cached;
+    }
   }
   const list = await topRecipients(locals.db, user.id);
+  contactsMem.set(key, list);
   if (kv) await kv.put(key, JSON.stringify(list), { expirationTtl: CONTACTS_TTL });
   return list;
 });
