@@ -16,6 +16,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
+	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
@@ -1559,10 +1560,14 @@
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
 										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderName(t.from)}</span>
-										<span class="text-faint shrink-0 text-[11px]">{fmtTime(t.lastMessageAt)}</span>
+										<span class="text-faint shrink-0 text-[11px]">{relTime(t.lastMessageAt)}</span>
 									</div>
 									<div class="flex items-center gap-1.5">
 										{#if t.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
+										<!-- Sent is a cross-cut view — flag rows that also live in the Inbox. -->
+										{#if placement === 'sent' && t.placement === 'inbox'}
+											<span class="bg-brand/10 text-brand shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">Inbox</span>
+										{/if}
 										<span class="min-w-0 flex-1 truncate text-[13px] {t.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{t.subject ?? '(no subject)'}</span>
 										{#if t.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
 										{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}

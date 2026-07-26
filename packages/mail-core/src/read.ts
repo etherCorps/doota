@@ -42,6 +42,9 @@ export type ThreadSummary = {
   /** Triage-at-a-glance for shared mailboxes (Task 5). */
   hasNotes: boolean;
   assigneeUserId: string | null;
+  /** The thread's actual placement (inbox/archived/…). The Sent view is a
+   * cross-cut, so a sent row can still live in Inbox — the UI badges that. */
+  placement: string;
 };
 
 // stripHtmlTags: stored stripped bodies are plain text by construction, but
@@ -99,6 +102,7 @@ export async function listThreads(
       threadId: schema.threadState.threadId,
       isStarred: schema.threadState.isStarred,
       assigneeUserId: schema.threadState.assigneeUserId,
+      placement: schema.threadState.placement,
     })
     .from(schema.threadState)
     .innerJoin(schema.thread, eq(schema.thread.id, schema.threadState.threadId))
@@ -202,6 +206,7 @@ export async function listThreads(
       unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),
       hasNotes: notedThreads.has(s.threadId),
       assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
+      placement: s.placement,
     });
   }
   return out;
