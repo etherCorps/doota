@@ -397,13 +397,21 @@ export async function getThread(
 
   // Reply context per message. Two shapes:
   //  - parent IS visible (accessible) → a one-line preview that links to it, so a
-  //    reply to an OLDER message can jump back. Skipped when the parent is the
-  //    message right above (redundant in a linear thread).
+  //    reply to an OLDER message can jump back.
   //  - parent NOT visible (a personal mailbox added on Cc) → the FULL parent text,
-  //    because a half-shown message is worse than none.
+  //    because a half-shown message is worse than none — plus the hidden ancestor
+  //    chain above it (`ancestors`, oldest first), so the newcomer gets the whole
+  //    conversation, not one hop. The walk stops at a visible message (the reader
+  //    can scroll to it) or a gap; depth cap guards cycles.
   const replyContextByMsg = new Map<
     string,
-    { from: string | null; sentAt: number | null; parentId: string | null; text: string }
+    {
+      from: string | null;
+      sentAt: number | null;
+      parentId: string | null;
+      text: string;
+      ancestors?: { from: string | null; sentAt: number | null; text: string }[];
+    }
   >();
   if (messages.length) {
     const visibleByHeader = new Map(messages.map((m) => [m.messageIdHeader, m]));
@@ -436,13 +444,41 @@ export async function getThread(
           text: preview(await decryptContent(input.ck, visibleParent.bodyStrippedEnc), 120) ?? "",
         });
       } else {
-        const h = hiddenByHeader.get(m.inReplyTo);
-        if (!h) continue;
+        // Walk the hidden chain: immediate parent + any older hidden ancestors.
+        const chain: (typeof messages)[number][] = [];
+        const seen = new Set<string>();
+        let ref: string | null = m.inReplyTo;
+        while (ref && chain.length < 5 && !seen.has(ref) && !visibleByHeader.has(ref)) {
+          seen.add(ref);
+          let h = hiddenByHeader.get(ref);
+          if (!h) {
+            h = await db.query.message.findFirst({
+              where: and(
+                eq(schema.message.threadId, input.threadId),
+                eq(schema.message.messageIdHeader, ref),
+              ),
+            });
+            if (h) hiddenByHeader.set(ref, h);
+          }
+          if (!h) break;
+          chain.push(h);
+          ref = h.inReplyTo;
+        }
+        if (!chain.length) continue;
+        const [parent, ...older] = chain;
+        const ancestors = await Promise.all(
+          older.reverse().map(async (a) => ({
+            from: a.fromAddr,
+            sentAt: a.sentAt ? a.sentAt.getTime() : null,
+            text: (await decryptContent(input.ck, a.bodyStrippedEnc)) ?? "",
+          })),
+        );
         replyContextByMsg.set(m.id, {
-          from: h.fromAddr,
-          sentAt: h.sentAt ? h.sentAt.getTime() : null,
+          from: parent.fromAddr,
+          sentAt: parent.sentAt ? parent.sentAt.getTime() : null,
           parentId: null,
-          text: (await decryptContent(input.ck, h.bodyStrippedEnc)) ?? "",
+          text: (await decryptContent(input.ck, parent.bodyStrippedEnc)) ?? "",
+          ...(ancestors.length ? { ancestors } : {}),
         });
       }
     }

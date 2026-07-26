@@ -510,7 +510,10 @@
 		composerFlash = true;
 		setTimeout(() => (composerFlash = false), 900);
 	}
-	const selfSet = () => new Set(identities.map((i) => i.address.toLowerCase()));
+	// Subaddress-normalize: you+tag@x and you@x are the same inbox, so both count
+	// as "self" — otherwise reply-all to mail sent at you+shop@ mails yourself.
+	const baseAddr = (a: string) => a.toLowerCase().replace(/^([^@+]+)\+[^@]*@/, '$1@');
+	const selfSet = () => new Set(identities.map((i) => baseAddr(i.address)));
 	// Everyone who's appeared on the thread (from/to/cc across all messages).
 	function threadParticipants(msgs: MessageDTO[]): Set<string> {
 		const s = new Set<string>();
@@ -526,12 +529,12 @@
 		for (const a of [m.from, ...m.to, ...m.cc]) if (a) aud.add(a.toLowerCase());
 		if (aud.size >= parts.size) return null; // reaches everyone on the thread
 		const self = selfSet();
-		return [...aud].filter((a) => !self.has(a));
+		return [...aud].filter((a) => !self.has(baseAddr(a)));
 	}
 	// Reply-all only means something when the message reaches ≥2 people besides you.
 	function msgCanReplyAll(m: MessageDTO): boolean {
 		const self = selfSet();
-		const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map((a) => a.toLowerCase()));
+		const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map(baseAddr));
 		for (const s of self) all.delete(s);
 		return all.size >= 2;
 	}
@@ -544,7 +547,7 @@
 		const chosen = target ? msgs.find((m) => m.id === target.msgId) : undefined;
 		const base = chosen ?? [...msgs].reverse().find((m) => !m.outbound) ?? msgs.at(-1);
 		const self = selfSet();
-		const notSelf = (a: string) => a && !self.has(a.toLowerCase());
+		const notSelf = (a: string) => a && !self.has(baseAddr(a));
 		const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean).map((x) => x.toLowerCase()))];
 		const primary = base?.outbound
 			? (base.to[0] ?? base.cc[0] ?? '')
@@ -571,9 +574,12 @@
 	const loadedImages = new SvelteSet<string>();
 
 	// A mailto: link inside a message opens Doota's composer, not the OS handler.
-	function openMailto(address: string) {
+	// ?subject=&body= params prefill the draft, like OS mail handlers do.
+	function openMailto(address: string, extra?: { subject?: string; body?: string }) {
 		if (!mailboxId || !address) return;
-		compose.start({ prefill: { kind: 'new', mailboxId, to: address } });
+		compose.start({
+			prefill: { kind: 'new', mailboxId, to: address, subject: extra?.subject || undefined, body: extra?.body || undefined }
+		});
 	}
 
 	function fmtTime(ms: number | null): string {
@@ -973,6 +979,13 @@
 				<span class="truncate opacity-80">{rc.text}</span>
 			</button>
 		{:else}
+			<!-- Hidden ancestor chain (added-on-Cc): oldest first, immediate parent last. -->
+			{#each rc.ancestors ?? [] as a (a.sentAt ?? a.text)}
+				<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
+					<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(a.from)}</div>
+					<div class="max-h-40 overflow-y-auto whitespace-pre-wrap opacity-70">{a.text}</div>
+				</div>
+			{/each}
 			<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
 				<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(rc.from)}</div>
 				<div class="max-h-40 overflow-y-auto whitespace-pre-wrap opacity-70">{rc.text}</div>

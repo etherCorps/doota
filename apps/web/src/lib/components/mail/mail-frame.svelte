@@ -22,8 +22,9 @@
 		collapse?: boolean;
 		fadeClass?: string;
 		linkClass?: string;
-		/** A mailto: link was clicked — open Doota's composer instead of the OS handler. */
-		onmailto?: (address: string) => void;
+		/** A mailto: link was clicked — open Doota's composer instead of the OS handler.
+		 * `subject`/`body` carry the link's ?subject=&body= params (already decoded). */
+		onmailto?: (address: string, extra?: { subject?: string; body?: string }) => void;
 	} = $props();
 
 	let frame = $state<HTMLIFrameElement>();
@@ -52,14 +53,24 @@
 		function onMessage(e: MessageEvent) {
 			// Opaque origin: event.origin is "null", so validate the SOURCE window, not the origin.
 			if (!frame || e.source !== frame.contentWindow) return;
-			const d = e.data as { __mailframe?: number; type?: string; value?: unknown; address?: unknown };
+			const d = e.data as {
+				__mailframe?: number;
+				type?: string;
+				value?: unknown;
+				address?: unknown;
+				subject?: unknown;
+				body?: unknown;
+			};
 			if (!d || d.__mailframe !== 1) return;
 			if (d.type === 'height' && typeof d.value === 'number' && Number.isFinite(d.value)) {
 				contentH = Math.max(0, Math.min(MAX_H, Math.ceil(d.value)));
 			} else if (d.type === 'mailto' && typeof d.address === 'string') {
 				// http/https links open inside the frame (in the click gesture, so no
 				// popup-block); only mailto: comes up here, to open the composer.
-				onmailto?.(d.address);
+				onmailto?.(d.address, {
+					subject: typeof d.subject === 'string' ? d.subject : undefined,
+					body: typeof d.body === 'string' ? d.body : undefined
+				});
 			}
 		}
 		window.addEventListener('message', onMessage);

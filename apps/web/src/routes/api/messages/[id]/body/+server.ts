@@ -46,7 +46,8 @@ const INJECTED_SCRIPT =
   "var href=a.getAttribute('href')||'';" +
   "if(!/^[a-z][a-z0-9+.-]*:/i.test(href))return;" + // absolute-scheme only; drop relative
   "var u;try{u=new URL(href);}catch(_){return;}var s=u.protocol.toLowerCase();" +
-  "if(s==='mailto:'){parent.postMessage({__mailframe:1,type:'mailto',address:decodeURIComponent(u.pathname)},'*');return;}" +
+  "if(s==='mailto:'){var sp=u.searchParams;parent.postMessage({__mailframe:1,type:'mailto',address:decodeURIComponent(u.pathname)," +
+  "subject:sp.get('subject')||'',body:sp.get('body')||''},'*');return;}" +
   "if(s!=='http:'&&s!=='https:')return;" + // drop javascript:, data:, file:, …
   "var host=u.hostname.toLowerCase();" +
   "var idn=host.split('.').some(function(l){return l.indexOf('xn--')===0;});" +

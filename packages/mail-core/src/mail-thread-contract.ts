@@ -93,7 +93,15 @@ export type MessageDTO = {
    *  - `parentId` null → this (personal) mailbox can't see the parent (added on
    *    Cc): `text` is the FULL parent body, so context is never half-shown.
    * Absent when the parent is the message directly above (redundant). */
-  replyContext?: { from: string | null; sentAt: number | null; parentId: string | null; text: string };
+  replyContext?: {
+    from: string | null;
+    sentAt: number | null;
+    parentId: string | null;
+    text: string;
+    /** Older hidden ancestors beyond the immediate parent (added-on-Cc case),
+     * oldest first — rendered as stacked "earlier" blocks above the parent. */
+    ancestors?: { from: string | null; sentAt: number | null; text: string }[];
+  };
 };
 
 /** A team-internal note in the timeline (Task 5). Never transmitted; visually
@@ -333,43 +341,50 @@ function formatQuoteAttribution(from: string | null, at: number | null): string 
   return `On ${when}, ${from ?? "someone"} wrote:`;
 }
 
+export type QuotedParent = { from: string | null; sentAt: number | null; bodyFull: string | null };
+
 /**
- * Re-quote the parent into an outbound plain-text reply. Doota stores bodies
- * stripped, so replies leaving the instance must re-attach conventional quoted
- * history (`>`-prefixed) or external clients (Gmail/Outlook) lose context.
+ * Re-quote the ancestor chain into an outbound plain-text reply. Doota stores
+ * bodies stripped, so replies leaving the instance must re-attach conventional
+ * quoted history (`>`-prefixed) or external clients (Gmail/Outlook) lose
+ * context. `parents` is newest-first (immediate parent at index 0); nesting
+ * folds oldest→newest so each older hop gains one more `>` level — the same
+ * accumulated shape Gmail puts on the wire.
  */
-export function buildQuotedText(
-  newBody: string,
-  parent: { from: string | null; sentAt: number | null; bodyFull: string | null },
-): string {
-  if (!parent.bodyFull) return newBody;
-  const quoted = parent.bodyFull
-    .split(/\r?\n/)
-    .map((l) => `> ${l}`)
-    .join("\n");
-  return `${newBody}\n\n${formatQuoteAttribution(parent.from, parent.sentAt)}\n${quoted}`;
+export function buildQuotedText(newBody: string, parents: QuotedParent[]): string {
+  let acc = "";
+  for (const p of [...parents].reverse()) {
+    if (!p.bodyFull) continue;
+    const inner = acc ? `${p.bodyFull}\n\n${acc}` : p.bodyFull;
+    acc =
+      `${formatQuoteAttribution(p.from, p.sentAt)}\n` +
+      inner
+        .split(/\r?\n/)
+        .map((l) => `> ${l}`)
+        .join("\n");
+  }
+  return acc ? `${newBody}\n\n${acc}` : newBody;
 }
 
 /**
- * HTML variant: the new body followed by a <blockquote> of the parent — the
- * container inbound quote-stripping already recognizes, so a round-trip stays
- * symmetric.
+ * HTML variant: the new body followed by nested <blockquote>s of the chain —
+ * the container inbound quote-stripping already recognizes, so a round-trip
+ * stays symmetric (the whole chain strips as one quote).
  */
-export function buildQuotedHtml(
-  newHtml: string,
-  parent: { from: string | null; sentAt: number | null; bodyFull: string | null },
-): string {
-  if (!parent.bodyFull) return newHtml;
-  const esc = parent.bodyFull
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\r?\n/g, "<br>");
-  return (
-    `${newHtml}` +
-    `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">` +
-    `<p>${formatQuoteAttribution(parent.from, parent.sentAt)}</p>${esc}</blockquote>`
-  );
+export function buildQuotedHtml(newHtml: string, parents: QuotedParent[]): string {
+  let acc = "";
+  for (const p of [...parents].reverse()) {
+    if (!p.bodyFull) continue;
+    const esc = p.bodyFull
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\r?\n/g, "<br>");
+    acc =
+      `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;">` +
+      `<p>${formatQuoteAttribution(p.from, p.sentAt)}</p>${esc}${acc}</blockquote>`;
+  }
+  return acc ? `${newHtml}${acc}` : newHtml;
 }
 
 // ---- Content kind ------------------------------------------------------------

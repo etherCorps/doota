@@ -135,9 +135,24 @@ describe("outbound construction (Part E)", () => {
 
   it("re-quotes parent history into text + html replies", () => {
     const parent = { from: "bob@x.com", sentAt: Date.parse("2026-01-01T00:00:00Z"), bodyFull: "old line" };
-    expect(buildQuotedText("new reply", parent)).toContain("> old line");
-    expect(buildQuotedText("new reply", parent)).toMatch(/wrote:/);
-    expect(buildQuotedHtml("<p>hi</p>", parent)).toContain("<blockquote");
+    expect(buildQuotedText("new reply", [parent])).toContain("> old line");
+    expect(buildQuotedText("new reply", [parent])).toMatch(/wrote:/);
+    expect(buildQuotedHtml("<p>hi</p>", [parent])).toContain("<blockquote");
+  });
+
+  it("nests the full ancestor chain, one > level per hop (newest-first input)", () => {
+    const chain = [
+      { from: "bob@x.com", sentAt: Date.parse("2026-01-02T00:00:00Z"), bodyFull: "middle line" },
+      { from: "amy@x.com", sentAt: Date.parse("2026-01-01T00:00:00Z"), bodyFull: "oldest line" },
+    ];
+    const text = buildQuotedText("new reply", chain);
+    expect(text).toContain("> middle line"); // immediate parent: one level
+    expect(text).toContain("> > oldest line"); // grandparent: two levels
+    expect(text.indexOf("bob@x.com")).toBeLessThan(text.indexOf("amy@x.com"));
+    const html = buildQuotedHtml("<p>hi</p>", chain);
+    // nested blockquotes: grandparent inside parent
+    expect(html).toMatch(/<blockquote[^>]*>.*bob@x\.com.*<blockquote[^>]*>.*amy@x\.com/s);
+    expect(html.match(/<blockquote/g)?.length).toBe(2);
   });
 
   it("maps status to WhatsApp ticks (Part H)", () => {

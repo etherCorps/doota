@@ -9,7 +9,7 @@ import { importKey, decryptContent, type ContentKey } from "./crypto";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
-import { buildQuotedText, buildQuotedHtml } from "./mail-thread-contract";
+import { buildQuotedText, buildQuotedHtml, type QuotedParent } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
@@ -402,16 +402,35 @@ async function buildBody(
   if (!message.inReplyTo) {
     return { text: newText ?? undefined, html: newHtml ?? undefined };
   }
-  const parent = await db.query.message.findFirst({
-    where: and(eq(schema.message.orgId, message.orgId), eq(schema.message.messageIdHeader, message.inReplyTo)),
-    columns: { fromAddr: true, sentAt: true, bodyFullEnc: true },
-  });
-  if (!parent) return { text: newText ?? undefined, html: newHtml ?? undefined };
-  const parentFull = await decryptContent(ck, parent.bodyFullEnc);
-  const q = { from: parent.fromAddr, sentAt: parent.sentAt ? parent.sentAt.getTime() : null, bodyFull: parentFull };
+  // Walk the ancestor chain (newest-first) so outbound replies carry FULL
+  // accumulated history like every provider — bodies are stored quote-stripped,
+  // so one hop alone would drop everything older. Depth cap + seen set guard cycles.
+  const parents: QuotedParent[] = [];
+  const seen = new Set<string>();
+  let ref: string | null = message.inReplyTo;
+  for (let depth = 0; ref && depth < 10 && !seen.has(ref); depth++) {
+    seen.add(ref);
+    const parent: Pick<typeof schema.message.$inferSelect, "fromAddr" | "sentAt" | "bodyFullEnc" | "inReplyTo"> | undefined =
+      await db.query.message.findFirst({
+        where: and(eq(schema.message.orgId, message.orgId), eq(schema.message.messageIdHeader, ref)),
+        columns: { fromAddr: true, sentAt: true, bodyFullEnc: true, inReplyTo: true },
+      });
+    if (!parent) {
+      // RCA breadcrumb: a reply is leaving with less quoted history than expected.
+      log.warn("out.quote_parent_miss", { messageId: message.id, inReplyTo: ref, depth });
+      break;
+    }
+    parents.push({
+      from: parent.fromAddr,
+      sentAt: parent.sentAt ? parent.sentAt.getTime() : null,
+      bodyFull: await decryptContent(ck, parent.bodyFullEnc),
+    });
+    ref = parent.inReplyTo;
+  }
+  if (!parents.length) return { text: newText ?? undefined, html: newHtml ?? undefined };
   return {
-    text: buildQuotedText(newText ?? "", q),
-    html: newHtml ? buildQuotedHtml(newHtml, q) : undefined,
+    text: buildQuotedText(newText ?? "", parents),
+    html: newHtml ? buildQuotedHtml(newHtml, parents) : undefined,
   };
 }
 
