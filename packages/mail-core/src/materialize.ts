@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -375,6 +375,8 @@ export async function materializeDelivery(
     input.threadId,
     input.mailboxId,
     input.placement ?? INBOUND_PLACEMENT,
+    input.role,
+    input.sentAt ?? Date.now(),
   );
 }
 
@@ -391,7 +393,12 @@ async function ensureThreadState(
   threadId: string,
   mailboxId: string,
   policy: PlacementPolicy,
+  role: "to" | "cc" | "bcc" | "from",
+  sentAtMs: number,
 ): Promise<void> {
+  // last_activity_at bumps on ANY delivery (own sends bump the sort); last_inbound_at
+  // only on a recipient-role delivery (an own send must not mark a thread unread).
+  const inbound = role !== "from";
   const existing = await db.query.threadState.findFirst({
     where: and(
       eq(schema.threadState.threadId, threadId),
@@ -402,14 +409,25 @@ async function ensureThreadState(
   if (!existing) {
     await db
       .insert(mail.threadState)
-      .values({ orgId, threadId, mailboxId, placement: policy.newThread })
+      .values({
+        orgId,
+        threadId,
+        mailboxId,
+        placement: policy.newThread,
+        lastActivityAt: new Date(sentAtMs),
+        lastInboundAt: inbound ? new Date(sentAtMs) : null,
+      })
       .onConflictDoNothing();
     return;
   }
-  if (policy.unarchiveOnReply && existing.placement === "archived") {
-    await db
-      .update(mail.threadState)
-      .set({ placement: "inbox" })
-      .where(eq(mail.threadState.id, existing.id));
+  // Monotonic bump (a redelivered/out-of-order job can't move a timestamp back),
+  // plus the placement change in the same write.
+  const set: Record<string, unknown> = {
+    lastActivityAt: sql`MAX(COALESCE(${mail.threadState.lastActivityAt}, 0), ${sentAtMs})`,
+  };
+  if (inbound) {
+    set.lastInboundAt = sql`MAX(COALESCE(${mail.threadState.lastInboundAt}, 0), ${sentAtMs})`;
   }
+  if (policy.unarchiveOnReply && existing.placement === "archived") set.placement = "inbox";
+  await db.update(mail.threadState).set(set).where(eq(mail.threadState.id, existing.id));
 }

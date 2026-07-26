@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, desc, eq, exists, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -97,6 +97,8 @@ export async function listThreads(
         )
       : eq(schema.threadState.placement, input.placement);
 
+  // Sort on the denormalized recency column (mirrors thread.last_message_at) so
+  // thread_state_list_idx serves ORDER BY + LIMIT without joining `thread`.
   const states = await db
     .select({
       threadId: schema.threadState.threadId,
@@ -105,7 +107,6 @@ export async function listThreads(
       placement: schema.threadState.placement,
     })
     .from(schema.threadState)
-    .innerJoin(schema.thread, eq(schema.thread.id, schema.threadState.threadId))
     .where(
       and(
         eq(schema.threadState.mailboxId, input.mailboxId),
@@ -113,7 +114,7 @@ export async function listThreads(
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
       ),
     )
-    .orderBy(desc(schema.thread.lastMessageAt))
+    .orderBy(desc(schema.threadState.lastActivityAt))
     .limit(input.limit ?? 30)
     .offset(input.offset ?? 0);
 
@@ -224,37 +225,29 @@ export async function countUnread(
     where: eq(schema.mailbox.id, input.mailboxId),
     columns: { isPersonal: true },
   });
-  // "Unread" = a message newer than the read cursor exists. A SHARED mailbox sees
-  // the whole thread, so the global thread.last_message_at is that newest message.
-  // A PERSONAL mailbox only sees messages it was a party to — so it compares
-  // against the newest VISIBLE message (a delivery for this mailbox), or a
-  // colleague's hidden reply would phantom-unread the thread.
+  // "Unread" = the newest relevant message is after the user's read cursor,
+  // read straight off the denormalized thread_state columns (no delivery scan,
+  // no `thread` join):
+  //  - PERSONAL: only messages delivered here count → last_inbound_at (NULL when
+  //    nothing inbound has landed, so an own-sent-only thread is never unread).
+  //  - SHARED: the whole conversation is visible → last_activity_at (mirrors
+  //    thread.last_message_at, the prior authority).
   const newerThanCursor = mbox?.isPersonal
-    ? exists(
-        db
-          .select({ one: sql`1` })
-          .from(schema.delivery)
-          .innerJoin(schema.message, eq(schema.message.id, schema.delivery.messageId))
-          .where(
-            and(
-              eq(schema.delivery.mailboxId, input.mailboxId),
-              eq(schema.message.threadId, schema.threadState.threadId),
-              or(
-                isNull(schema.threadRead.lastReadAt),
-                gt(schema.message.sentAt, schema.threadRead.lastReadAt),
-              ),
-            ),
-          ),
+    ? and(
+        isNotNull(schema.threadState.lastInboundAt),
+        or(
+          isNull(schema.threadRead.lastReadAt),
+          gt(schema.threadState.lastInboundAt, schema.threadRead.lastReadAt),
+        ),
       )
     : or(
         isNull(schema.threadRead.lastReadAt),
-        lt(schema.threadRead.lastReadAt, schema.thread.lastMessageAt),
+        lt(schema.threadRead.lastReadAt, schema.threadState.lastActivityAt),
       );
 
   const rows = await db
     .select({ n: sql<number>`count(*)` })
     .from(schema.threadState)
-    .innerJoin(schema.thread, eq(schema.thread.id, schema.threadState.threadId))
     .leftJoin(
       schema.threadRead,
       and(

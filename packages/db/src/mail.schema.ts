@@ -269,6 +269,15 @@ export const threadState = sqliteTable(
       onDelete: "set null",
     }),
     lastReadAt: integer("last_read_at", { mode: "timestamp_ms" }),
+    // Denormalized recency, maintained by materializeDelivery, so list + unread
+    // never join `thread` or scan `delivery`:
+    //  - last_activity_at mirrors thread.last_message_at — the SORT key (your own
+    //    replies bump a thread), so the list walks an index and stops at LIMIT.
+    //  - last_inbound_at = newest message delivered to THIS mailbox in a
+    //    recipient role (never `from`) — the UNREAD key (your own send must not
+    //    mark a thread unread). NULL ⇒ nothing inbound here yet.
+    lastActivityAt: integer("last_activity_at", { mode: "timestamp_ms" }),
+    lastInboundAt: integer("last_inbound_at", { mode: "timestamp_ms" }),
     // "Empty trash/spam" hides — never a hard delete. Hidden threads drop out of
     // every list; moving a thread to a new placement clears it.
     hiddenAt: integer("hidden_at", { mode: "timestamp_ms" }),
@@ -277,6 +286,16 @@ export const threadState = sqliteTable(
   (t) => [
     uniqueIndex("thread_state_thread_mailbox_uidx").on(t.threadId, t.mailboxId),
     index("thread_state_mailbox_placement_idx").on(t.mailboxId, t.placement),
+    // List: equality on (mailbox, placement) then the sort key — SQLite scans it
+    // backwards for newest-first and stops at LIMIT instead of sorting the folder.
+    index("thread_state_list_idx")
+      .on(t.mailboxId, t.placement, t.lastActivityAt)
+      .where(sql`${t.hiddenAt} is null`),
+    // Unread: the inbox candidate set keyed by the inbound-recency column, so the
+    // count compares last_inbound_at to the read cursor without a delivery scan.
+    index("thread_state_unread_idx")
+      .on(t.mailboxId, t.placement, t.lastInboundAt)
+      .where(sql`${t.hiddenAt} is null`),
   ],
 );
 
@@ -517,6 +536,9 @@ export const draft = sqliteTable(
     index("draft_user_updated_idx").on(t.createdByUserId, t.updatedAt),
     index("draft_mailbox_idx").on(t.mailboxId),
     index("draft_thread_idx").on(t.threadId),
+    // Tombstone GC sweep: `status = 'sent' AND updated_at < ?` — without this it
+    // scans every draft each run.
+    index("draft_status_updated_idx").on(t.status, t.updatedAt),
   ],
 );
 
@@ -665,6 +687,9 @@ export const sendCounter = sqliteTable(
   },
   (t) => [
     uniqueIndex("send_counter_uidx").on(t.scope, t.scopeKey, t.windowStart),
+    // GC sweep of expired windows (`window_start < ?`) — the composite unique
+    // above can't serve it (window_start isn't a prefix).
+    index("send_counter_window_idx").on(t.windowStart),
   ],
 );
 

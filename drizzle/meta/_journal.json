@@ -134,6 +134,13 @@
       "when": 1785061660511,
       "tag": "0018_perpetual_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1785074738318,
+      "tag": "0019_chubby_nightcrawler",
+      "breakpoints": true
     }
   ]
 }

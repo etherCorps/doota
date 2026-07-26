@@ -232,6 +232,27 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u1" })).toBe(1);
   });
 
+  it("countUnread: your own reply (role from) does not re-mark a read personal thread unread", async () => {
+    await db.insert(schema.user).values({
+      id: "u3", name: "u3", email: "u3@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date(),
+    });
+    // Inbound lands → unread, then read.
+    const pm = parsed({ messageIdHeader: "<own1@ext>" });
+    const m1 = await materializeMessage(db, ORG, pm, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: pm.sentAt });
+    await db.insert(schema.threadRead).values({
+      id: "tr3", orgId: ORG, userId: "u3", threadId: m1.threadId, mailboxId: "mb_apex", lastReadAt: new Date(Date.now() + 1000),
+    });
+    expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u3" })).toBe(0);
+
+    // You reply: an own `from` delivery, newer than the cursor. It bumps activity
+    // (sort) but NOT last_inbound_at — so a personal thread stays read.
+    const mine = parsed({ messageIdHeader: "<own2@acme>", inReplyTo: "<own1@ext>", from: "alice@acme.com", sentAt: Date.now() + 60_000 });
+    const m2 = await materializeMessage(db, ORG, mine, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_apex", role: "from", viaAliasId: null, subaddressTag: null, sentAt: mine.sentAt });
+    expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u3" })).toBe(0);
+  });
+
   it("respects spam/trash — a reply does not resurrect a killed thread", async () => {
     const first = parsed({ messageIdHeader: "<s1@ext>" });
     const m1 = await materializeMessage(db, ORG, first, deps);
