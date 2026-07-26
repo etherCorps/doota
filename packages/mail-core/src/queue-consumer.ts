@@ -31,11 +31,39 @@ type PMParsed = {
   date?: string;
   text?: string;
   html?: string;
-  attachments?: { filename?: string; mimeType?: string; content?: ArrayBuffer | string; contentId?: string }[];
+  attachments?: PMAttachment[];
+};
+type PMAttachment = {
+  filename?: string;
+  mimeType?: string;
+  content?: ArrayBuffer | string;
+  contentId?: string;
+  disposition?: "attachment" | "inline" | null;
+  related?: boolean;
 };
 
 function addrList(list: PMAddress[] | undefined): string[] {
   return (list ?? []).map((a) => (a.address ?? "").trim().toLowerCase()).filter(Boolean);
+}
+
+/**
+ * A MIME part is a real attachment only if it has a filename, or a Content-ID
+ * (a `cid:`-referenced inline image), or `Content-Disposition: attachment`.
+ * Everything else is a BODY representation — most importantly a `text/calendar`
+ * (or any other) part sitting in a `multipart/alternative`, which postal-mime
+ * surfaces in `attachments` but which must never become a phantom download.
+ * postal-mime already lifts the chosen text/plain + text/html out into
+ * `parsed.text`/`parsed.html`, so this only ever drops non-body alternatives.
+ */
+export function isRealAttachment(a: {
+  filename?: string | null;
+  contentId?: string;
+  disposition?: "attachment" | "inline" | null;
+}): boolean {
+  return !!a.filename || !!a.contentId || a.disposition === "attachment";
+}
+function realAttachments(parsed: PMParsed): PMAttachment[] {
+  return (parsed.attachments ?? []).filter(isRealAttachment);
 }
 
 /** Strip a +tag from the recipient so it matches the visible header addresses. */
@@ -75,8 +103,10 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
     html: parsed.html ?? null,
     r2RawKey: job.r2RawKey,
     // r2Key is filled by stageInboundAttachments before materialize — a null
-    // key means an empty/unreadable part, and stays undownloadable.
-    attachments: (parsed.attachments ?? []).map((a, i) => ({
+    // key means an empty/unreadable part, and stays undownloadable. Only REAL
+    // attachments (not body-alternative parts like a bare text/calendar) — see
+    // isRealAttachment. Staging applies the same filter so indices stay aligned.
+    attachments: realAttachments(parsed).map((a, i) => ({
       partId: a.contentId ?? String(i),
       filename: a.filename ?? null,
       contentType: a.mimeType ?? null,
@@ -98,8 +128,9 @@ async function stageInboundAttachments(
   parsed: PMParsed,
   pm: ParsedMessage,
 ): Promise<void> {
+  const parts = realAttachments(parsed); // same filter + order as toParsedMessage
   for (let i = 0; i < pm.attachments.length; i++) {
-    const content = parsed.attachments?.[i]?.content;
+    const content = parts[i]?.content;
     if (content == null) continue;
     const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
     const key = `attachments/${orgId}/${crypto.randomUUID()}`;
