@@ -600,7 +600,37 @@
 	// write when we already know the row is read — reopening an already-read
 	// thread shouldn't fire a redundant markThreadRead (a wasted D1 write). An
 	// item we don't have (direct URL / search nav) is treated as maybe-unread.
+	// Keyboard-nav cursor: j/k move this highlight instantly, but the actual
+	// open (URL nav + thread fetch + mark-read) is debounced so flying through
+	// the list doesn't fetch/read every thread skimmed past — only the one you
+	// land on. Enter (or the pause) commits. Superhuman's model.
+	let navCursor = $state<string | null>(null);
+	let openTimer: ReturnType<typeof setTimeout> | null = null;
+	function cancelPendingOpen() {
+		if (openTimer) clearTimeout(openTimer);
+		openTimer = null;
+	}
+	function moveCursor(dir: 1 | -1) {
+		if (!items.length) return;
+		const base = navCursor ?? threadId;
+		const idx = items.findIndex((x) => x.threadId === base);
+		const next = idx === -1 ? 0 : Math.min(Math.max(idx + dir, 0), items.length - 1);
+		const target = items[next];
+		if (!target) return;
+		navCursor = target.threadId;
+		listEl?.querySelector(`[data-row="${target.threadId}"]`)?.scrollIntoView({ block: 'nearest' });
+		cancelPendingOpen();
+		openTimer = setTimeout(() => commitCursor(), 220);
+	}
+	function commitCursor() {
+		cancelPendingOpen();
+		const id = navCursor;
+		if (id && id !== threadId) void selectThread(id);
+	}
+
 	async function selectThread(id: string) {
+		cancelPendingOpen();
+		navCursor = null;
 		nav({ thread: id });
 		if (!mailboxId) return;
 		{
@@ -1249,13 +1279,16 @@
 			return;
 		}
 		if (e.key === 'j' || e.key === 'k') {
-			// Next/previous conversation in the current list.
+			// Move the cursor highlight; the open is debounced (see moveCursor).
 			if (!items.length) return;
 			e.preventDefault();
-			const idx = items.findIndex((x) => x.threadId === threadId);
-			const next = idx === -1 ? 0 : e.key === 'j' ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
-			const target = items[next];
-			if (target && target.threadId !== threadId) void selectThread(target.threadId);
+			moveCursor(e.key === 'j' ? 1 : -1);
+			return;
+		}
+		// Enter opens the cursor's thread now, skipping the debounce.
+		if (e.key === 'Enter' && navCursor && navCursor !== threadId) {
+			e.preventDefault();
+			commitCursor();
 			return;
 		}
 		if (e.key === 'e') {
@@ -1878,12 +1911,13 @@
 			{:else if mailboxId && !isVirtual}
 					{#if applyListFilters(items).length}
 						{#each applyListFilters(items) as t (t.threadId)}
-							{@const selected = threadId === t.threadId}
+							{@const selected = (navCursor ?? threadId) === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
 							{@const fx = rowFx.get(t.threadId)}
 							{@const prog = swipeProg.get(t.threadId) ?? 0}
 							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
 							<div
+								data-row={t.threadId}
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
