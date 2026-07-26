@@ -183,6 +183,18 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         if (applied.matchedSubmission && applied.worstStatus) {
           await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
         }
+        // A silent drop otherwise: log every bounce classification so a MISCLASSIFIED
+        // real reply is visible. matchedSubmission=null on a normal-looking reply =
+        // a legit mail was eaten by looksLikeBounce (check recipient vs returnPathDomain).
+        log.warn("in.bounce_classified", {
+          r2Key: job.r2RawKey,
+          recipient: job.recipient,
+          envelopeFrom: job.envelopeFrom,
+          from: parsed.from?.address ?? null,
+          subject: parsed.subject ?? null,
+          returnPathDomain: rp?.returnPathDomain ?? null,
+          matchedSubmission: applied.matchedSubmission ?? null,
+        });
         m.ack();
         continue;
       }
