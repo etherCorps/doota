@@ -16,6 +16,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
+	import ContactHoverCard from '$lib/components/mail/contact-hovercard.svelte';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
@@ -735,6 +736,10 @@
 	// part when a bare address is all we have (e.g. pre-fromName mail).
 	const senderLabel = (m: { fromName?: string | null; from: string | null }): string =>
 		m.fromName?.trim() || senderName(m.from);
+	// The bare email out of a `from` header ("Name <addr>" or a bare address) —
+	// the contact hover card keys on this.
+	const senderAddr = (from: string | null): string =>
+		(from?.match(/<([^>]+)>/)?.[1] ?? from ?? '').trim();
 
 	// Everyone the conversation has touched: the union of from/to/cc across ALL
 	// messages — so a bcc'd party who replies-all enters the list the moment
@@ -1962,7 +1967,13 @@
 									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
 										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
 										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
-											{#if !outbound}<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderLabel(m)}</span>{/if}
+											{#if !outbound && m.from}
+											<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">
+												{#snippet children()}{senderLabel(m)}{/snippet}
+											</ContactHoverCard>
+										{:else if !outbound}
+											<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderLabel(m)}</span>
+										{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.htmlKind === 'rich'}
@@ -2050,7 +2061,13 @@
 										{@render monogram(m.from, 'size-8 text-[11px]')}
 										<div class="min-w-0 flex-1">
 											<div class="flex items-baseline gap-2">
+												{#if outbound || !m.from}
 												<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderLabel(m)}</span>
+											{:else}
+												<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="truncate text-sm font-semibold">
+													{#snippet children()}{senderLabel(m)}{/snippet}
+												</ContactHoverCard>
+											{/if}
 												{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
 											</div>
 											{#if open}
