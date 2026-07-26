@@ -42,43 +42,54 @@ async function getLinter(): Promise<Linter> {
 }
 
 /**
- * Flatten the doc to plaintext and remember, per character, the ProseMirror
- * position it came from. Block boundaries become newlines (position -1) so
- * Harper sees paragraph breaks and doesn't merge sentences across them.
+ * Flatten the doc to plaintext and remember, per Unicode scalar (codepoint),
+ * the ProseMirror span it came from. Block boundaries become newlines
+ * (position -1) so Harper sees paragraph breaks and doesn't merge sentences.
  *
- * ponytail: offsets are UTF-16 units; Harper spans are Unicode scalar indices.
- * They agree for BMP text (all of normal prose) and drift only past astral
- * chars (emoji). Fix when someone reports a mis-underlined emoji sentence.
+ * Harper reports lint spans in Unicode-SCALAR indices, so the map is keyed by
+ * codepoint, not UTF-16 unit — otherwise every span past an emoji drifts by the
+ * surrogate count. `ends[i]` carries the PM width (a surrogate pair spans 2 PM
+ * units), so the exclusive end is exact with no +1 fudge.
  */
-function extractText(doc: PMNode): { text: string; map: number[] } {
+function extractText(doc: PMNode): { text: string; starts: number[]; ends: number[] } {
 	let text = '';
-	const map: number[] = [];
+	let cp = 0; // codepoints emitted so far
+	const starts: number[] = [];
+	const ends: number[] = [];
 	doc.descendants((node, pos) => {
 		if (node.isText && node.text) {
 			const t = node.text;
-			for (let i = 0; i < t.length; i++) map[text.length + i] = pos + i;
+			let u = 0; // UTF-16 offset within this node (PM positions are UTF-16 based)
+			for (const ch of t) {
+				starts[cp] = pos + u;
+				u += ch.length; // 1 for BMP, 2 for a surrogate pair
+				ends[cp] = pos + u;
+				cp++;
+			}
 			text += t;
 		} else if (node.isBlock && text.length > 0 && text[text.length - 1] !== '\n') {
-			map[text.length] = -1;
+			starts[cp] = -1;
+			ends[cp] = -1;
+			cp++;
 			text += '\n';
 		}
 		return true;
 	});
-	return { text, map };
+	return { text, starts, ends };
 }
 
 function suggKind(k: number): HarperSuggestion['kind'] {
 	return k === 1 ? 'remove' : k === 2 ? 'insert' : 'replace'; // SuggestionKind: Replace=0, Remove=1, InsertAfter=2
 }
 
-function mapLint(l: Lint, map: number[]): HarperLint | null {
+function mapLint(l: Lint, starts: number[], ends: number[]): HarperLint | null {
 	const span = l.span();
-	const from = map[span.start];
-	const to = span.end > 0 ? map[span.end - 1] : undefined;
-	if (from == null || from < 0 || to == null || to < 0 || to + 1 <= from) return null;
+	const from = starts[span.start];
+	const to = span.end > 0 ? ends[span.end - 1] : undefined;
+	if (from == null || from < 0 || to == null || to < 0 || to <= from) return null;
 	return {
 		from,
-		to: to + 1,
+		to,
 		message: l.message(),
 		kind: l.lint_kind(),
 		suggestions: l.suggestions().map((s) => ({ text: s.get_replacement_text(), kind: suggKind(s.kind()) }))
@@ -195,7 +206,7 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 				view(view) {
 					const run = async () => {
 						const token = ++runToken;
-						const { text, map } = extractText(view.state.doc);
+						const { text, starts, ends } = extractText(view.state.doc);
 						if (!text.trim()) {
 							view.dispatch(view.state.tr.setMeta(harperKey, { type: 'lints', deco: DecorationSet.empty, lints: [] } satisfies HarperMeta));
 							options.onCount?.(0);
@@ -212,7 +223,7 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 							const lints: HarperLint[] = [];
 							const decos: Decoration[] = [];
 							for (const l of raw) {
-								const ml = mapLint(l, map);
+								const ml = mapLint(l, starts, ends);
 								if (!ml) continue;
 								lints.push(ml);
 								decos.push(

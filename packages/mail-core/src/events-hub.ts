@@ -19,8 +19,11 @@
  * script); the web Worker reaches it through a cross-script binding
  * (script_name: "doota-mail-jobs").
  *
- * ponytail: no DO storage and no ping/pong — a socket dropped silently is
- * healed by the subscriber's reconnect loop + catch-up read.
+ * ponytail: no DO storage. Liveness via a ping/pong heartbeat — the DO
+ * auto-responds "pong" to "ping" WITHOUT waking from hibernation
+ * (setWebSocketAutoResponse: no wake, no bill), and the subscriber ends its
+ * stream when pongs stop. A half-open socket (dropped with no close event) is
+ * thus detected and reconnected instead of hanging the stream forever.
  */
 
 import { eq } from "drizzle-orm";
@@ -51,7 +54,10 @@ export type InboundMailEvent = {
 export type MailEvent = MailStateEvent | InboundMailEvent;
 
 export class MailEventHub {
-  constructor(private readonly ctx: DurableObjectState) {}
+  constructor(private readonly ctx: DurableObjectState) {
+    // Heartbeat: pong parked "ping" frames while hibernating — no DO wake, no bill.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -200,11 +206,14 @@ export async function* mailEventStream(
   const queue: MailEvent[] = [];
   let wake: (() => void) | null = null;
   let closed = false;
+  let lastSeen = Date.now();
   ws.addEventListener("message", (e) => {
+    lastSeen = Date.now(); // any frame — a real event OR a "pong" — proves the socket lives
     try {
       queue.push(JSON.parse(String(e.data)) as MailEvent);
     } catch {
-      // Unparseable frame — ignore; catch-up reads keep the stream honest.
+      // Unparseable frame (e.g. the "pong" heartbeat) — ignore; catch-up reads
+      // keep the stream honest.
     }
     wake?.();
   });
@@ -214,6 +223,20 @@ export async function* mailEventStream(
   };
   ws.addEventListener("close", end);
   ws.addEventListener("error", end);
+
+  // Detect a half-open socket (dropped with no close event): the DO pongs each
+  // "ping" without waking. If pongs stop, end the stream so the caller
+  // reconnects + catch-up reads. DEAD_MS > 2·PING_MS tolerates one lost frame.
+  const PING_MS = 30_000;
+  const DEAD_MS = 75_000;
+  const beat = setInterval(() => {
+    if (Date.now() - lastSeen > DEAD_MS) return end();
+    try {
+      ws.send("ping");
+    } catch {
+      end();
+    }
+  }, PING_MS);
 
   try {
     while (!closed) {
@@ -226,6 +249,7 @@ export async function* mailEventStream(
       wake = null;
     }
   } finally {
+    clearInterval(beat);
     try {
       ws.close();
     } catch {

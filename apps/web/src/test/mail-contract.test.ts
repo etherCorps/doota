@@ -54,6 +54,15 @@ describe("quote stripping", () => {
   it("drops blockquotes and quote containers in html", () => {
     expect(stripQuotesHtml("<p>hi</p><blockquote>old</blockquote>")).toBe("<p>hi</p>");
   });
+  it("drops NESTED quoting without leaking the outer wrapper", () => {
+    const html =
+      "<p>my reply</p><blockquote>a<blockquote>b</blockquote>c</blockquote>trailing";
+    expect(stripQuotesHtml(html)).toBe("<p>my reply</p>");
+    // Gmail-style nested divs: non-greedy regex would leak most of the quote.
+    const gmail =
+      '<div dir="ltr">new</div><div class="gmail_quote"><div>q1</div><div>q2</div></div>';
+    expect(stripQuotesHtml(gmail)).toBe('<div dir="ltr">new</div>');
+  });
   it("strips tags to plain text", () => {
     expect(stripHtmlTags("<p>Hello&nbsp;<b>world</b></p>")).toBe("Hello world");
   });

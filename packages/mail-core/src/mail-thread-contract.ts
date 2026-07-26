@@ -183,17 +183,20 @@ export function stripQuotesText(body: string): string {
 }
 
 /**
- * Strip quoted history from HTML: drop <blockquote> and Gmail/Outlook quote
- * containers. Regex-based so it runs in both Workers and node tests (no
- * HTMLRewriter dependency in the shared module).
- * ponytail: regex strip. If nested/exotic quoting leaks, move to HTMLRewriter in
- * the worker consumer and keep this as the test fallback.
+ * Strip quoted history from HTML. Top-posting assumption (symmetric with
+ * stripQuotesText): everything from the first quote container — a <blockquote>
+ * or a Gmail/Yahoo/Thunderbird quote div — to the end is history, so cut there.
+ * This handles NESTED quoting (reply-to-reply-to-reply) for free: a non-greedy
+ * regex stops at the first inner </blockquote> or </div> and leaks the wrapper,
+ * and the containers nest arbitrarily so no single regex balances them. Regex
+ * only locates the first marker, so this still runs in both Workers and node.
+ * ponytail: top-post cut. If interleaved/bottom-posted replies must keep their
+ * post-quote tail, swap in a depth-counting scanner — bodyFull stays canonical.
  */
 export function stripQuotesHtml(html: string): string {
-  return html
-    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
-    .replace(/<div[^>]*(gmail_quote|yahoo_quoted|moz-cite-prefix)[^>]*>[\s\S]*?<\/div>/gi, "")
-    .trim();
+  const marker = /<blockquote\b|<div[^>]*(?:gmail_quote|yahoo_quoted|moz-cite-prefix)/i;
+  const at = html.search(marker);
+  return (at === -1 ? html : html.slice(0, at)).trim();
 }
 
 /** Crude HTML → text: drop tags + decode a few common entities. For search

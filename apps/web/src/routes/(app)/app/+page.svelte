@@ -724,6 +724,9 @@
 			return;
 		}
 		await scheduledSends().refresh();
+		// Row is gone from the source now — drop the optimistic-hide entry so the
+		// set can't grow unbounded across a session.
+		hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
 	}
 	async function editScheduled(submissionId: string, sendAt: number) {
 		hiddenScheduled = [...hiddenScheduled, submissionId];
@@ -739,6 +742,7 @@
 			// Reopen the restored draft with its original send time preserved.
 			compose.start({ resumeDraftId: res.draft.id, scheduleAt: sendAt });
 			await scheduledSends().refresh();
+			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
 		} else {
 			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
 			toast.error('This send already went out.');
