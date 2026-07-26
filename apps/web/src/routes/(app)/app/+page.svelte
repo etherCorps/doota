@@ -88,7 +88,7 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import { searchMail } from '$lib/rpc/search.remote';
-	import { fly, slide } from 'svelte/transition';
+	import { slide } from 'svelte/transition';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 
@@ -2025,9 +2025,12 @@
 					<!-- Attachments ≥ md — docked column beside the stream. -->
 					{#if attachmentsOpen && !isMobile.current}
 						{@const groups = groupAttachments(msgs)}
+						<!-- slide on the x-axis animates WIDTH (0→auto), so the stream reflows
+						     in step with the panel — a fly/translate would claim the full width
+						     instantly and jolt the stream. Inner content is fixed-width and clips. -->
 						<aside
-							transition:fly={{ x: 24, duration: 160 }}
-							class="bg-card/40 flex w-80 max-w-[45%] shrink-0 flex-col border-l"
+							transition:slide={{ axis: 'x', duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200, easing: cubicOut }}
+							class="bg-card/40 flex w-80 max-w-[45%] shrink-0 flex-col overflow-hidden border-l"
 							aria-label="Thread attachments"
 						>
 							<div class="flex h-12 shrink-0 items-center gap-2 border-b px-3.5">
