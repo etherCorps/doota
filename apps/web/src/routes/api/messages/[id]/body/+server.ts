@@ -27,14 +27,35 @@ import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
  * allow-scripts it lets the framed document strip its own sandbox and escape.
  */
 
+// Our own script, injected AFTER sanitization (the email's scripts are gone and
+// wouldn't match the script-src hash). It reports height and handles link clicks
+// IN the click gesture — opening in the frame, not via the parent, so the browser
+// doesn't popup-block it. Only mailto: is handed up (to the composer). The link
+// security rules mirror lib/utils/mail-link.ts (classifyMailLink), kept in sync.
 const INJECTED_SCRIPT =
-  "(function(){function h(){var b=document.body;if(!b)return;" +
+  "(function(){" +
+  "function h(){var b=document.body;if(!b)return;" +
   "parent.postMessage({__mailframe:1,type:'height',value:Math.ceil(b.getBoundingClientRect().height)+8},'*');}" +
   "addEventListener('load',h);if(document.readyState!=='loading')h();" +
   "try{new ResizeObserver(h).observe(document.body);}catch(e){}" +
-  "document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a[href]');" +
-  "if(!a)return;e.preventDefault();" +
-  "parent.postMessage({__mailframe:1,type:'link',href:a.getAttribute('href'),text:(a.textContent||'').trim()},'*');},true);})();";
+  "function textHost(t){t=(t||'').trim();if(!t||/\\s/.test(t))return null;" +
+  "var m=t.match(/^(?:https?:\\/\\/)?([a-z0-9.-]+\\.[a-z]{2,})/i);return m?m[1].toLowerCase():null;}" +
+  "document.addEventListener('click',function(e){" +
+  "var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a)return;e.preventDefault();" +
+  "var href=a.getAttribute('href')||'';" +
+  "if(!/^[a-z][a-z0-9+.-]*:/i.test(href))return;" + // absolute-scheme only; drop relative
+  "var u;try{u=new URL(href);}catch(_){return;}var s=u.protocol.toLowerCase();" +
+  "if(s==='mailto:'){parent.postMessage({__mailframe:1,type:'mailto',address:decodeURIComponent(u.pathname)},'*');return;}" +
+  "if(s!=='http:'&&s!=='https:')return;" + // drop javascript:, data:, file:, …
+  "var host=u.hostname.toLowerCase();" +
+  "var idn=host.split('.').some(function(l){return l.indexOf('xn--')===0;});" +
+  "var claimed=textHost(a.textContent||'');" +
+  "var mismatch=!!claimed&&claimed!==host&&host.slice(-(claimed.length+1))!=='.'+claimed&&claimed.slice(-(host.length+1))!=='.'+host;" +
+  "if(idn||mismatch){var msg=mismatch?('The link text says \"'+claimed+'\" but it actually goes to '+host+'.'):" +
+  "(host+' uses internationalized (non-ASCII) characters that can imitate a real domain.');" +
+  "if(!confirm(msg+'\\n\\nOpen it anyway?'))return;}" +
+  "window.open(u.href,'_blank','noopener,noreferrer');" +
+  "},true);})();";
 
 async function sha256Base64(s: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));

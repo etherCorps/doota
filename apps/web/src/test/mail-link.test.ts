@@ -40,8 +40,8 @@ describe("sandbox footgun guard", () => {
       fileURLToPath(new URL("../lib/components/mail/mail-frame.svelte", import.meta.url)),
       "utf8",
     );
-    expect(frame).toContain('sandbox="allow-scripts"');
-    expect(frame).not.toMatch(/sandbox="[^"]*allow-scripts[^"]*allow-same-origin/);
-    expect(frame).not.toMatch(/sandbox="[^"]*allow-same-origin[^"]*allow-scripts/);
+    const sandbox = frame.match(/sandbox="([^"]*)"/)?.[1] ?? "";
+    expect(sandbox).toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin"); // the sandbox-escape footgun
   });
 });

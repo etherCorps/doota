@@ -5,7 +5,6 @@
      clicks over postMessage. Height sizes to content (no inner scrollbar); long mail
      collapses to a cap with a fade and expands inline. -->
 <script lang="ts">
-	import { classifyMailLink } from '$lib/utils/mail-link';
 	let {
 		src,
 		collapsedMax = 352,
@@ -44,38 +43,27 @@
 		function onMessage(e: MessageEvent) {
 			// Opaque origin: event.origin is "null", so validate the SOURCE window, not the origin.
 			if (!frame || e.source !== frame.contentWindow) return;
-			const d = e.data as { __mailframe?: number; type?: string; value?: unknown; href?: unknown; text?: unknown };
+			const d = e.data as { __mailframe?: number; type?: string; value?: unknown; address?: unknown };
 			if (!d || d.__mailframe !== 1) return;
 			if (d.type === 'height' && typeof d.value === 'number' && Number.isFinite(d.value)) {
 				contentH = Math.max(0, Math.min(MAX_H, Math.ceil(d.value)));
-			} else if (d.type === 'link' && typeof d.href === 'string') {
-				handleLink(d.href, typeof d.text === 'string' ? d.text : '');
+			} else if (d.type === 'mailto' && typeof d.address === 'string') {
+				// http/https links open inside the frame (in the click gesture, so no
+				// popup-block); only mailto: comes up here, to open the composer.
+				onmailto?.(d.address);
 			}
 		}
 		window.addEventListener('message', onMessage);
 		return () => window.removeEventListener('message', onMessage);
 	});
-
-	// Part D — the link security gate (decision logic in mail-link.ts, tested).
-	function handleLink(href: string, text: string) {
-		const d = classifyMailLink(href, text);
-		if (d.action === 'drop') return;
-		if (d.action === 'mailto') {
-			onmailto?.(d.address);
-			return;
-		}
-		// noopener prevents reverse tabnabbing; noreferrer stops leaking the Doota URL.
-		if (d.warn && !confirm(`${d.warn}\n\nOpen it anyway?`)) return;
-		window.open(d.url, '_blank', 'noopener,noreferrer');
-	}
 </script>
 
 <div class="relative">
 	<iframe
 		bind:this={frame}
 		title="Message content"
-		sandbox="allow-scripts"
 		{src}
+		sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals"
 		scrolling="no"
 		style:height={`${height}px`}
 		class="w-full rounded-lg border-0 bg-transparent transition-[height] duration-200 ease-out motion-reduce:transition-none"
