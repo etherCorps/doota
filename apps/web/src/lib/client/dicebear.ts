@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createAvatar } from "@dicebear/core";
-import { glass } from "@dicebear/collection";
+import { adventurer } from "@dicebear/collection";
 
 /**
  * Locally generated DiceBear avatars for external senders. Generated in the
@@ -21,7 +21,7 @@ export const noServerAvatar = new Set<string>();
 export function dicebearFor(seed: string): string {
   let uri = diceCache.get(seed);
   if (!uri) {
-    uri = createAvatar(glass, { seed }).toDataUri();
+    uri = createAvatar(adventurer, { seed }).toDataUri();
     diceCache.set(seed, uri);
   }
   return uri;

@@ -10,6 +10,16 @@ import * as schema from "@doota/db/schema";
  * generated DiceBear image — external addresses never leave the browser.
  * Signed-in only; the browser HTTP cache absorbs repeat list renders.
  */
+
+// Avatars change rarely — cache a day so a scrolling list (and repeat visits)
+// don't re-query the DB + R2 per sender. The negative ("not our user" / no
+// upload) is cached TWO days so external senders — the bulk of a mailbox — stop
+// re-requesting a 404 on every reload before falling back to local DiceBear.
+const HIT = "private, max-age=86400";
+const MISS = "private, max-age=172800";
+const notOurUser = () =>
+  new Response(null, { status: 404, headers: { "Cache-Control": MISS } });
+
 export const GET: RequestHandler = async ({ params, locals, platform }) => {
   if (!locals.user) error(401, "Not authenticated");
   const env = platform?.env;
@@ -22,7 +32,7 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
     where: eq(schema.user.email, address),
     columns: { id: true, image: true },
   });
-  if (!owner) error(404, "Not one of our users");
+  if (!owner) return notOurUser();
 
   const obj = await env.MAIL_RAW.get(`avatars/${owner.id}`);
   if (!obj) {
@@ -31,17 +41,16 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
     if (owner.image?.startsWith("http")) {
       return new Response(null, {
         status: 302,
-        headers: { Location: owner.image, "Cache-Control": "private, max-age=3600" },
+        headers: { Location: owner.image, "Cache-Control": HIT },
       });
     }
-    error(404, "No avatar uploaded");
+    return notOurUser();
   }
 
   return new Response(obj.body, {
     headers: {
       "Content-Type": obj.httpMetadata?.contentType ?? "image/webp",
-      // 1h staleness after an avatar change is fine; keeps list scrolling cheap.
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": HIT,
     },
   });
 };
