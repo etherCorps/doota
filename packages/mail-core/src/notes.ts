@@ -8,6 +8,7 @@ import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { indexNote, deleteNoteIndex, tokensFor } from "./search";
 import { recordNote } from "./notify";
 import type { EventHubNamespace } from "./events-hub";
+import type { WebPushEnv } from "./web-push";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -51,6 +52,7 @@ export async function createNote(
   searchKeyB64: string,
   input: { orgId: string; threadId: string; mailboxId: string; authorUserId: string; body: string },
   hub?: EventHubNamespace,
+  push?: WebPushEnv,
 ): Promise<NoteDTO> {
   const bodyEnc = await encryptContent(ck, input.body);
   const inserted = await db
@@ -81,6 +83,7 @@ export async function createNote(
         actorUserId: input.authorUserId,
       },
       hub,
+      push,
     );
   } catch {
     // a missing bell row is not worth failing the note write

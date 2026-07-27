@@ -4,8 +4,12 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { notifyNotification, type EventHubNamespace } from "./events-hub";
+import { sendPushToUser, type WebPushEnv } from "./web-push";
 
 type Db = DrizzleD1Database<typeof schema>;
+
+const threadUrl = (mailboxId: string | null, threadId: string | null): string =>
+  mailboxId && threadId ? `/app?mailbox=${mailboxId}&thread=${threadId}` : threadId ? `/app?thread=${threadId}` : "/app";
 
 /**
  * Durable notification writes (docs/notifications.md, Phase A). Rows carry
@@ -45,6 +49,7 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
 export async function recordNewMail(
   db: Db,
   input: { orgId: string; mailboxId: string; threadId: string; excludeUserId?: string },
+  push?: WebPushEnv,
 ): Promise<void> {
   let userIds = await newMailRecipients(db, input.mailboxId, input.threadId);
   if (input.excludeUserId) userIds = userIds.filter((u) => u !== input.excludeUserId);
@@ -81,6 +86,17 @@ export async function recordNewMail(
       })),
     );
   }
+  // OS push (app closed) for every eligible recipient — tag per thread so a
+  // reply burst collapses. Best-effort; no-op without VAPID.
+  if (push) {
+    const payload = {
+      title: "New message",
+      body: "You have new mail",
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    };
+    await Promise.all(userIds.map((u) => sendPushToUser(db, push, u, payload).catch(() => {})));
+  }
 }
 
 /** A thread was assigned to someone (not a self-assign). */
@@ -94,6 +110,7 @@ export async function recordAssigned(
     actorUserId: string | null;
   },
   hub?: EventHubNamespace,
+  push?: WebPushEnv,
 ): Promise<void> {
   if (input.actorUserId === input.assigneeUserId) return; // assigning to yourself: no notify
   await db.insert(mail.notification).values({
@@ -105,6 +122,13 @@ export async function recordAssigned(
     actorUserId: input.actorUserId,
   });
   await notifyNotification(hub, input.assigneeUserId); // live bell ping (no-op without a hub)
+  if (push)
+    await sendPushToUser(db, push, input.assigneeUserId, {
+      title: "Assigned to you",
+      body: "A thread was assigned to you",
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    }).catch(() => {});
 }
 
 /** Drop read notifications older than the retention window (default 30d). Run
@@ -125,6 +149,7 @@ export async function recordNote(
   db: Db,
   input: { orgId: string; mailboxId: string; threadId: string; actorUserId: string },
   hub?: EventHubNamespace,
+  push?: WebPushEnv,
 ): Promise<void> {
   const state = await db.query.threadState.findFirst({
     where: and(eq(mail.threadState.threadId, input.threadId), eq(mail.threadState.mailboxId, input.mailboxId)),
@@ -141,6 +166,13 @@ export async function recordNote(
     actorUserId: input.actorUserId,
   });
   await notifyNotification(hub, assignee); // live bell ping (no-op without a hub)
+  if (push)
+    await sendPushToUser(db, push, assignee, {
+      title: "New note",
+      body: "A teammate left a note",
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    }).catch(() => {});
 }
 
 /** A send the user owns failed (hard/soft bounce, complaint, or send error). */

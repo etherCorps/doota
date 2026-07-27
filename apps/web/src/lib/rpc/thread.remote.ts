@@ -442,6 +442,7 @@ export const addNote = command(
         body,
       },
       platform?.env?.MAIL_EVENTS,
+      platform?.env,
     );
   },
 );
@@ -503,6 +504,7 @@ export const assignThread = command(
         actorUserId: locals.user!.id,
       },
       platform?.env?.MAIL_EVENTS,
+      platform?.env,
     );
     return { ok: true as const };
   },

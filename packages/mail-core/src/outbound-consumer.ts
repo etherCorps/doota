@@ -36,6 +36,10 @@ export type OutboundConsumerEnv = {
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
   /** Per-user event hub (Durable Object) — wakes live failure streams. */
   MAIL_EVENTS?: EventHubNamespace;
+  /** Web Push (Phase B) — internal deliveries send an OS push, app-closed case. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
   LOG_LEVEL?: string;
 };
 
@@ -262,12 +266,16 @@ export async function processSubmission(
       // Durable bell — internal mail never hits the inbound consumer, so record
       // it here too. Exclude the sender (they may share the recipient mailbox).
       try {
-        await recordNewMail(db, {
-          orgId: resolved.orgId,
-          mailboxId: resolved.mailboxId,
-          threadId: message.threadId,
-          excludeUserId: sub.createdByUserId ?? undefined,
-        });
+        await recordNewMail(
+          db,
+          {
+            orgId: resolved.orgId,
+            mailboxId: resolved.mailboxId,
+            threadId: message.threadId,
+            excludeUserId: sub.createdByUserId ?? undefined,
+          },
+          env,
+        );
       } catch (e) {
         log.warn("out.notify_failed", { subId: sub.id, ...errInfo(e) });
       }

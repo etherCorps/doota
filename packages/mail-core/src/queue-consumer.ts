@@ -303,7 +303,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
 
       // Durable notification (bell) — best-effort, never fails the delivery.
       try {
-        await recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId });
+        await recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId }, env);
       } catch (e) {
         log.warn("in.notify_failed", { threadId, ...errInfo(e) });
       }
