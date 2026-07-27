@@ -912,6 +912,17 @@
 		const inv = m.calendarInvite!;
 		return { ...inv, myRsvp: inviteRsvp.get(inv.uid) ?? inv.myRsvp };
 	}
+	// The original .ics attachment (organiser's exact copy) — powers "Download
+	// invite" over the card's re-serialised fallback.
+	function inviteIcsHref(m: MessageDTO): string | null {
+		const a = m.attachments.find(
+			(x) => x.contentType?.includes('calendar') || x.filename?.toLowerCase().endsWith('.ics')
+		);
+		return a ? `/api/attachments/${a.id}` : null;
+	}
+	// Invite messages hide the providers' boilerplate mail body by default (the
+	// card IS the content); "Show original message" reveals it per message.
+	const showOriginal = new SvelteSet<string>();
 	async function rsvp(m: MessageDTO, status: InviteRsvpStatus) {
 		const inv = m.calendarInvite;
 		if (!mailboxId || !threadId || !inv) return;
@@ -2353,9 +2364,17 @@
 												{@render replyContextNote(m)}
 												{#if m.calendarInvite}
 													<div class="mb-2 w-[min(70vw,32rem)]">
-														<InviteCard invite={inviteFor(m)} onRsvp={(s) => rsvp(m, s)} />
+														<InviteCard invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
 													</div>
+													<button
+														type="button"
+														class="mb-1 text-xs font-medium hover:underline {outbound ? 'text-background/80' : 'text-muted-foreground hover:text-foreground'}"
+														onclick={() => (showOriginal.has(m.id) ? showOriginal.delete(m.id) : showOriginal.add(m.id))}
+													>
+														{showOriginal.has(m.id) ? 'Hide' : 'Show'} original message
+													</button>
 												{/if}
+												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 													<div class="w-[min(70vw,32rem)]">
@@ -2386,6 +2405,7 @@
 													</div>
 												{:else}
 													<div class="whitespace-pre-wrap">{@render linkedText(m.bodyStripped ?? m.bodyFull ?? '')}</div>
+												{/if}
 												{/if}
 												{#if m.attachments.length}
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
@@ -2474,9 +2494,20 @@
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
 												<div class="mb-3">
-													<InviteCard invite={inviteFor(m)} onRsvp={(s) => rsvp(m, s)} />
+													<InviteCard invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
 												</div>
+												<!-- The provider's boilerplate mail body is redundant with the card;
+												     collapse it behind a toggle. -->
+												<button
+													type="button"
+													class="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
+													onclick={() => (showOriginal.has(m.id) ? showOriginal.delete(m.id) : showOriginal.add(m.id))}
+												>
+													{showOriginal.has(m.id) ? 'Hide' : 'Show'} original message
+												</button>
 											{/if}
+											{#if !m.calendarInvite || showOriginal.has(m.id)}
+												<div class={m.calendarInvite ? 'mt-2 border-t pt-2' : ''}>
 											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
@@ -2501,6 +2532,8 @@
 												{/if}
 											{:else}
 												<div class="text-sm whitespace-pre-wrap">{@render linkedText(m.bodyStripped ?? m.bodyFull ?? '')}</div>
+											{/if}
+												</div>
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->

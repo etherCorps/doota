@@ -18,12 +18,18 @@
 	import HelpCircleIcon from '@lucide/svelte/icons/circle-help';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import { linkifySegments } from '$lib/utils/linkify.js';
 
 	let {
 		invite,
+		originalHref = null,
 		onRsvp
 	}: {
 		invite: CalendarInviteDTO;
+		/** URL of the ORIGINAL .ics attachment, when the message carried one — the
+		 * download prefers it over the re-serialised fallback. */
+		originalHref?: string | null;
 		/** Persist the local status; parent calls setInviteRsvp + patches the DTO. */
 		onRsvp: (status: InviteRsvpStatus) => void | Promise<void>;
 	} = $props();
@@ -103,6 +109,29 @@
 	// (only) recording local status.
 	function providerLink(key: InviteRsvpStatus): string | null {
 		return invite.rsvpLinks[key] ?? null;
+	}
+
+	// Outlook/Teams write description links as `Label<https://url>` (RFC5545
+	// text with the URL in angle brackets). Rendered raw that reads like broken
+	// markdown, so fold each `Label<url>` into a real link (label as the text),
+	// and run the plain runs between them through the shared linkify grammar.
+	type Seg = { type: 'text'; value: string } | { type: 'link'; value: string; href: string } | { type: 'email'; value: string; address: string };
+	function descSegments(desc: string): Seg[] {
+		// Greedy label = the non-delimiter run right before `<url>` (stops at a
+		// newline / pipe so it never swallows a whole paragraph).
+		const RE = /([^\n|<>]*)<(https?:\/\/[^>\s]+)>/g;
+		const out: Seg[] = [];
+		let last = 0;
+		for (const m of desc.matchAll(RE)) {
+			// Inter-match text (newlines/pipes/plain runs) → shared linkify.
+			const before = desc.slice(last, m.index);
+			if (before) out.push(...(linkifySegments(before) as Seg[]));
+			const label = m[1].trim();
+			out.push({ type: 'link', value: label || m[2], href: m[2] });
+			last = m.index + m[0].length;
+		}
+		if (last < desc.length) out.push(...(linkifySegments(desc.slice(last)) as Seg[]));
+		return out.length ? out : (linkifySegments(desc) as Seg[]);
 	}
 
 	// Download the event as .ics for "add to my calendar" (re-serialise the fields
@@ -205,7 +234,13 @@
 		{/if}
 
 		{#if invite.description}
-			<p class="text-muted-foreground border-t pt-2.5 text-xs whitespace-pre-line">{invite.description}</p>
+			<p class="text-muted-foreground border-t pt-2.5 text-xs whitespace-pre-line">{#each descSegments(invite.description) as seg, i (i)}{#if seg.type === 'link'}<a
+							href={seg.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else if seg.type === 'email'}<a
+							href={`mailto:${seg.address}`}
+							class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else}{seg.value}{/if}{/each}</p>
 		{/if}
 	</div>
 
@@ -246,8 +281,14 @@
 			{#if invite.myRsvp && !Object.values(invite.rsvpLinks).some(Boolean)}
 				<span class="text-faint text-[11px]">Saved for you — the organizer isn't notified.</span>
 			{/if}
-			<a href={icsHref()} download={`${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`} class="text-muted-foreground hover:text-foreground ml-auto text-xs font-medium hover:underline">
-				Add to calendar
+			<!-- Prefer the ORIGINAL .ics (exact organiser copy — full recurrence,
+			     alarms, attendees); fall back to our re-serialised event. -->
+			<a
+				href={originalHref ?? icsHref()}
+				download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
+				class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs font-medium hover:underline"
+			>
+				<DownloadIcon class="size-3.5" /> Download invite
 			</a>
 		</div>
 	{/if}
