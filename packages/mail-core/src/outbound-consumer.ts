@@ -9,7 +9,7 @@ import { importKey, decryptContent, type ContentKey } from "./crypto";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
-import { recordSendFailed } from "./notify";
+import { recordNewMail, recordSendFailed } from "./notify";
 import { buildQuotedText, buildQuotedHtml, type QuotedParent } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
@@ -259,6 +259,18 @@ export async function processSubmission(
       await setRecipient(db, r.id, { status: "delivered" });
       // Live inbox for the internal recipient — same push external mail gets.
       await notifyInboundMail(db, env.MAIL_EVENTS, resolved.mailboxId, message.threadId);
+      // Durable bell — internal mail never hits the inbound consumer, so record
+      // it here too. Exclude the sender (they may share the recipient mailbox).
+      try {
+        await recordNewMail(db, {
+          orgId: resolved.orgId,
+          mailboxId: resolved.mailboxId,
+          threadId: message.threadId,
+          excludeUserId: sub.createdByUserId ?? undefined,
+        });
+      } catch (e) {
+        log.warn("out.notify_failed", { subId: sub.id, ...errInfo(e) });
+      }
       continue;
     }
     external.push({ id: r.id, address: r.address, role: r.role });

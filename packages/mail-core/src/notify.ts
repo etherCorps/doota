@@ -38,13 +38,15 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
   return access.filter((a) => !a.assignedOnly || a.canManage || a.userId === assignee).map((a) => a.userId);
 }
 
-/** New inbound mail landed in a thread — one unread row per eligible recipient,
- * collapsing a reply burst per (user, thread). */
+/** New mail landed in a thread — one unread row per eligible recipient,
+ * collapsing a reply burst per (user, thread). `excludeUserId` drops the sender
+ * on an INTERNAL (in-system) delivery so they don't notify themselves. */
 export async function recordNewMail(
   db: Db,
-  input: { orgId: string; mailboxId: string; threadId: string },
+  input: { orgId: string; mailboxId: string; threadId: string; excludeUserId?: string },
 ): Promise<void> {
-  const userIds = await newMailRecipients(db, input.mailboxId, input.threadId);
+  let userIds = await newMailRecipients(db, input.mailboxId, input.threadId);
+  if (input.excludeUserId) userIds = userIds.filter((u) => u !== input.excludeUserId);
   if (!userIds.length) return;
   // Bump an existing unread new_mail row (reset seenAt so the bell re-lights)
   // instead of stacking a second row for the same thread.
