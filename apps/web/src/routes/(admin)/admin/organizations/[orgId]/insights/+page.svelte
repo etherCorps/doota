@@ -256,8 +256,8 @@
 			{/if}
 
 			{#if byDay.length}
-				<div class="overflow-hidden rounded-lg border">
-					<table class="w-full text-sm">
+				<div class="overflow-x-auto overflow-y-hidden rounded-lg border">
+					<table class="w-full min-w-[32rem] text-sm">
 						<thead class="bg-muted/50 text-muted-foreground text-xs">
 							<tr>
 								<th class="px-4 py-2 text-left font-medium">Day</th>

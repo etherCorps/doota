@@ -779,10 +779,14 @@
 			void loadThreads(true);
 		}
 	}
+	// One-shot pop on the star glyph (transitions.dev scale+blur) — keyed by a
+	// counter so rapid re-toggles restart the animation.
+	let starPop = $state(0);
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
 		const next = !current;
+		if (next) starPop++; // pop only when starring on, not off
 		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
 		// failure (star carries no server-side side effects to re-pull).
 		openFlagOverride = { ...openFlagOverride, isStarred: next };
@@ -1977,7 +1981,7 @@
 											else swipeProg.set(t.threadId, r);
 										}
 									}}
-									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
+									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors active:bg-accent/70 {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
 								>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
@@ -2180,7 +2184,7 @@
 							</Tooltip.Provider>
 						{/if}
 						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={openStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(openStarred)}>
-							<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''}" />
+							{#key starPop}<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
 						</Button>
 						{#if msgs.length}
 							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward conversation" onclick={() => forwardThread(msgs, thread.subject)}>
@@ -2258,7 +2262,7 @@
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content class="w-48" align="end">
 								<DropdownMenu.Item onSelect={() => toggleStar(openStarred)}>
-									<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''}" />
+									{#key starPop}<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
 									{openStarred ? 'Unstar' : 'Star'}
 								</DropdownMenu.Item>
 								{#if msgs.length}

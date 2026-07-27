@@ -236,6 +236,37 @@
 			transform: none;
 		}
 	}
+
+	/* Microinteractions (transitions.dev DNA: scale + blur on state change).
+	   One-shot .animate-pop confirms an action (star, success); .shimmer sweep
+	   makes loading skeletons read as active, not frozen. */
+	.animate-pop {
+		animation: doota-pop 360ms var(--ease-out);
+	}
+	@keyframes doota-pop {
+		0% { transform: scale(1); }
+		40% { transform: scale(1.28); filter: blur(0.4px); }
+		100% { transform: scale(1); filter: blur(0); }
+	}
+	.shimmer {
+		position: relative;
+		overflow: hidden;
+	}
+	.shimmer::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		transform: translateX(-100%);
+		background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--foreground) 9%, transparent), transparent);
+		animation: doota-shimmer 1.5s var(--ease-in-out) infinite;
+	}
+	@keyframes doota-shimmer {
+		100% { transform: translateX(100%); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.animate-pop { animation: none; }
+		.shimmer::after { animation: none; }
+	}
 }
 
 /* Themed thin scrollbar — matches the palette instead of the OS chrome. */
