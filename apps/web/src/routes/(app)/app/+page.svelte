@@ -2451,7 +2451,10 @@
 								{@const outbound = m.outbound}
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
-								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl border shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card' : 'bg-card'}">
+								<!-- An invite with the original body hidden IS the invite card: drop the
+								     message-card chrome so it's one card, not a card-in-card. -->
+								{@const inviteOnly = !!m.calendarInvite && !showOriginal.has(m.id)}
+								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {inviteOnly ? '' : outbound ? 'border-brand/25 bg-card border shadow-xs' : 'bg-card border shadow-xs'}">
 									<button
 										type="button"
 										aria-expanded={open}

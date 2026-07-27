@@ -9,12 +9,11 @@
 	import type { CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import VideoIcon from '@lucide/svelte/icons/video';
-	import UsersIcon from '@lucide/svelte/icons/users';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
 	import HelpCircleIcon from '@lucide/svelte/icons/circle-help';
-	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { linkifySegments } from '$lib/utils/linkify.js';
 
 	let {
@@ -23,10 +22,7 @@
 		onRsvp
 	}: {
 		invite: CalendarInviteDTO;
-		/** URL of the ORIGINAL .ics attachment, when the message carried one — the
-		 * download prefers it over the re-serialised fallback. */
 		originalHref?: string | null;
-		/** Persist the local status; parent calls setInviteRsvp + patches the DTO. */
 		onRsvp: (status: InviteRsvpStatus) => void | Promise<void>;
 	} = $props();
 
@@ -80,6 +76,32 @@
 
 	const going = $derived(invite.attendees.filter((a) => a.partstat === 'ACCEPTED').length);
 	const invited = $derived(invite.attendees.length);
+
+	// Full guest list for the popover: attendees, plus the organizer prepended
+	// when they aren't already listed (they always count as going).
+	type Guest = { email: string; name: string | null; partstat: string | null };
+	const roster = $derived.by<Guest[]>(() => {
+		const list: Guest[] = [...invite.attendees];
+		const org = invite.organizer.email;
+		if (org && !list.some((a) => a.email.toLowerCase() === org.toLowerCase())) {
+			list.unshift({ email: org, name: invite.organizer.name, partstat: 'ACCEPTED' });
+		}
+		return list;
+	});
+	const isOrganizer = (email: string) =>
+		!!invite.organizer.email && email.toLowerCase() === invite.organizer.email.toLowerCase();
+	function initials(g: Guest): string {
+		const n = (g.name || g.email || '?').trim();
+		const parts = n.split(/\s+/).filter(Boolean);
+		return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : n.slice(0, 2)).toUpperCase();
+	}
+	const STATUS: Record<string, { label: string; cls: string }> = {
+		ACCEPTED: { label: 'Going', cls: 'text-ok' },
+		DECLINED: { label: 'Declined', cls: 'text-destructive' },
+		TENTATIVE: { label: 'Maybe', cls: 'text-warn' }
+	};
+	const statusMeta = (p: string | null) =>
+		STATUS[(p ?? '').toUpperCase()] ?? { label: 'No response', cls: 'text-muted-foreground' };
 
 	// RSVP is optimistic: the parent patches invite.myRsvp so the pressed state
 	// updates instantly; a failed persist reverts (handled by the parent's toast).
@@ -166,21 +188,21 @@
 	     headline); date + time promoted right under it. Cancelled reads muted
 	     with a struck title so a stale REQUEST isn't mistaken for live. -->
 	<div class="flex items-start gap-3.5 border-b p-3.5 {cancelled ? 'bg-muted/40' : 'bg-brand/5'}">
-		<div class="w-13 shrink-0 overflow-hidden rounded-xl border text-center {cancelled ? 'opacity-60' : ''}">
+		<div class="border-border/80 w-13 shrink-0 overflow-hidden rounded-xl border text-center {cancelled ? 'opacity-60' : ''}">
 			<div class="py-0.5 text-[10px] font-semibold tracking-wide uppercase {cancelled ? 'bg-muted text-muted-foreground' : 'bg-brand text-brand-foreground'}">
 				{chip.month}
 			</div>
 			<div class="bg-card text-foreground py-1 text-xl leading-tight font-bold tabular-nums">{chip.day}</div>
 		</div>
 		<div class="min-w-0 flex-1">
-			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-				<span class="text-[11px] font-medium tracking-wide uppercase {cancelled ? 'text-muted-foreground' : 'text-brand'}">
+			<!-- One accent focus: the eyebrow. Origin is quiet muted text; only the
+			     meeting platform keeps a tinted badge (it's the actionable thing). -->
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+				<span class="font-medium tracking-wide uppercase {cancelled ? 'text-muted-foreground' : 'text-brand'}">
 					{cancelled ? 'Event cancelled' : invite.method === 'REPLY' ? 'RSVP' : 'Invitation'}
 				</span>
 				{#if invite.calOrigin}
-					<span class="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
-						<GlobeIcon class="size-3" />{ORIGIN_LABEL[invite.calOrigin]}
-					</span>
+					<span class="text-muted-foreground">· {ORIGIN_LABEL[invite.calOrigin]}</span>
 				{/if}
 				{#if invite.meetingPlatform}
 					<span class="bg-brand/10 text-brand inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
@@ -201,7 +223,7 @@
 		</div>
 	</div>
 
-	{#if (invite.location && !invite.joinUrl) || invited > 0 || invite.description}
+	{#if (invite.location && !invite.joinUrl) || roster.length || invite.description}
 		<div class="space-y-2.5 p-3.5 text-sm">
 			<!-- Physical location only — a meeting link becomes the Join button below. -->
 			{#if invite.location && !invite.joinUrl}
@@ -211,14 +233,40 @@
 				</div>
 			{/if}
 
-			{#if invited > 0}
-				<div class="flex items-start gap-2.5">
-					<UsersIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-					<div class="text-muted-foreground min-w-0 text-xs">
-						<span class="text-foreground">{going} going</span> · {invited} invited
-						{#if invite.organizer.email}<span class="block truncate">Organized by {invite.organizer.name || invite.organizer.email}</span>{/if}
-					</div>
-				</div>
+			{#if roster.length}
+				<!-- Avatar stack → click/tap opens the full guest list with RSVP status. -->
+				<Popover.Root>
+					<Popover.Trigger class="hover:bg-muted/50 focus-visible:ring-ring -mx-1 flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors outline-none focus-visible:ring-2">
+						<span class="flex shrink-0 -space-x-2">
+							{#each roster.slice(0, 5) as g (g.email)}
+								<span class="border-card bg-muted text-muted-foreground grid size-6 place-items-center rounded-full border-2 text-[9px] font-semibold">{initials(g)}</span>
+							{/each}
+							{#if roster.length > 5}
+								<span class="border-card bg-muted text-muted-foreground grid size-6 place-items-center rounded-full border-2 text-[9px] font-semibold">+{roster.length - 5}</span>
+							{/if}
+						</span>
+						<span class="min-w-0 flex-1 text-xs">
+							<span class="text-foreground"><span class="text-ok">{going}</span> going</span> · {invited} invited
+							{#if invite.organizer.email}<span class="text-muted-foreground block truncate">Organized by {invite.organizer.name || invite.organizer.email}</span>{/if}
+						</span>
+					</Popover.Trigger>
+					<Popover.Content align="start" class="w-64 p-0">
+						<div class="text-muted-foreground border-b px-3 py-2 text-[11px] font-semibold tracking-wide uppercase">Guests · {invited}</div>
+						<div class="max-h-64 overflow-y-auto py-1">
+							{#each roster as g (g.email)}
+								{@const s = statusMeta(g.partstat)}
+								<div class="flex items-center gap-2.5 px-3 py-1.5">
+									<span class="bg-muted text-muted-foreground grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold">{initials(g)}</span>
+									<span class="min-w-0 flex-1">
+										<span class="text-foreground block truncate text-xs font-medium">{g.name || g.email}</span>
+										{#if g.name}<span class="text-faint block truncate text-[11px]">{g.email}</span>{/if}
+									</span>
+									<span class="shrink-0 text-[11px] font-medium {isOrganizer(g.email) ? 'text-muted-foreground' : s.cls}">{isOrganizer(g.email) ? 'Organizer' : s.label}</span>
+								</div>
+							{/each}
+						</div>
+					</Popover.Content>
+				</Popover.Root>
 			{/if}
 
 			{#if invite.description}
