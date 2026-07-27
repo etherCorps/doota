@@ -25,6 +25,7 @@
 	import { pushRecentThread } from '$lib/client/recent-threads';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
+	import InviteCard from '$lib/components/mail/invite-card.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
@@ -51,7 +52,8 @@
 		bulkMarkRead,
 		emptyFolder,
 		unreadCount,
-		setSenderImageTrust
+		setSenderImageTrust,
+		setInviteRsvp
 	} from '$lib/rpc/thread.remote';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
@@ -63,7 +65,7 @@
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, retrySendById } from '$lib/rpc/draft.remote';
 	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
-	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
+	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import { replySubject, FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -900,6 +902,28 @@
 		else loadedImages.delete(m.id);
 		await setSenderImageTrust({ sender: m.from, trusted });
 		await threadQ?.refresh();
+	}
+
+	// Local RSVP for calendar invites (organizer NOT notified). Optimistic: the
+	// override map flips the card's pressed state instantly; a failed persist
+	// reverts. Keyed by event UID so every message of the same event agrees.
+	const inviteRsvp = new SvelteMap<string, InviteRsvpStatus>();
+	function inviteFor(m: MessageDTO): CalendarInviteDTO {
+		const inv = m.calendarInvite!;
+		return { ...inv, myRsvp: inviteRsvp.get(inv.uid) ?? inv.myRsvp };
+	}
+	async function rsvp(m: MessageDTO, status: InviteRsvpStatus) {
+		const inv = m.calendarInvite;
+		if (!mailboxId || !threadId || !inv) return;
+		const prev = inviteRsvp.get(inv.uid) ?? inv.myRsvp;
+		inviteRsvp.set(inv.uid, status);
+		try {
+			await setInviteRsvp({ mailboxId, threadId, uid: inv.uid, status });
+		} catch {
+			if (prev) inviteRsvp.set(inv.uid, prev);
+			else inviteRsvp.delete(inv.uid);
+			toast.error('Could not save your response.');
+		}
 	}
 
 	// In-thread retry for a failed send (visible to its author only — server
@@ -2327,6 +2351,11 @@
 										{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
+												{#if m.calendarInvite}
+													<div class="mb-2 w-[min(70vw,32rem)]">
+														<InviteCard invite={inviteFor(m)} onRsvp={(s) => rsvp(m, s)} />
+													</div>
+												{/if}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 													<div class="w-[min(70vw,32rem)]">
@@ -2362,7 +2391,7 @@
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
 													     documents as compact rows. Parts the HTML references by cid already
 													     render inline — skip their tiles to avoid doubles. -->
-													{@const shown = m.attachments.filter((a) => !a.inline)}
+													{@const shown = m.attachments.filter((a) => !a.inline && !(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics'))))}
 													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
@@ -2443,6 +2472,11 @@
 									{#if open}
 										<div class="px-3.5 pb-3.5">
 											{@render replyContextNote(m)}
+											{#if m.calendarInvite}
+												<div class="mb-3">
+													<InviteCard invite={inviteFor(m)} onRsvp={(s) => rsvp(m, s)} />
+												</div>
+											{/if}
 											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
@@ -2470,7 +2504,7 @@
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
-												{@const shown = m.attachments.filter((a) => !a.inline)}
+												{@const shown = m.attachments.filter((a) => !a.inline && !(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics'))))}
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as a (a.id)}

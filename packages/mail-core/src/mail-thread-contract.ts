@@ -109,6 +109,37 @@ export type MessageDTO = {
      * oldest first — rendered as stacked "earlier" blocks above the parent. */
     ancestors?: { from: string | null; sentAt: number | null; text: string }[];
   };
+  /** A calendar invite (iMIP) carried by this message — decrypted + hydrated in
+   * read.ts from calendar_event, with the viewer's local RSVP folded in. Drives
+   * the themed invite card instead of a raw .ics download. */
+  calendarInvite?: CalendarInviteDTO;
+};
+
+/** Yes/no/maybe for the invite card — local status; matches calendar_rsvp.status. */
+export type InviteRsvpStatus = "accepted" | "declined" | "tentative";
+
+/** Decrypted invite for the wire (mirrors mail-core/calendar.ts ParsedInvite +
+ * the viewer's local RSVP). Times are UTC ms; `tz` labels the event's own zone
+ * for display when it wasn't a bare UTC value. */
+export type CalendarInviteDTO = {
+  uid: string;
+  method: string; // REQUEST | REPLY | CANCEL | PUBLISH
+  status: string | null; // CONFIRMED | CANCELLED | TENTATIVE
+  summary: string | null;
+  description: string | null;
+  location: string | null;
+  startMs: number;
+  endMs: number | null;
+  tz: string | null;
+  allDay: boolean;
+  organizer: { email: string | null; name: string | null };
+  attendees: { email: string; name: string | null; partstat: string | null }[];
+  meetingPlatform: "zoom" | "teams" | "meet" | "webex" | null;
+  calOrigin: "google" | "microsoft" | "apple" | "other" | null;
+  joinUrl: string | null;
+  rsvpLinks: { accepted: string | null; declined: string | null; tentative: string | null };
+  /** The viewer's own recorded answer (local; organizer not notified). */
+  myRsvp: InviteRsvpStatus | null;
 };
 
 /** A team-internal note in the timeline (Task 5). Never transmitted; visually

@@ -16,6 +16,8 @@ import {
   type SubmissionState,
   type ThreadDTO,
   type TimelineItem,
+  type CalendarInviteDTO,
+  type InviteRsvpStatus,
 } from "./mail-thread-contract";
 import { trustedSenders } from "./sender-trust";
 
@@ -451,7 +453,7 @@ export async function getThread(
 
   // ONE parallel batch for everything keyed on the message set — this was a
   // serial chain of ~6 round-trips and the dominant cost of opening a thread.
-  const [deliveries, submissionByMsg, attRows, trustedFrom, hiddenParentRows, collab] =
+  const [deliveries, submissionByMsg, attRows, trustedFrom, hiddenParentRows, collab, calendarRows] =
     await Promise.all([
       messageIds.length
         ? db
@@ -504,7 +506,69 @@ export async function getThread(
             listSystemEvents(db, input.threadId, input.mailboxId),
           ])
         : Promise.resolve(null),
+      // Calendar invites carried by these messages (one per message at most).
+      messageIds.length
+        ? db
+            .select()
+            .from(schema.calendarEvent)
+            .where(inArray(schema.calendarEvent.messageId, messageIds))
+        : Promise.resolve([]),
     ]);
+
+  const parseAttendees = (json: string): CalendarInviteDTO["attendees"] => {
+    try {
+      const v = JSON.parse(json);
+      return Array.isArray(v) ? (v as CalendarInviteDTO["attendees"]) : [];
+    } catch {
+      return [];
+    }
+  };
+  // Decrypt + hydrate invites, folding in the viewer's local RSVP (keyed by UID).
+  const inviteByMsg = new Map<string, CalendarInviteDTO>();
+  if (calendarRows.length) {
+    const uids = [...new Set(calendarRows.map((c) => c.uid))];
+    const rsvpRows = input.userId
+      ? await db
+          .select({ uid: schema.calendarRsvp.uid, status: schema.calendarRsvp.status })
+          .from(schema.calendarRsvp)
+          .where(
+            and(eq(schema.calendarRsvp.userId, input.userId), inArray(schema.calendarRsvp.uid, uids)),
+          )
+      : [];
+    const rsvpByUid = new Map(rsvpRows.map((r) => [r.uid, r.status as InviteRsvpStatus]));
+    await Promise.all(
+      calendarRows.map(async (c) => {
+        // details_enc is a JSON blob of the sensitive free-text; a decrypt failure
+        // (rotated key / tamper) must not sink the whole thread — degrade to null.
+        let details: { summary?: string; description?: string; location?: string; joinUrl?: string; rsvpLinks?: CalendarInviteDTO["rsvpLinks"] } = {};
+        try {
+          const raw = await decryptContent(input.ck, c.detailsEnc);
+          if (raw) details = JSON.parse(raw);
+        } catch {
+          details = {};
+        }
+        inviteByMsg.set(c.messageId, {
+          uid: c.uid,
+          method: c.method,
+          status: c.status,
+          summary: details.summary ?? null,
+          description: details.description ?? null,
+          location: details.location ?? null,
+          startMs: c.startMs,
+          endMs: c.endMs,
+          tz: c.tz,
+          allDay: c.allDay,
+          organizer: { email: c.organizerEmail, name: c.organizerName },
+          attendees: parseAttendees(c.attendeesJson),
+          meetingPlatform: c.meetingPlatform as CalendarInviteDTO["meetingPlatform"],
+          calOrigin: c.calOrigin as CalendarInviteDTO["calOrigin"],
+          joinUrl: details.joinUrl ?? null,
+          rsvpLinks: details.rsvpLinks ?? { accepted: null, declined: null, tentative: null },
+          myRsvp: rsvpByUid.get(c.uid) ?? null,
+        });
+      }),
+    );
+  }
 
   const deliveryByMsg = new Map(deliveries.map((d) => [d.messageId, d]));
   // Messages THIS mailbox sent (it holds the `from` receipt). A message can
@@ -661,6 +725,7 @@ export async function getThread(
       })),
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
       ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),
+      ...(inviteByMsg.has(m.id) ? { calendarInvite: inviteByMsg.get(m.id) } : {}),
     };
     return dto;
     }),

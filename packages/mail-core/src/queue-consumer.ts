@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";
 import * as schema from "@doota/db/schema";
-import { importKey } from "./crypto";
+import { importKey, encryptContent, type ContentKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
+import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { sendGrantUserIds } from "./mailbox";
@@ -143,6 +144,63 @@ async function stageInboundAttachments(
   }
 }
 
+/**
+ * Parse any calendar part on the message and persist a calendar_event row.
+ * Structural fields stay cleartext; the sensitive free-text (summary/location/
+ * description/joinUrl/rsvpLinks) is encrypted into details_enc with the same DEK
+ * as the subject/body. Idempotent: unique on message_id, so a redelivered job
+ * no-ops. Never throws into the delivery path — a malformed invite must not lose
+ * the mail (it still lands as a normal message with its .ics attachment).
+ */
+async function persistInvite(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+  ck: ContentKey,
+  orgId: string,
+  messageId: string,
+  parsed: PMParsed,
+): Promise<void> {
+  try {
+    const raw = findCalendarPart(parsed.attachments);
+    if (!raw) return;
+    const inv = parseIcs(raw);
+    if (!inv) return;
+    const rsvpLinks = extractRsvpLinks(parsed.html);
+    const detailsEnc = await encryptContent(
+      ck,
+      JSON.stringify({
+        summary: inv.summary,
+        description: inv.description,
+        location: inv.location,
+        joinUrl: inv.joinUrl,
+        rsvpLinks,
+      }),
+    );
+    await db
+      .insert(schema.calendarEvent)
+      .values({
+        orgId,
+        messageId,
+        uid: inv.uid,
+        method: inv.method,
+        sequence: inv.sequence,
+        status: inv.status,
+        startMs: inv.startMs,
+        endMs: inv.endMs,
+        tz: inv.tz,
+        allDay: inv.allDay,
+        organizerEmail: inv.organizer.email,
+        organizerName: inv.organizer.name,
+        attendeesJson: JSON.stringify(inv.attendees),
+        meetingPlatform: inv.meetingPlatform,
+        calOrigin: inv.calOrigin,
+        detailsEnc,
+      })
+      .onConflictDoNothing({ target: schema.calendarEvent.messageId });
+  } catch (e) {
+    log.warn("in.invite_parse_failed", { messageId, ...errInfo(e) });
+  }
+}
+
 type QueueBatch = { messages: { body: InboundJob; ack(): void; retry(): void }[] };
 
 export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void> {
@@ -205,6 +263,10 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       await stageInboundAttachments(env, job.orgId, parsed, pm);
 
       const { messageId, threadId } = await materializeMessage(db, job.orgId, pm, deps);
+
+      // Calendar invite (iMIP): parse + store alongside the message, before the
+      // delivery so the invite is present the first time the thread is opened.
+      await persistInvite(db, ck, job.orgId, messageId, parsed);
 
       const recipientBase = baseAddress(job.recipient, job.subaddressTag);
       const role = deriveRole(parsed, recipientBase);

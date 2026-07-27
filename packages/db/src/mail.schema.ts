@@ -403,6 +403,71 @@ export const attachment = sqliteTable(
 );
 
 /**
+ * A calendar invite (iMIP) carried by a message — one VEVENT per message, parsed
+ * from its text/calendar part at ingest (see mail-core/calendar.ts). Structural
+ * fields stay cleartext (routing-ish: times, organizer/attendee addresses, the
+ * meeting platform) so a future "invites" view can query without decrypting; the
+ * sensitive free-text (summary/location/description/joinUrl/rsvpLinks) lives in
+ * `details_enc`, encrypted with the same DEK as the subject/body. UID is the
+ * cross-message event key (REQUEST and later CANCEL share it) and what local
+ * RSVP is scoped to.
+ */
+export const calendarEvent = sqliteTable(
+  "calendar_event",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id, { onDelete: "cascade" }),
+    uid: text("uid").notNull(),
+    method: text("method").notNull(), // REQUEST | REPLY | CANCEL | PUBLISH
+    sequence: integer("sequence").default(0).notNull(),
+    status: text("status"), // CONFIRMED | CANCELLED | TENTATIVE
+    startMs: integer("start_ms").notNull(),
+    endMs: integer("end_ms"),
+    tz: text("tz"), // event timezone label (IANA) when the value carried a TZID
+    allDay: integer("all_day", { mode: "boolean" }).default(false).notNull(),
+    organizerEmail: text("organizer_email"),
+    organizerName: text("organizer_name"),
+    attendeesJson: text("attendees_json").default("[]").notNull(),
+    meetingPlatform: text("meeting_platform"), // zoom | teams | meet | webex
+    calOrigin: text("cal_origin"), // google | microsoft | apple | other
+    detailsEnc: text("details_enc"), // encrypted {summary,description,location,joinUrl,rsvpLinks}
+    createdAt: now(),
+  },
+  (t) => [
+    uniqueIndex("calendar_event_message_uidx").on(t.messageId),
+    index("calendar_event_uid_idx").on(t.uid),
+  ],
+);
+
+/**
+ * A user's local RSVP for an event (yes/no/maybe), scoped by the event UID. This
+ * is the app's own record — it does NOT notify the organizer (that needs an iMIP
+ * reply the outbound provider can't emit yet, or the provider's own RSVP links).
+ * Keyed per (user, uid) so the latest answer wins across every message of the
+ * event.
+ */
+export const calendarRsvp = sqliteTable(
+  "calendar_rsvp",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    uid: text("uid").notNull(),
+    status: text("status").notNull(), // accepted | declined | tentative
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [uniqueIndex("calendar_rsvp_user_uid_uidx").on(t.userId, t.uid)],
+);
+
+/**
  * COLLABORATION (Task 5) — the thin Missive layer. Both live in SIBLING tables
  * (never merged into `message`), so the immutable-message / delivery / submission
  * invariants stay untouched and a note is STRUCTURALLY incapable of entering the

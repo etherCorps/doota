@@ -215,6 +215,44 @@ export const markThreadRead = command(
   },
 );
 
+/**
+ * Record the viewer's LOCAL RSVP for a calendar invite (yes/no/maybe). This is
+ * the app's own status only — it does NOT notify the organizer (that needs an
+ * iMIP reply the provider can't emit yet, or the invite's own RSVP links). Authz:
+ * the user must be able to see the thread AND the uid must belong to an invite in
+ * it. Keyed per (user, uid) so the latest answer wins across the event's messages.
+ */
+export const setInviteRsvp = command(
+  z.object({
+    mailboxId: z.string().min(1),
+    threadId: z.string().min(1),
+    uid: z.string().min(1),
+    status: z.enum(["accepted", "declined", "tentative"]),
+  }),
+  async ({ mailboxId, threadId, uid, status }) => {
+    await assertThreadGrant(mailboxId, threadId);
+    const { locals } = getRequestEvent();
+    // The uid must name an invite actually carried by a message in this thread —
+    // never let a client write RSVP for an arbitrary uid.
+    const owns = await locals.db
+      .select({ id: mail.calendarEvent.id })
+      .from(mail.calendarEvent)
+      .innerJoin(mail.message, eq(mail.message.id, mail.calendarEvent.messageId))
+      .where(and(eq(mail.calendarEvent.uid, uid), eq(mail.message.threadId, threadId)))
+      .limit(1);
+    if (!owns.length) error(404, "Invite not found");
+    const now = new Date();
+    await locals.db
+      .insert(mail.calendarRsvp)
+      .values({ userId: locals.user!.id, uid, status, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [mail.calendarRsvp.userId, mail.calendarRsvp.uid],
+        set: { status, updatedAt: now },
+      });
+    return { ok: true as const, status };
+  },
+);
+
 /** Move a thread to a placement (archive/spam/trash/inbox) for this mailbox. */
 export const moveThread = command(
   z.object({
