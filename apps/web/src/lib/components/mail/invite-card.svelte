@@ -7,16 +7,12 @@
 	// Google/Microsoft's real RSVP flow. Times render in the event's own timezone
 	// (honest — matches how Gmail shows them) with the viewer's zone as a hint.
 	import type { CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
-	import CalendarCheckIcon from '@lucide/svelte/icons/calendar-check';
-	import CalendarXIcon from '@lucide/svelte/icons/calendar-x';
-	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
 	import HelpCircleIcon from '@lucide/svelte/icons/circle-help';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { linkifySegments } from '$lib/utils/linkify.js';
@@ -40,28 +36,26 @@
 	// event's own zone (so "3:00 PM EDT · your time 12:00 PM PDT" only when useful).
 	const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-	function fmt(ms: number, tz: string | null, allDay: boolean): string {
-		const zone = tz ?? 'UTC';
-		const opts: Intl.DateTimeFormatOptions = allDay
-			? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: zone }
-			: { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: zone, timeZoneName: 'short' };
-		return new Intl.DateTimeFormat(undefined, opts).format(new Date(ms));
-	}
-	// Same-day end → time only; different day → full.
-	function fmtEnd(startMs: number, endMs: number, tz: string | null): string {
-		const zone = tz ?? 'UTC';
-		const sameDay = new Date(startMs).toDateString() === new Date(endMs).toDateString();
-		return new Intl.DateTimeFormat(undefined, {
-			...(sameDay ? {} : { weekday: 'short', month: 'short', day: 'numeric' }),
-			hour: 'numeric',
-			minute: '2-digit',
-			timeZone: zone,
-			timeZoneName: 'short'
-		}).format(new Date(endMs));
-	}
+	const zone = $derived(invite.tz ?? 'UTC');
+	const part = (ms: number, opts: Intl.DateTimeFormatOptions) =>
+		new Intl.DateTimeFormat(undefined, { ...opts, timeZone: zone }).format(new Date(ms));
 
-	const when = $derived(fmt(invite.startMs, invite.tz, invite.allDay));
-	const whenEnd = $derived(!invite.allDay && invite.endMs ? fmtEnd(invite.startMs, invite.endMs, invite.tz) : null);
+	// Tear-off calendar chip — month tab over the day number, in the event's zone.
+	const chip = $derived({
+		month: part(invite.startMs, { month: 'short' }).toUpperCase(),
+		day: part(invite.startMs, { day: 'numeric' })
+	});
+	// Full weekday + date, promoted next to the title (the invite's real anchor).
+	const dateLine = $derived(part(invite.startMs, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
+	const timeLine = $derived.by(() => {
+		if (invite.allDay) return 'All day';
+		const t = (ms: number) => part(ms, { hour: 'numeric', minute: '2-digit' });
+		const tzName =
+			new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: 'short' })
+				.formatToParts(new Date(invite.startMs))
+				.find((p) => p.type === 'timeZoneName')?.value ?? '';
+		return invite.endMs ? `${t(invite.startMs)} – ${t(invite.endMs)} ${tzName}` : `${t(invite.startMs)} ${tzName}`;
+	});
 	const isPast = $derived(invite.endMs != null ? invite.endMs < Date.now() : invite.startMs < Date.now());
 
 	// Show the viewer's own timezone time as a hint only when the event zone differs.
@@ -100,10 +94,12 @@
 		}
 	}
 
-	const RSVP: { key: InviteRsvpStatus; label: string; icon: typeof CheckIcon }[] = [
-		{ key: 'accepted', label: 'Yes', icon: CheckIcon },
-		{ key: 'tentative', label: 'Maybe', icon: HelpCircleIcon },
-		{ key: 'declined', label: 'No', icon: XIcon }
+	// Selected answer carries meaning through colour: Yes → ok, Maybe → warn,
+	// No → destructive (not a neutral grey pressed-state).
+	const RSVP: { key: InviteRsvpStatus; label: string; icon: typeof CheckIcon; active: string }[] = [
+		{ key: 'accepted', label: 'Yes', icon: CheckIcon, active: 'bg-ok/15 text-ok ring-1 ring-ok/25' },
+		{ key: 'tentative', label: 'Maybe', icon: HelpCircleIcon, active: 'bg-warn/15 text-warn ring-1 ring-warn/25' },
+		{ key: 'declined', label: 'No', icon: XIcon, active: 'bg-destructive/15 text-destructive ring-1 ring-destructive/25' }
 	];
 	// A provider RSVP link exists for this answer → open the real flow instead of
 	// (only) recording local status.
@@ -166,11 +162,15 @@
 <!-- GlobeChip snippet removed — using lucide GlobeIcon inline. -->
 
 <div class="border-border bg-card overflow-hidden rounded-2xl border shadow-xs">
-	<!-- Header: accent rail + title + source badges. Cancelled invites read muted
-	     with a struck title so a stale REQUEST above it isn't mistaken for live. -->
-	<div class="flex items-start gap-3 border-b p-3.5 {cancelled ? 'bg-muted/40' : 'bg-brand/5'}">
-		<div class="grid size-10 shrink-0 place-items-center rounded-xl {cancelled ? 'bg-muted text-muted-foreground' : 'bg-brand/15 text-brand'}">
-			{#if cancelled}<CalendarXIcon class="size-5" />{:else}<CalendarCheckIcon class="size-5" />{/if}
+	<!-- Header: tear-off date chip anchors the invite; title wraps (it's the
+	     headline); date + time promoted right under it. Cancelled reads muted
+	     with a struck title so a stale REQUEST isn't mistaken for live. -->
+	<div class="flex items-start gap-3.5 border-b p-3.5 {cancelled ? 'bg-muted/40' : 'bg-brand/5'}">
+		<div class="w-13 shrink-0 overflow-hidden rounded-xl border text-center {cancelled ? 'opacity-60' : ''}">
+			<div class="py-0.5 text-[10px] font-semibold tracking-wide uppercase {cancelled ? 'bg-muted text-muted-foreground' : 'bg-brand text-brand-foreground'}">
+				{chip.month}
+			</div>
+			<div class="bg-card text-foreground py-1 text-xl leading-tight font-bold tabular-nums">{chip.day}</div>
 		</div>
 		<div class="min-w-0 flex-1">
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -188,108 +188,110 @@
 					</span>
 				{/if}
 			</div>
-			<h3 class="text-foreground mt-0.5 truncate text-sm font-semibold {cancelled ? 'text-muted-foreground line-through' : ''}">
+			<h3 class="text-foreground mt-1 line-clamp-2 text-[15px] leading-snug font-semibold {cancelled ? 'text-muted-foreground line-through' : ''}">
 				{invite.summary || '(no title)'}
 			</h3>
+			<div class="mt-1 text-xs">
+				<div class="{isPast && !cancelled ? 'text-muted-foreground' : 'text-foreground'} font-medium">{dateLine}</div>
+				<div class="text-muted-foreground">
+					{timeLine}{#if viewerHint} · <span class="text-faint">{viewerHint}</span>{/if}
+				</div>
+				{#if isPast && !cancelled}<div class="text-faint">This event has ended.</div>{/if}
+			</div>
 		</div>
 	</div>
 
-	<div class="space-y-2.5 p-3.5 text-sm">
-		<!-- When -->
-		<div class="flex items-start gap-2.5">
-			<ClockIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-			<div class="min-w-0">
-				<div class="text-foreground {isPast && !cancelled ? 'text-muted-foreground' : ''}">
-					{when}{#if whenEnd}<span class="text-muted-foreground"> – {whenEnd}</span>{/if}
+	{#if (invite.location && !invite.joinUrl) || invited > 0 || invite.description}
+		<div class="space-y-2.5 p-3.5 text-sm">
+			<!-- Physical location only — a meeting link becomes the Join button below. -->
+			{#if invite.location && !invite.joinUrl}
+				<div class="flex items-start gap-2.5">
+					<MapPinIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
+					<span class="text-foreground min-w-0 break-words">{invite.location}</span>
 				</div>
-				{#if viewerHint}<div class="text-faint text-xs">{viewerHint}</div>{/if}
-				{#if isPast && !cancelled}<div class="text-faint text-xs">This event has ended.</div>{/if}
-			</div>
-		</div>
+			{/if}
 
-		<!-- Where / join -->
-		{#if invite.joinUrl}
-			<div class="flex items-center gap-2.5">
-				<VideoIcon class="text-muted-foreground size-4 shrink-0" />
-				<a href={invite.joinUrl} target="_blank" rel="noopener noreferrer" class="text-brand inline-flex items-center gap-1 truncate font-medium hover:underline">
-					Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}<ExternalLinkIcon class="size-3 shrink-0" />
+			{#if invited > 0}
+				<div class="flex items-start gap-2.5">
+					<UsersIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
+					<div class="text-muted-foreground min-w-0 text-xs">
+						<span class="text-foreground">{going} going</span> · {invited} invited
+						{#if invite.organizer.email}<span class="block truncate">Organized by {invite.organizer.name || invite.organizer.email}</span>{/if}
+					</div>
+				</div>
+			{/if}
+
+			{#if invite.description}
+				<p class="text-muted-foreground border-t pt-2.5 text-xs whitespace-pre-line">{#each descSegments(invite.description) as seg, i (i)}{#if seg.type === 'link'}<a
+								href={seg.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else if seg.type === 'email'}<a
+								href={`mailto:${seg.address}`}
+								class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else}{seg.value}{/if}{/each}</p>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Actions. Hidden for cancellations (nothing to respond to / join). -->
+	{#if !cancelled}
+		<div class="border-t p-3">
+			<div class="flex flex-wrap items-center gap-2">
+				<div role="group" aria-label="RSVP" class="border-border bg-muted flex items-center gap-1 rounded-lg border p-1">
+					{#each RSVP as opt (opt.key)}
+						{@const Icon = opt.icon}
+						{@const active = invite.myRsvp === opt.key}
+						{@const link = providerLink(opt.key)}
+						{#if link}
+							<!-- Real provider RSVP (updates the organizer). Still record local
+							     status so the pressed state persists across reloads. -->
+							<a
+								href={link}
+								target="_blank"
+								rel="noopener noreferrer"
+								onclick={() => pick(opt.key)}
+								aria-current={active ? 'true' : undefined}
+								class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
+							>
+								<Icon class="size-3.5" />{opt.label}
+							</a>
+						{:else}
+							<button
+								type="button"
+								onclick={() => pick(opt.key)}
+								aria-pressed={active}
+								disabled={busy !== null}
+								class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 disabled:opacity-60 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
+							>
+								<Icon class="size-3.5" />{opt.label}
+							</button>
+						{/if}
+					{/each}
+				</div>
+
+				{#if invite.joinUrl}
+					<!-- Primary CTA for a virtual meeting: a filled button, not a text row. -->
+					<a
+						href={invite.joinUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+					>
+						<VideoIcon class="size-4" /> Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}
+					</a>
+				{/if}
+
+				<a
+					href={originalHref ?? icsHref()}
+					download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
+					class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs font-medium hover:underline"
+				>
+					<DownloadIcon class="size-3.5" /> Download invite
 				</a>
 			</div>
-		{:else if invite.location}
-			<div class="flex items-start gap-2.5">
-				<MapPinIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-				<span class="text-foreground min-w-0 break-words">{invite.location}</span>
-			</div>
-		{/if}
-
-		<!-- Who -->
-		{#if invited > 0}
-			<div class="flex items-start gap-2.5">
-				<UsersIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-				<div class="text-muted-foreground min-w-0 text-xs">
-					<span class="text-foreground">{going} going</span> · {invited} invited
-					{#if invite.organizer.email}<span class="block truncate">Organized by {invite.organizer.name || invite.organizer.email}</span>{/if}
-				</div>
-			</div>
-		{/if}
-
-		{#if invite.description}
-			<p class="text-muted-foreground border-t pt-2.5 text-xs whitespace-pre-line">{#each descSegments(invite.description) as seg, i (i)}{#if seg.type === 'link'}<a
-							href={seg.href}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else if seg.type === 'email'}<a
-							href={`mailto:${seg.address}`}
-							class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else}{seg.value}{/if}{/each}</p>
-		{/if}
-	</div>
-
-	<!-- RSVP + add-to-calendar. Hidden for cancellations (nothing to respond to). -->
-	{#if !cancelled}
-		<div class="flex flex-wrap items-center gap-2 border-t p-3">
-			<div role="group" aria-label="RSVP" class="border-border bg-muted flex items-center gap-1 rounded-lg border p-1">
-				{#each RSVP as opt (opt.key)}
-					{@const Icon = opt.icon}
-					{@const active = invite.myRsvp === opt.key}
-					{@const link = providerLink(opt.key)}
-					{#if link}
-						<!-- Real provider RSVP (updates the organizer). Still record local
-						     status so the pressed state persists across reloads. -->
-						<a
-							href={link}
-							target="_blank"
-							rel="noopener noreferrer"
-							onclick={() => pick(opt.key)}
-							aria-current={active ? 'true' : undefined}
-							class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 {active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-						>
-							<Icon class="size-3.5" />{opt.label}
-						</a>
-					{:else}
-						<button
-							type="button"
-							onclick={() => pick(opt.key)}
-							aria-pressed={active}
-							disabled={busy !== null}
-							class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 disabled:opacity-60 {active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-						>
-							<Icon class="size-3.5" />{opt.label}
-						</button>
-					{/if}
-				{/each}
-			</div>
 			{#if invite.myRsvp && !Object.values(invite.rsvpLinks).some(Boolean)}
-				<span class="text-faint text-[11px]">Saved for you — the organizer isn't notified.</span>
+				<p class="text-faint mt-2 text-[11px]">Saved for you — the organizer isn't notified.</p>
 			{/if}
-			<!-- Prefer the ORIGINAL .ics (exact organiser copy — full recurrence,
-			     alarms, attendees); fall back to our re-serialised event. -->
-			<a
-				href={originalHref ?? icsHref()}
-				download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
-				class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs font-medium hover:underline"
-			>
-				<DownloadIcon class="size-3.5" /> Download invite
-			</a>
 		</div>
 	{/if}
 </div>
