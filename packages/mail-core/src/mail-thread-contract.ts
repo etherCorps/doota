@@ -34,6 +34,14 @@ export type SubmissionState = {
  */
 export const FAILED_SEND_STATUSES = ["failed", "bounced_hard", "bounced_soft", "complained"] as const;
 
+/**
+ * Failed sends that a retry can actually help. A hard bounce / complaint is
+ * PERMANENT — the address is suppressed on receipt, so re-sending just bounces
+ * again (or is blocked at preflight). Only a transient failure or a soft bounce
+ * is worth another attempt. Drives the retry affordance + the server guard.
+ */
+export const RETRYABLE_SEND_STATUSES = ["failed", "bounced_soft"] as const;
+
 /** Map a submission/recipient status onto a tick glyph. */
 export function tickForStatus(status: string): SendTick {
   switch (status) {

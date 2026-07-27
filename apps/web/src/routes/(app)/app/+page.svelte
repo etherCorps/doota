@@ -66,7 +66,7 @@
 	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
-	import { replySubject, FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
+	import { replySubject, RETRYABLE_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import {
 		fmtTime, senderName, senderLabel, senderAddr,
@@ -1345,7 +1345,7 @@
 				{r.address} — {r.status}{r.bounceType ? ` (${r.bounceType} bounce)` : ''}
 			</p>
 		{/each}
-		{#if sub.mine && (FAILED_SEND_STATUSES as readonly string[]).includes(sub.status)}
+		{#if sub.mine && (RETRYABLE_SEND_STATUSES as readonly string[]).includes(sub.status)}
 			<button
 				type="button"
 				disabled={retryingSubId === sub.id}

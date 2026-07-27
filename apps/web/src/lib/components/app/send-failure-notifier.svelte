@@ -39,15 +39,20 @@
 				toast.error(`Send failed: ${label}`, {
 					description: f.reason ?? 'Unknown error',
 					duration: 10_000,
-					// One-tap retry from the toast itself; ownership re-checked server-side.
-					action: {
-						label: 'Retry',
-						onClick: () => {
-							void retrySendById({ submissionId: f.submissionId }).catch(() =>
-								toast.error('Retry failed — try again in a moment.')
-							);
-						}
-					}
+					// One-tap retry from the toast itself (ownership re-checked server-side)
+					// — but only when a retry can help; a hard bounce / complaint is permanent.
+					...(f.retryable
+						? {
+								action: {
+									label: 'Retry',
+									onClick: () => {
+										void retrySendById({ submissionId: f.submissionId }).catch(() =>
+											toast.error('Retry failed — try again in a moment.')
+										);
+									}
+								}
+							}
+						: {})
 				});
 				// Same dedup as the toast — the seen-set gates both.
 				osNotify(`Send failed: ${label}`, f.reason ?? undefined, f.submissionId);

@@ -8,7 +8,7 @@ import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
 import { notifySubmissionState } from "./events-hub";
-import { FAILED_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
+import { FAILED_SEND_STATUSES, RETRYABLE_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
 
 /** A draft body is HTML (rich composer). Detect plain-text bodies so legacy/
  * plain content isn't mangled — wrap them into minimal HTML on send. */
@@ -338,6 +338,8 @@ export type FailedSend = {
   subject: string | null;
   to: string | null;
   reason: string | null;
+  /** false for a hard bounce / complaint — permanent, so no retry is offered. */
+  retryable: boolean;
 };
 
 /**
@@ -353,7 +355,7 @@ export async function listFailedSends(db: Db, ck: ContentKey, userId: string): P
       gt(schema.submission.createdAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
     ),
     orderBy: desc(schema.submission.createdAt),
-    columns: { id: true, messageId: true, lastError: true, createdAt: true },
+    columns: { id: true, messageId: true, lastError: true, createdAt: true, status: true },
     limit: 20,
   });
   const out: FailedSend[] = [];
@@ -377,6 +379,7 @@ export async function listFailedSends(db: Db, ck: ContentKey, userId: string): P
       subject: await decryptContent(ck, msg?.subjectEnc),
       to: firstRecip?.address ?? null,
       reason,
+      retryable: (RETRYABLE_SEND_STATUSES as readonly string[]).includes(r.status),
     });
   }
   return out;
@@ -399,8 +402,9 @@ export async function retryFailedSend(
     columns: { id: true, status: true },
   });
   if (!sub) error(404, "Send not found.");
-  if (!(FAILED_SEND_STATUSES as readonly string[]).includes(sub.status)) {
-    error(409, "This send isn't in a failed state.");
+  if (!(RETRYABLE_SEND_STATUSES as readonly string[]).includes(sub.status)) {
+    // Hard bounce / complaint is permanent (address suppressed) — retry can't help.
+    error(409, "This send can't be retried.");
   }
   // Failed/bounced/dropped recipients go back to queued; the consumer re-runs
   // preflight (suppression included) before anything leaves again.

@@ -236,27 +236,42 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           returnPathDomain: rp?.returnPathDomain ?? null,
         })
       ) {
-        // DSN fallback path (structured event subscriptions are primary; a DSN
-        // that slips through still updates state and wakes the user's stream —
-        // client-side dedupe absorbs any double notification).
-        const applied = await applyBounce(db, job.orgId, parseBounce(new TextDecoder().decode(buf)));
-        if (applied.matchedSubmission && applied.worstStatus) {
-          await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
+        // The heuristic said "bounce" — but only DROP if the DSN body actually
+        // parses to a failure/complaint. A mail that merely LOOKS like a bounce
+        // (subject regex, or addressed to the return-path subdomain) with no
+        // parseable failures is a real reply that tripped the heuristic — deliver
+        // it instead of eating it silently (the historical misclassification bug).
+        const bounce = parseBounce(new TextDecoder().decode(buf));
+        if (bounce.failures.length > 0 || bounce.isComplaint) {
+          // DSN fallback path (structured event subscriptions are primary; a DSN
+          // that slips through still updates state and wakes the user's stream —
+          // client-side dedupe absorbs any double notification).
+          const applied = await applyBounce(db, job.orgId, bounce);
+          if (applied.matchedSubmission && applied.worstStatus) {
+            await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
+          }
+          log.warn("in.bounce_classified", {
+            r2Key: job.r2RawKey,
+            recipient: job.recipient,
+            envelopeFrom: job.envelopeFrom,
+            from: parsed.from?.address ?? null,
+            subject: parsed.subject ?? null,
+            returnPathDomain: rp?.returnPathDomain ?? null,
+            matchedSubmission: applied.matchedSubmission ?? null,
+          });
+          m.ack();
+          continue;
         }
-        // A silent drop otherwise: log every bounce classification so a MISCLASSIFIED
-        // real reply is visible. matchedSubmission=null on a normal-looking reply =
-        // a legit mail was eaten by looksLikeBounce (check recipient vs returnPathDomain).
-        log.warn("in.bounce_classified", {
+        // Looked like a bounce, wasn't one — log the averted drop and fall through
+        // to normal delivery. Watch this to tune looksLikeBounce if it fires often.
+        log.warn("in.bounce_false_positive", {
           r2Key: job.r2RawKey,
           recipient: job.recipient,
           envelopeFrom: job.envelopeFrom,
           from: parsed.from?.address ?? null,
           subject: parsed.subject ?? null,
           returnPathDomain: rp?.returnPathDomain ?? null,
-          matchedSubmission: applied.matchedSubmission ?? null,
         });
-        m.ack();
-        continue;
       }
 
       const pm = toParsedMessage(parsed, job);
