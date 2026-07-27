@@ -6,15 +6,22 @@
      accessible mailbox, not just the active one) and refresh the unread badge
      when it's the active mailbox's inbox. -->
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { mailEvents } from '$lib/rpc/draft.remote.js';
 	import { unreadCount } from '$lib/rpc/thread.remote.js';
 	import { publishMailEvent } from '$lib/client/mail-events.svelte.js';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
+	import { subscribeToPush } from '$lib/client/push.js';
 
 	const live = mailEvents();
+
+	// Re-register the push subscription on load for users who already granted
+	// notifications — keeps it fresh (new device, rotated endpoint). Idempotent.
+	onMount(() => {
+		if (typeof Notification !== 'undefined' && Notification.permission === 'granted') void subscribeToPush();
+	});
 
 	async function refreshUnread(mailboxId: string) {
 		try {

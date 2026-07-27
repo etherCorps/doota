@@ -143,3 +143,46 @@ export const markNotificationRead = command(z.object({ id: z.string().min(1) }),
     .where(and(eq(mail.notification.id, id), eq(mail.notification.userId, locals.user.id)));
   return { ok: true as const };
 });
+
+// --- Web Push subscriptions (Phase B) --------------------------------------
+
+/** The VAPID PUBLIC key (safe to expose) — the client needs it to subscribe.
+ * Empty string when push isn't configured, so the client just skips. */
+export const pushPublicKey = query(async (): Promise<string> => {
+  const { platform } = getRequestEvent();
+  return platform?.env?.VAPID_PUBLIC_KEY ?? "";
+});
+
+/** Store/refresh this browser's push subscription (upsert on endpoint; a device
+ * that re-subscribes or changes hands reassigns to the current user). */
+export const savePushSubscription = command(
+  z.object({
+    endpoint: z.string().url().max(2048),
+    p256dh: z.string().min(1).max(512),
+    auth: z.string().min(1).max(512),
+    userAgent: z.string().max(512).optional(),
+  }),
+  async ({ endpoint, p256dh, auth, userAgent }) => {
+    const { locals } = getRequestEvent();
+    if (!locals.user) error(401, "Not authenticated");
+    const now = new Date();
+    await locals.db
+      .insert(mail.pushSubscription)
+      .values({ userId: locals.user.id, endpoint, p256dh, auth, userAgent: userAgent ?? null, lastSeenAt: now })
+      .onConflictDoUpdate({
+        target: mail.pushSubscription.endpoint,
+        set: { userId: locals.user.id, p256dh, auth, userAgent: userAgent ?? null, lastSeenAt: now },
+      });
+    return { ok: true as const };
+  },
+);
+
+/** Drop this browser's subscription (logout / user turned notifications off). */
+export const deletePushSubscription = command(z.object({ endpoint: z.string().min(1) }), async ({ endpoint }) => {
+  const { locals } = getRequestEvent();
+  if (!locals.user) error(401, "Not authenticated");
+  await locals.db
+    .delete(mail.pushSubscription)
+    .where(and(eq(mail.pushSubscription.endpoint, endpoint), eq(mail.pushSubscription.userId, locals.user.id)));
+  return { ok: true as const };
+});

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// Tab-open OS notifications (Notification API). Events only arrive over the
-// mailEvents live stream, so these fire while some tab is open but hidden or
-// unfocused — which is exactly when in-app toasts/badges are invisible.
-// ponytail: no service worker — move to Web Push when the PWA lands.
+// Tab-open OS notifications (Notification API) for the FOCUSED/visible case. The
+// app-closed case is Web Push (client/push.ts + the service worker); granting
+// permission here also registers the push subscription.
+import { subscribeToPush } from './push';
 
 export const notifPerm = $state({
 	current: (typeof Notification === 'undefined'
@@ -14,6 +14,7 @@ export const notifPerm = $state({
 export async function enableOsNotifications() {
 	if (typeof Notification === 'undefined') return;
 	notifPerm.current = await Notification.requestPermission();
+	if (notifPerm.current === 'granted') void subscribeToPush();
 }
 
 // Soft two-tone chirp for the focused-tab case (where the OS notification

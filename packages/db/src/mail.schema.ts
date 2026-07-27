@@ -515,6 +515,33 @@ export const notification = sqliteTable(
 );
 
 /**
+ * Web Push subscriptions (docs/notifications.md, Phase B) — one row per
+ * browser/device that opted in. `endpoint` is the push service URL (unique);
+ * `p256dh`/`auth` are the client keys the payload is encrypted to. Pruned when
+ * the push service returns 404/410 (gone) or the row goes stale. Delivering
+ * push with the app CLOSED is what this buys over the tab-open Notification API.
+ */
+export const pushSubscription = sqliteTable(
+  "push_subscription",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: now(),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("push_subscription_endpoint_uidx").on(t.endpoint),
+    index("push_subscription_user_idx").on(t.userId),
+  ],
+);
+
+/**
  * COLLABORATION (Task 5) — the thin Missive layer. Both live in SIBLING tables
  * (never merged into `message`), so the immutable-message / delivery / submission
  * invariants stay untouched and a note is STRUCTURALLY incapable of entering the

@@ -20,6 +20,12 @@ declare global {
     /** Per-user mail event hub DO (lives in doota-mail-jobs; cross-script binding).
      * Absent under vite dev — consumers must degrade gracefully. */
     MAIL_EVENTS?: import("@doota/mail-core/events-hub").EventHubNamespace;
+    /** Web Push (Phase B). Public key is exposed to the client to subscribe;
+     * private key is a secret used server-side to sign/encrypt the push. Both
+     * absent until push is configured — consumers skip. */
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
+    VAPID_SUBJECT?: string;
   }
 
   namespace App {
