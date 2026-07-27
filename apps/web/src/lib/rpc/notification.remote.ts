@@ -55,18 +55,21 @@ export const myNotifications = query(
     const threadIds = [...new Set(rows.filter((r) => r.type === "new_mail" && r.threadId).map((r) => r.threadId!))];
     const senderByThread = new Map<string, { from: string | null; fromName: string | null }>();
     if (threadIds.length) {
-      const msgs = await locals.db
-        .select({
-          threadId: schema.message.threadId,
-          fromAddr: schema.message.fromAddr,
-          fromName: schema.message.fromName,
-          sentAt: schema.message.sentAt,
-        })
-        .from(schema.message)
-        .where(inArray(schema.message.threadId, threadIds))
-        .orderBy(desc(schema.message.sentAt));
-      for (const m of msgs)
-        if (!senderByThread.has(m.threadId)) senderByThread.set(m.threadId, { from: m.fromAddr, fromName: m.fromName });
+      // Latest message PER thread — one indexed (thread_id, sent_at) read each,
+      // not a scan of every message in these threads. Bounded to the page (≤20).
+      const latest = await Promise.all(
+        threadIds.map((tid) =>
+          locals.db.query.message
+            .findFirst({
+              where: eq(schema.message.threadId, tid),
+              orderBy: desc(schema.message.sentAt),
+              columns: { fromAddr: true, fromName: true },
+            })
+            .then((m) => [tid, m] as const),
+        ),
+      );
+      for (const [tid, m] of latest)
+        if (m) senderByThread.set(tid, { from: m.fromAddr, fromName: m.fromName });
     }
     const actorIds = [...new Set(rows.filter((r) => r.actorUserId).map((r) => r.actorUserId!))];
     const actorName = new Map<string, string>();
