@@ -141,13 +141,10 @@ export async function provisionUser(
   }
   const userId = created.user.id;
 
-  await setUserAuthFlags(userId, { mustChangePassword: true });
-
-  // Record the invite chain — when this user finishes onboarding, the inviter
-  // gets a "member joined" mail and the invitee a welcome (see onboarding.ts).
-  await tryCatch(
-    db.update(schema.user).set({ invitedByUserId: actor.id }).where(eq(schema.user.id, userId)),
-  );
+  // Both writes touch the Better Auth `user` row — route through the boundary so
+  // the session cache stays coherent (and the auth-boundary guard passes). The
+  // invite chain drives onboarding's "member joined" + welcome mails.
+  await setUserAuthFlags(userId, { mustChangePassword: true, invitedByUserId: actor.id });
 
   const { error: memberError } = await tryCatch(
     locals.auth.api.addMember({

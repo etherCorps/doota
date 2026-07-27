@@ -164,6 +164,8 @@ type UserAuthFlags = Partial<{
   recoveryEmailVerifiedAt: number | null;
   mustChangePassword: boolean;
   onboardedAt: number;
+  /** Inviter's user id, stamped once at provision time (invite chain). */
+  invitedByUserId: string;
 }>;
 
 /**

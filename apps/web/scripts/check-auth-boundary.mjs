@@ -31,7 +31,9 @@ const RULES = [
   { re: /\$context\b/, msg: "$context (Better Auth internal) — use a boundary function" },
   { re: /\binternalAdapter\b/, msg: "internalAdapter (Better Auth internal) — use a boundary function" },
   {
-    re: /\.(insert|update|delete)\(\s*schema\./,
+    // Only Better Auth-OWNED tables are off-limits — app tables (mail, calendar,
+    // notes, …) are freely writable. Match `schema.<authTable>` in a write call.
+    re: /\.(insert|update|delete)\(\s*schema\.(user|session|account|verification|organization|member|invitation|twoFactor|passkey|rateLimit)\b/,
     msg: "direct auth-table write — route through auth.api or a boundary escape hatch",
   },
 ];
