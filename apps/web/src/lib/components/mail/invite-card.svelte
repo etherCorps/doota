@@ -4,8 +4,8 @@
 	// mail-core/calendar.ts) in the app's own surface instead of a raw .ics
 	// download. RSVP is LOCAL status (organizer not notified) plus, when the
 	// invite carried the provider's own Yes/Maybe/No links, a pass-through to
-	// Google/Microsoft's real RSVP flow. Times render in the event's own timezone
-	// (honest — matches how Gmail shows them) with the viewer's zone as a hint.
+	// Google/Microsoft's real RSVP flow. Times render in the VIEWER's local zone;
+	// the organizer's original timezone is a tap-away (Popover on the time line).
 	import type { CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import VideoIcon from '@lucide/svelte/icons/video';
@@ -28,38 +28,42 @@
 
 	const cancelled = $derived(invite.method === 'CANCEL' || invite.status === 'CANCELLED');
 
-	// The viewer's local timezone label, shown only when it differs from the
-	// event's own zone (so "3:00 PM EDT · your time 12:00 PM PDT" only when useful).
 	const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	// Everything renders in the VIEWER's local zone (their perspective) — the
+	// organizer's original timezone is a tap-away (origLine). All-day
+	// events are tz-agnostic, so their wall date is shown in UTC (undefined tz =
+	// viewer local for timed events; 'UTC' pins the all-day date).
+	const dispTz = $derived<string | undefined>(invite.allDay ? 'UTC' : undefined);
+	const part = (ms: number, opts: Intl.DateTimeFormatOptions, tz?: string) =>
+		new Intl.DateTimeFormat(undefined, { ...opts, ...(tz ? { timeZone: tz } : {}) }).format(new Date(ms));
 
-	const zone = $derived(invite.tz ?? 'UTC');
-	const part = (ms: number, opts: Intl.DateTimeFormatOptions) =>
-		new Intl.DateTimeFormat(undefined, { ...opts, timeZone: zone }).format(new Date(ms));
-
-	// Tear-off calendar chip — month tab over the day number, in the event's zone.
+	// Tear-off calendar chip — month tab over the day number, in the viewer's zone.
 	const chip = $derived({
-		month: part(invite.startMs, { month: 'short' }).toUpperCase(),
-		day: part(invite.startMs, { day: 'numeric' })
+		month: part(invite.startMs, { month: 'short' }, dispTz).toUpperCase(),
+		day: part(invite.startMs, { day: 'numeric' }, dispTz)
 	});
-	// Full weekday + date, promoted next to the title (the invite's real anchor).
-	const dateLine = $derived(part(invite.startMs, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
-	const timeLine = $derived.by(() => {
-		if (invite.allDay) return 'All day';
-		const t = (ms: number) => part(ms, { hour: 'numeric', minute: '2-digit' });
-		const tzName =
-			new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: 'short' })
-				.formatToParts(new Date(invite.startMs))
-				.find((p) => p.type === 'timeZoneName')?.value ?? '';
-		return invite.endMs ? `${t(invite.startMs)} – ${t(invite.endMs)} ${tzName}` : `${t(invite.startMs)} ${tzName}`;
+	// Chip carries month + day, so the text line only needs weekday + time.
+	const weekdayShort = $derived(part(invite.startMs, { weekday: 'short' }, dispTz));
+	const eventYear = $derived(part(invite.startMs, { year: 'numeric' }, dispTz));
+	const showYear = $derived(eventYear !== String(new Date().getFullYear()));
+
+	const tzLabel = (tz?: string) =>
+		new Intl.DateTimeFormat(undefined, { timeZone: tz ?? viewerTz, timeZoneName: 'short' })
+			.formatToParts(new Date(invite.startMs))
+			.find((p) => p.type === 'timeZoneName')?.value ?? '';
+	const timeRange = (tz?: string) => {
+		const t = (ms: number) => part(ms, { hour: 'numeric', minute: '2-digit' }, tz);
+		return invite.endMs ? `${t(invite.startMs)} – ${t(invite.endMs)} ${tzLabel(tz)}` : `${t(invite.startMs)} ${tzLabel(tz)}`;
+	};
+	const timeLine = $derived(invite.allDay ? 'All day' : timeRange(undefined));
+	// The organizer's original timezone rendering — for the tap-popover, only when
+	// it differs from the viewer's (and the event is timed).
+	const origLine = $derived.by(() => {
+		if (invite.allDay || !invite.tz || invite.tz === viewerTz) return null;
+		const d = part(invite.startMs, { weekday: 'short', month: 'short', day: 'numeric' }, invite.tz);
+		return `${d} · ${timeRange(invite.tz)}`;
 	});
 	const isPast = $derived(invite.endMs != null ? invite.endMs < Date.now() : invite.startMs < Date.now());
-
-	// Show the viewer's own timezone time as a hint only when the event zone differs.
-	const viewerHint = $derived.by(() => {
-		if (invite.allDay || !invite.tz || invite.tz === viewerTz) return null;
-		const t = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(invite.startMs));
-		return `${t} your time`;
-	});
 
 	const ORIGIN_LABEL: Record<string, string> = {
 		google: 'Google Calendar',
@@ -188,11 +192,13 @@
 	     headline); date + time promoted right under it. Cancelled reads muted
 	     with a struck title so a stale REQUEST isn't mistaken for live. -->
 	<div class="flex items-start gap-3.5 border-b p-3.5 {cancelled ? 'bg-muted/40' : 'bg-brand/5'}">
-		<div class="border-border/80 w-13 shrink-0 overflow-hidden rounded-xl border text-center {cancelled ? 'opacity-60' : ''}">
-			<div class="py-0.5 text-[10px] font-semibold tracking-wide uppercase {cancelled ? 'bg-muted text-muted-foreground' : 'bg-brand text-brand-foreground'}">
+		<!-- Date chip: the invite's anchor, sized to carry the header (month tab +
+		     big day number), not a stamp in the corner. -->
+		<div class="border-border/70 w-14 shrink-0 overflow-hidden rounded-xl border text-center leading-none shadow-xs {cancelled ? 'opacity-60' : ''}">
+			<div class="py-1 text-[10px] font-bold tracking-widest uppercase {cancelled ? 'bg-muted text-muted-foreground' : 'bg-brand text-brand-foreground'}">
 				{chip.month}
 			</div>
-			<div class="bg-card text-foreground py-1 text-xl leading-tight font-bold tabular-nums">{chip.day}</div>
+			<div class="bg-card text-foreground py-2 text-2xl font-bold tabular-nums">{chip.day}</div>
 		</div>
 		<div class="min-w-0 flex-1">
 			<!-- One accent focus: the eyebrow. Origin is quiet muted text; only the
@@ -210,15 +216,30 @@
 					</span>
 				{/if}
 			</div>
-			<h3 class="text-foreground mt-1 line-clamp-2 text-[15px] leading-snug font-semibold {cancelled ? 'text-muted-foreground line-through' : ''}">
+			<h3 class="text-foreground mt-1 line-clamp-2 text-base leading-snug font-semibold {cancelled ? 'text-muted-foreground line-through' : ''}">
 				{invite.summary || '(no title)'}
 			</h3>
-			<div class="mt-1 text-xs">
-				<div class="{isPast && !cancelled ? 'text-muted-foreground' : 'text-foreground'} font-medium">{dateLine}</div>
-				<div class="text-muted-foreground">
-					{timeLine}{#if viewerHint} · <span class="text-faint">{viewerHint}</span>{/if}
-				</div>
-				{#if isPast && !cancelled}<div class="text-faint">This event has ended.</div>{/if}
+			<!-- One when-line: weekday (chip carries month/day) + time; year only when
+			     not the current one; past events get a muted "Ended" pill inline. -->
+			<div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+				{#if origLine}
+					<!-- Viewer-local time is primary; tap/click reveals the organizer's own
+					     zone (Popover works on touch + mouse, unlike a hover tooltip). -->
+					<Popover.Root>
+						<Popover.Trigger class="focus-visible:ring-ring decoration-muted-foreground/40 rounded font-medium underline decoration-dotted underline-offset-2 outline-none focus-visible:ring-2 {isPast && !cancelled ? 'text-muted-foreground' : 'text-foreground'}">
+							{weekdayShort} · {timeLine}{#if showYear} · {eventYear}{/if}
+						</Popover.Trigger>
+						<Popover.Content align="start" class="w-auto max-w-[16rem] p-2.5 text-xs">
+							<span class="text-muted-foreground block text-[11px] font-medium tracking-wide uppercase">Organizer's time</span>
+							<span class="text-foreground mt-0.5 block">{origLine}</span>
+						</Popover.Content>
+					</Popover.Root>
+				{:else}
+					<span class="{isPast && !cancelled ? 'text-muted-foreground' : 'text-foreground'} font-medium">
+						{weekdayShort} · {timeLine}{#if showYear} · {eventYear}{/if}
+					</span>
+				{/if}
+				{#if isPast && !cancelled}<span class="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">Ended</span>{/if}
 			</div>
 		</div>
 	</div>
@@ -328,7 +349,13 @@
 						<VideoIcon class="size-4" /> Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}
 					</a>
 				{/if}
-
+			</div>
+			<!-- Secondary row: the "saved" note + a right-aligned Download — kept off
+			     the primary RSVP/Join line so it never orphans onto a lonely wrap. -->
+			<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+				{#if invite.myRsvp && !Object.values(invite.rsvpLinks).some(Boolean)}
+					<p class="text-faint text-[11px]">Saved for you — the organizer isn't notified.</p>
+				{/if}
 				<a
 					href={originalHref ?? icsHref()}
 					download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
@@ -337,9 +364,6 @@
 					<DownloadIcon class="size-3.5" /> Download invite
 				</a>
 			</div>
-			{#if invite.myRsvp && !Object.values(invite.rsvpLinks).some(Boolean)}
-				<p class="text-faint mt-2 text-[11px]">Saved for you — the organizer isn't notified.</p>
-			{/if}
 		</div>
 	{/if}
 </div>
