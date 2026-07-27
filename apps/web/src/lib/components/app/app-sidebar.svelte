@@ -20,9 +20,12 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import BellIcon from '@lucide/svelte/icons/bell';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import { fly } from 'svelte/transition';
 	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
+	import { pwa, installApp } from '$lib/client/pwa-install.svelte.js';
+	import { toast } from 'svelte-sonner';
 
 	let {
 		user,
@@ -144,6 +147,29 @@
 					>
 						<BellIcon class="size-4" />
 						<span>Enable notifications</span>
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{/if}
+			<!-- Install to the home screen / dock. Chromium (Chrome/Edge, any desktop
+			     + Android) gets a real prompt; Safari (iOS + macOS) can't be prompted,
+			     so hint the manual gesture — installing is what turns on push there.
+			     Hidden once installed. -->
+			{#if !pwa.installed && (pwa.canInstall || pwa.hint)}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton
+						tooltipContent="Install app"
+						onclick={() =>
+							pwa.canInstall
+								? void installApp()
+								: toast.info('Install Doota', {
+										description:
+											pwa.hint === 'dock'
+												? 'In Safari, open the Share menu → “Add to Dock”.'
+												: 'Tap the Share button, then “Add to Home Screen”.'
+									})}
+					>
+						<DownloadIcon class="size-4" />
+						<span>Install app</span>
 					</Sidebar.MenuButton>
 				</Sidebar.MenuItem>
 			{/if}
