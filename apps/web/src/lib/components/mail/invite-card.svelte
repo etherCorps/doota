@@ -184,12 +184,18 @@
 	// the human text (before the fence) from that block so the card shows what a
 	// person typed, and tucks the boilerplate behind a "Meeting details"
 	// disclosure. Runs client-side so it also tidies already-stored invites.
-	const FENCE = /[-~:]{6,}/;
+	// Divider rules: Google `-::~:~::-`, Teams/Zoom `________`. Plus a keyword
+	// fallback for providers that emit no divider at all (join info inline).
+	const FENCE = /[-~:_]{6,}/;
+	const BOILERPLATE = /^(join zoom meeting|microsoft teams meeting|join on your computer|join with google meet)/i;
 	const descParts = $derived.by(() => {
 		const raw = invite.description;
 		if (!raw) return { text: null as string | null, details: null as string | null };
 		const lines = raw.split('\n');
-		const at = lines.findIndex((l) => FENCE.test(l.trim()));
+		const at = lines.findIndex((l) => {
+			const t = l.trim();
+			return FENCE.test(t) || BOILERPLATE.test(t);
+		});
 		if (at === -1) return { text: raw.trim() || null, details: null };
 		const text = lines.slice(0, at).join('\n').trim();
 		const details = lines
