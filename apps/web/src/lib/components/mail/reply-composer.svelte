@@ -154,7 +154,7 @@
 			ccList = [];
 			showCc = false;
 		}
-		collapsed = autoOpen ? false : isMobile.current;
+		collapsed = !autoOpen;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
 		// Only a mirror with REAL text is a restore — an empty editor mirrors
@@ -233,8 +233,18 @@
 		attachments = (await detachDraftAttachment({ draftId, r2Key })).attachments;
 	}
 
-	async function flushSave() {
+	// Serialize saves: two concurrent autosaves (debounce flush + visibilitychange
+	// + Send all race here) would send the SAME clientRevision — the loser reads as
+	// an optimistic-concurrency miss and falsely warns "updated in another tab",
+	// reloading the body mid-type. Chaining makes each save see the bumped revision.
+	let saveChain: Promise<void> = Promise.resolve();
+	function flushSave(): Promise<void> {
 		scheduleSave.cancel();
+		saveChain = saveChain.then(doSave, doSave);
+		return saveChain;
+	}
+
+	async function doSave() {
 		// Cleared out → an empty reply is not a draft. Delete the row if one exists
 		// (Gmail/Superhuman/Fastmail all discard an emptied draft) so it can't linger
 		// in Drafts with stale text. Recipients are auto-filled, so they don't count.

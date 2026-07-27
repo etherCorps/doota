@@ -530,7 +530,12 @@
 	let openFlagOverride = $state<{ isStarred?: boolean; assigneeUserId?: string | null }>({});
 	$effect(() => {
 		void threadId;
-		untrack(() => (openFlagOverride = {}));
+		untrack(() => {
+			openFlagOverride = {};
+			// Per-message reply target is scoped to the open thread — clear it so a
+			// stale msgId can't re-select (and auto-expand) a reply in the next thread.
+			replyTarget = null;
+		});
 	});
 	const openStarred = $derived(
 		openFlagOverride.isStarred ?? openThreadItem?.isStarred ?? openDto?.isStarred ?? false
@@ -796,6 +801,21 @@
 		} catch {
 			openFlagOverride = { ...openFlagOverride, isStarred: current };
 			patchItem(id, { isStarred: current });
+		}
+	}
+	// Star straight from a list row (id may differ from the open thread). Keeps the
+	// open-thread override coherent when they happen to match.
+	async function starRow(id: string, current: boolean) {
+		if (!mailboxId) return;
+		const next = !current;
+		if (next && id === threadId) starPop++;
+		patchItem(id, { isStarred: next });
+		if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: next };
+		try {
+			await starThread({ mailboxId, threadId: id, starred: next });
+		} catch {
+			patchItem(id, { isStarred: current });
+			if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: current };
 		}
 	}
 
@@ -1842,14 +1862,14 @@
 							<button
 								type="button"
 								onclick={() => nav({ mailbox: hit.mailboxId, thread: hit.threadId })}
-								class="focus-visible:ring-ring/50 relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset {selected ? 'bg-accent/70' : 'hover:bg-muted/50'}"
+								class="focus-visible:ring-ring/50 relative flex w-full gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-inset {selected ? 'bg-accent' : 'hover:bg-muted/50'}"
 							>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render monogram(hit.from, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
 										<span class="flex-1 truncate text-sm font-medium">{hit.from ? senderName(hit.from) : '—'}</span>
-										{#if hit.at}<span class="text-faint shrink-0 text-[11px]">{fmtTime(hit.at)}</span>{/if}
+										{#if hit.at}<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(hit.at)}</span>{/if}
 									</div>
 									<span class="block truncate text-[13px] text-muted-foreground">
 										{#if hit.subject}<Highlight text={hit.subject} terms={hit.terms} />{:else}(no subject){/if}
@@ -1881,7 +1901,7 @@
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: dfx }}
 								aria-busy={deleting}
-								class="group/row group/draft flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(d.id) ? 'bg-accent/50' : 'hover:bg-muted/50'}"
+								class="group/row flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 select-none {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(d.id) ? 'bg-accent' : 'hover:bg-muted/50'}"
 							>
 								{@render selectAvatar(
 									d.to[0] ?? null,
@@ -1893,7 +1913,7 @@
 									<div class="min-w-0 flex-1">
 										<div class="flex items-baseline gap-2">
 											<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
-											<span class="text-warn shrink-0 text-[11px] font-medium">Draft</span>
+											<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(d.updatedAt)}</span>
 										</div>
 										<span class="block truncate text-[13px] text-muted-foreground">{d.subject || '(no subject)'}</span>
 										<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
@@ -1904,7 +1924,7 @@
 									title="Delete draft"
 									disabled={deleting}
 									onclick={() => deleteDrafts([d.id])}
-									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 pointer-coarse:opacity-100 mr-2 grid size-8 shrink-0 place-items-center self-center rounded-lg opacity-0 transition-opacity outline-none group-hover/draft:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 {deleting ? 'opacity-100' : ''}"
+									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 mr-1 grid size-8 shrink-0 place-items-center self-center rounded-md outline-none transition-[color,opacity] focus-visible:ring-2 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 {deleting ? 'opacity-100 pointer-fine:opacity-100' : ''}"
 								>
 									{#if deleting}<Spinner class="size-4" />{:else}<Trash2Icon class="size-4" />{/if}
 								</button>
@@ -1926,7 +1946,7 @@
 					{@const items = schedQ.current.filter((s) => !hiddenScheduled.includes(s.submissionId))}
 					{#if items.length}
 						{#each items as s (s.submissionId)}
-							<div class="flex gap-3 border-b px-3 py-2.5">
+							<div class="flex gap-3 border-b px-3 py-2.5 select-none">
 								{@render monogram(s.to ?? null, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
 									<span class="block truncate text-sm font-medium">{s.to ? senderName(s.to) : '—'}</span>
@@ -1981,7 +2001,7 @@
 											else swipeProg.set(t.threadId, r);
 										}
 									}}
-									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors active:bg-accent/70 {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
+									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors select-none active:bg-accent/70 {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
 								>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
@@ -2005,10 +2025,22 @@
 										<span class="min-w-0 flex-1 truncate text-[13px] {t.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{t.subject ?? '(no subject)'}</span>
 										{#if t.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
 										{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
-										{#if t.isStarred}<StarIcon class="text-p3 size-3.5 shrink-0 fill-current" />{/if}
 									</div>
 									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
+							</button>
+							<!-- Star from the list — filled + always visible when starred; a faint
+							     hover-reveal affordance otherwise (always shown on touch). -->
+							<button
+								type="button"
+								title={t.isStarred ? 'Unstar' : 'Star'}
+								aria-pressed={t.isStarred}
+								onclick={() => starRow(t.threadId, t.isStarred)}
+								class="focus-visible:ring-ring/50 mr-1 grid size-8 shrink-0 place-items-center self-center rounded-md outline-none transition-colors focus-visible:ring-2 {t.isStarred
+									? 'text-p3'
+									: 'text-faint hover:text-p3 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100'}"
+							>
+								<StarIcon class="size-4 {t.isStarred ? 'fill-current' : ''}" />
 							</button>
 								</div>
 							</div>
