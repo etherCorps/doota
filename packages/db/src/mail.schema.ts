@@ -489,7 +489,7 @@ export const notification = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    type: text("type").notNull(), // new_mail | send_failed | assigned | mention
+    type: text("type").notNull(), // new_mail | send_failed | assigned | note | mention
     mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
     threadId: text("thread_id"),
     submissionId: text("submission_id"),

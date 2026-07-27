@@ -15,7 +15,7 @@ import * as mail from "@doota/db/mail.schema";
  * when a switcher lands.
  */
 
-export type NotificationType = "new_mail" | "send_failed" | "assigned" | "mention";
+export type NotificationType = "new_mail" | "send_failed" | "assigned" | "note" | "mention";
 export type NotificationDTO = {
   id: string;
   type: NotificationType;

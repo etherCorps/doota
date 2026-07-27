@@ -7,6 +7,7 @@
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
+	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
 	import { resolve } from '$app/paths';
 	import { scheduledSends } from '$lib/rpc/draft.remote.js';
 	import {
@@ -116,6 +117,12 @@
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">Assigned to you</span>
 							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} assigned this thread` : 'A thread was assigned to you'}</span>
+						</span>
+					{:else if n.type === 'note'}
+						<StickyNoteIcon class="text-warn mt-0.5 size-4 shrink-0" />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">New note</span>
+							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} left a note` : 'A teammate left a note'}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />

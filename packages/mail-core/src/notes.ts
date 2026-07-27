@@ -6,6 +6,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { indexNote, deleteNoteIndex, tokensFor } from "./search";
+import { recordNote } from "./notify";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -67,6 +68,17 @@ export async function createNote(
     orgId: input.orgId,
     tokens: await tokensFor(searchKeyB64, [input.body]),
   });
+  // Durable bell for the thread's assignee — best-effort, never fails the note.
+  try {
+    await recordNote(db, {
+      orgId: input.orgId,
+      mailboxId: input.mailboxId,
+      threadId: input.threadId,
+      actorUserId: input.authorUserId,
+    });
+  } catch {
+    // a missing bell row is not worth failing the note write
+  }
   return toDTO(ck, row);
 }
 

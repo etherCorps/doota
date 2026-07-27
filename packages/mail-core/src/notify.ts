@@ -115,6 +115,29 @@ export async function pruneStaleNotifications(db: Db, olderThanMs = 30 * 24 * 60
   return dropped.length;
 }
 
+/** A teammate left an internal note — notify the thread's current assignee (if
+ * any, and not the note author). Unassigned threads ping no one; @mentions will
+ * cover targeted pings once that feature lands. */
+export async function recordNote(
+  db: Db,
+  input: { orgId: string; mailboxId: string; threadId: string; actorUserId: string },
+): Promise<void> {
+  const state = await db.query.threadState.findFirst({
+    where: and(eq(mail.threadState.threadId, input.threadId), eq(mail.threadState.mailboxId, input.mailboxId)),
+    columns: { assigneeUserId: true },
+  });
+  const assignee = state?.assigneeUserId;
+  if (!assignee || assignee === input.actorUserId) return;
+  await db.insert(mail.notification).values({
+    userId: assignee,
+    orgId: input.orgId,
+    type: "note",
+    mailboxId: input.mailboxId,
+    threadId: input.threadId,
+    actorUserId: input.actorUserId,
+  });
+}
+
 /** A send the user owns failed (hard/soft bounce, complaint, or send error). */
 export async function recordSendFailed(
   db: Db,
