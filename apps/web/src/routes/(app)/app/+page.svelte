@@ -1560,9 +1560,9 @@
 				type="button"
 				title="Go to the replied message"
 				onclick={() => jumpToMsg(rc.parentId!, false)}
-				class="border-brand/40 bg-brand/5 text-muted-foreground hover:bg-brand/10 mb-1.5 flex w-full max-w-full items-center gap-1 rounded border-l-2 py-0.5 pr-1 pl-2 text-left text-[11px] leading-snug transition-colors"
+				class="border-brand/40 bg-brand/5 text-muted-foreground hover:bg-brand/10 mb-1.5 flex w-full max-w-full flex-col gap-0.5 rounded border-l-2 py-1 pr-1 pl-2 text-left text-[11px] leading-snug transition-colors"
 			>
-				<span class="text-brand shrink-0 font-medium">{senderName(rc.from)}</span>
+				<span class="text-brand font-medium">{senderName(rc.from)}</span>
 				<span class="truncate opacity-80">{rc.text}</span>
 			</button>
 		{:else}
@@ -1570,12 +1570,12 @@
 			{#each rc.ancestors ?? [] as a (a.sentAt ?? a.text)}
 				<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
 					<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(a.from)}</div>
-					<div class="max-h-40 overflow-y-auto whitespace-pre-wrap opacity-70">{a.text}</div>
+					<div class="whitespace-pre-wrap opacity-70">{a.text}</div>
 				</div>
 			{/each}
 			<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
 				<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(rc.from)}</div>
-				<div class="max-h-40 overflow-y-auto whitespace-pre-wrap opacity-70">{rc.text}</div>
+				<div class="whitespace-pre-wrap opacity-70">{rc.text}</div>
 			</div>
 		{/if}
 	{/if}
