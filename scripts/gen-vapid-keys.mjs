@@ -4,7 +4,8 @@
 // Then set on the web + mail-inbound + mail-jobs workers:
 //   VAPID_PUBLIC_KEY  → plaintext var (safe to expose; the client subscribes with it)
 //   VAPID_PRIVATE_KEY → secret  (wrangler secret put VAPID_PRIVATE_KEY)
-//   VAPID_SUBJECT     → var, e.g. "mailto:admin@yourdomain"
+// No VAPID_SUBJECT: the sender identity is derived per push from the org's own
+// domain (self-deployed, multi-domain), so there's nothing else to configure.
 import { webcrypto } from 'node:crypto';
 
 const { subtle } = webcrypto;
@@ -18,6 +19,5 @@ const privateKey = jwk.d;
 
 console.log('VAPID_PUBLIC_KEY =', publicKey);
 console.log('VAPID_PRIVATE_KEY =', privateKey);
-console.log('\n# public var (all 3 workers):  wrangler ... [set VAPID_PUBLIC_KEY in wrangler vars]');
+console.log('\n# public var (all 3 workers):  set VAPID_PUBLIC_KEY in wrangler vars');
 console.log('# private secret (all 3 workers):  echo "%s" | wrangler secret put VAPID_PRIVATE_KEY', privateKey);
-console.log('# subject var:  VAPID_SUBJECT = mailto:admin@yourdomain');

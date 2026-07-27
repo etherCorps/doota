@@ -39,7 +39,6 @@ export type OutboundConsumerEnv = {
   /** Web Push (Phase B) — internal deliveries send an OS push, app-closed case. */
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
-  VAPID_SUBJECT?: string;
   LOG_LEVEL?: string;
 };
 

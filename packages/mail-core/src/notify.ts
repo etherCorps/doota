@@ -11,6 +11,16 @@ type Db = DrizzleD1Database<typeof schema>;
 const threadUrl = (mailboxId: string | null, threadId: string | null): string =>
   mailboxId && threadId ? `/app?mailbox=${mailboxId}&thread=${threadId}` : threadId ? `/app?thread=${threadId}` : "/app";
 
+/** VAPID `sub` — self-deployed, so the sender identity is the org's own domain
+ * (per push, no env var). Falls back to a harmless URL when the org has none. */
+async function orgSubject(db: Db, orgId: string): Promise<string> {
+  const org = await db.query.organization.findFirst({
+    where: eq(schema.organization.id, orgId),
+    columns: { domain: true },
+  });
+  return org?.domain ? `https://${org.domain}` : "https://push.local";
+}
+
 /**
  * Durable notification writes (docs/notifications.md, Phase A). Rows carry
  * STRUCTURAL refs only — the display string is resolved at read/send time from
@@ -89,13 +99,14 @@ export async function recordNewMail(
   // OS push (app closed) for every eligible recipient — tag per thread so a
   // reply burst collapses. Best-effort; no-op without VAPID.
   if (push) {
+    const subject = await orgSubject(db, input.orgId);
     const payload = {
       title: "New message",
       body: "You have new mail",
       url: threadUrl(input.mailboxId, input.threadId),
       tag: `thread-${input.threadId}`,
     };
-    await Promise.all(userIds.map((u) => sendPushToUser(db, push, u, payload).catch(() => {})));
+    await Promise.all(userIds.map((u) => sendPushToUser(db, push, u, payload, subject).catch(() => {})));
   }
 }
 
@@ -123,12 +134,18 @@ export async function recordAssigned(
   });
   await notifyNotification(hub, input.assigneeUserId); // live bell ping (no-op without a hub)
   if (push)
-    await sendPushToUser(db, push, input.assigneeUserId, {
-      title: "Assigned to you",
-      body: "A thread was assigned to you",
-      url: threadUrl(input.mailboxId, input.threadId),
-      tag: `thread-${input.threadId}`,
-    }).catch(() => {});
+    await sendPushToUser(
+      db,
+      push,
+      input.assigneeUserId,
+      {
+        title: "Assigned to you",
+        body: "A thread was assigned to you",
+        url: threadUrl(input.mailboxId, input.threadId),
+        tag: `thread-${input.threadId}`,
+      },
+      await orgSubject(db, input.orgId),
+    ).catch(() => {});
 }
 
 /** Drop read notifications older than the retention window (default 30d). Run
@@ -167,12 +184,18 @@ export async function recordNote(
   });
   await notifyNotification(hub, assignee); // live bell ping (no-op without a hub)
   if (push)
-    await sendPushToUser(db, push, assignee, {
-      title: "New note",
-      body: "A teammate left a note",
-      url: threadUrl(input.mailboxId, input.threadId),
-      tag: `thread-${input.threadId}`,
-    }).catch(() => {});
+    await sendPushToUser(
+      db,
+      push,
+      assignee,
+      {
+        title: "New note",
+        body: "A teammate left a note",
+        url: threadUrl(input.mailboxId, input.threadId),
+        tag: `thread-${input.threadId}`,
+      },
+      await orgSubject(db, input.orgId),
+    ).catch(() => {});
 }
 
 /** A send the user owns failed (hard/soft bounce, complaint, or send error). */

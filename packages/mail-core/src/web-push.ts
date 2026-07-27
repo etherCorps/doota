@@ -14,7 +14,6 @@ type Db = DrizzleD1Database<typeof schema>;
 export type WebPushEnv = {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
-  VAPID_SUBJECT?: string;
 };
 
 /** Structural-only, same rule as the notification row — no subject/body leaks. */
@@ -69,7 +68,7 @@ async function importVapidKey(publicB64: string, privateB64: string): Promise<Cr
   );
 }
 
-async function vapidAuthHeader(env: WebPushEnv, endpoint: string): Promise<string> {
+async function vapidAuthHeader(env: WebPushEnv, endpoint: string, subject: string): Promise<string> {
   const url = new URL(endpoint);
   const header = bytesToB64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
   const claims = bytesToB64url(
@@ -77,7 +76,9 @@ async function vapidAuthHeader(env: WebPushEnv, endpoint: string): Promise<strin
       JSON.stringify({
         aud: `${url.protocol}//${url.host}`,
         exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-        sub: env.VAPID_SUBJECT || "mailto:admin@doota.app",
+        // Sender identity — self-deployed, so derived per push from the org's own
+        // domain (RFC 8292 sub; the push service doesn't verify it).
+        sub: subject,
       }),
     ),
   );
@@ -127,12 +128,13 @@ export async function sendWebPush(
   env: WebPushEnv,
   sub: { endpoint: string; p256dh: string; auth: string },
   payload: PushPayload,
+  subject: string,
 ): Promise<number> {
   const body = await encryptPayload(enc.encode(JSON.stringify(payload)), sub.p256dh, sub.auth);
   const res = await fetch(sub.endpoint, {
     method: "POST",
     headers: {
-      Authorization: await vapidAuthHeader(env, sub.endpoint),
+      Authorization: await vapidAuthHeader(env, sub.endpoint, subject),
       "Content-Encoding": "aes128gcm",
       "Content-Type": "application/octet-stream",
       TTL: "2419200", // 28 days
@@ -144,7 +146,13 @@ export async function sendWebPush(
 
 /** Fan a payload to all of a user's subscriptions; prune the dead ones. No-op
  * when VAPID isn't configured. Best-effort — never throws to the caller. */
-export async function sendPushToUser(db: Db, env: WebPushEnv, userId: string, payload: PushPayload): Promise<void> {
+export async function sendPushToUser(
+  db: Db,
+  env: WebPushEnv,
+  userId: string,
+  payload: PushPayload,
+  subject: string,
+): Promise<void> {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return;
   const subs = await db
     .select({ endpoint: mail.pushSubscription.endpoint, p256dh: mail.pushSubscription.p256dh, auth: mail.pushSubscription.auth })
@@ -152,7 +160,7 @@ export async function sendPushToUser(db: Db, env: WebPushEnv, userId: string, pa
     .where(eq(mail.pushSubscription.userId, userId));
   for (const sub of subs) {
     try {
-      const status = await sendWebPush(env, sub, payload);
+      const status = await sendWebPush(env, sub, payload, subject);
       if (status === 404 || status === 410) {
         await db.delete(mail.pushSubscription).where(eq(mail.pushSubscription.endpoint, sub.endpoint));
       }

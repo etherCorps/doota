@@ -29,7 +29,6 @@ export type MailEnv = {
   /** Web Push (Phase B) — new_mail sends an OS push for the app-closed case. */
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
-  VAPID_SUBJECT?: string;
   LOG_LEVEL?: string;
 };
 

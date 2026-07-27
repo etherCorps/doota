@@ -22,10 +22,10 @@ declare global {
     MAIL_EVENTS?: import("@doota/mail-core/events-hub").EventHubNamespace;
     /** Web Push (Phase B). Public key is exposed to the client to subscribe;
      * private key is a secret used server-side to sign/encrypt the push. Both
-     * absent until push is configured — consumers skip. */
+     * absent until push is configured — consumers skip. The VAPID `sub` is
+     * derived per push from the org's own domain, so there's no subject var. */
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
-    VAPID_SUBJECT?: string;
   }
 
   namespace App {
