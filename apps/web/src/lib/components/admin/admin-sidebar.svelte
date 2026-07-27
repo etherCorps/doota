@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import UserChip from '$lib/components/app/user-chip.svelte';
-	import BrandMark from '$lib/components/app/brand-mark.svelte';
+	import Logo from '$lib/components/Logo.svelte';
 	import RolePreviewSwitcher from '$lib/components/app/role-preview-switcher.svelte';
 	import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -29,7 +29,7 @@
 <Sidebar.Root collapsible="icon">
 	<Sidebar.Header class="gap-2">
 		<div class="flex items-center gap-2 px-2 pt-1">
-			<BrandMark size={26} />
+			<Logo size={26} />
 			<span class="font-heading text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">Doota</span>
 			<span
 				class="text-faint bg-muted ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase group-data-[collapsible=icon]:hidden"

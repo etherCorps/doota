@@ -1,9 +1,13 @@
 <svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
-  <rect width="96" height="96" rx="22" fill="#0E7AE6"/>
+  <!-- Full-bleed accent (square corners): apple-touch + PWA "any" icons must have
+       no transparent corners — iOS/Android apply their own rounding. -->
+  <rect width="96" height="96" fill="#0E7AE6"/>
   <g transform="rotate(-9 48 33)">
     <rect x="28" y="16" width="40" height="39" rx="6" fill="#A9C8E8"/>
     <rect x="28" y="10" width="40" height="39" rx="6" fill="#FFFFFF"/>
-    <rect x="35" y="17" width="8" height="18" rx="4" fill="#0E7AE6"/>
+    <rect x="35" y="17" width="6" height="18" rx="3" fill="#0E7AE6"/>
+    <rect x="47" y="18" width="14" height="5" rx="2.5" fill="#B8C4D2"/>
+    <rect x="47" y="27" width="10" height="5" rx="2.5" fill="#B8C4D2"/>
   </g>
   <g transform="rotate(4 48 68)">
     <rect x="12" y="56" width="72" height="31" rx="10" fill="#083E75"/>

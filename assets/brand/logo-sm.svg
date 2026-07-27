@@ -1,0 +1,7 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+  <g transform="rotate(-9 32 22)"><rect x="18" y="7" width="28" height="28" rx="4" fill="#0E7AE6"/></g>
+  <g transform="rotate(4 32 46)">
+    <rect x="7" y="34" width="50" height="23" rx="7" fill="#3A3F4A"/>
+    <path d="M11 34l21 13 21-13z" fill="#565E6C"/>
+  </g>
+</svg>

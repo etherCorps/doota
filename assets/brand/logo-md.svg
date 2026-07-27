@@ -1,0 +1,12 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+  <g transform="rotate(-9 32 22)">
+    <rect x="18" y="11" width="28" height="27" rx="4" fill="#AEB7C2"/>
+    <rect x="18" y="7" width="28" height="27" rx="4" fill="#FFFFFF"/>
+    <rect x="23" y="12" width="5" height="14" rx="2.5" fill="#0E7AE6"/>
+  </g>
+  <g transform="rotate(4 32 46)">
+    <rect x="7" y="38" width="50" height="22" rx="7" fill="#1E232A"/>
+    <rect x="7" y="34" width="50" height="22" rx="7" fill="#3A3F4A"/>
+    <path d="M10 34l22 13 22-13z" fill="#4E5766"/>
+  </g>
+</svg>

@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Doota BIMI logo — SVG Tiny-PS. Solid background (inbox tiles are circle-
-     cropped), mark inverted to white on brand blue #0e7ae6. Derived from
-     favicon.svg — same geometry, scaled 12x onto a 512 canvas.
-     NOTE: if a VMC is ever issued, it binds to these exact bytes. -->
+     cropped), new mark inverted to white on brand blue #0e7ae6. Letter and
+     envelope are separated by a blue gap rect instead of a <mask> (Tiny-PS
+     forbids masks). Geometry is the tiny mark scaled 8x onto a 512 canvas.
+     NOTE: if a VMC is ever issued, it binds to these exact bytes — reissue the
+     VMC against this file, the old mark's bytes no longer match. -->
 <svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 512 512">
   <title>Doota</title>
   <rect width="512" height="512" fill="#0e7ae6"/>
-  <g transform="translate(64 64) scale(12)">
-    <path d="M9 4h14a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-9l-6 4v-4H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z" fill="#ffffff"/>
-    <path d="M9.5 11 16 15.5 22.5 11" stroke="#0e7ae6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <g transform="scale(8)">
+    <g transform="rotate(4 32 46)"><rect x="7" y="34" width="50" height="23" rx="7" fill="#ffffff"/></g>
+    <g transform="rotate(-9 32 22)"><rect x="16.5" y="5.5" width="31" height="30" rx="5.5" fill="#0e7ae6"/></g>
+    <g transform="rotate(-9 32 22)"><rect x="18" y="7" width="28" height="28" rx="4" fill="#ffffff"/></g>
   </g>
 </svg>

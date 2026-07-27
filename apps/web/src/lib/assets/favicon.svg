@@ -1,4 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <path d="M9 4h14a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-9l-6 4v-4H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z" fill="#0e7ae6"/>
-  <path d="M9.5 11 16 15.5 22.5 11" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+  <rect width="96" height="96" rx="22" fill="#0E7AE6"/>
+  <g transform="rotate(-9 48 33)">
+    <rect x="28" y="16" width="40" height="39" rx="6" fill="#A9C8E8"/>
+    <rect x="28" y="10" width="40" height="39" rx="6" fill="#FFFFFF"/>
+    <rect x="35" y="17" width="8" height="18" rx="4" fill="#0E7AE6"/>
+  </g>
+  <g transform="rotate(4 48 68)">
+    <rect x="12" y="56" width="72" height="31" rx="10" fill="#083E75"/>
+    <rect x="12" y="50" width="72" height="31" rx="10" fill="#0B5FB4"/>
+    <path d="M17 50l31 19 31-19z" fill="#1877D6"/>
+  </g>
 </svg>

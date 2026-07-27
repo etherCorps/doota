@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/brand/icon-tile.svg" alt="Doota" width="72" height="72">
+
 # Doota
 
 **Your email, finally yours.**

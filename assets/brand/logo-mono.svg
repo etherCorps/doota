@@ -1,0 +1,15 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+  <defs>
+    <mask id="doota-mono-cut">
+      <rect width="64" height="64" fill="white"/>
+      <!-- letter silhouette grown ~1.5px each side, knocked out of the envelope -->
+      <g transform="rotate(-9 32 22)"><rect x="16.5" y="5.5" width="31" height="30" rx="5.5" fill="black"/></g>
+      <!-- flap crease knocked out as a transparent line -->
+      <g transform="rotate(4 32 46)"><path d="M10 34l22 13 22-13" fill="none" stroke="black" stroke-width="3" stroke-linejoin="round"/></g>
+    </mask>
+  </defs>
+  <g mask="url(#doota-mono-cut)">
+    <g transform="rotate(4 32 46)"><rect x="7" y="34" width="50" height="22" rx="7"/></g>
+  </g>
+  <g transform="rotate(-9 32 22)"><rect x="18" y="7" width="28" height="27" rx="4"/></g>
+</svg>

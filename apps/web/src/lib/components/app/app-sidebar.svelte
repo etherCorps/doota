@@ -8,7 +8,7 @@
 	import { resolve } from '$app/paths';
 	import MailboxSwitcher from './mailbox-switcher.svelte';
 	import UserChip from './user-chip.svelte';
-	import BrandMark from './brand-mark.svelte';
+	import Logo from '$lib/components/Logo.svelte';
 	import RolePreviewSwitcher from './role-preview-switcher.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -68,7 +68,7 @@
 <Sidebar.Root collapsible="icon">
 	<Sidebar.Header class="gap-2">
 		<div class="flex items-center gap-2 px-2 pt-1">
-			<BrandMark size={26} />
+			<Logo size={26} />
 			<span class="font-heading text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">Doota</span>
 		</div>
 		<Sidebar.Menu class="group-data-[collapsible=icon]:hidden">

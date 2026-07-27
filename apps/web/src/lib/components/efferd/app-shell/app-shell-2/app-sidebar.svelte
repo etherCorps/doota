@@ -1,7 +1,7 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import Logo from "$lib/svgs/logo.svelte";
+	import Logo from "$lib/components/Logo.svelte";
 	import { cn } from "$lib/utils/ui";
 	import { navGroups, footerNavLinks } from "./app-shared";
 	import LatestChange from "./latest-change.svelte";
@@ -25,7 +25,7 @@
 			<Sidebar.MenuButton>
 				{#snippet child({ props })}
 					<a {...props} href="#link">
-						<Logo class="size-6" />
+						<Logo size={24} />
 						<span class="font-mono font-medium tracking-tighter text-foreground!"
 							>Svelte Efferd</span
 						>

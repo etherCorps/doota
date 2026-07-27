@@ -1,0 +1,15 @@
+<svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+  <rect width="96" height="96" rx="24" fill="#15171E"/>
+  <g transform="rotate(-9 48 33)">
+    <rect x="28" y="16" width="40" height="39" rx="6" fill="#858E9C"/>
+    <rect x="28" y="10" width="40" height="39" rx="6" fill="#E7EAEF"/>
+    <rect x="35" y="17" width="6" height="18" rx="3" fill="#0E7AE6"/>
+    <rect x="47" y="18" width="14" height="5" rx="2.5" fill="#98A0AD"/>
+    <rect x="47" y="27" width="10" height="5" rx="2.5" fill="#98A0AD"/>
+  </g>
+  <g transform="rotate(4 48 68)">
+    <rect x="12" y="56" width="72" height="31" rx="10" fill="#2A2F38"/>
+    <rect x="12" y="50" width="72" height="31" rx="10" fill="#565E6C"/>
+    <path d="M17 50l31 19 31-19z" fill="#78818F"/>
+  </g>
+</svg>

@@ -5,16 +5,19 @@
 
 <script lang="ts">
 	// Doota mark — the icon-any artwork (white letter, deep-blue envelope) with no
-	// background badge. `size` auto-selects detail. `variant="mono"` inherits
-	// currentColor. On hover the letter lifts, emerging from the envelope.
+	// background badge. `size` auto-selects detail: chip lines ≥40, spine ≥17,
+	// bare below. `variant="mono"` inherits currentColor. On hover the letter
+	// lifts — it "emerges" a little further from the envelope.
 	let {
 		size = 24,
 		variant,
-		wordmark = true
+		wordmark = false,
+		class: klass = ''
 	}: {
 		size?: number;
 		variant?: 'mono';
 		wordmark?: boolean;
+		class?: string;
 	} = $props();
 
 	const uid = `doota-mono-${seq++}`;
@@ -23,9 +26,9 @@
 	);
 </script>
 
-<span class="doota-logo inline-flex items-center gap-2 leading-none">
+<span class="doota-logo inline-flex items-center gap-2 leading-none {klass}">
 	{#if kind === 'mono'}
-		<svg width={size} height={size} viewBox="0 0 64 64" fill="currentColor" role="img" aria-label="Doota">
+		<svg width={size} height={size} viewBox="0 0 64 64" fill="currentColor" role="img" aria-label="Doota" class="shrink-0">
 			<defs>
 				<mask id={uid}>
 					<rect width="64" height="64" fill="white" />
@@ -37,7 +40,7 @@
 			<g transform="rotate(-9 32 22)"><rect x="18" y="7" width="28" height="27" rx="4" /></g>
 		</svg>
 	{:else}
-		<svg width={size} height={size} viewBox="0 0 96 96" fill="none" role="img" aria-label="Doota">
+		<svg width={size} height={size} viewBox="0 0 96 96" fill="none" role="img" aria-label="Doota" class="shrink-0">
 			<g transform="rotate(-9 48 33)">
 				<g class="doota-letter">
 					<rect x="28" y="16" width="40" height="39" rx="6" fill="#A9C8E8" />
@@ -59,13 +62,15 @@
 		</svg>
 	{/if}
 	{#if wordmark}
-		<span class="font-display font-extrabold tracking-tight text-ink" style="font-size:{size * 0.72}px">Doota</span>
+		<span class="font-heading font-extrabold tracking-tight text-foreground" style="font-size:{size * 0.72}px">Doota</span>
 	{/if}
 </span>
 
 <style>
+	/* Micro-interaction: the letter emerges a little further on hover. Tokens fall
+	   back to sensible values outside the app's design system. */
 	.doota-letter {
-		transition: transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+		transition: transform var(--dur-base, 200ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 	.doota-logo:hover .doota-letter {
 		transform: translateY(-3.5px);
