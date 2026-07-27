@@ -12,6 +12,11 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 sw.addEventListener('install', () => void sw.skipWaiting());
 sw.addEventListener('activate', (event) => event.waitUntil(sw.clients.claim()));
 
+// A registered fetch handler is part of the PWA-installability signal. We do NOT
+// cache — every request goes straight to the network (the app isn't offline-first);
+// this just has to exist. Not calling respondWith = default browser handling.
+sw.addEventListener('fetch', () => {});
+
 type PushPayload = { title?: string; body?: string; url?: string; tag?: string };
 
 sw.addEventListener('push', (event) => {

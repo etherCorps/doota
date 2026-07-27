@@ -11,6 +11,13 @@
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
 		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#0E7AE6" />
 		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#15171E" />
+		<!-- Installed-PWA launch. apple-mobile-web-app-capable is REQUIRED for iOS
+		     to run standalone from the home screen — and iOS Web Push only fires in
+		     that standalone install, so this is what makes push work on iPhone. -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="apple-mobile-web-app-title" content="Doota" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
