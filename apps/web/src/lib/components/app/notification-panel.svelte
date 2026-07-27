@@ -1,80 +1,89 @@
 <script lang="ts">
+	/* Hallmark · component: notification-bell · pre-emit critique: P4 H5 E4 S5 R4 V4
+	 * states: default · hover · focus · active · empty · unread · read · loading */
 	// SPDX-License-Identifier: Apache-2.0
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { SvelteSet } from 'svelte/reactivity';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
+	import CheckCheckIcon from '@lucide/svelte/icons/check-check';
 	import { resolve } from '$app/paths';
 	import { scheduledSends } from '$lib/rpc/draft.remote.js';
 	import {
 		myNotifications,
-		markNotificationsSeen,
-		markNotificationRead
+		unreadNotificationCount,
+		markNotificationRead,
+		markAllNotificationsRead
 	} from '$lib/rpc/notification.remote.js';
 	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import { relTime } from '$lib/utils/reltime';
 	import { senderLabel } from '$lib/mail/format';
 
 	// In-app notification bell — server-owned durable log (docs/notifications.md).
-	// Read state is cross-device: seenAt (bell opened → dot clears) vs readAt
-	// (clicked → bold clears). Scheduled sends ride along as an info section (not a
-	// notification type). Live: refetch on the same bus events the feed derives from.
+	// Unread-count model (GitHub/Linear): the badge is the caller's unread count,
+	// cleared by reading a row or "Mark all read", not by opening. The count loads
+	// on mount + refetches on events (cheap, partial-index); the full feed loads
+	// only when the bell opens. Scheduled sends ride along as an info section.
 
 	let open = $state(false);
 	const notifsQ = myNotifications({ offset: 0 });
 	const scheduledQ = scheduledSends();
+	const unreadQ = unreadNotificationCount();
 
 	const notifs = $derived(notifsQ.current ?? []);
 	const scheduled = $derived(scheduledQ.current ?? []);
-	// Dot = something unseen since the bell was last opened; red if a failure is in
-	// that set (act on it), else brand.
-	const unseen = $derived(notifs.filter((n) => !n.seenAt));
-	const dot = $derived(
-		unseen.length === 0 ? null : unseen.some((n) => n.type === 'send_failed') ? 'bg-destructive' : 'bg-brand'
-	);
+	// Optimistic read: de-bold the row instantly; the badge follows the server
+	// count refetch. Cleared implicitly when a refetch brings back readAt.
+	const readOverride = new SvelteSet<string>();
+	const isUnread = (n: (typeof notifs)[number]) => !n.readAt && !readOverride.has(n.id);
+	const unread = $derived(unreadQ.current ?? 0);
+	const badge = $derived(unread > 9 ? '9+' : String(unread));
 
-	// Opening acknowledges (server-side seen) and re-reads — catches reads done on
-	// another device while the bell was closed.
 	function onOpenChange(v: boolean) {
 		open = v;
 		if (!v) return;
+		// Fresh feed on open (the only place the full list is fetched); count too, in
+		// case reads happened on another device.
+		void notifsQ.refresh();
+		void unreadQ.refresh();
 		void scheduledQ.refresh();
-		// Mark seen first, THEN refetch, so the refreshed feed carries seenAt and the
-		// dot clears. No unseen → just refetch (catches reads done on another device).
-		if (unseen.length) void markNotificationsSeen().then(() => notifsQ.refresh());
-		else void notifsQ.refresh();
 	}
 
-	// A click marks the one notification read (optimistic; the href navigates).
-	function onItemClick(id: string) {
+	function onItemClick(id: string, alreadyRead: boolean) {
 		open = false;
-		void markNotificationRead({ id });
+		if (alreadyRead) return;
+		readOverride.add(id); // optimistic de-bold
+		void markNotificationRead({ id }).then(() => unreadQ.refresh());
 	}
 
-	// Live push (shared bus): inbound ⇒ new_mail, a failed send_state ⇒ send_failed.
-	// Assigned has no user-stream event, so it lands on the next open/refresh.
+	function markAll() {
+		for (const n of notifs) readOverride.add(n.id);
+		void markAllNotificationsRead().then(() => {
+			void unreadQ.refresh();
+			if (open) void notifsQ.refresh();
+		});
+	}
+
+	// Live: refetch only the COUNT on the events the feed derives from (inbound ⇒
+	// new_mail, a failed send_state ⇒ send_failed) — the feed itself waits for open.
+	// assigned/note have no user-stream event yet, so they land on the next open.
 	const FAILED = new Set(['failed', 'bounced_hard', 'bounced_soft', 'complained']);
 	$effect(() => {
 		void realtime.seq;
 		const evt = realtime.event;
 		if (!evt) return;
-		if (evt.type === 'inbound') {
-			void notifsQ.refresh();
-		} else if (FAILED.has(evt.status)) {
-			void notifsQ.refresh();
-		} else {
-			void scheduledQ.refresh();
-		}
+		if (evt.type === 'inbound' || FAILED.has(evt.status)) void unreadQ.refresh();
+		else void scheduledQ.refresh();
 	});
 
 	const when = (ms: number) =>
 		new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-	// Link target for a notification row.
 	function hrefFor(n: (typeof notifs)[number]): string {
 		if (n.mailboxId && n.threadId) return `${resolve('/app')}?mailbox=${n.mailboxId}&thread=${n.threadId}`;
 		if (n.threadId) return `${resolve('/app')}?thread=${n.threadId}`;
@@ -87,61 +96,84 @@
 		{#snippet child({ props })}
 			<Button {...props} variant="ghost" size="icon" class="text-muted-foreground relative" title="Notifications">
 				<BellIcon class="size-4" />
-				{#if dot}
-					<span class="absolute top-1.5 right-1.5 size-2 rounded-full {dot}"></span>
+				{#if unread > 0}
+					<span
+						class="bg-brand text-brand-foreground absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums"
+					>{badge}</span>
 				{/if}
-				<span class="sr-only">Notifications</span>
+				<span class="sr-only">Notifications{unread > 0 ? ` (${unread} unread)` : ''}</span>
 			</Button>
 		{/snippet}
 	</Popover.Trigger>
 	<Popover.Content align="end" class="w-80 p-0">
-		<div class="border-b px-3 py-2 text-sm font-medium">Notifications</div>
+		<div class="flex items-center justify-between border-b px-3 py-2">
+			<span class="text-sm font-medium">Notifications</span>
+			{#if unread > 0}
+				<button
+					type="button"
+					onclick={markAll}
+					class="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors outline-none focus-visible:ring-2"
+				>
+					<CheckCheckIcon class="size-3.5" /> Mark all read
+				</button>
+			{/if}
+		</div>
 		<div class="max-h-96 overflow-y-auto">
 			{#if notifs.length === 0 && scheduled.length === 0}
-				<p class="text-muted-foreground px-3 py-6 text-center text-sm">You're all caught up.</p>
+				<div class="text-muted-foreground flex flex-col items-center gap-2 px-3 py-8 text-center">
+					<BellIcon class="text-faint size-6" />
+					<p class="text-sm">You're all caught up.</p>
+				</div>
 			{/if}
 			{#each notifs as n (n.id)}
+				{@const uread = isUnread(n)}
 				<a
 					href={hrefFor(n)}
-					class="hover:bg-muted/60 flex gap-2.5 border-b px-3 py-2.5 last:border-b-0 {n.readAt ? '' : 'bg-brand/[0.03]'}"
-					onclick={() => onItemClick(n.id)}
+					class="hover:bg-muted/60 flex items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0 {uread ? 'bg-brand/[0.04]' : ''}"
+					onclick={() => onItemClick(n.id, !uread)}
 				>
+					<!-- Unread indicator: brand dot (transparent when read → no layout shift). -->
+					<span class="mt-1.5 size-2 shrink-0 rounded-full {uread ? 'bg-brand' : 'bg-transparent'}"></span>
 					{#if n.type === 'new_mail'}
 						<MailIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">{senderLabel({ from: n.from, fromName: n.fromName })}</span>
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">{senderLabel({ from: n.from, fromName: n.fromName })}</span>
 							<span class="text-muted-foreground block truncate text-xs">New message</span>
 						</span>
 					{:else if n.type === 'assigned'}
 						<UserRoundIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">Assigned to you</span>
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Assigned to you</span>
 							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} assigned this thread` : 'A thread was assigned to you'}</span>
 						</span>
 					{:else if n.type === 'note'}
 						<StickyNoteIcon class="text-warn mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">New note</span>
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">New note</span>
 							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} left a note` : 'A teammate left a note'}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {n.readAt ? 'font-medium' : 'font-semibold'}">Send failed</span>
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Send failed</span>
 							<span class="text-muted-foreground block truncate text-xs">Tap to view the thread</span>
 						</span>
 					{/if}
 					<span class="text-faint shrink-0 text-[11px]" title={when(n.createdAt)}>{relTime(n.createdAt)}</span>
 				</a>
 			{/each}
+			{#if scheduled.length}
+				<p class="text-faint bg-muted/30 px-3 pt-2 pb-1 text-[11px] font-medium">Scheduled</p>
+			{/if}
 			{#each scheduled as s (s.submissionId)}
 				<a
 					href={`${resolve('/app')}?folder=scheduled`}
-					class="hover:bg-muted/60 flex gap-2.5 border-b px-3 py-2.5 last:border-b-0"
+					class="hover:bg-muted/60 flex items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0"
 					onclick={() => (open = false)}
 				>
+					<span class="mt-1.5 size-2 shrink-0"></span>
 					<ClockIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-					<span class="min-w-0">
+					<span class="min-w-0 flex-1">
 						<span class="block truncate text-sm">Scheduled: {s.subject?.trim() || (s.to ? `to ${s.to}` : 'message')}</span>
 						<span class="text-faint block text-xs">sends {when(s.sendAt)}</span>
 					</span>

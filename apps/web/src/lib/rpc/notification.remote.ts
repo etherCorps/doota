@@ -122,6 +122,17 @@ export const markNotificationsSeen = command(async () => {
   return { ok: true as const };
 });
 
+/** Clear the whole unread set for the caller (the "Mark all read" action). */
+export const markAllNotificationsRead = command(async () => {
+  const { locals } = getRequestEvent();
+  if (!locals.user) error(401, "Not authenticated");
+  await locals.db
+    .update(mail.notification)
+    .set({ readAt: new Date() })
+    .where(and(eq(mail.notification.userId, locals.user.id), isNull(mail.notification.readAt)));
+  return { ok: true as const };
+});
+
 /** A notification was clicked — mark it read (ownership enforced). */
 export const markNotificationRead = command(z.object({ id: z.string().min(1) }), async ({ id }) => {
   const { locals } = getRequestEvent();
