@@ -70,6 +70,17 @@ describe("parseIcs", () => {
     expect(icsDateToMs("20260801T150000", null)?.ms).toBe(Date.UTC(2026, 7, 1, 15, 0, 0));
   });
 
+  it("reads the join URL from a CONFERENCE property over the LOCATION scrape", () => {
+    const ics = GOOGLE_REQUEST.replace(
+      "LOCATION:https://zoom.us/j/9876543210?pwd=secret",
+      "CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=Meet:https://meet.google.com/abc-defg-hij\r\nLOCATION:Room 4",
+    );
+    const inv = parseIcs(ics)!;
+    expect(inv.meetingPlatform).toBe("meet");
+    expect(inv.joinUrl).toBe("https://meet.google.com/abc-defg-hij");
+    expect(inv.location).toBe("Room 4");
+  });
+
   it("detects Teams + Microsoft origin", () => {
     const ics = GOOGLE_REQUEST.replace("PRODID:-//Google Inc//Google Calendar 70.9054//EN", "PRODID:Microsoft Exchange Server 2010")
       .replace("https://zoom.us/j/9876543210?pwd=secret", "https://teams.microsoft.com/l/meetup-join/xyz");

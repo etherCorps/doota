@@ -2451,10 +2451,7 @@
 								{@const outbound = m.outbound}
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
-								<!-- An invite with the original body hidden IS the invite card: drop the
-								     message-card chrome so it's one card, not a card-in-card. -->
-								{@const inviteOnly = !!m.calendarInvite && !showOriginal.has(m.id)}
-								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {inviteOnly ? '' : outbound ? 'border-brand/25 bg-card border shadow-xs' : 'bg-card border shadow-xs'}">
+								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card border shadow-xs' : 'bg-card border shadow-xs'}">
 									<button
 										type="button"
 										aria-expanded={open}
@@ -2496,18 +2493,21 @@
 										<div class="px-3.5 pb-3.5">
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
-												<div class="mb-3">
-													<InviteCard invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
-												</div>
-												<!-- The provider's boilerplate mail body is redundant with the card;
-												     collapse it behind a toggle. -->
+												{@const inviteOnly = !showOriginal.has(m.id)}
+												<!-- Toggle sits ABOVE so the flat invite can reach the card's bottom edge. -->
 												<button
 													type="button"
-													class="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
+													class="text-muted-foreground hover:text-foreground mb-2 text-xs font-medium hover:underline"
 													onclick={() => (showOriginal.has(m.id) ? showOriginal.delete(m.id) : showOriginal.add(m.id))}
 												>
-													{showOriginal.has(m.id) ? 'Hide' : 'Show'} original message
+													{inviteOnly ? 'Show' : 'Hide'} original message
 												</button>
+												<!-- Flat invite fills the message card edge-to-edge (negative margins cancel
+												     the body padding) -> one card + one radius, not a nested box. Flush to
+												     the bottom only when it's the last block (original hidden). -->
+												<div class="-mx-3.5 border-t {inviteOnly ? '-mb-3.5' : 'mb-3'}">
+													<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
+												</div>
 											{/if}
 											{#if !m.calendarInvite || showOriginal.has(m.id)}
 												<div class={m.calendarInvite ? 'mt-2 border-t pt-2' : ''}>

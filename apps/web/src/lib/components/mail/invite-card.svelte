@@ -9,20 +9,27 @@
 	import type { CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import VideoIcon from '@lucide/svelte/icons/video';
+	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
 	import HelpCircleIcon from '@lucide/svelte/icons/circle-help';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import CalendarPlusIcon from '@lucide/svelte/icons/calendar-plus';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { linkifySegments } from '$lib/utils/linkify.js';
 
 	let {
 		invite,
 		originalHref = null,
+		flat = false,
 		onRsvp
 	}: {
 		invite: CalendarInviteDTO;
 		originalHref?: string | null;
+		/** Drop the card's own border/radius/shadow so it fills the message card
+		 * flush (one card + one radius, not a nested box). */
+		flat?: boolean;
 		onRsvp: (status: InviteRsvpStatus) => void | Promise<void>;
 	} = $props();
 
@@ -76,6 +83,22 @@
 		teams: 'Microsoft Teams',
 		meet: 'Google Meet',
 		webex: 'Webex'
+	};
+	// Each provider's official signature colour — recognition by hue, no
+	// trademarked logo art (those aren't cleanly available and are legally
+	// fussy). Brand constants, not palette tokens; applied only to the small
+	// glyph so the card stays on-theme. null = no tint (use current colour).
+	const ORIGIN_HUE: Record<string, string | null> = {
+		google: '#4285F4',
+		microsoft: '#0078D4',
+		apple: null,
+		other: null
+	};
+	const PLATFORM_HUE: Record<string, string> = {
+		zoom: '#2D8CFF',
+		teams: '#6264A7',
+		meet: '#00AC47',
+		webex: '#00BCEB'
 	};
 
 	const going = $derived(invite.attendees.filter((a) => a.partstat === 'ACCEPTED').length);
@@ -156,6 +179,35 @@
 		return out.length ? out : (linkifySegments(desc) as Seg[]);
 	}
 
+	// Google (and others) append a fenced machine block to DESCRIPTION — Meet
+	// links, dial-in, "please do not edit", wrapped in `-::~:~::-` rules. Split
+	// the human text (before the fence) from that block so the card shows what a
+	// person typed, and tucks the boilerplate behind a "Meeting details"
+	// disclosure. Runs client-side so it also tidies already-stored invites.
+	const FENCE = /[-~:]{6,}/;
+	const descParts = $derived.by(() => {
+		const raw = invite.description;
+		if (!raw) return { text: null as string | null, details: null as string | null };
+		const lines = raw.split('\n');
+		const at = lines.findIndex((l) => FENCE.test(l.trim()));
+		if (at === -1) return { text: raw.trim() || null, details: null };
+		const text = lines.slice(0, at).join('\n').trim();
+		const details = lines
+			.slice(at)
+			.filter((l) => !FENCE.test(l.trim()) && !/please do not edit/i.test(l))
+			.join('\n')
+			.trim();
+		return { text: text || null, details: details || null };
+	});
+
+	// webcal:// opens the OS calendar app to add the event (vs a .ics file
+	// download). Needs a real fetchable URL, so only the ORIGINAL attachment
+	// qualifies; the re-serialised data: URI can't be webcal (download only).
+	const webcalHref = $derived.by(() => {
+		if (!originalHref || typeof window === 'undefined') return null;
+		return `webcal://${window.location.host}${originalHref}`;
+	});
+
 	// Download the event as .ics for "add to my calendar" (re-serialise the fields
 	// we kept — enough for every calendar app to import).
 	function icsHref(): string {
@@ -187,7 +239,7 @@
 
 <!-- GlobeChip snippet removed — using lucide GlobeIcon inline. -->
 
-<div class="border-border bg-card overflow-hidden rounded-2xl border shadow-xs">
+<div class="overflow-hidden {flat ? '' : 'border-border bg-card rounded-2xl border shadow-xs'}">
 	<!-- Header: tear-off date chip anchors the invite; title wraps (it's the
 	     headline); date + time promoted right under it. Cancelled reads muted
 	     with a struck title so a stale REQUEST isn't mistaken for live. -->
@@ -201,18 +253,21 @@
 			<div class="bg-card text-foreground py-2 text-2xl font-bold tabular-nums">{chip.day}</div>
 		</div>
 		<div class="min-w-0 flex-1">
-			<!-- One accent focus: the eyebrow. Origin is quiet muted text; only the
-			     meeting platform keeps a tinted badge (it's the actionable thing). -->
+			<!-- Eyebrow (accent) + provider marks: brand-hued glyphs make the source
+			     recognizable at a glance. Origin is quiet; the platform keeps a badge. -->
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
 				<span class="font-medium tracking-wide uppercase {cancelled ? 'text-muted-foreground' : 'text-brand'}">
 					{cancelled ? 'Event cancelled' : invite.method === 'REPLY' ? 'RSVP' : 'Invitation'}
 				</span>
 				{#if invite.calOrigin}
-					<span class="text-muted-foreground">· {ORIGIN_LABEL[invite.calOrigin]}</span>
+					<span class="text-muted-foreground inline-flex items-center gap-1">
+						<CalendarIcon class="size-3" style={ORIGIN_HUE[invite.calOrigin] ? `color:${ORIGIN_HUE[invite.calOrigin]}` : ''} />
+						{ORIGIN_LABEL[invite.calOrigin]}
+					</span>
 				{/if}
 				{#if invite.meetingPlatform}
-					<span class="bg-brand/10 text-brand inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
-						<VideoIcon class="size-3" />{PLATFORM_LABEL[invite.meetingPlatform]}
+					<span class="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
+						<VideoIcon class="size-3" style={`color:${PLATFORM_HUE[invite.meetingPlatform]}`} />{PLATFORM_LABEL[invite.meetingPlatform]}
 					</span>
 				{/if}
 			</div>
@@ -290,80 +345,105 @@
 				</Popover.Root>
 			{/if}
 
-			{#if invite.description}
-				<p class="text-muted-foreground border-t pt-2.5 text-xs whitespace-pre-line">{#each descSegments(invite.description) as seg, i (i)}{#if seg.type === 'link'}<a
-								href={seg.href}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else if seg.type === 'email'}<a
-								href={`mailto:${seg.address}`}
-								class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else}{seg.value}{/if}{/each}</p>
+			{#if descParts.text || descParts.details}
+				<div class="text-muted-foreground border-t pt-2.5 text-xs">
+					{#if descParts.text}<p class="whitespace-pre-line">{@render descText(descParts.text)}</p>{/if}
+					{#if descParts.details}
+						<!-- Machine boilerplate (dial-in, "learn more") tucked away; native details. -->
+						<details class="group mt-2">
+							<summary class="hover:text-foreground flex cursor-pointer list-none items-center gap-1 font-medium select-none [&::-webkit-details-marker]:hidden">
+								<ChevronRightIcon class="size-3 transition-transform group-open:rotate-90" /> Meeting details
+							</summary>
+							<p class="mt-1.5 whitespace-pre-line">{@render descText(descParts.details)}</p>
+						</details>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}
 
 	<!-- Actions. Hidden for cancellations (nothing to respond to / join). -->
 	{#if !cancelled}
-		<div class="border-t p-3">
-			<div class="flex flex-wrap items-center gap-2">
-				<div role="group" aria-label="RSVP" class="border-border bg-muted flex items-center gap-1 rounded-lg border p-1">
-					{#each RSVP as opt (opt.key)}
-						{@const Icon = opt.icon}
-						{@const active = invite.myRsvp === opt.key}
-						{@const link = providerLink(opt.key)}
-						{#if link}
-							<!-- Real provider RSVP (updates the organizer). Still record local
-							     status so the pressed state persists across reloads. -->
-							<a
-								href={link}
-								target="_blank"
-								rel="noopener noreferrer"
-								onclick={() => pick(opt.key)}
-								aria-current={active ? 'true' : undefined}
-								class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
-							>
-								<Icon class="size-3.5" />{opt.label}
-							</a>
-						{:else}
-							<button
-								type="button"
-								onclick={() => pick(opt.key)}
-								aria-pressed={active}
-								disabled={busy !== null}
-								class="focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 disabled:opacity-60 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
-							>
-								<Icon class="size-3.5" />{opt.label}
-							</button>
-						{/if}
-					{/each}
-				</div>
-
-				{#if invite.joinUrl}
-					<!-- Primary CTA for a virtual meeting: a filled button, not a text row. -->
-					<a
-						href={invite.joinUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-					>
-						<VideoIcon class="size-4" /> Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}
-					</a>
-				{/if}
+		<div class="space-y-2.5 border-t p-3">
+			<!-- Full-width segmented pill: the three answers split the row evenly; the
+			     selected segment fills as a coloured pill (Yes/Maybe/No). -->
+			<div role="group" aria-label="RSVP" class="border-border bg-muted flex w-full items-center gap-1 rounded-full border p-1">
+				{#each RSVP as opt (opt.key)}
+					{@const Icon = opt.icon}
+					{@const active = invite.myRsvp === opt.key}
+					{@const link = providerLink(opt.key)}
+					{#if link}
+						<!-- Real provider RSVP (updates the organizer). Still record local
+						     status so the pressed state persists across reloads. -->
+						<a
+							href={link}
+							target="_blank"
+							rel="noopener noreferrer"
+							onclick={() => pick(opt.key)}
+							aria-current={active ? 'true' : undefined}
+							class="focus-visible:ring-ring flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
+						>
+							<Icon class="size-3.5" />{opt.label}
+						</a>
+					{:else}
+						<button
+							type="button"
+							onclick={() => pick(opt.key)}
+							aria-pressed={active}
+							disabled={busy !== null}
+							class="focus-visible:ring-ring flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 disabled:opacity-60 {active ? opt.active : 'text-muted-foreground hover:text-foreground'}"
+						>
+							<Icon class="size-3.5" />{opt.label}
+						</button>
+					{/if}
+				{/each}
 			</div>
-			<!-- Secondary row: the "saved" note + a right-aligned Download — kept off
-			     the primary RSVP/Join line so it never orphans onto a lonely wrap. -->
-			<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+
+			{#if invite.joinUrl}
+				<!-- Primary CTA for a virtual meeting: its own full-width filled button. -->
+				<a
+					href={invite.joinUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-ring flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+				>
+					<VideoIcon class="size-4" /> Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}
+				</a>
+			{/if}
+
+			<!-- Secondary: the "saved" note, then Add to calendar (webcal → opens the
+			     OS calendar app) + a plain .ics Download. -->
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				{#if invite.myRsvp && !Object.values(invite.rsvpLinks).some(Boolean)}
 					<p class="text-faint text-[11px]">Saved for you — the organizer isn't notified.</p>
 				{/if}
-				<a
-					href={originalHref ?? icsHref()}
-					download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
-					class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs font-medium hover:underline"
-				>
-					<DownloadIcon class="size-3.5" /> Download invite
-				</a>
+				<div class="ml-auto flex items-center gap-x-4">
+					{#if webcalHref}
+						<a
+							href={webcalHref}
+							class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium hover:underline"
+						>
+							<CalendarPlusIcon class="size-3.5" /> Add to calendar
+						</a>
+					{/if}
+					<a
+						href={originalHref ?? icsHref()}
+						download={originalHref ? undefined : `${(invite.summary || 'event').replace(/[^\w.-]+/g, '-')}.ics`}
+						class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium hover:underline"
+					>
+						<DownloadIcon class="size-3.5" /> Download
+					</a>
+				</div>
 			</div>
 		</div>
 	{/if}
 </div>
+
+
+{#snippet descText(t: string)}{#each descSegments(t) as seg, i (i)}{#if seg.type === 'link'}<a
+			href={seg.href}
+			target="_blank"
+			rel="noopener noreferrer"
+			class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else if seg.type === 'email'}<a
+			href={`mailto:${seg.address}`}
+			class="text-brand font-medium break-all underline underline-offset-2">{seg.value}</a>{:else}{seg.value}{/if}{/each}{/snippet}

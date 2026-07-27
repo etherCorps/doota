@@ -248,9 +248,10 @@ export function parseIcs(raw: string): ParsedInvite | null {
   // Cap the description — some invites inline a full HTML agenda; we only need a preview.
   const description = rawDesc && rawDesc.length > 2000 ? rawDesc.slice(0, 2000) + "…" : rawDesc;
 
-  // Join URL: check dedicated props first, then LOCATION/DESCRIPTION text.
+  // Join URL: dedicated conference props first (RFC 7986 CONFERENCE +
+  // X-GOOGLE-CONFERENCE / X-MICROSOFT-*), only then scrape LOCATION/DESCRIPTION.
   const xUrls = ev
-    .filter((p) => /^X-.*URL$|^URL$|^X-GOOGLE-CONFERENCE$|^X-MICROSOFT-SKYPETEAMSMEETINGURL$/i.test(p.name))
+    .filter((p) => /^X-.*URL$|^URL$|^CONFERENCE$|^X-GOOGLE-CONFERENCE$|^X-MICROSOFT-SKYPETEAMSMEETINGURL$/i.test(p.name))
     .map((p) => p.value)
     .join(" ");
   const join = findJoinUrl([xUrls, location ?? "", rawDesc ?? ""].join("\n"));
