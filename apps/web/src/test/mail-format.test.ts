@@ -20,7 +20,7 @@ describe('sender formatting', () => {
 	it('pulls the display name from a header, falls back to the local part', () => {
 		expect(senderName('"Jane Doe" <j@x.com>')).toBe('Jane Doe');
 		expect(senderName('Jane Doe <j@x.com>')).toBe('Jane Doe');
-		expect(senderName('bob.smith@x.com')).toBe('bob smith');
+		expect(senderName('bob.smith@x.com')).toBe('Bob smith');
 		expect(senderName(null)).toBe('Unknown');
 	});
 	it('senderAddr extracts the bare address', () => {

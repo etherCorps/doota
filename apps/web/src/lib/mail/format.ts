@@ -18,7 +18,11 @@ export function senderName(from: string | null): string {
 	if (!from) return 'Unknown';
 	const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
 	if (named?.[1]?.trim()) return named[1].trim();
-	return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
+	// Email-derived fallback (no display name): tidy the local part and capitalize
+	// the first character so a bare "bob.smith@" reads as "Bob smith", not "bob smith".
+	const local = from.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+	if (!local) return from;
+	return local.charAt(0).toUpperCase() + local.slice(1);
 }
 // Prefer the display name the sending provider actually put in the mail data
 // (fromName) over splitting the email — falls back to the header parse / local

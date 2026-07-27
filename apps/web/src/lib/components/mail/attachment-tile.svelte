@@ -16,6 +16,7 @@
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { pdfThumb } from '$lib/client/pdf-thumb';
 	import { sanitizeFilename } from '$lib/utils/filename';
+	import { fmtSize } from '$lib/mail/format';
 
 	type Att = { id: string; filename: string | null; contentType: string | null; size: number | null };
 	let {
@@ -76,8 +77,6 @@
 	);
 	const Icon = $derived(kind === 'audio' ? FileAudioIcon : (EXT_ICON[rawExt] ?? FileIcon));
 
-	const fmtSize = (n: number | null) =>
-		n == null ? '' : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
 	const name = $derived(sanitizeFilename(att.filename)); // strip bidi-override spoofing
 
 	// PDF page-1 thumb — lazy client render; rows keep the icon (cheap).

@@ -849,6 +849,28 @@
 	// helpers (msgPrivateTo / msgCanReplyAll / replyCtx) in $lib/mail/format.
 	const self = $derived(selfSet(identities));
 
+	// Address → best display name already in the loaded data (list rows + the open
+	// thread's messages). Providers sometimes omit the name on a given message, but
+	// we've usually captured a real one from that sender elsewhere — reuse it
+	// instead of falling back to the email local part. No extra fetch: purely the
+	// data in hand, and it enriches as more pages/threads load.
+	const nameByAddr = $derived.by(() => {
+		const m = new Map<string, string>();
+		const add = (from: string | null, name?: string | null) => {
+			if (!from || !name?.trim()) return;
+			const addr = senderAddr(from).toLowerCase();
+			if (addr && !m.has(addr)) m.set(addr, name.trim());
+		};
+		for (const t of items) add(t.from, t.fromName);
+		for (const it of openDto?.items ?? []) if (it.type === 'external_message') add(it.from, it.fromName);
+		return m;
+	});
+	// Name for an address: an explicit header name wins, else a name we've seen for
+	// this address, else the email-derived fallback.
+	function nameFor(from: string | null, fromName?: string | null): string {
+		return fromName?.trim() || nameByAddr.get(senderAddr(from).toLowerCase()) || senderName(from);
+	}
+
 	// Remote images (tracking pixels) are blocked by default via CSP inside the
 	// sandboxed iframe; the user can opt in per message. The doc body is
 	// transparent with a mode-matched text color, so plain emails follow the app
@@ -1379,7 +1401,7 @@
 			title="Not everyone on this thread can see this message"
 		>
 			<LockIcon class="size-2.5 shrink-0" />
-			Only you{priv.length ? ` & ${priv.map((a) => senderName(a)).join(', ')}` : ''} can see this
+			Only you{priv.length ? ` & ${priv.map((a) => nameFor(a)).join(', ')}` : ''} can see this
 		</span>
 	{/if}
 {/snippet}
@@ -1404,19 +1426,19 @@
 				onclick={() => jumpToMsg(rc.parentId!, false)}
 				class="border-brand/40 bg-brand/5 text-muted-foreground hover:bg-brand/10 mb-1.5 flex w-full max-w-full flex-col gap-0.5 rounded border-l-2 py-1 pr-1 pl-2 text-left text-[11px] leading-snug transition-colors"
 			>
-				<span class="text-brand font-medium">{senderName(rc.from)}</span>
+				<span class="text-brand font-medium">{nameFor(rc.from)}</span>
 				<span class="truncate opacity-80">{rc.text}</span>
 			</button>
 		{:else}
 			<!-- Hidden ancestor chain (added-on-Cc): oldest first, immediate parent last. -->
 			{#each rc.ancestors ?? [] as a (a.sentAt ?? a.text)}
 				<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
-					<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(a.from)}</div>
+					<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(a.from)}</div>
 					<div class="whitespace-pre-wrap opacity-70">{a.text}</div>
 				</div>
 			{/each}
 			<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
-				<div class="text-muted-foreground mb-0.5">↳ Earlier from {senderName(rc.from)}</div>
+				<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(rc.from)}</div>
 				<div class="whitespace-pre-wrap opacity-70">{rc.text}</div>
 			</div>
 		{/if}
@@ -1658,7 +1680,7 @@
 								{@render monogram(hit.from, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
-										<span class="flex-1 truncate text-sm font-medium">{hit.from ? senderName(hit.from) : '—'}</span>
+										<span class="flex-1 truncate text-sm font-medium">{hit.from ? nameFor(hit.from) : '—'}</span>
 										{#if hit.at}<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(hit.at)}</span>{/if}
 									</div>
 									<span class="block truncate text-[13px] text-muted-foreground">
@@ -1803,7 +1825,7 @@
 							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
-										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{senderLabel(t)}</span>
+										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
 										<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
 									</div>
 									<div class="flex items-center gap-1.5">
@@ -1904,7 +1926,7 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm leading-tight font-semibold">{thread.subject ?? '(no subject)'}</p>
 							<p class="text-muted-foreground truncate text-[11px] leading-tight">
-								{msgs.length} message{msgs.length === 1 ? '' : 's'}{ctx.target ? ` · ${senderName(ctx.target)}` : ''}
+								{msgs.length} message{msgs.length === 1 ? '' : 's'}{ctx.target ? ` · ${nameFor(ctx.target)}` : ''}
 							</p>
 						</div>
 						<!-- Who's on the thread, at a glance (group threads read instantly). -->

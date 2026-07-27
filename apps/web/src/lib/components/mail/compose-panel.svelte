@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { useDebounce } from 'runed';
 	import { fade } from 'svelte/transition';
+	import { fmtSize, isImage } from '$lib/mail/format';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
@@ -516,10 +517,8 @@
 		editorKey++;
 	}
 
-	const fmtSize = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 	// Click an attachment → images preview in a lightbox, everything else downloads.
 	let preview = $state<AttachmentRef | null>(null);
-	const isImage = (a: AttachmentRef) => a.contentType.startsWith('image/');
 	const ext = (a: AttachmentRef) => (a.filename.split('.').pop() ?? 'file').toUpperCase().slice(0, 4);
 
 	// Color-coded file-type tile (icon + tint) for non-image attachments.

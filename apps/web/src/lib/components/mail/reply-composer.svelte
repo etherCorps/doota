@@ -26,6 +26,7 @@
 	} from '$lib/rpc/draft.remote';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
+	import { fmtSize } from '$lib/mail/format';
 	import { replySubject } from '@doota/mail-core/mail-thread-contract';
 	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 
@@ -118,7 +119,6 @@
 	let fileInput = $state<HTMLInputElement>();
 	let sending = $state(false);
 	let uploading = $state(false);
-	const fmtSize = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 	// The body is HTML; "has content" ignores tags/whitespace — an empty editor
 	// serializes to "<p></p>", which is a non-empty STRING but no real text.
 	const htmlHasText = (html: string) =>
