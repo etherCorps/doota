@@ -229,6 +229,22 @@
 		return () => document.removeEventListener('visibilitychange', onVis);
 	});
 
+	// Mark read on FIRST load of a thread. selectThread handles a list click, but a
+	// DIRECT open — URL, notification-bell link, refresh — has no selectThread, so
+	// the thread would stay unread. Fire once per newly-loaded thread; selectThread
+	// stamps lastOpenedRead so a list click never double-writes, and this skips
+	// openDto refreshes (a reply landing keeps the same id).
+	let lastOpenedRead: string | null = null;
+	$effect(() => {
+		const id = openDto?.id;
+		if (!id || id !== threadId) return;
+		untrack(() => {
+			if (lastOpenedRead === id) return;
+			lastOpenedRead = id;
+			void markOpenRead();
+		});
+	});
+
 	// Live MailEventHub push. send_state: refresh the open thread in place —
 	// ticks flip clock→sent→delivered, failure banners appear without reopening
 	// (toasting lives in the app shell's notifier). inbound: new mail for this
@@ -647,6 +663,7 @@
 		cancelPendingOpen();
 		navCursor = null;
 		nav({ thread: id });
+		lastOpenedRead = id; // this path owns the read-mark; the load-effect stands down
 		if (!mailboxId) return;
 		{
 			const row = items.find((t) => t.threadId === id);
