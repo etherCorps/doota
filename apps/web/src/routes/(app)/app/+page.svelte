@@ -68,6 +68,12 @@
 	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import { replySubject, FAILED_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
+	import {
+		fmtTime, senderName, senderLabel, senderAddr,
+		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments,
+		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock
+	} from '$lib/mail/format';
+	import AttachmentGroups from '$lib/components/mail/attachment-groups.svelte';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -839,78 +845,9 @@
 			?.querySelector<HTMLElement>('[contenteditable="true"], textarea, input')
 			?.focus({ preventScroll: true });
 	}
-	// Subaddress-normalize: you+tag@x and you@x are the same inbox, so both count
-	// as "self" — otherwise reply-all to mail sent at you+shop@ mails yourself.
-	const baseAddr = (a: string) => a.toLowerCase().replace(/^([^@+]+)\+[^@]*@/, '$1@');
-	const selfSet = () => new Set(identities.map((i) => baseAddr(i.address)));
-	// Everyone who's appeared on the thread (from/to/cc across all messages).
-	function threadParticipants(msgs: MessageDTO[]): Set<string> {
-		const s = new Set<string>();
-		for (const m of msgs) for (const a of [m.from, ...m.to, ...m.cc]) if (a) s.add(a.toLowerCase());
-		return s;
-	}
-	// A message whose audience is a strict subset of the thread's participants is
-	// PRIVATE — a reply that dropped people. Returns who (besides you) can see it,
-	// or null when everyone on the thread is on the message. Drives the "only
-	// visible to you" chip so a reply-to-one never looks like it reached everyone.
-	function msgPrivateTo(m: MessageDTO, parts: Set<string>): string[] | null {
-		const aud = new Set<string>();
-		for (const a of [m.from, ...m.to, ...m.cc]) if (a) aud.add(a.toLowerCase());
-		if (aud.size >= parts.size) return null; // reaches everyone on the thread
-		const self = selfSet();
-		return [...aud].filter((a) => !self.has(baseAddr(a)));
-	}
-	// Reply-all only means something when the message reaches ≥2 people besides you.
-	function msgCanReplyAll(m: MessageDTO): boolean {
-		const self = selfSet();
-		const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map(baseAddr));
-		for (const s of self) all.delete(s);
-		return all.size >= 2;
-	}
-
-	// Reply context. Audience is derived from ONE message — the explicitly chosen
-	// target, else the latest inbound (falling back to the newest). reply-one goes
-	// to the sender (inbound) or the person you wrote to (outbound); reply-all adds
-	// the rest of that message's To/Cc, minus your own identities.
-	function replyCtx(msgs: MessageDTO[], target: { msgId: string; scope: 'reply' | 'reply_all' } | null) {
-		const chosen = target ? msgs.find((m) => m.id === target.msgId) : undefined;
-		// A base must yield a reply address, or the whole reply bar vanishes —
-		// e.g. a DSN/bounce with no From as the latest inbound. Skip those.
-		const usable = (m: MessageDTO) =>
-			m.outbound ? !!(m.to[0] ?? m.cc[0]) : !!(m.replyTo || m.from);
-		const rev = [...msgs].reverse();
-		const base =
-			chosen ?? rev.find((m) => !m.outbound && usable(m)) ?? rev.find(usable) ?? msgs.at(-1);
-		const self = selfSet();
-		const notSelf = (a: string) => a && !self.has(baseAddr(a));
-		const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean).map((x) => x.toLowerCase()))];
-		let primary = base?.outbound
-			? (base.to[0] ?? base.cc[0] ?? '')
-			: base?.replyTo || base?.from || '';
-		// Audience: an explicit per-message Reply(-all) scopes to THAT message; the
-		// default docked composer is thread-level, so its Reply-all reaches every
-		// participant — else a private reply-to-one as the latest inbound would
-		// hide the Reply/Reply-all switch even on a multi-party thread.
-		const audMsgs = chosen ? [chosen] : msgs;
-		const toAll = uniq([
-			primary,
-			...audMsgs.flatMap((m) => [m.from ?? '', ...m.to])
-		]).filter(notSelf);
-		const ccAll = uniq(audMsgs.flatMap((m) => m.cc)).filter((a) => notSelf(a) && !toAll.includes(a));
-		// Last resort (explicitly-targeted message without a From): reply to the
-		// first non-self participant rather than hiding the composer.
-		if (!primary) primary = toAll[0] ?? ccAll[0] ?? '';
-		return {
-			target: primary,
-			toAll,
-			ccAll,
-			aliasId: base?.viaAliasId ?? null,
-			parent: base,
-			// Explicit target drives the composer's opening scope + auto-expand.
-			scope: (chosen ? target!.scope : 'reply') as 'reply' | 'reply_all',
-			autoOpen: !!chosen
-		};
-	}
+	// The viewer's own addresses (base-normalized) — feeds the reply-audience
+	// helpers (msgPrivateTo / msgCanReplyAll / replyCtx) in $lib/mail/format.
+	const self = $derived(selfSet(identities));
 
 	// Remote images (tracking pixels) are blocked by default via CSP inside the
 	// sandboxed iframe; the user can opt in per message. The doc body is
@@ -1021,30 +958,6 @@
 		});
 	}
 
-	function fmtTime(ms: number | null): string {
-		if (!ms) return '';
-		return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-	}
-
-	// Sender identity for list rows + message monograms. `from` is a raw header
-	// ("Name <addr>" or a bare address); pull a human name + two-letter initials,
-	// and tint the monogram deterministically so a sender keeps the same colour.
-	function senderName(from: string | null): string {
-		if (!from) return 'Unknown';
-		const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
-		if (named?.[1]?.trim()) return named[1].trim();
-		return from.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || from;
-	}
-	// Prefer the display name the sending provider actually put in the mail data
-	// (fromName) over splitting the email — falls back to the header parse / local
-	// part when a bare address is all we have (e.g. pre-fromName mail).
-	const senderLabel = (m: { fromName?: string | null; from: string | null }): string =>
-		m.fromName?.trim() || senderName(m.from);
-	// The bare email out of a `from` header ("Name <addr>" or a bare address) —
-	// the contact hover card keys on this.
-	const senderAddr = (from: string | null): string =>
-		(from?.match(/<([^>]+)>/)?.[1] ?? from ?? '').trim();
-
 	// Everyone the conversation has touched: the union of from/to/cc across ALL
 	// messages — so a bcc'd party who replies-all enters the list the moment
 	// their own message (with them in `from`) lands in the thread.
@@ -1074,24 +987,6 @@
 	// collapsible card stack, reads as correspondence).
 	const threadView = new PersistedState<'chat' | 'mail'>('doota:thread-view', 'chat');
 
-	// Day dividers for the chat view (WhatsApp-style). Items are a mixed union;
-	// each type carries its timestamp under a different key.
-	function itemMs(it: unknown): number | null {
-		const o = it as { sentAt?: number | null; at?: number | null; createdAt?: number | null };
-		return o.sentAt ?? o.at ?? o.createdAt ?? null;
-	}
-	function isNewDay(items: unknown[], i: number): boolean {
-		const ms = itemMs(items[i]);
-		if (ms == null) return false;
-		for (let j = i - 1; j >= 0; j--) {
-			const prev = itemMs(items[j]);
-			if (prev != null) return new Date(ms).toDateString() !== new Date(prev).toDateString();
-		}
-		return true;
-	}
-	const fmtDay = (ms: number) =>
-		new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-
 	// Land on the newest message when a thread opens (or the view flips): chat
 	// scrolls to the bottom, mail brings the newest card's header into view.
 	// Keyed on thread id — a refresh() of the same thread never yanks the scroll.
@@ -1116,48 +1011,11 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
-	/** First text line of a message, for the collapsed-header preview. */
-	function msgSnippet(m: MessageDTO): string {
-		return (m.bodyStripped ?? m.bodyFull ?? '').split('\n').find((l) => l.trim()) ?? '';
-	}
-
 	// Thread attachments panel — every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
 	let attachmentsOpen = $state(false);
 	const isMobile = new IsMobile();
-	function senderEmail(from: string | null): string {
-		return from?.match(/<([^>]+)>/)?.[1] ?? from ?? '';
-	}
-	// Grouped day → message, so a message's files stay together as one tile grid.
-	function groupAttachments(msgs: MessageDTO[]) {
-		const days: { day: string; entries: { msg: MessageDTO; atts: MessageDTO['attachments'] }[] }[] = [];
-		for (const msg of msgs) {
-			if (!msg.attachments.length) continue;
-			const day = msg.sentAt ? fmtDay(msg.sentAt) : 'Unknown date';
-			let d = days.at(-1);
-			if (!d || d.day !== day) {
-				d = { day, entries: [] };
-				days.push(d);
-			}
-			d.entries.push({ msg, atts: msg.attachments });
-		}
-		return days;
-	}
-	const isImage = (a: { contentType: string | null }) => !!a.contentType?.startsWith('image/');
-	const fileExt = (name: string | null) => name?.match(/\.(\w{1,5})$/)?.[1]?.toUpperCase() ?? 'FILE';
-	const fmtSize = (n: number | null) =>
-		n == null ? '' : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
-	// Type-tinted icon tile for non-image files (PDF reads red, archives amber, …).
-	function fileTile(a: { contentType: string | null }) {
-		const t = a.contentType ?? '';
-		if (t === 'application/pdf') return { icon: FileTextIcon, cls: 'bg-destructive/10 text-destructive' };
-		if (t.includes('zip') || t.includes('compressed') || t.includes('tar')) return { icon: ArchiveIcon, cls: 'bg-warn/10 text-warn' };
-		if (t.startsWith('audio/')) return { icon: PaperclipIcon, cls: 'bg-p1/10 text-p1' };
-		if (t.startsWith('video/')) return { icon: PaperclipIcon, cls: 'bg-p3/10 text-p3' };
-		if (t.startsWith('text/') || t.includes('word') || t.includes('document') || t.includes('sheet')) return { icon: FileTextIcon, cls: 'bg-brand/10 text-brand' };
-		return { icon: PaperclipIcon, cls: 'bg-muted text-muted-foreground' };
-	}
 	// Briefly highlight a message after jumping to it (WhatsApp reply-jump feel).
 	let flashMsgId = $state<string | null>(null);
 	/** Scroll a message into view; in mail view, expand it first if collapsed.
@@ -1225,24 +1083,8 @@
 	});
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
-	// the single ComposePanel is mounted in the (app) layout.
-	// The composer editor reads HTML, so forwarded content is built as HTML — a
-	// plain-text body with \n renders as one flat line. Text twin + <br> keeps it
-	// reliable in the editor (rich-template fidelity is limited by TipTap).
-	const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	function fwdBlock(m: MessageDTO): string {
-		const orig = escHtml(m.bodyFull ?? m.bodyStripped ?? '').replace(/\r?\n/g, '<br>');
-		const header = [
-			`From: ${m.from ?? ''}`,
-			m.sentAt ? `Date: ${new Date(m.sentAt).toLocaleString()}` : '',
-			`Subject: ${m.subject ?? ''}`,
-			m.to.length ? `To: ${m.to.join(', ')}` : ''
-		]
-			.filter(Boolean)
-			.map((l) => `<p>${escHtml(l)}</p>`)
-			.join('');
-		return `${header}<blockquote>${orig}</blockquote>`;
-	}
+	// the single ComposePanel is mounted in the (app) layout. `fwdBlock` (HTML
+	// quote builder) lives in $lib/mail/format.
 	// A forward starts a NEW conversation (Gmail/Superhuman/Fastmail): no threadId,
 	// no In-Reply-To — otherwise it threads into the source conversation.
 	function startForward(subject: string | null, header: string, blocks: string) {
@@ -1506,7 +1348,7 @@
 		>
 			<ReplyIcon class="size-3.5" />
 		</button>
-		{#if msgCanReplyAll(m)}
+		{#if msgCanReplyAll(m, self)}
 			<button
 				type="button"
 				title="Reply all"
@@ -1530,7 +1372,7 @@
 <!-- "Only visible to you" chip: shows on a message that reached fewer people than
      the thread has (a reply-to-one), so the sender knows it's private. -->
 {#snippet visibilityChip(m: MessageDTO, parts: Set<string>)}
-	{@const priv = msgPrivateTo(m, parts)}
+	{@const priv = msgPrivateTo(m, parts, self)}
 	{#if priv}
 		<span
 			class="text-warn border-warn/25 bg-warn/10 mt-1 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
@@ -1579,58 +1421,6 @@
 			</div>
 		{/if}
 	{/if}
-{/snippet}
-
-<!-- Shared by the docked aside (≥ md) and the mobile drawer. -->
-{#snippet attachmentGroups(groups: ReturnType<typeof groupAttachments>, msgs: MessageDTO[])}
-	{#if groups.length === 0}
-		<p class="text-muted-foreground py-6 text-center text-sm">No attachments in this thread.</p>
-	{/if}
-	{#each groups as g (g.day)}
-		<p class="text-faint px-1 pt-2 pb-1.5 text-[11px] font-medium first:pt-0">{g.day}</p>
-		<div class="space-y-2">
-			{#each g.entries as { msg, atts } (msg.id)}
-				<div class="bg-background/60 rounded-xl border p-2">
-					<!-- Sender header (once per message) → jump to the message -->
-					<button
-						type="button"
-						title="Show in conversation"
-						onclick={() => jumpToMsg(msg.id, msg.id === msgs.at(-1)?.id)}
-						class="hover:text-brand focus-visible:ring-ring/50 mb-1.5 flex w-full items-baseline gap-1.5 rounded text-left outline-none focus-visible:ring-2"
-					>
-						<span class="text-foreground text-xs font-semibold">{msg.submission ? 'You' : senderName(msg.from)}</span>
-						<span class="text-faint min-w-0 flex-1 truncate font-mono text-[10px]">{senderEmail(msg.from)}</span>
-						<span class="text-faint shrink-0 text-[10px]">{fmtTime(msg.sentAt)}</span>
-					</button>
-					<!-- One row per file — thumb (image preview / type icon), name + size always
-					     visible. Click downloads. -->
-					<div class="space-y-1">
-						{#each atts as att (att.id)}
-							{@const tile = fileTile(att)}
-							<a
-								href={resolve('/api/attachments/[id]', { id: att.id })}
-								download={att.filename ?? 'file'}
-								class="group hover:bg-muted/60 focus-visible:ring-ring/50 flex items-center gap-2.5 rounded-lg p-1 transition-colors outline-none focus-visible:ring-2"
-							>
-								<span class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border {isImage(att) ? 'bg-muted' : tile.cls}">
-									{#if isImage(att)}
-										<img src={resolve('/api/attachments/[id]', { id: att.id })} alt={att.filename ?? 'attachment'} loading="lazy" class="h-full w-full object-cover" />
-									{:else}
-										<tile.icon class="size-4" />
-									{/if}
-								</span>
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-sm font-medium">{att.filename ?? 'file'}</span>
-									<span class="text-faint block text-[11px]">{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
-								</span>
-								<DownloadIcon class="text-muted-foreground pointer-coarse:opacity-100 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-							</a>
-						{/each}
-					</div>
-				</div>
-			{/each}
-		</div>
-	{/each}
 {/snippet}
 
 <!-- @container: the list/thread split reacts to THIS region's width (sidebar
@@ -2104,7 +1894,7 @@
 				{@const thread = openDto}
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const parts = threadParticipants(msgs)}
-					{@const ctx = replyCtx(msgs, replyTarget)}
+					{@const ctx = replyCtx(msgs, replyTarget, self)}
 					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
 					{@const ppl = participants(msgs)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
@@ -2651,7 +2441,7 @@
 								</button>
 							</div>
 							<div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-3">
-								{@render attachmentGroups(groups, msgs)}
+								<AttachmentGroups {groups} {msgs} onJump={jumpToMsg} />
 							</div>
 						</aside>
 					{/if}
@@ -2667,7 +2457,7 @@
 									</Drawer.Title>
 								</Drawer.Header>
 								<div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-									{@render attachmentGroups(groupAttachments(msgs), msgs)}
+									<AttachmentGroups groups={groupAttachments(msgs)} {msgs} onJump={jumpToMsg} />
 								</div>
 							</Drawer.Content>
 						</Drawer.Root>

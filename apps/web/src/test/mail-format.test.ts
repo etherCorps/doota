@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0
+import { describe, it, expect } from 'vitest';
+import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
+import {
+	senderName,
+	senderAddr,
+	senderLabel,
+	fmtSize,
+	fileExt,
+	selfSet,
+	msgCanReplyAll,
+	replyCtx
+} from '$lib/mail/format';
+
+// Minimal message factory — only the fields the audience helpers read.
+const msg = (p: Partial<MessageDTO>): MessageDTO =>
+	({ id: 'm', from: null, to: [], cc: [], outbound: false, ...p }) as unknown as MessageDTO;
+
+describe('sender formatting', () => {
+	it('pulls the display name from a header, falls back to the local part', () => {
+		expect(senderName('"Jane Doe" <j@x.com>')).toBe('Jane Doe');
+		expect(senderName('Jane Doe <j@x.com>')).toBe('Jane Doe');
+		expect(senderName('bob.smith@x.com')).toBe('bob smith');
+		expect(senderName(null)).toBe('Unknown');
+	});
+	it('senderAddr extracts the bare address', () => {
+		expect(senderAddr('Jane <j@x.com>')).toBe('j@x.com');
+		expect(senderAddr('j@x.com')).toBe('j@x.com');
+	});
+	it('senderLabel prefers fromName over the header parse', () => {
+		expect(senderLabel({ fromName: 'Provider Name', from: 'x@y.com' })).toBe('Provider Name');
+		expect(senderLabel({ fromName: null, from: 'Jane <j@x.com>' })).toBe('Jane');
+	});
+});
+
+describe('file helpers', () => {
+	it('fmtSize switches KB→MB and handles null', () => {
+		expect(fmtSize(null)).toBe('');
+		expect(fmtSize(2048)).toBe('2 KB');
+		expect(fmtSize(2_000_000)).toBe('2.0 MB');
+	});
+	it('fileExt uppercases the extension, defaults to FILE', () => {
+		expect(fileExt('report.pdf')).toBe('PDF');
+		expect(fileExt('noext')).toBe('FILE');
+		expect(fileExt(null)).toBe('FILE');
+	});
+});
+
+describe('reply audience', () => {
+	const self = selfSet([{ address: 'me@x.com' }] as never);
+
+	it('reply-all only when the message reaches ≥2 besides you', () => {
+		expect(msgCanReplyAll(msg({ from: 'a@x.com', to: ['me@x.com', 'b@x.com'] }), self)).toBe(true);
+		expect(msgCanReplyAll(msg({ from: 'a@x.com', to: ['me@x.com'] }), self)).toBe(false);
+	});
+
+	it('replyCtx targets the latest inbound sender and excludes self', () => {
+		const msgs = [msg({ id: '1', from: 'a@x.com', to: ['me@x.com', 'b@x.com'] })];
+		const ctx = replyCtx(msgs, null, self);
+		expect(ctx.target).toBe('a@x.com');
+		expect(ctx.toAll).toContain('a@x.com');
+		expect(ctx.toAll).toContain('b@x.com');
+		expect(ctx.toAll).not.toContain('me@x.com');
+		expect(ctx.scope).toBe('reply');
+		expect(ctx.autoOpen).toBe(false);
+	});
+
+	it('an explicit target drives scope + autoOpen', () => {
+		const msgs = [
+			msg({ id: '1', from: 'a@x.com', to: ['me@x.com'] }),
+			msg({ id: '2', from: 'c@x.com', to: ['me@x.com'] })
+		];
+		const ctx = replyCtx(msgs, { msgId: '1', scope: 'reply_all' }, self);
+		expect(ctx.target).toBe('a@x.com');
+		expect(ctx.scope).toBe('reply_all');
+		expect(ctx.autoOpen).toBe(true);
+	});
+});
