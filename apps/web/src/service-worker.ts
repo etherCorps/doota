@@ -39,8 +39,8 @@ async function onPush(event: PushEvent): Promise<void> {
 		body: data.body,
 		tag: data.tag, // per-thread tag collapses a reply burst into one notification
 		data: { url: data.url ?? '/app' },
-		icon: '/icon-192.png',
-		badge: '/icon-192.png'
+		icon: '/icon-192.png', // large image shown when the notification expands
+		badge: '/badge-96.png' // small monochrome silhouette for the status-bar/"on top" icon
 	});
 }
 
