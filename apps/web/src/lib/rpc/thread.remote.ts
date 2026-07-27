@@ -429,14 +429,20 @@ export const addNote = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), body: z.string().trim().min(1) }),
   async ({ mailboxId, threadId, body }) => {
     const { box } = await assertThreadGrant(mailboxId, threadId);
-    const { locals } = getRequestEvent();
-    return createNote(locals.db, await contentKey(), searchKey(), {
-      orgId: box.orgId,
-      threadId,
-      mailboxId,
-      authorUserId: locals.user!.id,
-      body,
-    });
+    const { locals, platform } = getRequestEvent();
+    return createNote(
+      locals.db,
+      await contentKey(),
+      searchKey(),
+      {
+        orgId: box.orgId,
+        threadId,
+        mailboxId,
+        authorUserId: locals.user!.id,
+        body,
+      },
+      platform?.env?.MAIL_EVENTS,
+    );
   },
 );
 
@@ -486,14 +492,18 @@ export const assignThread = command(
   }),
   async ({ mailboxId, threadId, assigneeUserId }) => {
     const box = await assertMailboxManage(mailboxId);
-    const { locals } = getRequestEvent();
-    await doAssign(locals.db, {
-      orgId: box.orgId,
-      threadId,
-      mailboxId,
-      assigneeUserId,
-      actorUserId: locals.user!.id,
-    });
+    const { locals, platform } = getRequestEvent();
+    await doAssign(
+      locals.db,
+      {
+        orgId: box.orgId,
+        threadId,
+        mailboxId,
+        assigneeUserId,
+        actorUserId: locals.user!.id,
+      },
+      platform?.env?.MAIL_EVENTS,
+    );
     return { ok: true as const };
   },
 );

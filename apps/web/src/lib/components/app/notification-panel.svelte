@@ -69,15 +69,16 @@
 		});
 	}
 
-	// Live: refetch only the COUNT on the events the feed derives from (inbound ⇒
-	// new_mail, a failed send_state ⇒ send_failed) — the feed itself waits for open.
-	// assigned/note have no user-stream event yet, so they land on the next open.
+	// Live: refetch only the COUNT (not the feed — that waits for open). new_mail
+	// rides `inbound`, send_failed rides a failed `send_state`, and assigned/note
+	// get a dedicated `notification` ping — so every type now updates the badge live.
 	const FAILED = new Set(['failed', 'bounced_hard', 'bounced_soft', 'complained']);
 	$effect(() => {
 		void realtime.seq;
 		const evt = realtime.event;
 		if (!evt) return;
-		if (evt.type === 'inbound' || FAILED.has(evt.status)) void unreadQ.refresh();
+		if (evt.type === 'inbound' || evt.type === 'notification') void unreadQ.refresh();
+		else if (evt.type === 'send_state' && FAILED.has(evt.status)) void unreadQ.refresh();
 		else void scheduledQ.refresh();
 	});
 

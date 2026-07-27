@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, isNotNull, lt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
+import { notifyNotification, type EventHubNamespace } from "./events-hub";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -92,6 +93,7 @@ export async function recordAssigned(
     assigneeUserId: string;
     actorUserId: string | null;
   },
+  hub?: EventHubNamespace,
 ): Promise<void> {
   if (input.actorUserId === input.assigneeUserId) return; // assigning to yourself: no notify
   await db.insert(mail.notification).values({
@@ -102,6 +104,7 @@ export async function recordAssigned(
     threadId: input.threadId,
     actorUserId: input.actorUserId,
   });
+  await notifyNotification(hub, input.assigneeUserId); // live bell ping (no-op without a hub)
 }
 
 /** Drop read notifications older than the retention window (default 30d). Run
@@ -121,6 +124,7 @@ export async function pruneStaleNotifications(db: Db, olderThanMs = 30 * 24 * 60
 export async function recordNote(
   db: Db,
   input: { orgId: string; mailboxId: string; threadId: string; actorUserId: string },
+  hub?: EventHubNamespace,
 ): Promise<void> {
   const state = await db.query.threadState.findFirst({
     where: and(eq(mail.threadState.threadId, input.threadId), eq(mail.threadState.mailboxId, input.mailboxId)),
@@ -136,6 +140,7 @@ export async function recordNote(
     threadId: input.threadId,
     actorUserId: input.actorUserId,
   });
+  await notifyNotification(hub, assignee); // live bell ping (no-op without a hub)
 }
 
 /** A send the user owns failed (hard/soft bounce, complaint, or send error). */

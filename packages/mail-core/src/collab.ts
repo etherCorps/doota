@@ -6,6 +6,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { grantedUserIds } from "./mailbox";
 import { recordAssigned } from "./notify";
+import type { EventHubNamespace } from "./events-hub";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -64,6 +65,7 @@ export async function assignThread(
     assigneeUserId: string | null;
     actorUserId: string;
   },
+  hub?: EventHubNamespace,
 ): Promise<void> {
   if (input.assigneeUserId) {
     const grants = await grantedUserIds(db, input.mailboxId);
@@ -97,13 +99,17 @@ export async function assignThread(
   // Durable notification for the assignee — best-effort, never fails the assign.
   if (input.assigneeUserId) {
     try {
-      await recordAssigned(db, {
-        orgId: input.orgId,
-        mailboxId: input.mailboxId,
-        threadId: input.threadId,
-        assigneeUserId: input.assigneeUserId,
-        actorUserId: input.actorUserId,
-      });
+      await recordAssigned(
+        db,
+        {
+          orgId: input.orgId,
+          mailboxId: input.mailboxId,
+          threadId: input.threadId,
+          assigneeUserId: input.assigneeUserId,
+          actorUserId: input.actorUserId,
+        },
+        hub,
+      );
     } catch {
       // a missing bell row is not worth failing the assignment
     }

@@ -249,6 +249,8 @@
 			if (evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
 			return;
 		}
+		// `notification` pings (assigned/note) are the bell's business, not the list's.
+		if (evt.type !== 'inbound') return;
 		// Capture reactive scope now — we await below and the user may navigate.
 		const mb = mailboxId;
 		const th = threadId;

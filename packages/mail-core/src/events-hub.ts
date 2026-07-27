@@ -51,7 +51,14 @@ export type InboundMailEvent = {
   mailboxId: string;
 };
 
-export type MailEvent = MailStateEvent | InboundMailEvent;
+/** A durable notification (assigned / note / …) was written for the user — a
+ * bare ping so the client refetches its unread count. new_mail / send_failed
+ * already ride the inbound / send_state events; this covers the rest. */
+export type NotificationEvent = {
+  type: "notification";
+};
+
+export type MailEvent = MailStateEvent | InboundMailEvent | NotificationEvent;
 
 export class MailEventHub {
   constructor(private readonly ctx: DurableObjectState) {
@@ -136,6 +143,16 @@ export async function notifyMailState(
 ): Promise<void> {
   if (!hub || !userId) return;
   await post(hub, userId, JSON.stringify({ type: "send_state", ...evt } satisfies MailStateEvent));
+}
+
+/** Wake one user's bell — a durable notification (assigned / note) was written.
+ * Best-effort; free when the binding is absent. */
+export async function notifyNotification(
+  hub: EventHubNamespace | undefined,
+  userId: string,
+): Promise<void> {
+  if (!hub) return;
+  await post(hub, userId, JSON.stringify({ type: "notification" } satisfies NotificationEvent));
 }
 
 /** One frame to one user's hub; swallow errors (streams self-heal on catch-up). */

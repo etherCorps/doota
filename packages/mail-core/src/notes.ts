@@ -7,6 +7,7 @@ import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { indexNote, deleteNoteIndex, tokensFor } from "./search";
 import { recordNote } from "./notify";
+import type { EventHubNamespace } from "./events-hub";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -49,6 +50,7 @@ export async function createNote(
   ck: ContentKey,
   searchKeyB64: string,
   input: { orgId: string; threadId: string; mailboxId: string; authorUserId: string; body: string },
+  hub?: EventHubNamespace,
 ): Promise<NoteDTO> {
   const bodyEnc = await encryptContent(ck, input.body);
   const inserted = await db
@@ -70,12 +72,16 @@ export async function createNote(
   });
   // Durable bell for the thread's assignee — best-effort, never fails the note.
   try {
-    await recordNote(db, {
-      orgId: input.orgId,
-      mailboxId: input.mailboxId,
-      threadId: input.threadId,
-      actorUserId: input.authorUserId,
-    });
+    await recordNote(
+      db,
+      {
+        orgId: input.orgId,
+        mailboxId: input.mailboxId,
+        threadId: input.threadId,
+        actorUserId: input.authorUserId,
+      },
+      hub,
+    );
   } catch {
     // a missing bell row is not worth failing the note write
   }
