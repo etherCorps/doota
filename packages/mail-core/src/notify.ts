@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, isNotNull, lt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -100,6 +100,17 @@ export async function recordAssigned(
     threadId: input.threadId,
     actorUserId: input.actorUserId,
   });
+}
+
+/** Drop read notifications older than the retention window (default 30d). Run
+ * from the cron sweep; unread rows are always kept. */
+export async function pruneStaleNotifications(db: Db, olderThanMs = 30 * 24 * 60 * 60 * 1000): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const dropped = await db
+    .delete(mail.notification)
+    .where(and(isNotNull(mail.notification.readAt), lt(mail.notification.readAt, cutoff)))
+    .returning({ id: mail.notification.id });
+  return dropped.length;
 }
 
 /** A send the user owns failed (hard/soft bounce, complaint, or send error). */
