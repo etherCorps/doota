@@ -9,6 +9,7 @@ import { importKey, decryptContent, type ContentKey } from "./crypto";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
+import { recordSendFailed } from "./notify";
 import { buildQuotedText, buildQuotedHtml, type QuotedParent } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
@@ -150,6 +151,21 @@ export async function processSubmission(
       .set({ status: "failed", bounceReason: reason })
       .where(and(eq(mail.submissionRecipient.submissionId, sub.id), notTerminalRecipient()));
     await notifySubmissionState(db, env.MAIL_EVENTS, sub.id, "failed", { userId: sub.createdByUserId });
+    // Durable notification for the sender — best-effort. threadId resolves from
+    // the submission at read time; null here keeps the fail path cheap.
+    if (sub.createdByUserId && sub.orgId) {
+      try {
+        await recordSendFailed(db, {
+          orgId: sub.orgId,
+          userId: sub.createdByUserId,
+          mailboxId: sub.mailboxId,
+          threadId: null,
+          submissionId: sub.id,
+        });
+      } catch {
+        // best-effort; never block the fail path
+      }
+    }
     m.ack();
   };
 

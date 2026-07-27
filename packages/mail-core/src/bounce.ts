@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
+import { recordSendFailed } from "./notify";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -110,17 +111,21 @@ export async function applyBounce(db: Db, orgId: string, parsed: ParsedBounce): 
 
   // Link to the submission via our original Message-ID → message → submission.
   let submissionId: string | null = null;
+  let notifyTarget: { userId: string; mailboxId: string | null; threadId: string | null } | null = null;
   if (parsed.originalMessageId) {
     const msg = await db.query.message.findFirst({
       where: and(eq(schema.message.orgId, orgId), eq(schema.message.messageIdHeader, parsed.originalMessageId)),
-      columns: { id: true },
+      columns: { id: true, threadId: true },
     });
     if (msg) {
       const sub = await db.query.submission.findFirst({
         where: eq(schema.submission.messageId, msg.id),
-        columns: { id: true },
+        columns: { id: true, createdByUserId: true, mailboxId: true },
       });
       submissionId = sub?.id ?? null;
+      if (sub?.createdByUserId) {
+        notifyTarget = { userId: sub.createdByUserId, mailboxId: sub.mailboxId, threadId: msg.threadId };
+      }
     }
   }
 
@@ -158,6 +163,20 @@ export async function applyBounce(db: Db, orgId: string, parsed: ParsedBounce): 
         ? "bounced_hard"
         : "bounced_soft";
     await rollupToWorst(db, submissionId, worstStatus);
+    // Durable notification for the sender — best-effort, never fails bounce handling.
+    if (notifyTarget) {
+      try {
+        await recordSendFailed(db, {
+          orgId,
+          userId: notifyTarget.userId,
+          mailboxId: notifyTarget.mailboxId,
+          threadId: notifyTarget.threadId,
+          submissionId,
+        });
+      } catch {
+        // a missing bell row is not worth failing the bounce update
+      }
+    }
   }
 
   return { matchedSubmission: submissionId, suppressed, worstStatus };

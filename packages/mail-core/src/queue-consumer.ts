@@ -9,6 +9,7 @@ import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
 import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { sendGrantUserIds } from "./mailbox";
+import { recordNewMail } from "./notify";
 import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
@@ -299,6 +300,13 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
 
       // Live inbox: wake the mailbox's users — list prepends + badge bumps.
       await notifyInboundMail(db, env.MAIL_EVENTS, job.resolvedMailboxId, threadId);
+
+      // Durable notification (bell) — best-effort, never fails the delivery.
+      try {
+        await recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId });
+      } catch (e) {
+        log.warn("in.notify_failed", { threadId, ...errInfo(e) });
+      }
 
       // A new correspondent just landed — bust the recipients' cached contact
       // candidates (key shape shared with draft.remote.ts contactsKey) so the

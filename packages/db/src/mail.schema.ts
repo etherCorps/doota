@@ -468,6 +468,53 @@ export const calendarRsvp = sqliteTable(
 );
 
 /**
+ * Durable notification log (docs/notifications.md, Phase A). STRUCTURAL refs
+ * only — no rendered title/body: the display string ("New message from Alice")
+ * is resolved at read time from the thread's cleartext `message.fromAddr`/
+ * `fromName`, so re-wording never needs a migration and no subject line leaks
+ * into a zero-access design. Scoped per user; the bell filters to the ACTIVE org
+ * (a user can hold mailboxes across served domains under multiSession).
+ *
+ * Read state is server-owned (cross-device): `seenAt` = bell opened, `readAt` =
+ * notification clicked. A daily cron prunes `readAt < now-30d` (folded into the
+ * draft-tombstone sweep).
+ */
+export const notification = sqliteTable(
+  "notification",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // new_mail | send_failed | assigned | mention
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
+    threadId: text("thread_id"),
+    submissionId: text("submission_id"),
+    // The internal actor (assigned/mention); null for new_mail (sender is external).
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: now(),
+    readAt: integer("read_at", { mode: "timestamp_ms" }),
+    seenAt: integer("seen_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    // Paginated feed (incl. recently-read). SQLite reads it backwards for DESC.
+    // No orgId: the app has no org switcher yet, so the bell is not org-scoped —
+    // filtering + sorting must share one index, and (userId, createdAt) serves
+    // both. `orgId` stays on the row; add (userId, orgId, createdAt) when a
+    // switcher exists to scope by.
+    index("notification_feed_idx").on(t.userId, t.createdAt),
+    // Unread count — partial so read rows drop out and it stays tiny.
+    index("notification_unread_idx").on(t.userId).where(sql`read_at is null`),
+    // Dedupe: find an existing unread new_mail row for (user, thread) before
+    // insert so a reply burst collapses.
+    index("notification_dedupe_idx").on(t.userId, t.threadId).where(sql`read_at is null`),
+  ],
+);
+
+/**
  * COLLABORATION (Task 5) — the thin Missive layer. Both live in SIBLING tables
  * (never merged into `message`), so the immutable-message / delivery / submission
  * invariants stay untouched and a note is STRUCTURALLY incapable of entering the

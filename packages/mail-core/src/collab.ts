@@ -5,6 +5,7 @@ import { error } from "@sveltejs/kit";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { grantedUserIds } from "./mailbox";
+import { recordAssigned } from "./notify";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -91,6 +92,21 @@ export async function assignThread(
       eventType: input.assigneeUserId ? "assigned" : "unassigned",
       data: { assigneeUserId: input.assigneeUserId },
     });
+  }
+
+  // Durable notification for the assignee — best-effort, never fails the assign.
+  if (input.assigneeUserId) {
+    try {
+      await recordAssigned(db, {
+        orgId: input.orgId,
+        mailboxId: input.mailboxId,
+        threadId: input.threadId,
+        assigneeUserId: input.assigneeUserId,
+        actorUserId: input.actorUserId,
+      });
+    } catch {
+      // a missing bell row is not worth failing the assignment
+    }
   }
 }
 
