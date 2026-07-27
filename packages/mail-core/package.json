@@ -31,7 +31,8 @@
     "./resolver": "./src/resolver.ts",
     "./sanitize-email": "./src/sanitize-email.ts",
     "./search": "./src/search.ts",
-    "./sender-trust": "./src/sender-trust.ts"
+    "./sender-trust": "./src/sender-trust.ts",
+    "./web-push": "./src/web-push.ts"
   },
   "dependencies": {
     "@doota/db": "workspace:*",
