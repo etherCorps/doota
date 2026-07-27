@@ -4,6 +4,7 @@ import * as schema from "@doota/db/schema";
 import { sweepDueSubmissions, type OutboundEnv } from "./outbound";
 import { sweepStaleDrafts } from "./drafts";
 import { pruneStaleNotifications } from "./notify";
+import { pruneStalePushSubscriptions } from "./web-push";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -23,9 +24,13 @@ const DAILY_ODDS = 1 / 288;
 export async function runScheduledSweeps(
   db: Db,
   env: OutboundEnv,
-): Promise<{ dueEnqueued: number; staleDraftsDeleted: number; notificationsPruned: number }> {
+): Promise<{ dueEnqueued: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number }> {
   const dueEnqueued = await sweepDueSubmissions(db, env.MAIL_OUT_QUEUE);
   const staleDraftsDeleted = await sweepStaleDrafts(db, env);
-  const notificationsPruned = Math.random() < DAILY_ODDS ? await pruneStaleNotifications(db) : 0;
-  return { dueEnqueued, staleDraftsDeleted, notificationsPruned };
+  // Daily-gated GC (both bounded scans): read notifications past retention +
+  // push subscriptions that stopped refreshing.
+  const daily = Math.random() < DAILY_ODDS;
+  const notificationsPruned = daily ? await pruneStaleNotifications(db) : 0;
+  const pushSubsPruned = daily ? await pruneStalePushSubscriptions(db) : 0;
+  return { dueEnqueued, staleDraftsDeleted, notificationsPruned, pushSubsPruned };
 }

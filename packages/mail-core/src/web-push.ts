@@ -4,7 +4,7 @@
 // dependency; runs on CF Workers and Node (crypto.subtle). Delivers a
 // notification with the app closed; a 404/410 from the push service means the
 // subscription is gone and the caller prunes it.
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, lt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -160,4 +160,15 @@ export async function sendPushToUser(db: Db, env: WebPushEnv, userId: string, pa
       // transient push-service error — leave it; a later event retries
     }
   }
+}
+
+/** Drop subscriptions not refreshed within the window (default 90d) — the device
+ * stopped loading the app. Fresh ones are re-stamped on every load. Cron-run. */
+export async function pruneStalePushSubscriptions(db: Db, olderThanMs = 90 * 24 * 60 * 60 * 1000): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const dropped = await db
+    .delete(mail.pushSubscription)
+    .where(and(isNotNull(mail.pushSubscription.lastSeenAt), lt(mail.pushSubscription.lastSeenAt, cutoff)))
+    .returning({ id: mail.pushSubscription.id });
+  return dropped.length;
 }
