@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { command, getRequestEvent } from "$app/server";
+import { command, query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -307,6 +307,43 @@ export const updateOrgProfile = command(
       body: { organizationId: orgId, data: { name, logo: logo || null } },
       headers: request.headers,
     });
+    return { success: true as const };
+  },
+);
+
+/** Org remote-content (images + fonts) policy for the settings UI. */
+export const orgRemoteContent = query(z.string().min(1), async (orgId) => {
+  const user = requireActor();
+  if (user.role !== "superadmin") {
+    const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
+    if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
+  }
+  const row = await getRequestEvent().locals.db.query.orgMailSettings.findFirst({
+    where: eq(schema.orgMailSettings.orgId, orgId),
+    columns: { remoteContentMode: true, remoteContentLocked: true },
+  });
+  return {
+    mode: row?.remoteContentMode === "allow" ? ("allow" as const) : ("block" as const),
+    locked: row?.remoteContentLocked ?? false,
+  };
+});
+
+/** Set the org remote-content default + whether users may override it. */
+export const setOrgRemoteContent = command(
+  z.object({ orgId: z.string().min(1), mode: z.enum(["block", "allow"]), locked: z.boolean() }),
+  async ({ orgId, mode, locked }) => {
+    const user = requireActor();
+    if (user.role !== "superadmin") {
+      const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
+      if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
+    }
+    await getRequestEvent()
+      .locals.db.insert(schema.orgMailSettings)
+      .values({ orgId, remoteContentMode: mode, remoteContentLocked: locked })
+      .onConflictDoUpdate({
+        target: schema.orgMailSettings.orgId,
+        set: { remoteContentMode: mode, remoteContentLocked: locked },
+      });
     return { success: true as const };
   },
 );

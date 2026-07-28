@@ -12,6 +12,7 @@
 	import BadgeCheckIcon from '@lucide/svelte/icons/badge-check';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import PageHeader from '$lib/components/admin/page-header.svelte';
+	import RemoteContentCard from '$lib/components/admin/remote-content-card.svelte';
 	import { updateOrgProfile, bimiStatus, publishBimi } from '$lib/rpc/domains.remote.js';
 
 	let { data } = $props();
@@ -137,6 +138,9 @@
 		</div>
 	</Card.CardContent>
 	</Card.Card>
+
+	<!-- Remote-content (images + fonts) policy for received mail. -->
+	<div class="max-w-2xl xl:max-w-none"><RemoteContentCard orgId={org.id} /></div>
 
 	<!-- BIMI — publishes the default._bimi TXT record so inboxes show the logo. -->
 	{#if !bimiDenied}
