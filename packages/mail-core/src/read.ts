@@ -36,6 +36,12 @@ export type ThreadSummary = {
   from: string | null;
   /** Latest sender's display name (label only; `from` is the address). */
   fromName: string | null;
+  /** Distinct people on the latest message (from + to + cc), capped at 4 — the
+   * avatar faces. */
+  participants: string[];
+  /** Full distinct participant count (uncapped). >2 = a group thread; the list
+   * renders an avatar stack + this count so it reads as one. */
+  participantCount: number;
   lastMessageAt: number | null;
   isStarred: boolean;
   unread: boolean;
@@ -165,6 +171,8 @@ export async function listThreads(
     bodyStrippedEnc: string | null;
     fromAddr: string | null;
     fromName: string | null;
+    toAddrs: string | null;
+    ccAddrs: string | null;
     sentAt: number | null;
   };
   const latestByThread = new Map<string, LatestRow>();
@@ -183,9 +191,9 @@ export async function listThreads(
       : sql``;
     const rows = await db.all<LatestRow>(sql`
       SELECT thread_id AS "threadId", subject_enc AS "subjectEnc", body_stripped_enc AS "bodyStrippedEnc",
-             from_addr AS "fromAddr", from_name AS "fromName", sent_at AS "sentAt"
+             from_addr AS "fromAddr", from_name AS "fromName", to_addrs AS "toAddrs", cc_addrs AS "ccAddrs", sent_at AS "sentAt"
       FROM (
-        SELECT thread_id, subject_enc, body_stripped_enc, from_addr, from_name, sent_at,
+        SELECT thread_id, subject_enc, body_stripped_enc, from_addr, from_name, to_addrs, cc_addrs, sent_at,
                ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sent_at DESC, rowid DESC) AS rn
         FROM message
         WHERE thread_id IN (${idList}) ${visibleCond}
@@ -219,12 +227,26 @@ export async function listThreads(
     ]);
     const lastMessageAt = latest?.sentAt != null ? Number(latest.sentAt) : null;
     const lastReadAt = readByThread.get(s.threadId);
+    // Distinct people on the latest message — from + to + cc, deduped by bare
+    // address (case-insensitive). `participants` caps at 4 (for avatars);
+    // `participantCount` is the full distinct total (>2 = a group thread).
+    const seen = new Set<string>();
+    const participants: string[] = [];
+    for (const a of [latest?.fromAddr ?? "", ...safeJsonArray(latest?.toAddrs), ...safeJsonArray(latest?.ccAddrs)]) {
+      const key = (a.match(/<([^>]+)>/)?.[1] ?? a).trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (participants.length < 4) participants.push(a);
+    }
+    const participantCount = seen.size;
     out.push({
       threadId: s.threadId,
       subject,
       snippet: preview(body),
       from: latest?.fromAddr ?? null,
       fromName: latest?.fromName ?? null,
+      participants,
+      participantCount,
       lastMessageAt,
       isStarred: s.isStarred,
       unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),

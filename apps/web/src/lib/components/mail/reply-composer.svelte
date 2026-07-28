@@ -342,33 +342,39 @@
 	async function send() {
 		if (!canSend || sending) return;
 		sending = true;
-		let res!: Awaited<ReturnType<typeof sendDraftById>>;
-		try {
-			await flushSave();
-			await ensureDraft();
-			if (!draftId) return;
-			res = await sendDraftById({ draftId, undoSeconds: UNDO_SECONDS });
-		} catch {
-			toast.error('Send failed — check your connection and try again.');
+		// One toast that carries the whole send: spinner while it flies, then flips
+		// to the "sent · Undo" acknowledgement (or an error) on the same id.
+		const toastId = toast.loading('Sending…');
+		// Persist the latest text, then FREE THE COMPOSER before the send network
+		// call — optimistic close. The send flies in the background; on failure the
+		// (already-saved) draft stays in Drafts.
+		await flushSave();
+		await ensureDraft();
+		const id = draftId;
+		sending = false;
+		if (!id) {
+			toast.dismiss(toastId);
 			return;
-		} finally {
-			sending = false;
 		}
-		// Gmail-style: the composer frees instantly; the toast carries Undo for
-		// the send-delay window. Undo restores the draft back into the editor.
 		clearMirror(mirrorKey);
-		const submissionId = res.submissionId;
 		draftId = null;
 		clientRevision = 0;
 		body = '';
 		attachments = []; // clear the chips — they belonged to the sent draft
 		editorKey++;
-		onchange?.(); // the sent bubble now exists in this mailbox's timeline
+		collapsed = true; // fold the docked composer back to its "Reply…" bar
 		onsent?.(); // clear the parent's reply target → next reply defaults to latest
-		toast('Reply sent', {
-			duration: UNDO_SECONDS * 1000,
-			action: { label: 'Undo', onClick: () => undoSend(submissionId) }
-		});
+		try {
+			const res = await sendDraftById({ draftId: id, undoSeconds: UNDO_SECONDS });
+			onchange?.(); // the sent bubble now exists in this mailbox's timeline
+			toast.success('Reply sent', {
+				id: toastId,
+				duration: UNDO_SECONDS * 1000,
+				action: { label: 'Undo', onClick: () => undoSend(res.submissionId) }
+			});
+		} catch {
+			toast.error('Send failed — your draft is saved in Drafts.', { id: toastId });
+		}
 	}
 
 	async function undoSend(submissionId: string) {

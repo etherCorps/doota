@@ -33,6 +33,7 @@
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
 	import ListEndCat from '$lib/components/mail/list-end-cat.svelte';
 	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
+	import AvatarStack from '$lib/components/mail/avatar-stack.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
 	import { activeMailbox as lastMailbox } from '$lib/client/active-mailbox.svelte.js';
@@ -201,7 +202,11 @@
 	async function refreshUnread() {
 		if (!mailboxId) return;
 		try {
-			unread.count = await unreadCount({ mailboxId });
+			// A plain re-await returns the arg-cached query result, so the badge set
+			// once and never moved. refresh() re-runs the query; read the fresh value.
+			const q = unreadCount({ mailboxId });
+			await q.refresh();
+			if (q.current != null) unread.count = q.current;
 		} catch {
 			// transient — next trigger retries
 		}
@@ -1323,7 +1328,7 @@
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
      selected and shows a checkbox affordance on fine-pointer hover — the row's
      geometry never changes, so selection causes zero layout shift. -->
-{#snippet selectAvatar(from: string | null, checked: boolean, toggle: () => void, label: string)}
+{#snippet selectAvatar(participants: string[], total: number, checked: boolean, toggle: () => void, label: string)}
 	<button
 		type="button"
 		aria-pressed={checked}
@@ -1339,7 +1344,7 @@
 				<CheckIcon class="size-4" />
 			</span>
 		{:else}
-			{@render monogram(from, 'size-9 text-xs')}
+			<AvatarStack {participants} {total} class="size-9 text-xs" />
 			<span
 				class="bg-background/95 text-muted-foreground pointer-fine:group-hover/row:grid absolute inset-0 hidden place-items-center rounded-full border"
 			>
@@ -1736,7 +1741,8 @@
 								class="group/row flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 select-none {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(d.id) ? 'bg-accent' : 'hover:bg-muted/50'}"
 							>
 								{@render selectAvatar(
-									d.to[0] ?? null,
+									d.to,
+									d.to.length,
 									draftSel.has(d.id),
 									() => (draftSel.has(d.id) ? draftSel.delete(d.id) : draftSel.add(d.id)),
 									'Select draft'
@@ -1837,7 +1843,8 @@
 								>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
-									t.from,
+									t.participants,
+									t.participantCount,
 									checked,
 									() => (checked ? threadSel.delete(t.threadId) : threadSel.add(t.threadId)),
 									'Select conversation'

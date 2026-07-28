@@ -9,9 +9,9 @@
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import { activeMailbox } from '$lib/client/active-mailbox.svelte.js';
+	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
-	import MailIcon from '@lucide/svelte/icons/mail';
 
 	type Box = { id: string; address: string; displayName: string | null };
 	let mailboxes = $state<Box[]>([]);
@@ -43,11 +43,7 @@
 	<DropdownMenu.Trigger>
 		{#snippet child({ props })}
 			<Sidebar.MenuButton size="lg" class="data-[state=open]:bg-sidebar-accent" {...props}>
-				<div
-					class="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md"
-				>
-					<MailIcon class="size-4" />
-				</div>
+				<SenderAvatar from={active?.address ?? null} class="size-8 text-[11px]" />
 				<div class="grid flex-1 text-left leading-tight">
 					<span class="truncate text-sm font-medium">{active?.displayName ?? 'Mailbox'}</span>
 					<span class="text-muted-foreground truncate font-mono text-xs">{active?.address ?? '…'}</span>
@@ -60,6 +56,7 @@
 		<DropdownMenu.Label class="text-muted-foreground text-xs">Mailboxes</DropdownMenu.Label>
 		{#each mailboxes as mailbox (mailbox.id)}
 			<DropdownMenu.Item onSelect={() => pick(mailbox.id)}>
+				<SenderAvatar from={mailbox.address} class="size-8 text-[11px]" />
 				<div class="grid flex-1 leading-tight">
 					<span class="text-sm">{mailbox.displayName ?? mailbox.address}</span>
 					<span class="text-muted-foreground font-mono text-xs">{mailbox.address}</span>

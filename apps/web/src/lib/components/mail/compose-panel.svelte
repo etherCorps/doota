@@ -455,47 +455,50 @@
 			return;
 		}
 		phase = 'sending';
-		let res!: Awaited<ReturnType<typeof sendDraftById>>;
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
-		try {
-			await flushSave();
-			if (!draftId) {
-				phase = 'editing';
-				return;
-			}
-			res = await sendDraftById({ draftId, sendAt, undoSeconds: UNDO_SECONDS });
-		} catch {
-			// The draft is intact — let the user retry instead of eating the mail.
+		// One toast for the whole send: spinner while it flies, then flips to the
+		// sent/scheduled acknowledgement (or an error) on the same id.
+		const toastId = toast.loading(sendAt ? 'Scheduling…' : 'Sending…');
+		// Persist the latest text, then FREE THE COMPOSER before the send network
+		// call — Gmail/Superhuman-style optimistic close. The send flies in the
+		// background; on failure the (already-saved) draft stays in Drafts.
+		await flushSave();
+		const id = draftId;
+		if (!id) {
 			phase = 'editing';
-			toast.error('Send failed — check your connection and try again.');
+			toast.dismiss(toastId);
 			return;
 		}
-		if (sendAt && sendAt > Date.now() + UNDO_SECONDS * 1000) {
-			reset();
-			open = false;
-			// Scheduled sends don't get an undo countdown — they sit in the Scheduled
-			// folder where they can be canceled or edited any time before they fire.
-			const when = new Date(sendAt).toLocaleString(undefined, {
-				weekday: 'short',
-				month: 'short',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit'
-			});
-			toast(`Scheduled for ${when}`, {
-				action: { label: 'View', onClick: () => goto('/app?folder=scheduled') }
-			});
-			return;
-		}
-		// Gmail-style: the composer frees instantly; the toast carries Undo for
-		// the send-delay window. Undo restores the draft and reopens the composer.
-		const submissionId = res.submissionId;
+		const scheduled = sendAt != null && sendAt > Date.now() + UNDO_SECONDS * 1000;
+		const whenLabel = scheduled
+			? new Date(sendAt!).toLocaleString(undefined, {
+					weekday: 'short',
+					month: 'short',
+					day: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit'
+				})
+			: '';
 		reset();
 		open = false;
-		toast('Message sent', {
-			duration: UNDO_SECONDS * 1000,
-			action: { label: 'Undo', onClick: () => undoSend(submissionId) }
-		});
+		try {
+			const res = await sendDraftById({ draftId: id, sendAt, undoSeconds: UNDO_SECONDS });
+			if (scheduled) {
+				// Scheduled sends have no undo countdown — they sit in the Scheduled folder.
+				toast(`Scheduled for ${whenLabel}`, {
+					id: toastId,
+					action: { label: 'View', onClick: () => goto('/app?folder=scheduled') }
+				});
+			} else {
+				toast.success('Message sent', {
+					id: toastId,
+					duration: UNDO_SECONDS * 1000,
+					action: { label: 'Undo', onClick: () => undoSend(res.submissionId) }
+				});
+			}
+		} catch {
+			toast.error('Send failed — your draft is saved in Drafts.', { id: toastId });
+		}
 	}
 
 	async function undoSend(submissionId: string) {
