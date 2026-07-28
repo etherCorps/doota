@@ -1,0 +1,2 @@
+ALTER TABLE `org_mail_settings` ADD `remote_content_mode` text DEFAULT 'block' NOT NULL;--> statement-breakpoint
+ALTER TABLE `org_mail_settings` ADD `remote_content_locked` integer DEFAULT false NOT NULL;

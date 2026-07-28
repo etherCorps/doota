@@ -197,6 +197,13 @@
       "when": 1785235991988,
       "tag": "0027_cuddly_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1785242975137,
+      "tag": "0028_aromatic_tarantula",
+      "breakpoints": true
     }
   ]
 }

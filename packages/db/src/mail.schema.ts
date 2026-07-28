@@ -56,6 +56,13 @@ export const orgMailSettings = sqliteTable("org_mail_settings", {
   // outbound path sets it as the envelope MAIL FROM and the inbound consumer
   // recognizes DSNs addressed here as bounces rather than normal mail.
   returnPathDomain: text("return_path_domain"),
+  // Org-wide remote-content (images + fonts) policy. `block` (privacy default):
+  // remote resources are proxied only when the reader opts in. `allow`:
+  // auto-loaded (still same-origin proxied, never a direct sender fetch).
+  // When `remote_content_locked`, users CANNOT override it (server-enforced in
+  // the body route) — for privacy-strict orgs.
+  remoteContentMode: text("remote_content_mode").default("block").notNull(), // block | allow
+  remoteContentLocked: integer("remote_content_locked", { mode: "boolean" }).default(false).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .$onUpdate(() => new Date())

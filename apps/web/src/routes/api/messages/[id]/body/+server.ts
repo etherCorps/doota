@@ -5,6 +5,7 @@ import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent, getDecryptedBlob, packBlob, unpackBlob } from "@doota/mail-core/crypto";
 import { rawObjectToHtml } from "@doota/mail-core/mime";
+import { orgRemoteContentPolicy, remoteContentAllowed } from "@doota/mail-core/sender-trust";
 import {
   sanitizeEmailHtml,
   buildFramedDocument,
@@ -144,8 +145,13 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   }
   if (!allowed) error(403, "You can't access this message.");
 
-  const loadImages = url.searchParams.get("images") === "1";
+  const requestedImages = url.searchParams.get("images") === "1";
   const fullView = url.searchParams.get("full") === "1";
+  // Org remote-content policy is SERVER-AUTHORITATIVE: a locked org can't be
+  // overridden by the reader's ?images=1, and an `allow` org auto-loads even
+  // without it. Key the ETag on the EFFECTIVE decision, not the raw request.
+  const policy = await orgRemoteContentPolicy(locals.db, msg.orgId);
+  const loadImages = remoteContentAllowed(policy, requestedImages);
   // Revalidation: auth passed above, so a 304 here is safe (a revoked user
   // never reaches this — they 403). Skips the decrypt + sanitize + attachment
   // reads when the browser's copy is still current; a RENDER_CACHE_VERSION bump

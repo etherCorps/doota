@@ -55,3 +55,23 @@ export async function untrustSenderImages(db: Db, userId: string, sender: string
     .delete(mail.senderImageTrust)
     .where(and(eq(mail.senderImageTrust.userId, userId), eq(mail.senderImageTrust.senderAddr, norm(sender))));
 }
+
+// ---- Org remote-content policy (images + fonts) ----------------------------
+
+export type RemoteContentPolicy = { mode: "block" | "allow"; locked: boolean };
+
+/** Org-wide remote-content policy. Default: block, unlocked (privacy-first). */
+export async function orgRemoteContentPolicy(db: Db, orgId: string): Promise<RemoteContentPolicy> {
+  const row = await db.query.orgMailSettings.findFirst({
+    where: eq(mail.orgMailSettings.orgId, orgId),
+    columns: { remoteContentMode: true, remoteContentLocked: true },
+  });
+  return { mode: row?.remoteContentMode === "allow" ? "allow" : "block", locked: row?.remoteContentLocked ?? false };
+}
+
+/** Effective allow, org-authoritative. A LOCKED org can't be overridden by the
+ * reader's per-message request (`requested`) — the server enforces it. */
+export function remoteContentAllowed(policy: RemoteContentPolicy, requested: boolean): boolean {
+  if (policy.locked) return policy.mode === "allow";
+  return requested || policy.mode === "allow";
+}
