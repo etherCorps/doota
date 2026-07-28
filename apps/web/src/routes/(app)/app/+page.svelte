@@ -1061,12 +1061,18 @@
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
 	let attachmentsOpen = $state(false);
 	const isMobile = new IsMobile();
+	// Region (not viewport) width drives the pane-constrained layout — the SAME
+	// axis + 896px threshold as the CSS `@4xl` split below. Viewport `isMobile`
+	// (768) disagreed: a small laptop with the sidebar open is single-pane but not
+	// "mobile", which used to dock the attachments column inside a stacked thread.
+	let regionW = $state(0);
+	const narrow = $derived(regionW > 0 && regionW < 896);
 	// Briefly highlight a message after jumping to it (WhatsApp reply-jump feel).
 	let flashMsgId = $state<string | null>(null);
 	/** Scroll a message into view; in mail view, expand it first if collapsed.
 	 * On mobile the drawer covers the stream, so jumping closes it. */
 	function jumpToMsg(id: string, isLast: boolean) {
-		if (isMobile.current) attachmentsOpen = false;
+		if (narrow) attachmentsOpen = false;
 		if (threadView.current === 'mail' && !msgOpen(id, isLast)) toggleMsg(id);
 		const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 		requestAnimationFrame(() => {
@@ -1471,7 +1477,7 @@
 <!-- @container: the list/thread split reacts to THIS region's width (sidebar
      open/closed included), not the viewport — collapsing the sidebar on a small
      laptop earns the two-pane layout. -->
-<div class="@container flex h-full">
+<div class="@container flex h-full" bind:clientWidth={regionW}>
 	<!-- List pane -->
 	<!-- Single-pane swap (list OR thread) until the mail region is ≥ 56rem wide;
 	     then the real two-pane split. -->
@@ -1933,7 +1939,7 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
+	<div class="@container/thread relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
@@ -2234,7 +2240,7 @@
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.calendarInvite}
-													<div class="mb-2 w-[min(70vw,32rem)]">
+													<div class="mb-2 w-[min(32rem,calc(100cqi-7rem))]">
 														<InviteCard invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
 													</div>
 													<button
@@ -2248,7 +2254,7 @@
 												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
-													<div class="w-[min(70vw,32rem)]">
+													<div class="w-[min(32rem,calc(100cqi-7rem))]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
 															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`}
@@ -2287,7 +2293,7 @@
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
 														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
-														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-60 grid-cols-1' : 'max-w-80 grid-cols-2'}">
+														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-[min(15rem,calc(100cqi-7rem))] grid-cols-1' : 'max-w-[min(20rem,calc(100cqi-7rem))] grid-cols-2'}">
 															{#each media as a (a.id)}
 																<AttachmentTile att={a} variant="grid" onpreview={openLightbox} />
 															{/each}
@@ -2468,7 +2474,7 @@
 					</ScrollArea>
 
 					<!-- Attachments ≥ md — docked column beside the stream. -->
-					{#if attachmentsOpen && !isMobile.current}
+					{#if attachmentsOpen && !narrow}
 						{@const groups = groupAttachments(msgs)}
 						<!-- slide on the x-axis animates WIDTH (0→auto), so the stream reflows
 						     in step with the panel — a fly/translate would claim the full width
@@ -2492,8 +2498,8 @@
 					{/if}
 					</div>
 
-					<!-- Attachments < md — bottom drawer over the conversation. -->
-					{#if isMobile.current}
+					<!-- Attachments in a single-pane region — bottom drawer over the conversation. -->
+					{#if narrow}
 						<Drawer.Root open={attachmentsOpen} onOpenChange={(o) => (attachmentsOpen = o)}>
 							<Drawer.Content class="max-h-[80svh]">
 								<Drawer.Header class="pb-2">

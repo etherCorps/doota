@@ -143,6 +143,10 @@ export function buildFramedDocument(
   const reset =
     "*{resize:none!important}" + // stray editor drag-grips from legacy sends
     "html{color-scheme:light}" + // email's prefers-color-scheme:dark must NOT fire (Part I)
+    // Images shrink to the frame on narrow panes (phone/tablet) instead of forcing
+    // horizontal overflow. Fixed-width layout tables can still scroll — that's the
+    // sender's markup, not ours to reflow.
+    "img,video{max-width:100%!important;height:auto}" +
     // A SOLID light surface: with color-scheme forced light, dark text on a
     // transparent body would be invisible over a dark app bubble. Renders the
     // email as its own light card (Gmail-style) regardless of app theme. Small
