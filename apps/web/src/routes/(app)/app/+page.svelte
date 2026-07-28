@@ -30,6 +30,7 @@
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
+	import ListEndCat from '$lib/components/mail/list-end-cat.svelte';
 	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
@@ -1279,34 +1280,6 @@
 	{/each}
 {/snippet}
 
-<!-- End-of-list marker: shown only once real pagination is exhausted (≥ a full
-     page loaded). A hand-drawn curled cat keeps the empty space warm instead of
-     an abrupt cutoff. currentColor inherits the muted tone; ears/body use a
-     faint fill of the same. -->
-{#snippet listEnd()}
-	<div class="text-faint flex flex-col items-center gap-2 py-8 select-none">
-		<svg viewBox="0 0 72 52" width="64" height="46" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<!-- curled loaf body -->
-			<path d="M12 42 C12 26 22 20 36 20 C50 20 60 26 60 42 Z" fill="currentColor" fill-opacity="0.08" />
-			<!-- ears -->
-			<path d="M25 22 L22 13 L31 18 Z" fill="currentColor" fill-opacity="0.08" />
-			<path d="M47 22 L50 13 L41 18 Z" fill="currentColor" fill-opacity="0.08" />
-			<!-- sleepy closed eyes -->
-			<path d="M27 31 q3 2.5 6 0" />
-			<path d="M39 31 q3 2.5 6 0" />
-			<!-- nose + mouth -->
-			<path d="M35 35 l1 1.2 l1 -1.2" />
-			<!-- whiskers -->
-			<path d="M29 36 h-8" />
-			<path d="M43 36 h8" />
-			<!-- tail curling back over the loaf -->
-			<path d="M60 42 q9 -1 7 -11 q-1 -6 -7 -3" />
-		</svg>
-		<p class="text-xs font-medium">That's the end of {folder.name.toLowerCase()}</p>
-		<p class="text-[11px]">The cat's got the rest. Nothing more to load.</p>
-	</div>
-{/snippet}
-
 {#snippet threadSkeleton()}
 	<div class="flex h-12 items-center gap-2 border-b px-3 md:px-4">
 		<Skeleton class="h-4 w-48 rounded" />
@@ -1889,7 +1862,7 @@
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
 						{:else if reachedEnd && applyListFilters(items).length}
-							{@render listEnd()}
+							<ListEndCat name={folder.name} />
 						{/if}
 					{:else if loadingList}
 						{@render listSkeleton()}
