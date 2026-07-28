@@ -22,6 +22,7 @@
     "./mailbox": "./src/mailbox.ts",
     "./mailbox-detail": "./src/mailbox-detail.ts",
     "./materialize": "./src/materialize.ts",
+    "./mime": "./src/mime.ts",
     "./mirror": "./src/mirror.ts",
     "./notes": "./src/notes.ts",
     "./notify": "./src/notify.ts",

@@ -8,10 +8,6 @@ import { listSystemEvents } from "./collab";
 import {
   stripHtmlTags,
   tickForStatus,
-  isRichHtml,
-  hasRemoteHttpImages,
-  isCidReferenced,
-  stripQuotesHtml,
   type MessageDTO,
   type SubmissionState,
   type ThreadDTO,
@@ -482,6 +478,7 @@ export async function getThread(
               filename: schema.attachment.filename,
               contentType: schema.attachment.contentType,
               size: schema.attachment.size,
+              inline: schema.attachment.inline,
             })
             .from(schema.attachment)
             .where(inArray(schema.attachment.messageId, messageIds))
@@ -676,20 +673,14 @@ export async function getThread(
   // round-trips of AES-GCM over the bodies).
   const items: MessageDTO[] = await Promise.all(
     messages.map(async (m): Promise<MessageDTO> => {
-    const [subj, stripped, full, html] = await Promise.all([
+    const [subj, stripped, full] = await Promise.all([
       decryptContent(input.ck, m.subjectEnc),
       decryptContent(input.ck, m.bodyStrippedEnc),
       decryptContent(input.ck, m.bodyFullEnc),
-      decryptContent(input.ck, m.bodyHtmlEnc),
     ]);
     const d = deliveryByMsg.get(m.id);
     const sentAt = m.sentAt ? m.sentAt.getTime() : null;
     const isRead = readCursor != null && sentAt != null && sentAt <= readCursor;
-    // Render decisions use the QUOTE-STRIPPED html: the prior messages are already
-    // in the timeline, so the quoted reply history is redundant noise — and a reply
-    // that's "rich" only because of its <blockquote> quote should fall back to a
-    // plain bubble, not a heavy sandboxed card. The body route strips the same way.
-    const displayHtml = html ? stripQuotesHtml(html) : null;
     const dto: MessageDTO = {
       type: "external_message",
       id: m.id,
@@ -706,9 +697,11 @@ export async function getThread(
       bodyStripped: stripped,
       bodyFull: full,
       // Raw HTML never leaves the server — only the render decision + flags do.
-      // The sandboxed /api/messages/[id]/body route decrypts + sanitizes on demand.
-      htmlKind: displayHtml ? (isRichHtml(displayHtml) ? "rich" : "plain") : null,
-      hasRemoteImages: hasRemoteHttpImages(displayHtml),
+      // Computed at ingest (materialize) + stored, so the read path never touches
+      // the body. The sandboxed /api/messages/[id]/body route derives + sanitizes
+      // the html from the R2 raw on demand.
+      htmlKind: (m.htmlKind as "rich" | "plain" | null) ?? null,
+      hasRemoteImages: m.hasRemoteImages,
       senderTrusted: !!m.fromAddr && trustedFrom.has(m.fromAddr.toLowerCase()),
       keywords: safeJsonArray(d?.keywords),
       isRead,
@@ -721,7 +714,7 @@ export async function getThread(
         filename: a.filename,
         contentType: a.contentType,
         size: a.size,
-        inline: isCidReferenced(displayHtml, a.partId),
+        inline: a.inline,
       })),
       ...(submissionByMsg.has(m.id) ? { submission: submissionByMsg.get(m.id) } : {}),
       ...(replyContextByMsg.has(m.id) ? { replyContext: replyContextByMsg.get(m.id) } : {}),

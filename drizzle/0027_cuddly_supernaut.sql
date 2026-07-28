@@ -1,0 +1,1 @@
+ALTER TABLE `message` DROP COLUMN `body_html_enc`;

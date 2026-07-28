@@ -81,7 +81,7 @@ describe("SAFETY — a note can never reach the outbound path", () => {
     const msgs = await db.query.message.findMany();
     for (const m of msgs) {
       expect(await decryptContent(ck, m.bodyStrippedEnc)).not.toContain("SECRET INTERNAL");
-      expect(await decryptContent(ck, m.bodyHtmlEnc)).not.toContain("SECRET INTERNAL");
+      expect(await decryptContent(ck, m.bodyFullEnc)).not.toContain("SECRET INTERNAL");
     }
     // The note lives only in internal_note; nothing points a submission at it.
     const note = await db.query.internalNote.findFirst();

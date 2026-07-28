@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { rawObjectToHtml } from "@doota/mail-core/mime";
 import {
   sanitizeEmailHtml,
   buildFramedDocument,
@@ -118,7 +119,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
 
   const msg = await locals.db.query.message.findFirst({
     where: eq(schema.message.id, params.id!),
-    columns: { id: true, orgId: true, bodyHtmlEnc: true, bodyStrippedEnc: true },
+    columns: { id: true, orgId: true, r2RawKey: true, bodyStrippedEnc: true },
   });
   if (!msg) error(404, "Message not found");
 
@@ -155,7 +156,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   }
 
   const ck = await importKey(dek);
-  const rawHtml = await decryptContent(ck, msg.bodyHtmlEnc);
+  // Derive the HTML body from the raw in R2 — it's not stored in D1 (golden:
+  // raw is canonical). Only runs on a cache MISS (the 304 above short-circuits
+  // repeat views), so it's a first-view-only R2 GET + parse.
+  const rawObj = msg.r2RawKey && platform?.env?.MAIL_RAW ? await platform.env.MAIL_RAW.get(msg.r2RawKey) : null;
+  const rawHtml = rawObj ? await rawObjectToHtml(msg.r2RawKey!, await rawObj.arrayBuffer()) : null;
   // fullView ("View entire message", Gmail's clipped-message pattern): raised
   // caps, still sanitized and sandboxed — only reachable from the clipped notice.
 

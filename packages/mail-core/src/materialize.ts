@@ -12,6 +12,10 @@ import {
   normalizeSubject,
   stripHtmlTags,
   stripQuotesText,
+  stripQuotesHtml,
+  isRichHtml,
+  hasRemoteHttpImages,
+  isCidReferenced,
 } from "./mail-thread-contract";
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -196,12 +200,21 @@ export async function materializeMessage(
     hasAttachments: parsed.attachments.length > 0,
     htmlLength: parsed.html?.length ?? 0,
   });
+  // Render-decision flags computed ONCE at ingest (the DB stores decisions, not
+  // the body): getThread reads these instead of decrypting the html per message
+  // on every thread open. Same quote-stripped basis the body route renders on.
+  const displayHtml = parsed.html ? stripQuotesHtml(parsed.html) : null;
+  const htmlKind = displayHtml ? (isRichHtml(displayHtml) ? "rich" : "plain") : null;
+  const hasRemoteImages = hasRemoteHttpImages(displayHtml);
 
-  const [subjectEnc, strippedEnc, fullEnc, htmlEnc] = await Promise.all([
+  // The HTML body is NOT stored in D1 — it's derived from the raw MIME in R2
+  // (r2RawKey) on render (golden-standard: raw is canonical, large derived
+  // bodies aren't duplicated into the hot DB). Only the small text twins
+  // (stripped for list/search preview, full for reply quoting) live here.
+  const [subjectEnc, strippedEnc, fullEnc] = await Promise.all([
     encryptContent(deps.ck, parsed.subject),
     encryptContent(deps.ck, strippedText || bodyFull),
     encryptContent(deps.ck, bodyFull),
-    encryptContent(deps.ck, parsed.html),
   ]);
 
   const inserted = await db
@@ -221,10 +234,11 @@ export async function materializeMessage(
       r2RawKey: parsed.r2RawKey,
       itemType: "external_message",
       contentKind,
+      htmlKind,
+      hasRemoteImages,
       subjectEnc,
       bodyStrippedEnc: strippedEnc,
       bodyFullEnc: fullEnc,
-      bodyHtmlEnc: htmlEnc,
     })
     .onConflictDoNothing()
     .returning({ id: mail.message.id, threadId: mail.message.threadId });
@@ -296,6 +310,10 @@ async function writeAttachments(db: Db, messageId: string, parsed: ParsedMessage
   // Clear + re-insert: attachments are derived from the canonical raw, so a
   // re-run replaces cleanly (no natural unique key on part metadata).
   await db.delete(mail.attachment).where(eq(mail.attachment.messageId, messageId));
+  // Whether each part is referenced by a cid: in the (quote-stripped) body — the
+  // "inline" flag getThread used to derive from the html; computed once here so
+  // the read path doesn't need the body. Same basis the body route renders on.
+  const displayHtml = parsed.html ? stripQuotesHtml(parsed.html) : null;
   const rows = parsed.attachments.map((a) => ({
     messageId,
     partId: a.partId,
@@ -303,6 +321,7 @@ async function writeAttachments(db: Db, messageId: string, parsed: ParsedMessage
     contentType: a.contentType,
     size: a.size,
     r2Key: a.r2Key,
+    inline: isCidReferenced(displayHtml, a.partId),
   }));
   // D1 caps bound parameters at 100/statement; 7 cols → chunk at 10 rows (70
   // params) so a message with many attachments doesn't overflow in one INSERT.

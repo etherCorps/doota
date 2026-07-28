@@ -381,3 +381,35 @@ describe("thread visibility (personal vs shared)", () => {
     expect(await countUnread(db, { mailboxId: "mb_apex", userId: "u9" })).toBe(1);
   });
 });
+
+describe("materialize — render flags computed at ingest", () => {
+  it("stores htmlKind='rich' + hasRemoteImages + per-attachment inline from the html", async () => {
+    const pm = parsed({
+      messageIdHeader: "<rich@ext>",
+      html: '<table><tr><td>x</td></tr></table><img src="cid:logo@x"><img src="https://t.co/p.gif">',
+      attachments: [
+        { partId: "logo@x", filename: "logo.png", contentType: "image/png", size: 10, r2Key: "k1" },
+        { partId: "9", filename: "r.pdf", contentType: "application/pdf", size: 20, r2Key: "k2" },
+      ],
+    });
+    const { messageId } = await materializeMessage(db, ORG, pm, deps);
+    const m = await db.query.message.findFirst({ where: eq(schema.message.id, messageId) });
+    expect(m.htmlKind).toBe("rich");
+    expect(m.hasRemoteImages).toBe(true);
+    const atts = await db.query.attachment.findMany({ where: eq(schema.attachment.messageId, messageId) });
+    expect(atts.find((a: any) => a.partId === "logo@x").inline).toBe(true); // cid-referenced
+    expect(atts.find((a: any) => a.partId === "9").inline).toBe(false);
+  });
+
+  it("strips quotes before deciding htmlKind (blockquote-only-rich → plain)", async () => {
+    const pm = parsed({
+      messageIdHeader: "<qk@ext>",
+      text: "Glad to hear it!",
+      html: "<p>Glad to hear it!</p><blockquote>On Sun, ether wrote: fine</blockquote>",
+    });
+    const { messageId } = await materializeMessage(db, ORG, pm, deps);
+    const m = await db.query.message.findFirst({ where: eq(schema.message.id, messageId) });
+    expect(m.htmlKind).toBe("plain");
+    expect(m.hasRemoteImages).toBe(false);
+  });
+});

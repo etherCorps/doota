@@ -201,12 +201,16 @@ export const message = sqliteTable(
     r2RawKey: text("r2_raw_key"),
     itemType: text("item_type").default("external_message").notNull(),
     contentKind: text("content_kind").default("card").notNull(), // bubble | card
+    // Render-decision flags computed at ingest so the read path never needs the
+    // HTML body (which is NOT stored here — it's derived from the raw MIME in R2
+    // on render). html_kind: rich → sandboxed card, plain → text bubble.
+    htmlKind: text("html_kind"), // rich | plain | null (no html)
+    hasRemoteImages: integer("has_remote_images", { mode: "boolean" }).default(false).notNull(),
     subjectEnc: text("subject_enc"),
+    // Small text twins stay in D1 for the hot list/search/quote paths. The large
+    // HTML body does NOT — see body/+server.ts (derives it from R2 raw).
     bodyStrippedEnc: text("body_stripped_enc"),
     bodyFullEnc: text("body_full_enc"),
-    // Original HTML body (encrypted). Kept separately from body_full (which stays
-    // plain text for quoting/search); rendered in a sandboxed iframe.
-    bodyHtmlEnc: text("body_html_enc"),
     createdAt: now(),
   },
   (t) => [
@@ -398,6 +402,9 @@ export const attachment = sqliteTable(
     contentType: text("content_type"),
     size: integer("size"),
     r2Key: text("r2_key"),
+    // cid-referenced by the body → hidden from the attachment list (shown inline).
+    // Computed at ingest so the read path doesn't need the HTML body.
+    inline: integer("inline", { mode: "boolean" }).default(false).notNull(),
   },
   (t) => [index("attachment_message_idx").on(t.messageId)],
 );

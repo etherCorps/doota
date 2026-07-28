@@ -222,8 +222,10 @@ describe("drafts — send integration & alias defaulting", () => {
     const { submissionId } = await sendDraft(db, env(), ck, "u1", { draftId: d.id });
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
     const message = await db.query.message.findFirst({ where: eq(schema.message.id, sub.messageId) });
-    const html = await decryptContent(ck, message.bodyHtmlEnc);
-    expect(html).toBe("<p>hello <strong>world</strong></p>");
+    // The HTML body is no longer stored in D1 — it lives in the R2 raw (outbound
+    // JSON). Read it there to assert the send-path trimming.
+    const raw = JSON.parse(await (await r2.get(message.r2RawKey))!.text()) as { html: string };
+    expect(raw.html).toBe("<p>hello <strong>world</strong></p>");
   });
 
   it("keeps BCC out of message headers — bcc lives only as a submission recipient", async () => {
@@ -305,8 +307,10 @@ describe("inbound HTML render", () => {
     await db.insert(schema.message).values({
       id: "mh", orgId: ORG, threadId: "thh", messageIdHeader: "<h@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
       bodyStrippedEnc: await encryptContent(ck, "Hello"),
-      // Plain conversational HTML → renders as a text bubble (htmlKind 'plain').
-      bodyHtmlEnc: await encryptContent(ck, "<p>Hello <b>world</b></p>"),
+      // Render flags are computed at ingest + stored; getThread just surfaces them
+      // (the html itself is derived from the R2 raw by the sandboxed body route).
+      htmlKind: "plain",
+      hasRemoteImages: false,
     });
     await db.insert(schema.delivery).values({ id: "dh", orgId: ORG, messageId: "mh", mailboxId: "mb_alice", role: "to" });
     await db.insert(schema.threadState).values({ id: "tsh", orgId: ORG, threadId: "thh", mailboxId: "mb_alice", placement: "inbox" });
@@ -324,13 +328,14 @@ describe("inbound HTML render", () => {
     await db.insert(schema.message).values({
       id: "mr", orgId: ORG, threadId: "thr", messageIdHeader: "<r@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
       bodyStrippedEnc: await encryptContent(ck, "table"),
-      bodyHtmlEnc: await encryptContent(ck, '<table><tr><td>x</td></tr></table><img src="cid:logo@x"><img src="https://t.co/p.gif">'),
+      htmlKind: "rich",
+      hasRemoteImages: true,
     });
     await db.insert(schema.delivery).values({ id: "dr", orgId: ORG, messageId: "mr", mailboxId: "mb_alice", role: "to" });
     await db.insert(schema.threadState).values({ id: "tsr", orgId: ORG, threadId: "thr", mailboxId: "mb_alice", placement: "inbox" });
     await db.insert(schema.attachment).values([
-      { id: "ainl", orgId: ORG, messageId: "mr", partId: "logo@x", filename: "logo.png", contentType: "image/png", r2Key: "k1" },
-      { id: "afile", orgId: ORG, messageId: "mr", partId: "9", filename: "report.pdf", contentType: "application/pdf", r2Key: "k2" },
+      { id: "ainl", orgId: ORG, messageId: "mr", partId: "logo@x", filename: "logo.png", contentType: "image/png", r2Key: "k1", inline: true },
+      { id: "afile", orgId: ORG, messageId: "mr", partId: "9", filename: "report.pdf", contentType: "application/pdf", r2Key: "k2", inline: false },
     ]);
 
     const dto = await getThread(db, { threadId: "thr", mailboxId: "mb_alice", ck });
@@ -347,7 +352,9 @@ describe("inbound HTML render", () => {
     await db.insert(schema.message).values({
       id: "mq", orgId: ORG, threadId: "thq", messageIdHeader: "<q@ext.com>", fromAddr: "n@ext.com", sentAt: new Date(),
       bodyStrippedEnc: await encryptContent(ck, "Glad to hear it!"),
-      bodyHtmlEnc: await encryptContent(ck, "<p>Glad to hear it!</p><blockquote>On Sun, ether wrote: Looks fine now</blockquote>"),
+      // A reply "rich" only via its <blockquote> quote → ingest strips the quote
+      // first, so the stored flag is 'plain' (computation covered in mail-pipeline).
+      htmlKind: "plain",
     });
     await db.insert(schema.delivery).values({ id: "dq", orgId: ORG, messageId: "mq", mailboxId: "mb_alice", role: "to" });
     await db.insert(schema.threadState).values({ id: "tsq", orgId: ORG, threadId: "thq", mailboxId: "mb_alice", placement: "inbox" });
