@@ -1,21 +1,51 @@
 /// <reference types="@sveltejs/kit" />
 /// <reference lib="webworker" />
 // SPDX-License-Identifier: Apache-2.0
-// Web Push service worker (docs/notifications.md, Phase B). Push + click only —
-// no offline caching. Delivers OS notifications with the app CLOSED, which the
-// tab-open Notification API can't. iOS Safari delivers push ONLY to an installed
-// PWA (add-to-home-screen); desktop works in a normal tab.
+// Service worker: Web Push (docs/notifications.md, Phase B) + app-shell precache.
+// Push delivers OS notifications with the app CLOSED (the tab-open Notification
+// API can't); iOS Safari delivers push ONLY to an installed PWA. The precache
+// makes repeat loads instant and satisfies the PWA-installability fetch signal.
+import { build, files, version } from '$service-worker';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
-// Take control immediately so a fresh SW starts handling push without a reload.
-sw.addEventListener('install', () => void sw.skipWaiting());
-sw.addEventListener('activate', (event) => event.waitUntil(sw.clients.claim()));
+// Version-keyed cache: `version` changes every deploy, so `activate` drops the
+// old one and a running tab never reads a stale mix. Precache ONLY SvelteKit's
+// immutable build output + static files — never pages or /api (auth-gated,
+// per-user, freshness-controlled), which must always hit the network.
+const CACHE = `doota-cache-${version}`;
+const PRECACHE = new Set([...build, ...files]);
 
-// A registered fetch handler is part of the PWA-installability signal. We do NOT
-// cache — every request goes straight to the network (the app isn't offline-first);
-// this just has to exist. Not calling respondWith = default browser handling.
-sw.addEventListener('fetch', () => {});
+sw.addEventListener('install', (event) => {
+	event.waitUntil(
+		caches
+			.open(CACHE)
+			.then((c) => c.addAll([...build, ...files]))
+			.then(() => sw.skipWaiting()),
+	);
+});
+
+sw.addEventListener('activate', (event) => {
+	event.waitUntil(
+		(async () => {
+			for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
+			await sw.clients.claim();
+		})(),
+	);
+});
+
+// Cache-first ONLY for the precached, content-hashed assets (immutable → a hash
+// change is a new URL, so this can never serve stale app code). Everything else
+// — pages, /api, the sandboxed message body, images — falls through to default
+// network handling (no respondWith); those carry their own auth + cache headers.
+sw.addEventListener('fetch', (event) => {
+	if (event.request.method !== 'GET') return;
+	const url = new URL(event.request.url);
+	if (url.origin !== location.origin || !PRECACHE.has(url.pathname)) return;
+	event.respondWith(
+		caches.open(CACHE).then(async (c) => (await c.match(event.request)) ?? fetch(event.request)),
+	);
+});
 
 type PushPayload = { title?: string; body?: string; url?: string; tag?: string };
 
