@@ -267,6 +267,30 @@
 		.animate-pop { animation: none; }
 		.shimmer::after { animation: none; }
 	}
+
+	/* Sidebar folder icons: a small icon-appropriate flourish on row hover — a
+	   one-shot flick keyed to what the icon means. Transform-only; a marker class
+	   (.sb-folder, merged onto the row link) scopes the :hover to the sidebar. */
+	.sb-ico { transition: transform var(--dur-base) var(--ease-out); }
+	.sb-ico--trash { transform-origin: 50% 22%; } /* pivot the lid, not the bin */
+	.sb-folder:hover .sb-ico--inbox,
+	.sb-folder:hover .sb-ico--archived { animation: doota-ico-dip 360ms var(--ease-out); }
+	.sb-folder:hover .sb-ico--snoozed { animation: doota-ico-wiggle 520ms var(--ease-in-out); }
+	.sb-folder:hover .sb-ico--sent { animation: doota-ico-fly 440ms var(--ease-out); }
+	.sb-folder:hover .sb-ico--drafts { animation: doota-ico-tilt 360ms var(--ease-out); }
+	.sb-folder:hover .sb-ico--scheduled { animation: doota-ico-tick 520ms var(--ease-out); }
+	.sb-folder:hover .sb-ico--spam { animation: doota-ico-shake 400ms var(--ease-in-out); }
+	.sb-folder:hover .sb-ico--trash { animation: doota-ico-lid 440ms var(--ease-out); }
+	@keyframes doota-ico-dip { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(2px); } }
+	@keyframes doota-ico-wiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-9deg); } 40% { transform: rotate(7deg); } 60% { transform: rotate(-5deg); } 80% { transform: rotate(3deg); } }
+	@keyframes doota-ico-fly { 0% { transform: translate(0, 0) rotate(0); } 45% { transform: translate(2px, -3px) rotate(8deg); } 100% { transform: translate(0, 0) rotate(0); } }
+	@keyframes doota-ico-tilt { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-7deg); } }
+	@keyframes doota-ico-tick { 0% { transform: rotate(0); } 55% { transform: rotate(28deg); } 100% { transform: rotate(0); } }
+	@keyframes doota-ico-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 75% { transform: translateX(-1px); } }
+	@keyframes doota-ico-lid { 0%, 100% { transform: rotate(0); } 45% { transform: rotate(-18deg); } }
+	@media (prefers-reduced-motion: reduce) {
+		.sb-folder:hover [class*='sb-ico--'] { animation: none; }
+	}
 }
 
 /* Themed thin scrollbar — matches the palette instead of the OS chrome. */

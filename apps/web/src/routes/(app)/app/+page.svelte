@@ -34,6 +34,7 @@
 	import ListEndCat from '$lib/components/mail/list-end-cat.svelte';
 	import SenderAvatar from '$lib/components/mail/sender-avatar.svelte';
 	import AvatarStack from '$lib/components/mail/avatar-stack.svelte';
+	import AvatarRow from '$lib/components/mail/avatar-row.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
 	import { activeMailbox as lastMailbox } from '$lib/client/active-mailbox.svelte.js';
@@ -1328,7 +1329,7 @@
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
      selected and shows a checkbox affordance on fine-pointer hover — the row's
      geometry never changes, so selection causes zero layout shift. -->
-{#snippet selectAvatar(participants: string[], total: number, checked: boolean, toggle: () => void, label: string)}
+{#snippet selectAvatar(participants: string[], checked: boolean, toggle: () => void, label: string)}
 	<button
 		type="button"
 		aria-pressed={checked}
@@ -1344,7 +1345,7 @@
 				<CheckIcon class="size-4" />
 			</span>
 		{:else}
-			<AvatarStack {participants} {total} class="size-9 text-xs" />
+			<AvatarStack {participants} class="size-9 text-xs" />
 			<span
 				class="bg-background/95 text-muted-foreground pointer-fine:group-hover/row:grid absolute inset-0 hidden place-items-center rounded-full border"
 			>
@@ -1742,7 +1743,6 @@
 							>
 								{@render selectAvatar(
 									d.to,
-									d.to.length,
 									draftSel.has(d.id),
 									() => (draftSel.has(d.id) ? draftSel.delete(d.id) : draftSel.add(d.id)),
 									'Select draft'
@@ -1844,7 +1844,6 @@
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
 									t.participants,
-									t.participantCount,
 									checked,
 									() => (checked ? threadSel.delete(t.threadId) : threadSel.add(t.threadId)),
 									'Select conversation'
@@ -1852,7 +1851,8 @@
 							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
 									<div class="flex items-baseline gap-2">
-										<span class="flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
+										<span class="min-w-0 flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
+										<AvatarRow participants={t.participants} total={t.participantCount} />
 										<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
 									</div>
 									<div class="flex items-center gap-1.5">

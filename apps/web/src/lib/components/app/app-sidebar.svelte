@@ -107,8 +107,8 @@
 								{#snippet child({ props })}
 									<!-- mergeProps: a plain onclick before the spread gets clobbered by
 									     the menu-button/tooltip handlers inside `props`. -->
-									<a href={folderHref(folder.id)} {...mergeProps(props, { onclick: closeMobile })}>
-										<Icon class="size-4" />
+									<a href={folderHref(folder.id)} {...mergeProps(props, { onclick: closeMobile, class: 'sb-folder' })}>
+										<Icon class="size-4 sb-ico sb-ico--{folder.id}" />
 										<span>{folder.name}</span>
 									</a>
 								{/snippet}
