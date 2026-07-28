@@ -192,6 +192,29 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     expect(m3.threadId).toBe(m1.threadId);
   });
 
+  it("does NOT subject-merge two fresh sends (no reply headers)", async () => {
+    // Re-sent automated/no-reply mail: same subject + participant, 1 day apart,
+    // neither carries In-Reply-To/References. Must be two separate threads.
+    const a = parsed({ messageIdHeader: "<w1@ext>", from: "no-reply@sender.com", subject: "Welcome to Doota" });
+    const b = parsed({ messageIdHeader: "<w2@ext>", from: "no-reply@sender.com", subject: "Welcome to Doota", sentAt: a.sentAt + 24 * 3600 * 1000 });
+    const m1 = await materializeMessage(db, ORG, a, deps);
+    const m2 = await materializeMessage(db, ORG, b, deps);
+    expect(m2.threadId).not.toBe(m1.threadId);
+  });
+
+  it("still subject-merges a reply whose ancestor we never stored", async () => {
+    // A genuine reply (has In-Reply-To) to a message we don't have on record:
+    // subject-fallback is exactly the rescue path, so it SHOULD merge.
+    const a = parsed({ messageIdHeader: "<s1@ext>", from: "ext@sender.com", subject: "Project update" });
+    const m1 = await materializeMessage(db, ORG, a, deps);
+    const reply = parsed({
+      messageIdHeader: "<s2@ext>", from: "alice@acme.com", to: ["ext@sender.com"],
+      inReplyTo: "<never-stored@x>", subject: "Re: Project update", sentAt: a.sentAt + 1000,
+    });
+    const m2 = await materializeMessage(db, ORG, reply, deps);
+    expect(m2.threadId).toBe(m1.threadId);
+  });
+
   it("dedupes our own message reflecting back under the provider id", async () => {
     const sent = parsed({ messageIdHeader: "<minted2@acme.com>", from: "alice@acme.com" });
     const m1 = await materializeMessage(db, ORG, sent, deps);

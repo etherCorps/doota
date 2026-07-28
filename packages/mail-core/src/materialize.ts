@@ -107,8 +107,9 @@ async function findMessageByHeaderId(
  * Find or create the thread for a message. In-Reply-To / References win — every
  * candidate id is tried newest-first (an unknown rewritten id must not orphan a
  * reply whose older ancestors we know). A normalized-subject match in the same
- * org within a 7-day window is the weak fallback only when headers give
- * nothing. Cleartext metadata — no decryption.
+ * org within a 7-day window is the weak fallback only for a message that IS a
+ * reply (has In-Reply-To/References) but whose ancestors we don't have stored;
+ * a fresh compose never subject-merges. Cleartext metadata — no decryption.
  */
 async function resolveThreadId(
   db: Db,
@@ -121,7 +122,13 @@ async function resolveThreadId(
   }
 
   const subjectNorm = normalizeSubject(parsed.subject);
-  if (subjectNorm) {
+  // Subject-fallback exists ONLY to rescue a genuine reply whose ancestor
+  // Message-IDs we don't happen to have stored — so it must carry In-Reply-To
+  // or References. A fresh compose (both absent) that merely shares a subject +
+  // participant must start its own thread, else re-sent "welcome"/"testing"/
+  // automated no-reply mail collapses into one polluted thread.
+  const isReply = !!(parsed.inReplyTo || parsed.references);
+  if (subjectNorm && isReply) {
     const since = new Date((parsed.sentAt ?? Date.now()) - SUBJECT_FALLBACK_WINDOW_MS);
     // Candidate threads with the same normalized subject in the window, newest
     // first. Subject alone is too weak to merge on (two unrelated "Re: invoice"
