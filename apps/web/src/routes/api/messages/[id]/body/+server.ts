@@ -205,10 +205,13 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   }
 
   const scriptHash = await sha256Base64(INJECTED_SCRIPT);
-  // Remote images load only via the same-origin proxy → img-src stays 'self'.
+  // Images load only same-origin (cid attachments + the remote-image proxy). We
+  // list the EXPLICIT origin, not just 'self': the frame is sandboxed without
+  // allow-same-origin, so its origin is opaque — and Safari treats `'self'` as
+  // "the opaque origin", which matches nothing, blocking even same-origin URLs.
   const directives = [
     "default-src 'none'",
-    "img-src 'self' data:",
+    `img-src 'self' ${url.origin} data:`,
     "style-src 'unsafe-inline'",
     "font-src data:",
     "media-src data:",
