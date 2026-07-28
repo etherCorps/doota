@@ -479,6 +479,27 @@ export const addNote = command(
   },
 );
 
+/** Teammates who can access this mailbox — the @mention candidate list for the
+ * note composer. Fetched once per composer and filtered client-side (no
+ * per-keystroke query). Excludes the caller; empty if the caller can't see the
+ * mailbox (so it never leaks another mailbox's members). */
+export const mentionCandidates = query(
+  z.string().min(1),
+  async (mailboxId): Promise<{ name: string; handle: string }[]> => {
+    const { locals } = getRequestEvent();
+    if (!locals.user) return [];
+    const rows = await locals.db
+      .select({ userId: schema.user.id, name: schema.user.name, email: schema.user.email })
+      .from(schema.mailboxAccess)
+      .innerJoin(schema.user, eq(schema.user.id, schema.mailboxAccess.userId))
+      .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
+    if (!rows.some((r) => r.userId === locals.user!.id)) return []; // caller lacks access
+    return rows
+      .filter((r) => r.userId !== locals.user!.id)
+      .map((r) => ({ name: r.name, handle: r.email.split("@")[0] }));
+  },
+);
+
 export const editNoteById = command(
   z.object({ noteId: z.string().min(1), body: z.string().trim().min(1) }),
   async ({ noteId, body }) => {
