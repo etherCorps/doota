@@ -20,7 +20,7 @@
     "tailwindcss": "^4.3.2",
     "takumi-js": "^2.0.1",
     "vite": "^6.3.5",
-    "wrangler": "^4.110.0",
+    "wrangler": "^4.114.0",
     "svelte-check": "^4.7.2"
   }
 }
