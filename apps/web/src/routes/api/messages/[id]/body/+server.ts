@@ -36,9 +36,23 @@ import { linkifySegments } from "$lib/utils/linkify.js";
 // security rules mirror lib/utils/mail-link.ts (classifyMailLink), kept in sync.
 const INJECTED_SCRIPT =
   "(function(){" +
+  // Fit-to-width: a fixed-width email (600px provider card) in a narrow frame
+  // would overflow and get clipped (scrolling=no). Scale the body down to fit
+  // the viewport — like Gmail on mobile — then report the SCALED height.
+  // scrollWidth/clientWidth are layout metrics (unaffected by transform), so
+  // re-runs are stable and the ResizeObserver can't loop.
   "function h(){var b=document.body;if(!b)return;" +
+  "var vw=document.documentElement.clientWidth||b.clientWidth;var cw=b.scrollWidth;" +
+  "var s=(cw>vw&&cw>0)?vw/cw:1;" +
+  "if(s<1){b.style.transformOrigin='top left';b.style.transform='scale('+s+')';}else if(b.style.transform){b.style.transform='';}" +
   "parent.postMessage({__mailframe:1,type:'height',value:Math.ceil(b.getBoundingClientRect().height)+8},'*');}" +
-  "addEventListener('load',h);if(document.readyState!=='loading')h();" +
+  // A remote image that fails (blocked, 404, non-image) shows the browser's
+  // broken-image glyph — hide it so it just disappears instead of littering the
+  // card. Re-measure on each successful load (layout shifts → rescale).
+  "function fixImg(im){function x(){im.style.visibility='hidden';}" +
+  "if(im.complete&&!im.naturalWidth){x();}else{im.addEventListener('error',x);im.addEventListener('load',h);}}" +
+  "function imgs(){[].forEach.call(document.images,fixImg);}" +
+  "addEventListener('load',function(){imgs();h();});if(document.readyState!=='loading'){imgs();h();}" +
   "try{new ResizeObserver(h).observe(document.body);}catch(e){}" +
   "function textHost(t){t=(t||'').trim();if(!t||/\\s/.test(t))return null;" +
   "var m=t.match(/^(?:https?:\\/\\/)?([a-z0-9.-]+\\.[a-z]{2,})/i);return m?m[1].toLowerCase():null;}" +
