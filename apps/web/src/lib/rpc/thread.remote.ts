@@ -15,6 +15,7 @@ import {
 } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
+import { tryLog } from "@doota/mail-core/log";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import {
@@ -219,8 +220,13 @@ export const markThreadRead = command(
       });
     // Reading a thread from the list also clears its bell notifications (and
     // pings the stream so the bell + sidebar count drop live) — parity with
-    // opening it from the notification panel.
-    await markThreadNotificationsRead(locals.db, locals.user!.id, threadId, platform?.env?.MAIL_EVENTS).catch(() => {});
+    // opening it from the notification panel. Best-effort; the read itself
+    // already succeeded, so a failed bell-clear must not fail the request.
+    await tryLog(
+      "thread.mark_notifications_read_failed",
+      markThreadNotificationsRead(locals.db, locals.user!.id, threadId, platform?.env?.MAIL_EVENTS),
+      { threadId },
+    );
     return { ok: true as const };
   },
 );
