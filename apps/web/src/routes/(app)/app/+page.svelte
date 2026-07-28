@@ -54,6 +54,7 @@
 		emptyFolder,
 		unreadCount,
 		setSenderImageTrust,
+		imagesLoadAll,
 		setInviteRsvp
 	} from '$lib/rpc/thread.remote';
 	import { unread } from '$lib/client/unread.svelte.js';
@@ -901,6 +902,10 @@
 	// theme (the iframe element paints bg-card); emails that hardcode their own
 	// background keep it — same stance as Gmail's "original" view.
 	const loadedImages = new SvelteSet<string>();
+	// Global "always show remote images" preference (account → Mail). When on,
+	// every message loads remote images and the per-message prompts hide.
+	const loadAllImagesQ = imagesLoadAll();
+	const imagesAll = $derived(loadAllImagesQ.current ?? false);
 	// "Always load images from this sender" (Gmail/Fastmail): flips the reader's
 	// default for that sender server-side; senderTrusted comes back via getThread.
 	async function setSenderTrust(m: MessageDTO, trusted: boolean) {
@@ -2227,7 +2232,7 @@
 												{/if}
 												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
-													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
+													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted || imagesAll}
 													<div class="w-[min(32rem,calc(80cqi-2.5rem))]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
@@ -2248,7 +2253,7 @@
 																	</button>
 																{/if}
 															</div>
-														{:else if m.senderTrusted && m.hasRemoteImages && !outbound}
+														{:else if m.senderTrusted && m.hasRemoteImages && !outbound && !imagesAll}
 															<button type="button" class="text-faint mt-1 text-[11px] hover:underline" onclick={() => setSenderTrust(m, false)}>
 																Images load automatically · Stop for this sender
 															</button>
@@ -2363,7 +2368,7 @@
 											{#if !m.calendarInvite || showOriginal.has(m.id)}
 												<div class={m.calendarInvite ? 'mt-2 border-t pt-2' : ''}>
 											{#if m.htmlKind === 'rich'}
-												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
+												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted || imagesAll}
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 												<!-- Mail (Gmail) view: the card is the container — render full height,
 												     no second collapse layer. -->
@@ -2379,7 +2384,7 @@
 															</button>
 														{/if}
 													</div>
-												{:else if m.senderTrusted && m.hasRemoteImages && !outbound}
+												{:else if m.senderTrusted && m.hasRemoteImages && !outbound && !imagesAll}
 													<button type="button" class="text-faint mt-1.5 text-[11px] hover:underline" onclick={() => setSenderTrust(m, false)}>
 														Images load automatically · Stop for this sender
 													</button>

@@ -17,7 +17,12 @@ import { importKey } from "@doota/mail-core/crypto";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
-import { trustSenderImages, untrustSenderImages } from "@doota/mail-core/sender-trust";
+import {
+  trustSenderImages,
+  untrustSenderImages,
+  loadsAllRemoteImages,
+  setLoadAllRemoteImages,
+} from "@doota/mail-core/sender-trust";
 import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
 
 /**
@@ -405,6 +410,22 @@ export const setSenderImageTrust = command(
     return { trusted };
   },
 );
+
+/** Global "always show remote images" — a user-wide default that overrides the
+ * per-message block for EVERY sender. Off by default (privacy: remote images are
+ * tracking beacons). Reads/writes are keyed on the caller's identity only. */
+export const imagesLoadAll = query(async (): Promise<boolean> => {
+  const { locals } = getRequestEvent();
+  if (!locals.user) return false;
+  return loadsAllRemoteImages(locals.db, locals.user.id);
+});
+
+export const setImagesLoadAll = command(z.object({ on: z.boolean() }), async ({ on }) => {
+  const { locals } = getRequestEvent();
+  if (!locals.user) error(401, "Not authenticated");
+  await setLoadAllRemoteImages(locals.db, locals.user.id, on);
+  return { on };
+});
 
 export const starThread = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), starred: z.boolean() }),

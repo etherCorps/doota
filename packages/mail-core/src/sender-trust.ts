@@ -12,6 +12,26 @@ type Db = DrizzleD1Database<typeof schema>;
 
 const norm = (addr: string) => addr.trim().toLowerCase();
 
+// Sentinel sender that means "load remote images from EVERYONE" — a user-wide
+// default that sits orthogonally to the per-sender rows (a real address can't be
+// "*"). Presence of this row = auto-load all remote images.
+const ALL = "*";
+
+/** User's global "always show remote images" preference. */
+export async function loadsAllRemoteImages(db: Db, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: mail.senderImageTrust.id })
+    .from(mail.senderImageTrust)
+    .where(and(eq(mail.senderImageTrust.userId, userId), eq(mail.senderImageTrust.senderAddr, ALL)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function setLoadAllRemoteImages(db: Db, userId: string, on: boolean): Promise<void> {
+  if (on) await trustSenderImages(db, userId, ALL);
+  else await untrustSenderImages(db, userId, ALL);
+}
+
 /** Which of `senders` this user auto-loads images from (normalized set). */
 export async function trustedSenders(db: Db, userId: string, senders: string[]): Promise<Set<string>> {
   const addrs = [...new Set(senders.filter(Boolean).map(norm))];
