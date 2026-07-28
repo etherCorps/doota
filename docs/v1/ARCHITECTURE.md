@@ -11,7 +11,10 @@ Data model and mail flow. Auth specifics live in `AUTH_HANDOFF.md`; feature boun
 derived field is regenerable from it. No derived field may ever be the only copy of
 anything. When `stripQuotes` or `deriveContentKind` improve later, re-run them against the
 originals and every message upgrades — zero data loss, because the source was never thrown
-away. (This is JMAP's model, and Dovecot/Cyrus's before it.)
+away. (This is JMAP's model, and Dovecot/Cyrus's before it.) The **HTML body is the
+clearest case**: it's not stored at all — the render route re-parses it from the R2 raw on
+demand (cached), so improving the sanitizer/rewriter upgrades every message with no
+migration. D1 holds only the small text twins + the ingest-computed render flags.
 
 **Cloudflare is the source of truth for Cloudflare state.** D1 caches only `domain`,
 `zone_id`, and `onboarding_status`. DNS records, routing rules, DKIM/SPF/DMARC status are
@@ -64,8 +67,11 @@ Better Auth tables (`user`, `account`, `session`, `verification`, `organization`
 - **`threads`** — `id`, `org_id`, `subject_normalized`, `last_message_at`.
 - **`messages`** — `id`, `org_id`, `thread_id`, `message_id_header` (**unique per org** — the
   dedupe key), `in_reply_to`, `references`, `from_addr`, `sent_at`, `r2_raw_key`,
-  `content_kind` (`bubble|card`), `subject_enc`, `body_stripped_enc`, `body_full_enc`.
-  **Immutable once written.**
+  `content_kind` (`bubble|card`), `subject_enc`, `body_stripped_enc`, `body_full_enc`,
+  and the ingest-computed **render-decision flags** `html_kind` (`rich|plain|null`),
+  `has_remote_images`. **The HTML body is NOT stored** — it's derived from the R2 raw on
+  render (see mail-flow.md § Rendering); only the small text twins live here (stripped for
+  list/search, full for reply quoting). **Immutable once written.**
 - **`deliveries`** — `(message_id, mailbox_id, role)` **unique**; `org_id`, `role`
   (`to|cc|bcc|from`), `via_alias_id` nullable, `subaddress_tag` nullable, `is_read`.
   **BCC exists only as delivery rows** — never written into the shared message's stored
@@ -74,8 +80,10 @@ Better Auth tables (`user`, `account`, `session`, `verification`, `organization`
   (`inbox|archived|spam|trash|sent`, exclusive), `is_starred`, `assignee_user_id` nullable,
   `last_read_at`.
 - **`labels`** (org-scoped) + **`thread_labels`** (`thread_id`, `mailbox_id`, `label_id`).
-- **`attachments`** — `message_id`, `part_id`, `filename`, `content_type`, `size`, `r2_key`.
-  Raw stays canonical; attachments are servable by re-extraction.
+- **`attachments`** — `message_id`, `part_id`, `filename`, `content_type`, `size`, `r2_key`,
+  `inline` (cid-referenced by the body → shown inline, hidden from the download list; computed
+  at ingest so the read path never needs the html). Raw stays canonical; attachments are
+  servable by re-extraction.
 - **FTS5 virtual table** — blind HMAC tokens (per-word, separate `SEARCH_KEY`), scoped to
   mailboxes via a `deliveries` join. Exact word AND/OR only; no prefix or fuzzy.
 

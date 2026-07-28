@@ -14,7 +14,7 @@ import {
 } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
-import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
+import { renderETag, isNotModified, revalidateHeaders, RENDER_CACHE_VERSION } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
 import { signResourceToken } from "$lib/server/resource-token.js";
 
@@ -157,10 +157,28 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
 
   const ck = await importKey(dek);
   // Derive the HTML body from the raw in R2 — it's not stored in D1 (golden:
-  // raw is canonical). Only runs on a cache MISS (the 304 above short-circuits
-  // repeat views), so it's a first-view-only R2 GET + parse.
-  const rawObj = msg.r2RawKey && platform?.env?.MAIL_RAW ? await platform.env.MAIL_RAW.get(msg.r2RawKey) : null;
-  const rawHtml = rawObj ? await rawObjectToHtml(msg.r2RawKey!, await rawObj.arrayBuffer()) : null;
+  // raw is canonical). To keep R2 reads flat vs when the body lived in D1, the
+  // parsed html is held in a SHARED edge cache keyed on (message, cache-version):
+  // the R2 GET + postal-mime parse then happens ONCE per message globally, not
+  // once per viewer/isolate. Auth ran above, so a post-auth cache read is safe;
+  // a RENDER_CACHE_VERSION bump changes the key so patched renders don't serve
+  // stale. (The browser's own ETag 304 already skips repeat views entirely.)
+  const bodyCache = (caches as { default?: Cache }).default;
+  const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
+  let rawHtml: string | null = null;
+  const cachedBody = bodyCache ? await bodyCache.match(bodyCacheKey) : null;
+  if (cachedBody) {
+    rawHtml = (await cachedBody.text()) || null;
+  } else {
+    const rawObj = msg.r2RawKey && platform?.env?.MAIL_RAW ? await platform.env.MAIL_RAW.get(msg.r2RawKey) : null;
+    rawHtml = rawObj ? await rawObjectToHtml(msg.r2RawKey!, await rawObj.arrayBuffer()) : null;
+    if (bodyCache && rawHtml !== null) {
+      const store = new Response(rawHtml, { headers: { "Cache-Control": "private, max-age=86400" } });
+      const put = bodyCache.put(bodyCacheKey, store);
+      if (platform?.ctx?.waitUntil) platform.ctx.waitUntil(put);
+      else await put;
+    }
+  }
   // fullView ("View entire message", Gmail's clipped-message pattern): raised
   // caps, still sanitized and sandboxed — only reachable from the clipped notice.
 

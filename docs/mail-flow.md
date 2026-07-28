@@ -47,10 +47,17 @@ consumer). Idempotent; any error retries the whole job.
 3. `materializeMessage` (`materialize.ts:109`) — upsert by
    `(orgId, messageIdHeader)`; first writer creates, later recipients of the
    same email reuse. Create path: resolve thread (below), strip quotes
-   (`stripQuotesText`), derive `contentKind` (bubble ≤800 chars, else card),
-   encrypt subject/stripped/full/html, insert with `onConflictDoNothing` (create
-   race → re-read winner). Always: bump `thread.lastMessageAt`, rewrite
-   attachment metadata rows (bytes stay in the R2 raw), index search tokens.
+   (`stripQuotesText`), derive `contentKind` (bubble ≤800 chars, else card).
+   **The HTML body is NOT stored** — it's derived from the R2 raw on render (see
+   *Rendering*). Only the small text twins are encrypted + stored
+   (`subject_enc`, `body_stripped_enc` for list/search, `body_full_enc` for reply
+   quoting). Instead, the **render-decision flags are computed once here and
+   stored** so the read path never needs the body: `html_kind` (rich → sandboxed
+   card, plain → text bubble; decided on the *quote-stripped* html),
+   `has_remote_images`, and per-attachment `inline` (cid-referenced). Insert with
+   `onConflictDoNothing` (create race → re-read winner). Always: bump
+   `thread.lastMessageAt`, rewrite attachment metadata rows (bytes stay in the R2
+   raw), index search tokens.
 4. Role derivation (`queue-consumer.ts:52 deriveRole`): envelope recipient
    (tag-stripped) in parsed To → `to`, in Cc → `cc`, in neither → `bcc`.
 5. `materializeDelivery` (`materialize.ts:286`): delivery row
@@ -169,6 +176,63 @@ status and acks without sending.
 - `viaAliasId` on the delivery lets a reply default its From to the alias the
   mail arrived through — otherwise hide-my-email leaks the real address on the
   first reply.
+
+## Rendering (HTML body → sandboxed frame) — added 2026-07-28
+
+The HTML body is **derived on demand, never stored in D1** (golden-standard: the
+R2 raw is canonical; large immutable bodies don't bloat the hot DB). The list +
+thread views run entirely off the small stored flags; only opening a message
+touches the body.
+
+**Request path** — `GET /api/messages/[id]/body` (`apps/web/src/routes/api/messages/[id]/body/+server.ts`):
+
+1. **Auth** — delivery to one of the caller's mailboxes, or org-level read via
+   `can()`. 403 otherwise. *Runs before any cache read.*
+2. **ETag revalidation** — the ETag is `RENDER_CACHE_VERSION + messageId + flags`
+   (no body needed). A matching `If-None-Match` returns **304 immediately** — no
+   R2, no parse, no sanitize. This is what makes repeat views free.
+3. **Derive HTML from raw** — on a cache miss, read the raw from R2 and parse it
+   (`mail-core/mime.ts rawObjectToHtml`: RFC822 MIME for inbound, JSON `{text,
+   html}` for our own `outbound/…`). See *Caching* for why this stays cheap.
+4. **Sanitize** — `sanitizeEmailHtml` (tag/attr allowlist + CSS scrub:
+   `expression()`/binding/behavior/`url(javascript:)`). DoS caps sized for real
+   mail: `MAX_HTML_BYTES` 2.5MB, `MAX_NODES` 60k (a table-heavy newsletter is
+   ~15–50k tags; the old 15k cap dumped them to plain text). Oversized → the
+   plain-text twin + a "view entire message" link (raised caps).
+5. **Remote-resource rewrite** — `rewriteRemoteResourceUrls` routes **every**
+   external URL (img/poster/`background=`/srcset + CSS `url()` in inline styles
+   AND `<style>`) through the signed same-origin `/api/img-proxy`; `@import` is
+   stripped. So backgrounds/logos render *and* the sender only ever sees
+   Cloudflare. Only runs when the reader opted into images.
+6. **Frame** — one opaque-origin `<body>` (`buildFramedDocument`): sandboxed,
+   `viewport=device-width` (the email's own `@media` rules fire → responsive, not
+   just shrunk), forced light card, strict CSP (`default-src 'none'`; same-origin
+   `img-src`; `font-src`/`media-src data:` so remote fonts/video can't load;
+   `script-src` pinned to the injected height/link script's hash).
+
+### Caching (why R2 reads stay flat)
+
+Moving the body out of D1 would add an R2 GET per open — so three cache layers
+keep the read count at *~once per message*, not once per view:
+
+1. **Browser (per viewer)** — `Cache-Control: private, no-cache` + ETag. The
+   browser keeps the framed doc and revalidates; a **304** skips the whole
+   pipeline (no R2). Repeat opens by the same browser cost nothing.
+2. **Shared derived-html cache (global)** — `caches.default` keyed on
+   `(RENDER_CACHE_VERSION, messageId)` holds the *parsed* html. So the **R2 GET +
+   postal-mime parse happens once per message across all viewers/isolates**, not
+   per cold view. Auth runs first, so a post-auth cache read is safe; a
+   `RENDER_CACHE_VERSION` bump changes the key (patched renders never serve
+   stale). Net: R2 body reads ≈ one per message per cache-version — same order as
+   when the body lived in D1.
+3. **Image proxy cache (global)** — `/api/img-proxy` uses `caches.default` keyed
+   on the target URL: one upstream fetch serves every reader/open (and hides
+   repeat opens from the sender, Gmail/Apple-style). This is external fetches, not
+   R2.
+
+Any change to how bodies are sanitized/framed/served → **bump
+`RENDER_CACHE_VERSION`** (`apps/web/src/lib/server/render-cache.ts`): it invalidates
+every browser ETag *and* every shared-cache key at once.
 
 ## Known issues (ranked)
 
