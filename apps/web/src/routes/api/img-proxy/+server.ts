@@ -39,6 +39,17 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const okToken = await verifyResourceToken(platform?.env?.MAIL_SEARCH_KEY, `img:${target}`, url.searchParams.get("t"));
   if (!okToken && !locals.user) error(401, "Not authenticated");
 
+  // Shared edge cache keyed on the TARGET url only: the bytes are identical for
+  // every reader (the per-user gate is the auth check above, which always runs
+  // first). One upstream fetch then serves all opens/users — and the sender
+  // stops seeing repeat opens, the Gmail/Apple caching behaviour.
+  const cache = (caches as { default?: Cache }).default;
+  const cacheKey = new Request(`https://img-proxy.internal/${encodeURIComponent(target)}`);
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+
   let current = validate(target);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -72,15 +83,28 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     const buf = await res.arrayBuffer();
     if (buf.byteLength > MAX_BYTES) error(413, "Image too large");
 
-    return new Response(buf, {
+    const out = new Response(buf, {
       headers: {
         "Content-Type": ct,
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Referrer-Policy": "no-referrer",
+        // Public in the SHARED cache (keyed on url, gated by auth before lookup);
+        // the browser copy stays private so a token URL isn't reused cross-user.
         "Cache-Control": "private, max-age=3600",
       },
     });
+    if (cache) {
+      // Store a copy the shared cache can serve for a day. Clone (the body is a
+      // one-shot stream) and write the store with a longer TTL than the browser.
+      const stored = new Response(buf, {
+        headers: { "Content-Type": ct, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" },
+      });
+      const put = cache.put(cacheKey, stored);
+      if (platform?.ctx?.waitUntil) platform.ctx.waitUntil(put);
+      else await put;
+    }
+    return out;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") error(504, "Image fetch timed out");
     throw e;

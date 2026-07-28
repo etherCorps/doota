@@ -163,3 +163,16 @@ describe("remote resource rewriting (golden image handling)", () => {
     expect(rewriteRemoteResourceUrls(html, proxy)).toBe(html.replace(/@import\b[^;]*;?/gi, ""));
   });
 });
+
+describe("email sanitizer — CSS scrub (F2)", () => {
+  it("neutralizes expression(), binding, behavior, and js: url() in kept CSS", () => {
+    const out = clean(
+      "<style>.a{width:expression(alert(1));-moz-binding:url(x.xml);behavior:url(x.htc);background:url(javascript:alert(1))}</style><p>ok</p>",
+    );
+    expect(out).not.toMatch(/expression\s*\(/i);
+    expect(out).not.toMatch(/-moz-binding\s*:/i);
+    expect(out).not.toMatch(/[^-]behavior\s*:/i);
+    expect(out).not.toMatch(/url\(\s*javascript/i);
+    expect(out).toContain("<p>ok</p>");
+  });
+});

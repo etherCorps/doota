@@ -119,10 +119,28 @@ export function sanitizeEmailHtml(
   // blank data:image/svg+xml specifically: SVG-in-<img> is only inert by the
   // browser's secure-mode guarantee, so don't lean on it. Plain raster data:
   // images (logos/signatures) are kept — dropping them all breaks real mail.
-  const html = sanitizer
-    .sanitize(withCids)
-    .replace(/(\bsrc\s*=\s*["'])data:image\/svg\+xml[^"']*(["'])/gi, "$1$2");
+  const html = scrubCss(
+    sanitizer
+      .sanitize(withCids)
+      .replace(/(\bsrc\s*=\s*["'])data:image\/svg\+xml[^"']*(["'])/gi, "$1$2"),
+  );
   return { ok: true, html };
+}
+
+/**
+ * Neutralize the legacy CSS attack vectors that survive HTML sanitization inside
+ * kept `<style>` blocks + inline styles (neosanitize sanitizes markup, not CSS
+ * semantics). The opaque sandboxed frame already blocks scripts, so these are
+ * defense-in-depth for ancient IE/Gecko engines — cheap to render inert by
+ * corrupting the keyword so the declaration is dropped by any CSS parser.
+ * (@import and remote url() are handled by rewriteRemoteResourceUrls.)
+ */
+function scrubCss(html: string): string {
+  return html
+    .replace(/expression\s*\(/gi, "blocked-fn(") // IE CSS expression()
+    .replace(/-(?:moz|ms)-binding\s*:/gi, "-x-binding:") // XBL/HTC binding
+    .replace(/\bbehavior\s*:/gi, "x-behavior:") // IE .htc behavior
+    .replace(/url\(\s*['"]?\s*(?:javascript|vbscript|data:text\/html)[^)]*\)/gi, "url()");
 }
 
 // Remote-resource rewriting (golden-standard image handling). Real HTML mail
