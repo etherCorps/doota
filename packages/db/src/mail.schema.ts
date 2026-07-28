@@ -924,6 +924,32 @@ export const senderImageTrust = sqliteTable(
 );
 
 /**
+ * Per-(user, mailbox) email signature. The signature is the SENDER's sign-off,
+ * so it's keyed on the user AND the sending mailbox — on a shared mailbox each
+ * teammate has their own. One signature per identity (bodyHtml, sanitized on
+ * write). Injected into the composer client-side on a fresh compose/reply.
+ */
+export const mailboxSignature = sqliteTable(
+  "mailbox_signature",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    // Sanitized signature HTML (reuses the outbound compose sanitizer). Empty
+    // string is a valid "no signature" — a row's presence isn't required.
+    bodyHtml: text("body_html").notNull().default(""),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [uniqueIndex("mailbox_signature_user_mailbox_uidx").on(t.userId, t.mailboxId)],
+);
+
+/**
  * Materialized correspondent index for recipient autocomplete. One row per
  * (mailbox, address): the people a mailbox has sent to OR received from, with
  * the best-known display name and the most recent contact time. Upserted in the

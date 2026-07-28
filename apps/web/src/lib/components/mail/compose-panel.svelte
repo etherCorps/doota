@@ -46,6 +46,8 @@
 		detachDraftAttachment,
 		draftById
 	} from '$lib/rpc/draft.remote';
+	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
+	import { withSignature } from '$lib/mail/signature';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
@@ -188,7 +190,9 @@
 
 	onMount(async () => {
 		sweepMirrors();
-		identities = await sendIdentities();
+		const [ids, sigRows] = await Promise.all([sendIdentities(), myMailboxSignatures()]);
+		identities = ids;
+		const signatures = new Map(sigRows.map((r) => [r.mailboxId, r.bodyHtml]));
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
 			draftId = d.id;
@@ -226,6 +230,16 @@
 		if (chosen) {
 			mailboxId = chosen.mailboxId;
 			aliasId = chosen.aliasId;
+		}
+		// Fresh compose only (resume returned early above): append the sender's
+		// signature for the chosen mailbox to the initial editor body, then remount
+		// so it renders. Editing the identity later doesn't re-swap it (v1).
+		if (mailboxId) {
+			const sig = signatures.get(mailboxId);
+			if (sig) {
+				body = withSignature(body, sig);
+				editorKey++;
+			}
 		}
 		restoreMirror();
 	});

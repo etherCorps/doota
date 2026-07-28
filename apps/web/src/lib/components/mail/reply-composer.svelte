@@ -24,6 +24,8 @@
 		discardDraftById,
 		detachDraftAttachment
 	} from '$lib/rpc/draft.remote';
+	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
+	import { withSignature } from '$lib/mail/signature';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
 	import { fmtSize } from '$lib/mail/format';
@@ -190,10 +192,22 @@
 			collapsed = false;
 			toast('Restored unsaved reply');
 			scheduleSave();
-		} else if (local) {
-			clearMirror(mirrorKey); // sweep the empty husk
+		} else {
+			if (local) clearMirror(mirrorKey); // sweep the empty husk
+			void applySignature(); // fresh reply → seed the sender's signature
 		}
 	});
+
+	// Append the sender's signature to a fresh (non-restored) reply. Async, so
+	// guarded by htmlHasContent — a concurrent restore or typing wins over it.
+	async function applySignature() {
+		const rows = await myMailboxSignatures();
+		const sig = rows.find((r) => r.mailboxId === sendMailboxId)?.bodyHtml;
+		if (sig && !htmlHasContent(body)) {
+			body = withSignature(body, sig);
+			editorKey++;
+		}
+	}
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
 
