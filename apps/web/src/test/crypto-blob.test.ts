@@ -5,6 +5,7 @@ import {
   packBlob,
   unpackBlob,
   encryptBytes,
+
   decryptBytes,
   putEncryptedBlob,
   getDecryptedBlob,
@@ -56,6 +57,15 @@ describe("content blob crypto (R2 at rest)", () => {
   it("decryptBytes rejects a plaintext (non-envelope) blob", async () => {
     const ck = await importKey(KEY);
     await expect(decryptBytes(ck, new TextEncoder().encode("raw plaintext"))).rejects.toThrow();
+  });
+
+  it("unpackBlob passes legacy plaintext through (deploy-over-existing-mail)", async () => {
+    const ck = await importKey(KEY);
+    const legacy = new TextEncoder().encode("Received: from mx\r\n\r\nold plaintext email");
+    // No 0x01 version byte → returned unchanged, so pre-encryption mail still reads.
+    expect(new TextDecoder().decode(await unpackBlob(ck, legacy))).toBe(
+      "Received: from mx\r\n\r\nold plaintext email",
+    );
   });
 
   it("putEncryptedBlob stores ciphertext; getDecryptedBlob recovers it", async () => {
