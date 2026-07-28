@@ -37,7 +37,8 @@
 		oninput,
 		onattach,
 		onsend,
-		bodyClass = ''
+		bodyClass = '',
+		fill = false
 	}: {
 		initial?: string;
 		placeholder?: string;
@@ -47,6 +48,10 @@
 		onsend?: () => void;
 		/** Extra classes for the scrollable body — e.g. a max-height cap when inlined. */
 		bodyClass?: string;
+		/** Fill a definite-height parent instead of holding the 180px min floor. The
+		 * floor overflows a keyboard-shrunk viewport (iOS compose); fill lets the
+		 * editor shrink and scroll its own body. Only for parents with real height. */
+		fill?: boolean;
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
@@ -224,7 +229,7 @@
 	onDestroy(() => editor?.destroy());
 </script>
 
-<div class="focus-within:ring-ring/40 flex h-full min-h-[180px] flex-col rounded-lg border focus-within:ring-2">
+<div class="focus-within:ring-ring/40 flex h-full flex-col rounded-lg border focus-within:ring-2 {fill ? 'min-h-0' : 'min-h-[180px]'}">
 	<!-- Single row that never wraps: the formatting group scrolls horizontally
 	     when the composer is narrow — wrapped toolbar rows painted over the text
 	     area (flex computes a wrapping row's min height as one line). The attach

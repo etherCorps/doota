@@ -755,6 +755,7 @@
 					<div class="min-h-0 flex-1 pb-2">
 						{#key editorKey}
 							<TiptapEditor
+								fill
 								initial={body}
 								oninput={(html) => {
 									body = html;
