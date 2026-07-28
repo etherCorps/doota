@@ -71,7 +71,7 @@
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import {
 		fmtTime, senderName, senderLabel, senderAddr,
-		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments,
+		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments, shownAttachments,
 		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock
 	} from '$lib/mail/format';
 	import AttachmentGroups from '$lib/components/mail/attachment-groups.svelte';
@@ -1919,7 +1919,7 @@
 					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
 					{@const parts = threadParticipants(msgs)}
 					{@const ctx = replyCtx(msgs, replyTarget, self)}
-					{@const attTotal = msgs.reduce((n, m) => n + m.attachments.length, 0)}
+					{@const attTotal = msgs.reduce((n, m) => n + shownAttachments(m).length, 0)}
 					{@const ppl = participants(msgs)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
 						<Button variant="ghost" size="icon" class="text-muted-foreground @4xl:hidden" onclick={() => nav({ thread: null })}>
@@ -2213,8 +2213,9 @@
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
 												{#if m.calendarInvite}
-													<div class="mb-2 w-[min(32rem,calc(100cqi-7rem))]">
-														<InviteCard invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
+													<!-- flat: the bubble is the single card — no nested border/radius. -->
+													<div class="-mx-3.5 mb-2 border-y">
+														<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
 													</div>
 													<button
 														type="button"
@@ -2261,7 +2262,7 @@
 													<!-- WhatsApp split: visual parts (image/video/pdf) as a media grid,
 													     documents as compact rows. Parts the HTML references by cid already
 													     render inline — skip their tiles to avoid doubles. -->
-													{@const shown = m.attachments.filter((a) => !a.inline && !(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics'))))}
+													{@const shown = shownAttachments(m)}
 													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
@@ -2390,7 +2391,7 @@
 											{/if}
 											{#if m.attachments.length}
 												<!-- Gmail attachment strip: fixed-width preview cards, horizontal scroll. -->
-												{@const shown = m.attachments.filter((a) => !a.inline && !(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics'))))}
+												{@const shown = shownAttachments(m)}
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as a (a.id)}

@@ -60,17 +60,28 @@ export function msgSnippet(m: MessageDTO): string {
 }
 
 // Grouped day → message, so a message's files stay together as one tile grid.
+/** Attachments worth surfacing: skip inline (cid) parts — they render in the body
+ * — and the calendar `.ics` of an invite (the invite card already carries it).
+ * Matches the per-message tile filter + the thread's attachment badge count. */
+export const shownAttachments = (m: MessageDTO) =>
+	m.attachments.filter(
+		(a) =>
+			!a.inline &&
+			!(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics')))
+	);
+
 export function groupAttachments(msgs: MessageDTO[]) {
 	const days: { day: string; entries: { msg: MessageDTO; atts: MessageDTO['attachments'] }[] }[] = [];
 	for (const msg of msgs) {
-		if (!msg.attachments.length) continue;
+		const atts = shownAttachments(msg);
+		if (!atts.length) continue;
 		const day = msg.sentAt ? fmtDay(msg.sentAt) : 'Unknown date';
 		let d = days.at(-1);
 		if (!d || d.day !== day) {
 			d = { day, entries: [] };
 			days.push(d);
 		}
-		d.entries.push({ msg, atts: msg.attachments });
+		d.entries.push({ msg, atts });
 	}
 	return days;
 }

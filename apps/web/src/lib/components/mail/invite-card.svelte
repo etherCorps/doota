@@ -34,6 +34,10 @@
 	} = $props();
 
 	const cancelled = $derived(invite.method === 'CANCEL' || invite.status === 'CANCELLED');
+	// A REPLY is someone else's RSVP notification (e.g. "X accepted") — the viewer
+	// can't RSVP to a reply, so the Yes/Maybe/No row is suppressed (Join + calendar
+	// actions stay). The eyebrow already reads "RSVP" to signal the card's nature.
+	const isReply = $derived(invite.method === 'REPLY');
 
 	const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	// Everything renders in the VIEWER's local zone (their perspective) — the
@@ -372,7 +376,9 @@
 	{#if !cancelled}
 		<div class="space-y-2.5 border-t p-3">
 			<!-- Full-width segmented pill: the three answers split the row evenly; the
-			     selected segment fills as a coloured pill (Yes/Maybe/No). -->
+			     selected segment fills as a coloured pill (Yes/Maybe/No). Hidden on a
+			     REPLY — you don't RSVP to someone else's response. -->
+			{#if !isReply}
 			<div role="group" aria-label="RSVP" class="border-border bg-muted flex w-full items-center gap-1 rounded-full border p-1">
 				{#each RSVP as opt (opt.key)}
 					{@const Icon = opt.icon}
@@ -404,6 +410,7 @@
 					{/if}
 				{/each}
 			</div>
+			{/if}
 
 			{#if invite.joinUrl}
 				<!-- Primary CTA for a virtual meeting: its own full-width filled button. -->
@@ -411,7 +418,7 @@
 					href={invite.joinUrl}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-ring flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+					class="bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-ring flex w-full items-center justify-center gap-1.5 rounded-4xl px-3 py-2 text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
 				>
 					<VideoIcon class="size-4" /> Join {invite.meetingPlatform ? PLATFORM_LABEL[invite.meetingPlatform] : 'meeting'}
 				</a>
