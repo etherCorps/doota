@@ -9,6 +9,7 @@ import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contra
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
+import { signResourceToken } from "$lib/server/resource-token.js";
 
 /**
  * Serve ONE message's HTML body, sanitized, as an isolated document for the
@@ -88,10 +89,16 @@ const escapeAttr = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
- * 'self' and the browser never fetches from the sender directly. */
-function proxyRemoteImages(html: string): string {
-  return html.replace(/(\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi, (_m, pre, url, post) => {
-    return `${pre}/api/img-proxy?url=${encodeURIComponent(url)}${post}`;
+ * 'self' and the browser never fetches from the sender directly. Each proxied URL
+ * carries a signed token so the sandboxed (cookie-less) MailFrame can load it. */
+async function proxyRemoteImages(html: string, sign: (resource: string) => Promise<string>): Promise<string> {
+  const re = /(\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi;
+  const urls = [...new Set([...html.matchAll(re)].map((m) => m[2]))];
+  const tokens = new Map(await Promise.all(urls.map(async (u) => [u, await sign(`img:${u}`)] as const)));
+  return html.replace(re, (_m, pre, url, post) => {
+    const t = tokens.get(url);
+    const q = t ? `&t=${t}` : "";
+    return `${pre}/api/img-proxy?url=${encodeURIComponent(url)}${q}${post}`;
   });
 }
 
@@ -144,7 +151,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   // fullView ("View entire message", Gmail's clipped-message pattern): raised
   // caps, still sanitized and sandboxed — only reachable from the clipped notice.
 
-  // cid: → our authenticated attachment endpoint, resolved from THIS message's parts.
+  // cid: → our attachment endpoint. The sandboxed frame can't send the session
+  // cookie (cross-site), so carry a signed token this-message's attachments accept.
+  const searchKey = platform?.env?.MAIL_SEARCH_KEY;
+  const sign = (resource: string) => signResourceToken(searchKey ?? "", resource);
+  const attToken = searchKey ? await sign(`att:msg:${msg.id}`) : "";
   const atts = await locals.db
     .select({ id: schema.attachment.id, partId: schema.attachment.partId })
     .from(schema.attachment)
@@ -154,7 +165,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     // provider that references `cid:localpart` for a `<localpart@host>` part still
     // resolves (Apple Mail) without a same-local-part collision stealing an exact hit.
     const a = atts.find((x) => cidMatches(x.partId, cid));
-    return a ? `/api/attachments/${a.id}` : null;
+    return a ? `/api/attachments/${a.id}${attToken ? `?t=${attToken}` : ""}` : null;
   };
 
   // Strip quoted reply history before rendering — the prior messages are already
@@ -168,7 +179,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
       })
     : null;
   if (result && result.ok) {
-    inner = loadImages ? proxyRemoteImages(result.html) : result.html;
+    inner = loadImages ? await proxyRemoteImages(result.html, sign) : result.html;
   } else {
     // No HTML, or oversized/hostile (Part F) → fall back to the plain-text body,
     // with URLs/emails linkified (anchors are inert data; clicks go through the

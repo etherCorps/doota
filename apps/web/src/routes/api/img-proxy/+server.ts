@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { isBlockedHost } from "$lib/server/ssrf";
+import { verifyResourceToken } from "$lib/server/resource-token.js";
 
 /**
  * Privacy proxy for remote email images. Fetching a tracking pixel directly from
@@ -30,11 +31,13 @@ function validate(raw: string): URL {
   return u;
 }
 
-export const GET: RequestHandler = async ({ url, locals }) => {
-  // Authenticated only — never an open proxy.
-  if (!locals.user) error(401, "Not authenticated");
+export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const target = url.searchParams.get("url");
   if (!target) error(400, "Missing url");
+  // Never an open proxy: a session, OR a signed token the body route minted for
+  // THIS exact url (the sandboxed MailFrame sends no session cookie cross-site).
+  const okToken = await verifyResourceToken(platform?.env?.MAIL_SEARCH_KEY, `img:${target}`, url.searchParams.get("t"));
+  if (!okToken && !locals.user) error(401, "Not authenticated");
 
   let current = validate(target);
   const controller = new AbortController();

@@ -6,6 +6,7 @@ import { can } from "@doota/db/can";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { sanitizeFilename } from "$lib/utils/filename";
+import { verifyResourceToken } from "$lib/server/resource-token.js";
 
 // Content types we'll serve as declared. Everything else (HTML, SVG, XML, …) is
 // forced to octet-stream so it can't be rendered/executed even if opened directly.
@@ -21,9 +22,7 @@ const SAFE_CONTENT_TYPES = new Set([
  * read the message's org through can(). Streams straight from R2 — the raw is
  * canonical, this is just a gated pipe.
  */
-export const GET: RequestHandler = async ({ params, request, locals, platform }) => {
-  const user = locals.user;
-  if (!user) error(401, "Not authenticated");
+export const GET: RequestHandler = async ({ params, url, request, locals, platform }) => {
   const env = platform?.env;
   if (!env?.MAIL_RAW) error(500, "Attachment storage is not configured.");
 
@@ -39,28 +38,35 @@ export const GET: RequestHandler = async ({ params, request, locals, platform })
   });
   if (!message) error(404, "Attachment not found");
 
-  // Access: a delivery to one of the user's mailboxes, or org-level read.
-  const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
-  let allowed = false;
-  if (myBoxes.length) {
-    const del = await locals.db.query.delivery.findFirst({
-      where: and(
-        eq(schema.delivery.messageId, att.messageId),
-        inArray(schema.delivery.mailboxId, myBoxes),
-      ),
-      columns: { id: true },
-    });
-    allowed = !!del;
-  }
+  // Two ways in. (1) A signed token minted by the authenticated body route — the
+  // ONLY path that works from the sandboxed MailFrame, whose cross-site subresource
+  // requests carry no session cookie. It authorizes this message's attachments and
+  // nothing else. (2) A normal session (app UI, direct open) with delivery/org read.
+  let allowed = await verifyResourceToken(env.MAIL_SEARCH_KEY, `att:msg:${att.messageId}`, url.searchParams.get("t"));
+  const user = locals.user;
   if (!allowed) {
-    const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
-    allowed = can(
-      { id: user.id, role: user.role, orgAdminOf },
-      "read",
-      { type: "mailbox", ownerId: "", organizationId: message.orgId },
-    );
+    if (!user) error(401, "Not authenticated");
+    const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
+    if (myBoxes.length) {
+      const del = await locals.db.query.delivery.findFirst({
+        where: and(
+          eq(schema.delivery.messageId, att.messageId),
+          inArray(schema.delivery.mailboxId, myBoxes),
+        ),
+        columns: { id: true },
+      });
+      allowed = !!del;
+    }
+    if (!allowed) {
+      const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
+      allowed = can(
+        { id: user.id, role: user.role, orgAdminOf },
+        "read",
+        { type: "mailbox", ownerId: "", organizationId: message.orgId },
+      );
+    }
+    if (!allowed) error(403, "You can't access this attachment.");
   }
-  if (!allowed) error(403, "You can't access this attachment.");
 
   // Revalidation after auth (a revoked user 403s, never 304s). The bytes for an
   // id never change, but no-cache keeps us able to push a serving/security patch
