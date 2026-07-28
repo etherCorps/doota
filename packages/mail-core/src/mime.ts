@@ -23,3 +23,23 @@ export async function rawObjectToHtml(key: string, bytes: ArrayBuffer | Uint8Arr
   const parsed = await PostalMime.parse(bytes);
   return parsed.html ?? null;
 }
+
+/**
+ * Derive the plain-text body from an R2 raw object — the text twin for a
+ * text-only message (no HTML part). Same golden-standard reasoning as
+ * `rawObjectToHtml`: the D1 `body_*_enc` columns are bounded hot-path previews
+ * (see materialize.ts), so full-fidelity text for a very long message comes from
+ * R2, not the (capped) DB column. Two raw shapes, same as rawObjectToHtml.
+ */
+export async function rawObjectToText(key: string, bytes: ArrayBuffer | Uint8Array): Promise<string | null> {
+  if (key.startsWith("outbound/")) {
+    try {
+      const j = JSON.parse(new TextDecoder().decode(bytes)) as { text?: string | null };
+      return j.text ?? null;
+    } catch {
+      return null;
+    }
+  }
+  const parsed = await PostalMime.parse(bytes);
+  return parsed.text ?? null;
+}

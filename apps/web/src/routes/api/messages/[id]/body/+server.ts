@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent, getDecryptedBlob, packBlob, unpackBlob } from "@doota/mail-core/crypto";
-import { rawObjectToHtml } from "@doota/mail-core/mime";
+import { rawObjectToHtml, rawObjectToText } from "@doota/mail-core/mime";
 import { orgRemoteContentPolicy, remoteContentAllowed } from "@doota/mail-core/sender-trust";
 import {
   sanitizeEmailHtml,
@@ -172,6 +172,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const bodyCache = (caches as { default?: Cache }).default;
   const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
   let rawHtml: string | null = null;
+  // Full plain-text body from R2 for a text-only message (no HTML part). The D1
+  // text twins are CAPPED previews (see materialize.ts), so full fidelity comes
+  // from the raw — mirrors the HTML derive below. Only populated on a text-only
+  // message's cache-miss path (text-only never caches HTML → always lands here).
+  let rawText: string | null = null;
   // The cache holds CIPHERTEXT (gzip+encrypted) — the CF edge never stores
   // plaintext email. Decrypt on hit; a corrupt/legacy entry falls through to a
   // fresh derive.
@@ -190,6 +195,8 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
         ? await getDecryptedBlob(platform.env.MAIL_RAW, msg.r2RawKey, ck)
         : null;
     rawHtml = rawBytes ? await rawObjectToHtml(msg.r2RawKey!, rawBytes) : null;
+    // No HTML part → derive the full text from the same raw for the text fallback.
+    if (rawHtml === null && rawBytes) rawText = await rawObjectToText(msg.r2RawKey!, rawBytes);
     if (bodyCache && rawHtml !== null) {
       const enc = await packBlob(ck, new TextEncoder().encode(rawHtml));
       const store = new Response(enc as BodyInit, { headers: { "Cache-Control": "private, max-age=86400" } });
@@ -233,8 +240,9 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   } else {
     // No HTML, or oversized/hostile (Part F) → fall back to the plain-text body,
     // with URLs/emails linkified (anchors are inert data; clicks go through the
-    // injected handler like any other link).
-    const text = (await decryptContent(ck, msg.bodyStrippedEnc)) ?? "";
+    // injected handler like any other link). Prefer the full text from R2
+    // (rawText) over the capped D1 twin so a long text-only message renders whole.
+    const text = rawText ?? (await decryptContent(ck, msg.bodyStrippedEnc)) ?? "";
     const linkified = linkifySegments(text)
       .map((s) =>
         s.type === "text"

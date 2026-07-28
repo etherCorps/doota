@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { stripQuotesHtml, isRichHtml, deriveContentKind } from "@doota/mail-core/mail-thread-contract";
 import { sanitizeEmailHtml, collectRemoteResourceUrls } from "@doota/mail-core/sanitize-email";
+import { rawObjectToText } from "@doota/mail-core/mime";
 
 const sanitized = (html: string) => {
   const r = sanitizeEmailHtml(html);
@@ -86,6 +87,18 @@ describe("corpus — forwards & templates are kept whole and render as HTML", ()
     const mc = collectRemoteResourceUrls(MAILCHIMP);
     expect(mc).toContain("https://mc.us1.list-manage.com/logo.png");
     expect(mc).toContain("https://mc.us1.list-manage.com/bg.jpg"); // background-image, not just <img src>
+  });
+});
+
+describe("corpus — full text derived from R2 raw (text twin fallback)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  it("parses the text part of an inbound RFC822 raw", async () => {
+    const raw = "From: a@x\r\nTo: b@y\r\nSubject: s\r\nContent-Type: text/plain\r\n\r\nhello full body";
+    expect((await rawObjectToText("raw/org1/m1", enc(raw)))?.trim()).toBe("hello full body");
+  });
+  it("reads .text from an outbound JSON blob", async () => {
+    expect(await rawObjectToText("outbound/org1/m2", enc(JSON.stringify({ text: "sent body", html: null })))).toBe("sent body");
+    expect(await rawObjectToText("outbound/org1/bad", enc("not json"))).toBeNull();
   });
 });
 

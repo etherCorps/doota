@@ -24,14 +24,18 @@ blobs so that mail written *before* at-rest encryption keeps rendering:
 if (blob[0] !== BLOB_V1) return blob; // pre-encryption plaintext (un-gzipped)
 ```
 
-This is a deliberate temporary compatibility shim. **Before release, delete that
-line** so `unpackBlob` throws on any non-`BLOB_V1` envelope — the same
-fail-closed behaviour `getDecryptedBlob`/`decryptBytes` already enforce. After
-the test-data wipe there is no legacy plaintext left in R2, so nothing should
-hit it; keeping it past release is a silent "encryption optional" hole.
+**This is a security gate, not cleanup — release-blocker.** While the shim is in,
+a reader *accepts unencrypted blobs*, which means anyone who can write to the R2
+bucket can bypass encryption entirely by writing plaintext (or swap ciphertext
+for attacker-chosen plaintext). It turns "encrypted at rest" into "encrypted
+unless someone writes plaintext." **Before release, delete that line** so
+`unpackBlob` throws on any non-`BLOB_V1` envelope — the same fail-closed behaviour
+`getDecryptedBlob`/`decryptBytes` already enforce. After the test-data wipe there
+is no legacy plaintext left in R2, so nothing legitimate hits it.
 
-Gate: `crypto-blob.test.ts` has a case asserting the tolerance path — flip it to
-expect a throw when you remove the shim. See memory
+Gate: `crypto-blob.test.ts` currently asserts the tolerance path *works* — when
+you remove the shim, **flip that test to assert an unencrypted blob is rejected**
+(throws), so the fail-closed contract is regression-tested. See memory
 `remove-r2-plaintext-tolerance-before-release`.
 
 ### 0.2 Known gap — draft-staged attachments are still plaintext in R2

@@ -20,6 +20,14 @@ import {
 
 type Db = DrizzleD1Database<typeof schema>;
 
+// Cap for the D1 text twins (chars, pre-encrypt). Generous — normal mail and
+// reply quoting sit far under it; it only bounds pathological threads so the row
+// can't blow the D1 size cap. Full text beyond this is served from R2 on render.
+// ponytail: fixed cap, revisit if a real body legitimately exceeds it.
+const MAX_D1_TEXT = 64_000;
+const capText = (s: string | null): string | null =>
+  s != null && s.length > MAX_D1_TEXT ? s.slice(0, MAX_D1_TEXT) : s;
+
 /** Provider-agnostic parsed message — the consumer builds this from postal-mime. */
 export type ParsedMessage = {
   messageIdHeader: string;
@@ -210,11 +218,15 @@ export async function materializeMessage(
   // The HTML body is NOT stored in D1 — it's derived from the raw MIME in R2
   // (r2RawKey) on render (golden-standard: raw is canonical, large derived
   // bodies aren't duplicated into the hot DB). Only the small text twins
-  // (stripped for list/search preview, full for reply quoting) live here.
+  // (stripped for list/search preview, full for reply quoting) live here — and
+  // they are CAPPED: a pathologically long plain-text thread would otherwise
+  // grow the D1 row past its size cap and fail the insert (silent mail loss).
+  // Full-fidelity text for such a message is served from R2 raw on render
+  // (rawObjectToText), same as the HTML body — the cap only bounds the preview.
   const [subjectEnc, strippedEnc, fullEnc] = await Promise.all([
     encryptContent(deps.ck, parsed.subject),
-    encryptContent(deps.ck, strippedText || bodyFull),
-    encryptContent(deps.ck, bodyFull),
+    encryptContent(deps.ck, capText(strippedText || bodyFull)),
+    encryptContent(deps.ck, capText(bodyFull)),
   ]);
 
   const inserted = await db

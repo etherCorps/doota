@@ -21,8 +21,10 @@ Doota (say _DOO-tah_ — it means **messenger**) is a self-hosted email app that
 runs entirely on your own [Cloudflare](https://cloudflare.com) account. No mail
 server to babysit, no company sitting in the middle of your inbox. Mail arrives
 through Cloudflare Email Routing, gets threaded into a WhatsApp-style
-conversation, and is stored encrypted — with the raw message always kept whole
-as the source of truth.
+conversation, and is stored **fully encrypted at rest** — the raw message,
+attachments, sent mail, and the derived render cache are all encrypted, with the
+raw message kept whole as the source of truth. There is no plaintext copy of your
+mail anywhere in storage.
 
 It still speaks plain email underneath, so you can write to anyone on Gmail or
 Outlook, and they can write back.
@@ -69,8 +71,9 @@ Outlook, and they can write back.
   messages, interoperable with any mail client.
 - **Runs on your own account** — Cloudflare Workers, D1, R2, KV, and Queues do
   the work. One deployment, one operator.
-- **Private by default** — subjects and bodies encrypted at rest; routing
-  metadata stays queryable so threading works without decryption.
+- **Private by default** — subjects, bodies, attachments, sent mail, and the
+  derived render cache are all encrypted at rest; only routing metadata stays
+  cleartext so threading works without decryption. No plaintext copy exists.
 - **Undo & scheduled send** — a first-class submission object tracks every
   message (queued → sent → delivered → bounced), with delivery ticks and
   send-later.
@@ -502,6 +505,36 @@ See `.env.example` for the full list. The essentials:
 
 - `ORIGIN` — your app's URL (must match the dev port, or auth routes 404).
 - `BETTER_AUTH_SECRET` — 32+ chars, high entropy.
+- `MAIL_DEK` — the 32-byte (base64) data-encryption key for all mail content.
+  Set as a Worker **secret** on `web`, `mail-in`, and `mail-jobs` — the same
+  value on all three. See the warning below.
+- `MAIL_SEARCH_KEY` — HMAC key for blind search tokens and signed image/resource
+  tokens. Also a secret on all three Workers.
+
+> [!CAUTION]
+> **Back up `MAIL_DEK` before you store a single message — losing it is permanent
+> and total data loss.**
+>
+> Every message, attachment, and sent copy is encrypted with `MAIL_DEK`. There is
+> **no plaintext path** to your mail and **no recovery**: no support reset, no
+> partial reconstruction, no backdoor. If the Worker secret is ever lost, rotated
+> without the old value, or overwritten, **every message you have ever received
+> becomes permanently unreadable.**
+>
+> Generate it once, store the base64 value in a password manager / secrets vault
+> **outside Cloudflare**, then set it as a secret on all three Workers:
+>
+> ```sh
+> # generate (32 random bytes, base64) — save the output somewhere safe FIRST
+> openssl rand -base64 32
+>
+> wrangler secret put MAIL_DEK            # doota (web)
+> wrangler secret put MAIL_DEK --config apps/mail-in/wrangler.jsonc
+> wrangler secret put MAIL_DEK --config apps/mail-jobs/wrangler.jsonc
+> ```
+>
+> The same rule applies to `MAIL_SEARCH_KEY` (lose it and search + inline images
+> break, though mail stays readable). Treat both as unrecoverable-if-lost.
 - `APP_CLOUDFLARE_ACCOUNT_ID` / `APP_CLOUDFLARE_API_TOKEN` — a **scoped** API
   token (not the Global API Key), stored as a Worker secret in production.
 - `MAIL_IN_WORKER_NAME` — the deployed mail-in Worker the catch-all rule targets.

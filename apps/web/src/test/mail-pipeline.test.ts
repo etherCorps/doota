@@ -11,7 +11,7 @@ import {
   type ParsedMessage,
 } from "@doota/mail-core/materialize";
 import { countUnread, getThread } from "@doota/mail-core/read";
-import { importKey } from "@doota/mail-core/crypto";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
 const ORG = "org1";
@@ -115,6 +115,19 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     const dels = await db.select().from(schema.delivery).where(eq(schema.delivery.mailboxId, "mb_apex"));
     expect(msgs.length).toBe(1);
     expect(dels.length).toBe(1);
+  });
+
+  it("caps the D1 text twins — a huge plain-text body can't blow the row (full text stays in R2)", async () => {
+    const big = "x".repeat(70_000); // > MAX_D1_TEXT (64k)
+    const pm = parsed({ messageIdHeader: "<huge@ext>", text: big, html: null });
+    const { messageId } = await materializeMessage(db, ORG, pm, deps);
+    const row = await db.query.message.findFirst({ where: eq(schema.message.id, messageId) });
+    const full = await decryptContent(deps.ck, row!.bodyFullEnc);
+    const stripped = await decryptContent(deps.ck, row!.bodyStrippedEnc);
+    expect(full!.length).toBe(64_000); // capped, not 70k
+    expect(stripped!.length).toBeLessThanOrEqual(64_000);
+    // r2RawKey is retained — the render route serves full fidelity from R2.
+    expect(row!.r2RawKey).toBe(pm.r2RawKey);
   });
 
   it("dedupes one email across recipients — one message, two deliveries", async () => {
