@@ -32,6 +32,22 @@ function supported(): boolean {
 	);
 }
 
+/** Does this browser support Web Push at all (for the settings toggle). */
+export function pushSupported(): boolean {
+	return supported();
+}
+
+/** Is there a live push subscription in THIS browser right now. */
+export async function isPushSubscribed(): Promise<boolean> {
+	if (!supported()) return false;
+	try {
+		const reg = await navigator.serviceWorker.ready;
+		return !!(await reg.pushManager.getSubscription());
+	} catch {
+		return false;
+	}
+}
+
 /** Subscribe this browser + persist. Idempotent (reuses an existing subscription).
  * Call after permission is granted, and on load when permission is already on. */
 export async function subscribeToPush(): Promise<void> {

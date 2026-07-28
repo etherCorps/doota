@@ -12,6 +12,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import UserIcon from '@lucide/svelte/icons/user';
+	import NotificationsCard from '$lib/components/account/notifications-card.svelte';
 
 	let { data } = $props();
 
@@ -54,6 +55,7 @@
 	}
 </script>
 
+<div class="flex flex-col gap-6">
 <Card.Card>
 	<Card.CardHeader>
 		<Card.CardTitle class="flex items-center gap-2">
@@ -90,6 +92,9 @@
 		</div>
 	</Card.CardContent>
 </Card.Card>
+
+<NotificationsCard />
+</div>
 
 <AvatarCropper
 	bind:open={cropperOpen}

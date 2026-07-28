@@ -12,6 +12,7 @@
 	import { unreadCount } from '$lib/rpc/thread.remote.js';
 	import { publishMailEvent } from '$lib/client/mail-events.svelte.js';
 	import { unread } from '$lib/client/unread.svelte.js';
+	import { activeMailbox } from '$lib/client/active-mailbox.svelte.js';
 	import { osNotify } from '$lib/client/os-notify.svelte.js';
 	import { subscribeToPush } from '$lib/client/push.js';
 
@@ -40,8 +41,10 @@
 			// Thin event (no subject) — tag by thread so a burst of replies collapses
 			// into one notification. No-op when a tab is focused (chirp instead).
 			osNotify('New mail', undefined, `inbound-${evt.threadId}`);
-			// Badge tracks the active mailbox (single-mailbox switcher model).
-			const active = page.url.searchParams.get('mailbox');
+			// Badge tracks the active mailbox. Off the mail page the URL has no
+			// ?mailbox, so fall back to the persisted pick — else new mail never
+			// bumps the sidebar while you're on settings/another route.
+			const active = page.url.searchParams.get('mailbox') ?? activeMailbox.current;
 			if (active && evt.mailboxId === active) void refreshUnread(active);
 		});
 	});

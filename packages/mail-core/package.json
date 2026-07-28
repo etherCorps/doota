@@ -24,6 +24,7 @@
     "./materialize": "./src/materialize.ts",
     "./mirror": "./src/mirror.ts",
     "./notes": "./src/notes.ts",
+    "./notify": "./src/notify.ts",
     "./outbound": "./src/outbound.ts",
     "./outbound-consumer": "./src/outbound-consumer.ts",
     "./queue-consumer": "./src/queue-consumer.ts",

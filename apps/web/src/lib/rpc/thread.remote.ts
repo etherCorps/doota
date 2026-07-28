@@ -14,6 +14,7 @@ import {
   manageGrantUserIds,
 } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
+import { markThreadNotificationsRead } from "@doota/mail-core/notify";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import { trustSenderImages, untrustSenderImages } from "@doota/mail-core/sender-trust";
@@ -202,7 +203,7 @@ export const markThreadRead = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
     const { box } = await assertThreadGrant(mailboxId, threadId);
-    const { locals } = getRequestEvent();
+    const { locals, platform } = getRequestEvent();
     const now = new Date();
     await locals.db
       .insert(mail.threadRead)
@@ -211,6 +212,10 @@ export const markThreadRead = command(
         target: [mail.threadRead.userId, mail.threadRead.threadId, mail.threadRead.mailboxId],
         set: { lastReadAt: now },
       });
+    // Reading a thread from the list also clears its bell notifications (and
+    // pings the stream so the bell + sidebar count drop live) — parity with
+    // opening it from the notification panel.
+    await markThreadNotificationsRead(locals.db, locals.user!.id, threadId, platform?.env?.MAIL_EVENTS).catch(() => {});
     return { ok: true as const };
   },
 );

@@ -53,6 +53,30 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
   return access.filter((a) => !a.assignedOnly || a.canManage || a.userId === assignee).map((a) => a.userId);
 }
 
+/** The user opened/read a thread from the LIST (not the bell) — clear their
+ * unread new_mail notifications for it and ping their stream so the bell +
+ * sidebar drop live. No-op (and no ping) when nothing was unread. */
+export async function markThreadNotificationsRead(
+  db: Db,
+  userId: string,
+  threadId: string,
+  hub?: EventHubNamespace,
+): Promise<void> {
+  const cleared = await db
+    .update(mail.notification)
+    .set({ readAt: new Date() })
+    .where(
+      and(
+        eq(mail.notification.userId, userId),
+        eq(mail.notification.threadId, threadId),
+        eq(mail.notification.type, "new_mail"),
+        isNull(mail.notification.readAt),
+      ),
+    )
+    .returning({ id: mail.notification.id });
+  if (cleared.length) await notifyNotification(hub, userId);
+}
+
 /** New mail landed in a thread — one unread row per eligible recipient,
  * collapsing a reply burst per (user, thread). `excludeUserId` drops the sender
  * on an INTERNAL (in-system) delivery so they don't notify themselves. */
