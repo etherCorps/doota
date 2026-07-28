@@ -42,5 +42,21 @@
 		<ellipse cx="12" cy="5" rx="8" ry="3" />
 		<path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
 		<path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" />
+	{:else if name === 'key'}
+		<circle cx="7.5" cy="15.5" r="4.5" />
+		<path d="m21 2-9.6 9.6" />
+		<path d="m15.5 7.5 3 3L22 7l-3-3" />
+	{:else if name === 'bell'}
+		<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+		<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+	{:else if name === 'users'}
+		<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+		<circle cx="9" cy="7" r="4" />
+		<path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+		<path d="M16 3.13a4 4 0 0 1 0 7.75" />
+	{:else if name === 'calendar'}
+		<rect x="3" y="4" width="18" height="18" rx="2" />
+		<path d="M16 2v4M8 2v4M3 10h18" />
+		<path d="m9 16 2 2 4-4" />
 	{/if}
 </svg>

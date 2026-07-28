@@ -49,7 +49,14 @@
 
 	const stack = ['Workers', 'D1', 'R2', 'KV', 'Queues', 'Email Routing'];
 
-	const capabilities = [
+	const capabilities: {
+		n: string;
+		icon: string;
+		color: string;
+		title: string;
+		body: string;
+		wide?: boolean;
+	}[] = [
 		{
 			n: '01',
 			icon: 'threads',
@@ -87,10 +94,39 @@
 		},
 		{
 			n: '06',
+			icon: 'key',
+			color: '#6366f1',
+			title: 'Passkeys or passwords',
+			body: 'Sign in with a passkey or a password — your choice. No outside login sitting between you and your inbox.'
+		},
+		{
+			n: '07',
+			icon: 'bell',
+			color: '#f59e0b',
+			title: 'Notifications, everywhere',
+			body: 'Get a nudge the moment new mail lands — on your phone or your desktop. Install Doota like an app, straight from the browser.'
+		},
+		{
+			n: '08',
+			icon: 'users',
+			color: '#14b8a6',
+			title: 'A shared inbox, when you need it',
+			body: 'Share a mailbox with your team. Assign a conversation to one person, and leave private notes only your side can see.'
+		},
+		{
+			n: '09',
+			icon: 'calendar',
+			color: '#f43f5e',
+			title: 'Calendar invites, built in',
+			body: 'Invites arrive as a card you can actually use — RSVP, join the call, or add it to your calendar in a tap. No cryptic attachments.'
+		},
+		{
+			n: '10',
 			icon: 'code',
 			color: '#06b6d4',
 			title: 'Open source, end to end',
-			body: 'Free and open source. Read it, run it, change it. No subscriptions, no per-seat fees, no lock-in.'
+			body: 'Free and open source. Read it, run it, change it. No subscriptions, no per-seat fees, no lock-in.',
+			wide: true
 		}
 	];
 
@@ -451,19 +487,23 @@
 				{#each capabilities as cap, i (cap.n)}
 					<div
 						use:reveal={i * 70}
-						class="group flex flex-col bg-surface p-6 transition-transform transition-colors duration-200 ease-out hover:-translate-y-0.5 hover:bg-raised sm:p-7"
+						class="group flex flex-col bg-surface p-6 transition-transform transition-colors duration-200 ease-out hover:-translate-y-0.5 hover:bg-raised sm:p-7 {cap.wide
+							? 'lg:col-span-3 lg:flex-row lg:items-center lg:gap-7'
+							: ''}"
 					>
-						<div class="flex items-center justify-between">
+						<div class="flex items-center justify-between {cap.wide ? 'lg:shrink-0' : ''}">
 							<span
 								class="grid h-11 w-11 place-items-center rounded-xl transition-transform duration-200 ease-out group-hover:scale-110"
 								style="background:{cap.color}1a"
 							>
 								<Icon name={cap.icon} color={cap.color} />
 							</span>
-							<span class="font-display text-sm font-bold tabular-nums text-faint">{cap.n}</span>
+							<span class="font-display text-sm font-bold tabular-nums text-faint {cap.wide ? 'lg:hidden' : ''}">{cap.n}</span>
 						</div>
-						<h3 class="mt-4 font-display text-lg font-bold tracking-tight">{cap.title}</h3>
-						<p class="mt-2 text-sm leading-relaxed text-muted">{cap.body}</p>
+						<div class={cap.wide ? 'lg:min-w-0 lg:flex-1' : ''}>
+							<h3 class="mt-4 font-display text-lg font-bold tracking-tight {cap.wide ? 'lg:mt-0' : ''}">{cap.title}</h3>
+							<p class="mt-2 text-sm leading-relaxed text-muted {cap.wide ? 'lg:max-w-2xl' : ''}">{cap.body}</p>
+						</div>
 					</div>
 				{/each}
 			</div>
