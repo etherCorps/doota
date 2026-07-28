@@ -13,6 +13,15 @@ function detectMac(): boolean {
 }
 
 export const isMac = detectMac();
+
+/** iOS device (any browser — all WebKit, sharing the keyboard/drawer quirks).
+ * iPadOS 13+ reports as "Macintosh", so also match touch + Mac UA. */
+export function isIOS(): boolean {
+	if (typeof navigator === "undefined") return false;
+	const ua = navigator.userAgent;
+	return /iphone|ipad|ipod/i.test(ua) || (navigator.maxTouchPoints > 1 && /macintosh/i.test(ua));
+}
+
 /** Primary modifier symbol/word for this OS (⌘ on Mac, Ctrl elsewhere). */
 export const MOD = isMac ? "⌘" : "Ctrl";
 export const ALT = isMac ? "⌥" : "Alt";

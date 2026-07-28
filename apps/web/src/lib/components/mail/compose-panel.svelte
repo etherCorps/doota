@@ -69,13 +69,18 @@
 		// Single-pane mail region (list OR thread): compose in a bottom drawer
 		// instead of the docked window / overlay. Passed down from the layout,
 		// which measures the content region (same 56rem line as the pane split).
-		asDrawer = false
+		asDrawer = false,
+		// iOS single-pane: a full-screen page sized to the visible viewport instead
+		// of a bottom drawer, so the keyboard just shrinks the page (no drawer +
+		// keyboard fight). The layout drives its history entry (back-gesture closes).
+		iosPage = false
 	}: {
 		open?: boolean;
 		prefill?: Prefill;
 		resumeDraftId?: string;
 		scheduleAt?: number;
 		asDrawer?: boolean;
+		iosPage?: boolean;
 	} = $props();
 
 	const UNDO_SECONDS = 10;
@@ -121,13 +126,15 @@
 	// resize/scroll bursts so we set style once per frame, not per event.
 	let keyboardInset = $state(0);
 	let viewportH = $state(0);
+	let viewportTop = $state(0);
 	$effect(() => {
 		const vv = window.visualViewport;
-		if (!vv || !asDrawer) return;
+		if (!vv || (!asDrawer && !iosPage)) return;
 		let raf = 0;
 		const measure = () => {
 			keyboardInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
 			viewportH = Math.round(vv.height);
+			viewportTop = Math.round(vv.offsetTop);
 		};
 		const update = () => {
 			cancelAnimationFrame(raf);
@@ -148,6 +155,12 @@
 		keyboardInset > 0
 			? `height:${Math.max(viewportH - 16, 160)}px;max-height:none;bottom:${keyboardInset}px`
 			: undefined
+	);
+	// iOS page: pin the container to the VISIBLE viewport (top+height from
+	// visualViewport) so the keyboard shrinks the page and the send bar stays put
+	// above it. Before the first measure, fall back to full dynamic height.
+	const iosPageStyle = $derived(
+		viewportH > 0 ? `top:${viewportTop}px;height:${viewportH}px` : 'top:0;height:100dvh'
 	);
 
 	// A surviving mirror = text the server never acked (tab died / offline
@@ -853,6 +866,17 @@
 				</div>
 			</Drawer.Content>
 		</Drawer.Root>
+	{:else if iosPage}
+		<!-- iOS full-screen page: fixed to the visible viewport (keyboard-safe), no
+		     drawer. The layout owns the history entry so the back-gesture closes it. -->
+		<div
+			class="bg-background fixed inset-x-0 z-50 flex flex-col overflow-hidden"
+			style={iosPageStyle}
+		>
+			<div class="flex min-h-0 flex-1 items-stretch overflow-hidden">
+				{@render panelInner(true)}
+			</div>
+		</div>
 	{:else}
 		{#if bigMode}
 			<!-- Dim the mail view behind; clicking it closes (keeps the draft). -->

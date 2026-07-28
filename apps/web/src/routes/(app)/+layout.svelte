@@ -10,10 +10,17 @@
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import ShortcutsDialog from '$lib/components/app/shortcuts-dialog.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { pushState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { isIOS } from '$lib/utils/platform';
 	import { compose } from '$lib/client/compose.svelte.js';
 
 	let { data, children } = $props();
+
+	// iOS single-pane composes as a full-screen PAGE (keyboard fights the drawer on
+	// iOS). Everyone else keeps the drawer/desktop panel. Detected once.
+	const ios = isIOS();
 
 	// Persist the sidebar collapsed state across navigations/reloads (runed).
 	const sidebarOpen = new PersistedState('doota:sidebar-open', true);
@@ -23,6 +30,29 @@
 	// composer renders as a bottom drawer instead of the docked window.
 	let regionW = $state(0);
 	const singlePane = $derived(regionW > 0 && regionW < 896);
+	const iosCompose = $derived(singlePane && ios);
+
+	// iOS composer ↔ history sync. The composer's `open` flag drives visibility;
+	// we mirror it into a shallow-routed history entry so the back gesture / button
+	// closes it (and closing pops the entry). No change to the panel's close().
+	let composePushed = false;
+	$effect(() => {
+		if (!iosCompose) return;
+		const o = compose.open;
+		const hasState = !!page.state.compose;
+		untrack(() => {
+			if (o && !hasState && !composePushed) {
+				composePushed = true;
+				pushState('', { ...page.state, compose: true });
+			} else if (o && !hasState && composePushed) {
+				composePushed = false;
+				compose.open = false; // back gesture popped the entry → close
+			} else if (!o && hasState && composePushed) {
+				composePushed = false;
+				history.back(); // closed via the panel → pop the entry
+			}
+		});
+	});
 
 	// Global keyboard help — opened by `?` or the palette's "Keyboard shortcuts".
 	let shortcutsOpen = $state(false);
@@ -85,7 +115,8 @@
 				prefill={compose.prefill as never}
 				resumeDraftId={compose.resumeDraftId}
 				scheduleAt={compose.scheduleAt}
-				asDrawer={singlePane}
+				asDrawer={singlePane && !ios}
+				iosPage={iosCompose}
 			/>
 		{/key}
 	</Sidebar.Inset>
