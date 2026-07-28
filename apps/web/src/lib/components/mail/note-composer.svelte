@@ -44,7 +44,7 @@
 	<Textarea
 		bind:value={body}
 		onkeydown={onKeydown}
-		placeholder="Write a note for your team…"
+		placeholder="Write a note for your team… @mention a teammate to notify them"
 		class="bg-background min-h-[60px] border-amber-300/60 dark:border-amber-500/20"
 	/>
 	<div class="mt-2 flex justify-end">

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
 import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
-import { createNote, editNote, softDeleteNote, listNotes } from "@doota/mail-core/notes";
+import { createNote, editNote, softDeleteNote, listNotes, parseMentions } from "@doota/mail-core/notes";
 import { assignThread, listSystemEvents, isSharedMailbox } from "@doota/mail-core/collab";
 import { searchNotes } from "@doota/mail-core/search";
 import { getThread } from "@doota/mail-core/read";
@@ -125,6 +125,30 @@ describe("assignment", () => {
     expect(events).toHaveLength(1);
     expect(events[0].eventType).toBe("assigned");
     expect(events[0].data.assigneeUserId).toBe("u2");
+  });
+});
+
+describe("note @mentions", () => {
+  it("parseMentions extracts handles at word start, ignores emails in prose", () => {
+    expect(parseMentions("hey @b and @a@x.com")).toEqual(["b", "a@x.com"]);
+    expect(parseMentions("write to b@x.com about it")).toEqual([]); // mid-word @ is not a mention
+    expect(parseMentions("@B duplicate @b")).toEqual(["b"]); // lowercased + de-duped
+  });
+
+  it("notifies a mentioned teammate who can see the mailbox", async () => {
+    // u1 mentions @b (u2) on mb_support, which u2 can access.
+    await createNote(db, ck, KEY_B64, { orgId: ORG, threadId: "th1", mailboxId: "mb_support", authorUserId: "u1", body: "can you check this @b" });
+    const notifs = await db.select().from(schema.notification).where(eq(schema.notification.type, "mention"));
+    expect(notifs).toHaveLength(1);
+    expect(notifs[0].userId).toBe("u2");
+    expect(notifs[0].threadId).toBe("th1");
+  });
+
+  it("does not notify a self-mention, nor a teammate without mailbox access", async () => {
+    // @a is the author (self); @b is u2, who cannot access mb_alice.
+    await createNote(db, ck, KEY_B64, { orgId: ORG, threadId: "th1", mailboxId: "mb_alice", authorUserId: "u1", body: "@a note to self and @b who can't see this" });
+    const notifs = await db.select().from(schema.notification).where(eq(schema.notification.type, "mention"));
+    expect(notifs).toHaveLength(0);
   });
 });
 

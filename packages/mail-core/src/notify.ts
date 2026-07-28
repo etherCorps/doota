@@ -228,6 +228,39 @@ export async function recordNote(
     ).catch(() => {});
 }
 
+/** A teammate was @mentioned in a note — notify them directly. Higher signal
+ * than the assignee's note bell, so it's its own type; a self-mention no-ops. */
+export async function recordMention(
+  db: Db,
+  input: { orgId: string; mailboxId: string; threadId: string; mentionedUserId: string; actorUserId: string | null },
+  hub?: EventHubNamespace,
+  push?: WebPushEnv,
+): Promise<void> {
+  if (input.actorUserId === input.mentionedUserId) return; // mentioning yourself: no notify
+  await db.insert(mail.notification).values({
+    userId: input.mentionedUserId,
+    orgId: input.orgId,
+    type: "mention",
+    mailboxId: input.mailboxId,
+    threadId: input.threadId,
+    actorUserId: input.actorUserId,
+  });
+  await notifyNotification(hub, input.mentionedUserId); // live bell ping (no-op without a hub)
+  if (push)
+    await sendPushToUser(
+      db,
+      push,
+      input.mentionedUserId,
+      {
+        title: "You were mentioned",
+        body: "A teammate mentioned you in a note",
+        url: threadUrl(input.mailboxId, input.threadId),
+        tag: `thread-${input.threadId}`,
+      },
+      await orgSubject(db, input.orgId),
+    ).catch(() => {});
+}
+
 /** A send the user owns failed (hard/soft bounce, complaint, or send error).
  * Durable bell row + live ping + OS push (app closed) — a failed send is at
  * least as notify-worthy as new mail. Tagged per submission so distinct

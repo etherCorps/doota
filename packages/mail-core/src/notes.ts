@@ -6,7 +6,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { indexNote, deleteNoteIndex, tokensFor } from "./search";
-import { recordNote } from "./notify";
+import { recordNote, recordMention } from "./notify";
 import { tryLog } from "./log";
 import type { EventHubNamespace } from "./events-hub";
 import type { WebPushEnv } from "./web-push";
@@ -44,6 +44,37 @@ async function toDTO(ck: ContentKey, row: typeof schema.internalNote.$inferSelec
     deleted,
     createdAt: row.createdAt.getTime(),
   };
+}
+
+/** Extract @mention handles from a note body — an email or a bare local-part,
+ * only after start-of-string or whitespace so a normal email in prose
+ * ("mail alice@acme.com") and mid-word text aren't treated as mentions.
+ * Lowercased + de-duped. Exported for testing. */
+export function parseMentions(body: string): string[] {
+  const out = new Set<string>();
+  for (const m of body.matchAll(/(?:^|\s)@([a-z0-9._+-]+(?:@[a-z0-9.-]+)?)/gi)) {
+    out.add(m[1].toLowerCase());
+  }
+  return [...out];
+}
+
+/** Resolve mention handles to user ids that can actually see this mailbox (an
+ * exact email or its local-part). Scoped to mailbox_access so we never ping a
+ * teammate about a thread they can't open. */
+async function resolveMentions(db: Db, mailboxId: string, tokens: string[]): Promise<string[]> {
+  if (!tokens.length) return [];
+  const rows = await db
+    .select({ userId: schema.user.id, email: schema.user.email })
+    .from(schema.mailboxAccess)
+    .innerJoin(schema.user, eq(schema.user.id, schema.mailboxAccess.userId))
+    .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
+  const want = new Set(tokens);
+  const out = new Set<string>();
+  for (const r of rows) {
+    const email = r.email.toLowerCase();
+    if (want.has(email) || want.has(email.split("@")[0])) out.add(r.userId);
+  }
+  return [...out];
 }
 
 /** Create a note on a thread within a mailbox, and index it for search. */
@@ -89,6 +120,21 @@ export async function createNote(
     ),
     { threadId: input.threadId },
   );
+  // @mentions — notify each mentioned teammate who can see this mailbox (the
+  // author's own mention no-ops in recordMention). Best-effort, per mention.
+  const mentioned = await resolveMentions(db, input.mailboxId, parseMentions(input.body));
+  for (const mentionedUserId of mentioned) {
+    await tryLog(
+      "note.mention_notify_failed",
+      recordMention(
+        db,
+        { orgId: input.orgId, mailboxId: input.mailboxId, threadId: input.threadId, mentionedUserId, actorUserId: input.authorUserId },
+        hub,
+        push,
+      ),
+      { threadId: input.threadId },
+    );
+  }
   return toDTO(ck, row);
 }
 

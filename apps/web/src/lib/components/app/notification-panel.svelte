@@ -11,6 +11,7 @@
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
+	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import CheckCheckIcon from '@lucide/svelte/icons/check-check';
 	import { resolve } from '$app/paths';
 	import { scheduledSends } from '$lib/rpc/draft.remote.js';
@@ -152,6 +153,12 @@
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">New note</span>
 							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} left a note` : 'A teammate left a note'}</span>
+						</span>
+					{:else if n.type === 'mention'}
+						<AtSignIcon class="text-brand mt-0.5 size-4 shrink-0" />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">You were mentioned</span>
+							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} mentioned you in a note` : 'A teammate mentioned you'}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />
