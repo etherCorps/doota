@@ -848,12 +848,16 @@
 	// inbound); a per-message Reply/Reply-all button sets an explicit target so
 	// the audience is computed from THAT message, not guessed from the thread.
 	let replyTarget = $state<{ msgId: string; scope: 'reply' | 'reply_all' } | null>(null);
+	// Bumped on every Reply click so the composer re-expands even when it's already
+	// mounted for that message but the user had collapsed it.
+	let replyOpenTick = $state(0);
 	let composerEl = $state<HTMLElement>();
 	let composerFlash = $state(false);
 	// Every action needs a response: retarget, then scroll the (docked, easy-to-miss)
 	// composer into view and flash it so the click is unmistakably acknowledged.
 	async function replyTo(m: MessageDTO, scope: 'reply' | 'reply_all') {
 		replyTarget = { msgId: m.id, scope };
+		replyOpenTick++; // force-expand (no-op remount case where msgId is unchanged)
 		await tick(); // let the composer remount with the new audience first
 		composerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		composerFlash = true;
@@ -2538,6 +2542,7 @@
 										ccAll={ctx.ccAll}
 										initialScope={ctx.scope}
 										autoOpen={ctx.autoOpen}
+										expandKey={replyOpenTick}
 										defaultAliasId={ctx.aliasId}
 										{identities}
 										onchange={refresh}

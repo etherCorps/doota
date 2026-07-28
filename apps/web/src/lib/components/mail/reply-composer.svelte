@@ -45,6 +45,7 @@
 		ccAll,
 		initialScope = 'reply',
 		autoOpen = false,
+		expandKey = 0,
 		defaultAliasId = null,
 		identities,
 		onchange
@@ -60,6 +61,9 @@
 		initialScope?: 'reply' | 'reply_all';
 		/** Expand immediately (user explicitly picked a message to reply to). */
 		autoOpen?: boolean;
+		/** Bumped by the parent on every per-message Reply click — re-expands the
+		 *  composer even when it's already mounted for that message (and collapsed). */
+		expandKey?: number;
 		/** Reply recipient set (just the target). */
 		to: string[];
 		/** Reply-all recipient sets (self already excluded, computed by the page). */
@@ -123,7 +127,10 @@
 	// serializes to "<p></p>", which is a non-empty STRING but no real text.
 	const htmlHasText = (html: string) =>
 		html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0;
-	const hasBody = $derived(htmlHasText(body));
+	// A reply is sendable with an inline image and NO text (Gmail/Superhuman
+	// allow it) — so "has content" is real text OR an embedded image.
+	const htmlHasContent = (html: string) => htmlHasText(html) || /<img\b/i.test(html);
+	const hasBody = $derived(htmlHasContent(body));
 
 	// Collapsible: on phones the full composer eats most of the thread view, so
 	// it starts as a one-row "Reply…" bar; desktop starts open and can collapse
@@ -131,6 +138,24 @@
 	// in-progress draft survives the round trip.
 	const isMobile = new IsMobile();
 	let collapsed = $state(false);
+
+	// Re-expand when the user taps a message's Reply while this composer is already
+	// mounted for that target but collapsed. The first effect run snapshots the tick
+	// (so a plain mount / thread open never expands); only a later increment does.
+	let firstExpandRun = true;
+	let seenExpand = 0;
+	$effect(() => {
+		const t = expandKey;
+		if (firstExpandRun) {
+			firstExpandRun = false;
+			seenExpand = t;
+			return;
+		}
+		if (t > seenExpand) {
+			seenExpand = t;
+			collapsed = false;
+		}
+	});
 
 	// Local-first crash buffer: every keystroke mirrors to localStorage; the
 	// mirror is cleared once the server acks, so on mount its presence means
@@ -159,7 +184,7 @@
 		const local = readMirror(mirrorKey);
 		// Only a mirror with REAL text is a restore — an empty editor mirrors
 		// "<p></p>", which must not resurface as a phantom "Restored" toast.
-		if (local?.body && htmlHasText(local.body)) {
+		if (local?.body && htmlHasContent(local.body)) {
 			body = local.body;
 			editorKey++;
 			collapsed = false;
@@ -354,8 +379,8 @@
 
 <div
 	class="bg-card border-t shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)] transition-[padding] duration-200 motion-reduce:transition-none {collapsed
-		? 'p-2'
-		: 'p-3'}"
+		? 'px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'
+		: 'px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]'}"
 >
 	{#if collapsed}
 		<!-- Re-emerge bar: reads like a chat input; shows draft state so a
@@ -497,7 +522,7 @@
 						body = html;
 						// Don't mirror an empty editor ("<p></p>"); clear any prior husk so
 						// emptying a reply doesn't leave a phantom to "restore" next open.
-						if (htmlHasText(html)) mirrorDraft(mirrorKey, { body: html });
+						if (htmlHasContent(html)) mirrorDraft(mirrorKey, { body: html });
 						else clearMirror(mirrorKey);
 						scheduleSave();
 					}}
@@ -506,7 +531,9 @@
 				/>
 			{/key}
 			{#if attachments.length}
-				<div class="flex flex-wrap gap-2">
+				<!-- Cap the chip list so many files scroll instead of pushing the Send
+				     button off-screen. -->
+				<div class="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
 					{#each attachments as a (a.r2Key)}
 						<span class="bg-muted flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
 							<PaperclipIcon class="text-muted-foreground size-3" />

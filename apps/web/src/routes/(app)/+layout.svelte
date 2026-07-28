@@ -4,7 +4,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { PersistedState } from 'runed';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
-	import EdgeSwipeOpen from '$lib/components/app/edge-swipe-open.svelte';
 	import SendFailureNotifier from '$lib/components/app/send-failure-notifier.svelte';
 	import RealtimeSync from '$lib/components/app/realtime-sync.svelte';
 	import TopBar from '$lib/components/app/top-bar.svelte';
@@ -58,7 +57,6 @@
 <svelte:window onkeydown={onKeydown} />
 
 <Sidebar.Provider bind:open={sidebarOpen.current}>
-	<EdgeSwipeOpen />
 	<RealtimeSync />
 	<SendFailureNotifier />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
