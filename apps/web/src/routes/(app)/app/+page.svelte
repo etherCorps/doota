@@ -1912,7 +1912,7 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="@container/thread relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
+	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
@@ -2187,7 +2187,7 @@
 					<div class="flex min-h-0 min-w-0 flex-1">
 					<ScrollArea class="min-h-0 min-w-0 flex-1">
 						<!-- chat: WhatsApp-style flow (default). mail: full-width card stack. -->
-						<div bind:this={streamEl} class="flex w-full flex-col p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
+						<div bind:this={streamEl} class="@container/thread flex w-full flex-col p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
 							{#each thread.items as item, i (item.id)}
 								{#if threadView.current === 'chat' && isNewDay(thread.items, i)}
 									{@const ms = itemMs(item)}
@@ -2228,7 +2228,7 @@
 												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted}
-													<div class="w-[min(32rem,calc(100cqi-7rem))]">
+													<div class="w-[min(32rem,calc(80cqi-2.5rem))]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
 															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`}
@@ -2267,7 +2267,7 @@
 													{@const docsOnly = shown.filter((a) => !media.includes(a))}
 													{#if media.length}
 														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
-														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-[min(15rem,calc(100cqi-7rem))] grid-cols-1' : 'max-w-[min(20rem,calc(100cqi-7rem))] grid-cols-2'}">
+														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-[min(15rem,calc(80cqi-2.5rem))] grid-cols-1' : 'max-w-[min(20rem,calc(80cqi-2.5rem))] grid-cols-2'}">
 															{#each media as a (a.id)}
 																<AttachmentTile att={a} variant="grid" onpreview={openLightbox} />
 															{/each}
