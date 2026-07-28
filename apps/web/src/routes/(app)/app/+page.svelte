@@ -2547,6 +2547,7 @@
 										defaultAliasId={ctx.aliasId}
 										{identities}
 										onchange={refresh}
+										onsent={() => (replyTarget = null)}
 									/>
 								{/key}
 							</div>

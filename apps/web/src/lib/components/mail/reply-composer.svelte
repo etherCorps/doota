@@ -50,7 +50,8 @@
 		expandKey = 0,
 		defaultAliasId = null,
 		identities,
-		onchange
+		onchange,
+		onsent
 	}: {
 		mailboxId: string;
 		threadId: string;
@@ -74,6 +75,9 @@
 		defaultAliasId?: string | null;
 		identities: SendIdentity[];
 		onchange?: () => void;
+		/** Fired only on a successful send (not undo) — the parent clears its
+		 *  per-message reply target so the next reply defaults to latest again. */
+		onsent?: () => void;
 	} = $props();
 
 	// Gmail model: an explicit Reply / Reply all switch so the sender always KNOWS
@@ -357,8 +361,10 @@
 		draftId = null;
 		clientRevision = 0;
 		body = '';
+		attachments = []; // clear the chips — they belonged to the sent draft
 		editorKey++;
 		onchange?.(); // the sent bubble now exists in this mailbox's timeline
+		onsent?.(); // clear the parent's reply target → next reply defaults to latest
 		toast('Reply sent', {
 			duration: UNDO_SECONDS * 1000,
 			action: { label: 'Undo', onClick: () => undoSend(submissionId) }

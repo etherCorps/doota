@@ -159,7 +159,10 @@
 	function insertImageFile(file: File) {
 		if (!file.type.startsWith('image/')) return;
 		const reader = new FileReader();
-		reader.onload = () => editor?.chain().focus().setImage({ src: String(reader.result) }).run();
+		// createParagraphNear drops the cursor onto a fresh line below the image, so
+		// the caret isn't stretched to the image's height sitting right beside it.
+		reader.onload = () =>
+			editor?.chain().focus().setImage({ src: String(reader.result) }).createParagraphNear().run();
 		reader.readAsDataURL(file);
 	}
 	function onImageFiles(e: Event) {

@@ -25,6 +25,9 @@ export type SendIdentity = {
   displayName: string | null;
   /** the domain honors `+tag` subaddressing for this identity */
   subaddressable: boolean;
+  /** the underlying mailbox is the user's personal inbox (not shared/service) —
+   * used to pick a sensible default From when there's no mailbox context. */
+  isPersonal: boolean;
   available: boolean;
   reason?: string;
 };
@@ -40,7 +43,7 @@ export async function listSendIdentities(db: Db, userId: string): Promise<SendId
 
   const boxes = await db.query.mailbox.findMany({
     where: inArray(schema.mailbox.id, mailboxIds),
-    columns: { id: true, orgId: true, address: true, displayName: true, isActive: true },
+    columns: { id: true, orgId: true, address: true, displayName: true, isActive: true, isPersonal: true },
   });
 
   const orgIds = [...new Set(boxes.map((b) => b.orgId))];
@@ -87,6 +90,7 @@ export async function listSendIdentities(db: Db, userId: string): Promise<SendId
       address: box.address,
       displayName: box.displayName,
       subaddressable: canSubaddress,
+      isPersonal: box.isPersonal,
       ...avail,
     });
     for (const al of aliases.filter((a) => a.mailboxId === box.id)) {
@@ -98,6 +102,7 @@ export async function listSendIdentities(db: Db, userId: string): Promise<SendId
         displayName: al.label,
         // Aliases are the hide-my-email surface; subaddressing on top would leak.
         subaddressable: false,
+        isPersonal: box.isPersonal,
         ...avail,
       });
     }

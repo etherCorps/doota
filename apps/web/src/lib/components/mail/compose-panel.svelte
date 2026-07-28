@@ -221,11 +221,16 @@
 			// body actually renders (resume path already does this above).
 			editorKey++;
 		}
+		// Default From: the mailbox in context (prefill = the current view/switcher),
+		// else the user's personal inbox, else the first available identity. The list
+		// is oldest→newest, so without the personal preference a shared/service
+		// mailbox could win by age.
 		const chosen =
 			(prefill?.mailboxId &&
 				identities.find(
 					(i) => i.mailboxId === prefill.mailboxId && (i.aliasId ?? null) === (prefill.fromAliasId ?? null)
 				)) ||
+			identities.find((i) => i.available && i.isPersonal) ||
 			identities.find((i) => i.available);
 		if (chosen) {
 			mailboxId = chosen.mailboxId;
