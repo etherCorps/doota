@@ -196,7 +196,7 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     // Re-sent automated/no-reply mail: same subject + participant, 1 day apart,
     // neither carries In-Reply-To/References. Must be two separate threads.
     const a = parsed({ messageIdHeader: "<w1@ext>", from: "no-reply@sender.com", subject: "Welcome to Doota" });
-    const b = parsed({ messageIdHeader: "<w2@ext>", from: "no-reply@sender.com", subject: "Welcome to Doota", sentAt: a.sentAt + 24 * 3600 * 1000 });
+    const b = parsed({ messageIdHeader: "<w2@ext>", from: "no-reply@sender.com", subject: "Welcome to Doota", sentAt: a.sentAt! + 24 * 3600 * 1000 });
     const m1 = await materializeMessage(db, ORG, a, deps);
     const m2 = await materializeMessage(db, ORG, b, deps);
     expect(m2.threadId).not.toBe(m1.threadId);
@@ -209,7 +209,7 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     const m1 = await materializeMessage(db, ORG, a, deps);
     const reply = parsed({
       messageIdHeader: "<s2@ext>", from: "alice@acme.com", to: ["ext@sender.com"],
-      inReplyTo: "<never-stored@x>", subject: "Re: Project update", sentAt: a.sentAt + 1000,
+      inReplyTo: "<never-stored@x>", subject: "Re: Project update", sentAt: a.sentAt! + 1000,
     });
     const m2 = await materializeMessage(db, ORG, reply, deps);
     expect(m2.threadId).toBe(m1.threadId);

@@ -1,0 +1,16 @@
+{
+  "name": "@doota/utils",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "//": "Shared, dependency-free utilities usable from every package + apps/web. Leaf package (no workspace deps). Consumed via subpath imports (@doota/utils/try-catch).",
+  "exports": {
+    "./try-catch": "./src/try-catch.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@doota/db": "workspace:*",
+    "@doota/utils": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "neosanitize": "^0.3.0",
     "postal-mime": "^2.7.5"

@@ -14,7 +14,7 @@ import {
 import { mintMessageId, threadingHeaders } from "./mail-thread-contract";
 import { recordCorrespondents } from "./contacts";
 import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
-import { log } from "./log";
+import { log, tryLog } from "./log";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -233,14 +233,14 @@ export async function enqueueSend(
       .onConflictDoNothing();
     // Sent-side autocomplete: everyone we just addressed becomes a correspondent
     // of the sending mailbox. Best-effort; a send never fails over the index.
-    try {
-      await recordCorrespondents(
+    await tryLog(
+      "out.correspondent_failed",
+      recordCorrespondents(
         db,
         recips.map((r) => ({ mailboxId: req.mailboxId, address: r.address, name: null, seenAt: now })),
-      );
-    } catch {
-      // autocomplete hygiene only
-    }
+      ),
+      { submissionId },
+    );
   }
 
   // Hold the job for the undo window / until the scheduled time via the queue's

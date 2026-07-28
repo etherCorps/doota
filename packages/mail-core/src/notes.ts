@@ -7,6 +7,7 @@ import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { indexNote, deleteNoteIndex, tokensFor } from "./search";
 import { recordNote } from "./notify";
+import { tryLog } from "./log";
 import type { EventHubNamespace } from "./events-hub";
 import type { WebPushEnv } from "./web-push";
 
@@ -73,8 +74,9 @@ export async function createNote(
     tokens: await tokensFor(searchKeyB64, [input.body]),
   });
   // Durable bell for the thread's assignee — best-effort, never fails the note.
-  try {
-    await recordNote(
+  await tryLog(
+    "note.notify_failed",
+    recordNote(
       db,
       {
         orgId: input.orgId,
@@ -84,10 +86,9 @@ export async function createNote(
       },
       hub,
       push,
-    );
-  } catch {
-    // a missing bell row is not worth failing the note write
-  }
+    ),
+    { threadId: input.threadId },
+  );
   return toDTO(ck, row);
 }
 

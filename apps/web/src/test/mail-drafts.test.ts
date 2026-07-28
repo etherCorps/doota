@@ -17,7 +17,7 @@ import {
 import { listSendIdentities } from "@doota/mail-core/identities";
 import { listScheduled, listFailedSends, sweepStaleDrafts } from "@doota/mail-core/drafts";
 import * as mail from "@doota/db/mail.schema";
-import { suggestRecipients } from "@doota/mail-core/contacts";
+import { suggestRecipients, recordCorrespondents } from "@doota/mail-core/contacts";
 import { getThread } from "@doota/mail-core/read";
 import { encryptContent } from "@doota/mail-core/crypto";
 
@@ -432,12 +432,14 @@ describe("recipient autocomplete", () => {
     // u1 emailed someone.
     const d = await createDraft(db, ck, "u1", { mailboxId: "mb_alice", kind: "new", to: ["colleague@ext.com"], body: "x" });
     await sendDraft(db, env(), ck, "u1", { draftId: d.id });
-    // someone emailed alice.
+    // someone emailed alice — the inbound consumer records the sender against
+    // the recipient mailbox in the correspondent index.
     await db.insert(schema.thread).values({ id: "thc", orgId: ORG, lastMessageAt: new Date() });
     await db.insert(schema.message).values({
       id: "mc", orgId: ORG, threadId: "thc", messageIdHeader: "<c@ext.com>", fromAddr: "customer@ext.com", sentAt: new Date(),
     });
     await db.insert(schema.delivery).values({ id: "dc", orgId: ORG, messageId: "mc", mailboxId: "mb_alice", role: "to" });
+    await recordCorrespondents(db, [{ mailboxId: "mb_alice", address: "customer@ext.com", name: null, seenAt: Date.now() }]);
 
     const all = (await suggestRecipients(db, "u1", "")).map((s) => s.address);
     expect(all).toContain("colleague@ext.com");

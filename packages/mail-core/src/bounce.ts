@@ -4,6 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { recordSendFailed } from "./notify";
+import { tryLog } from "./log";
 import type { EventHubNamespace } from "./events-hub";
 import type { WebPushEnv } from "./web-push";
 
@@ -186,8 +187,9 @@ export async function applyBounce(
     await rollupToWorst(db, submissionId, worstStatus);
     // Durable notification for the sender — best-effort, never fails bounce handling.
     if (notifyTarget) {
-      try {
-        await recordSendFailed(
+      await tryLog(
+        "bounce.notify_failed",
+        recordSendFailed(
           db,
           {
             orgId,
@@ -198,10 +200,9 @@ export async function applyBounce(
           },
           notify?.hub,
           notify?.push,
-        );
-      } catch {
-        // a missing bell row is not worth failing the bounce update
-      }
+        ),
+        { submissionId },
+      );
     }
   }
 

@@ -11,7 +11,7 @@ import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { sendGrantUserIds } from "./mailbox";
 import { recordNewMail } from "./notify";
 import { recordCorrespondents } from "./contacts";
-import { log, errInfo } from "./log";
+import { log, errInfo, tryLog } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
 /**
@@ -307,23 +307,23 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       await notifyInboundMail(db, env.MAIL_EVENTS, job.resolvedMailboxId, threadId);
 
       // Durable notification (bell) — best-effort, never fails the delivery.
-      try {
-        await recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId }, env);
-      } catch (e) {
-        log.warn("in.notify_failed", { threadId, ...errInfo(e) });
-      }
+      await tryLog(
+        "in.notify_failed",
+        recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId }, env),
+        { threadId },
+      );
 
       // A new correspondent just landed — record the sender against this mailbox
       // (autocomplete index) and bust the recipients' cached contact candidates
       // (key shape shared with draft.remote.ts contactsKey) so the sender shows
       // up in suggestions immediately, not after the KV TTL.
-      try {
-        await recordCorrespondents(db, [
+      await tryLog(
+        "in.correspondent_failed",
+        recordCorrespondents(db, [
           { mailboxId: job.resolvedMailboxId, address: pm.from, name: pm.fromName, seenAt: pm.sentAt },
-        ]);
-      } catch (e) {
-        log.warn("in.correspondent_failed", { threadId, ...errInfo(e) }); // never fail delivery over autocomplete
-      }
+        ]),
+        { threadId },
+      );
       if (env.AUTH_KV) {
         try {
           const userIds = await sendGrantUserIds(db, job.resolvedMailboxId);

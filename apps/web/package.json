@@ -77,6 +77,7 @@
     "@dicebear/core": "^9.4.3",
     "@doota/db": "workspace:*",
     "@doota/mail-core": "workspace:*",
+    "@doota/utils": "workspace:*",
     "@ethercorps/un-jinja": "^1.0.0",
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/inter": "^5.2.8",

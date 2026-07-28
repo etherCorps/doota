@@ -151,6 +151,9 @@ importers:
       '@doota/mail-core':
         specifier: workspace:*
         version: link:../../packages/mail-core
+      '@doota/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@ethercorps/un-jinja':
         specifier: ^1.0.0
         version: 1.0.0
@@ -345,6 +348,9 @@ importers:
       '@doota/db':
         specifier: workspace:*
         version: link:../db
+      '@doota/utils':
+        specifier: workspace:*
+        version: link:../utils
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@cloudflare/workers-types@4.20260615.1)(@libsql/client@0.17.4)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.8.0)(kysely@0.28.17)(pg@8.20.0)
@@ -361,6 +367,12 @@ importers:
       '@sveltejs/kit':
         specifier: ^2.69.2
         version: 2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@8.1.4(@types/node@24.11.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@8.1.4(@types/node@24.11.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/utils:
+    devDependencies:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

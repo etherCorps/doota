@@ -8,6 +8,7 @@ import { decryptContent, encryptContent, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
 import { notifySubmissionState } from "./events-hub";
+import { log, errInfo } from "./log";
 import { FAILED_SEND_STATUSES, RETRYABLE_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
 
 /** A draft body is HTML (rich composer). Detect plain-text bodies so legacy/
@@ -688,6 +689,7 @@ export async function sendDraft(
     // Nothing was enqueued — hand the draft back to the editor. A crash between
     // claim and this revert strands the row in 'sending'; sweepStaleDrafts
     // rescues those back to 'editing' after a timeout.
+    log.warn("draft.send_reverted", { draftId: input.draftId, ...errInfo(e) });
     await db
       .update(mail.draft)
       .set({ status: "editing" })

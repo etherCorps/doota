@@ -16,7 +16,7 @@ import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
 import { notifyInboundMail, notifySubmissionState, type EventHubNamespace } from "./events-hub";
-import { log, errInfo } from "./log";
+import { log, errInfo, tryLog } from "./log";
 import type { OutboundJob } from "./outbound";
 
 /**
@@ -158,8 +158,9 @@ export async function processSubmission(
     // Durable notification for the sender — best-effort. threadId resolves from
     // the submission at read time; null here keeps the fail path cheap.
     if (sub.createdByUserId && sub.orgId) {
-      try {
-        await recordSendFailed(
+      await tryLog(
+        "out.send_failed_notify_failed",
+        recordSendFailed(
           db,
           {
             orgId: sub.orgId,
@@ -170,10 +171,9 @@ export async function processSubmission(
           },
           env.MAIL_EVENTS,
           env,
-        );
-      } catch {
-        // best-effort; never block the fail path
-      }
+        ),
+        { subId: sub.id },
+      );
     }
     m.ack();
   };
@@ -270,8 +270,9 @@ export async function processSubmission(
       await notifyInboundMail(db, env.MAIL_EVENTS, resolved.mailboxId, message.threadId);
       // Durable bell — internal mail never hits the inbound consumer, so record
       // it here too. Exclude the sender (they may share the recipient mailbox).
-      try {
-        await recordNewMail(
+      await tryLog(
+        "out.notify_failed",
+        recordNewMail(
           db,
           {
             orgId: resolved.orgId,
@@ -280,19 +281,18 @@ export async function processSubmission(
             excludeUserId: sub.createdByUserId ?? undefined,
           },
           env,
-        );
-      } catch (e) {
-        log.warn("out.notify_failed", { subId: sub.id, ...errInfo(e) });
-      }
+        ),
+        { subId: sub.id },
+      );
       // Received-side autocomplete: the sender is now a correspondent of the
       // internal recipient's mailbox (the sent-side is recorded in submit()).
-      try {
-        await recordCorrespondents(db, [
+      await tryLog(
+        "out.correspondent_failed",
+        recordCorrespondents(db, [
           { mailboxId: resolved.mailboxId, address: sub.envelopeFrom, name: fromName ?? null, seenAt: message.sentAt ? message.sentAt.getTime() : now },
-        ]);
-      } catch (e) {
-        log.warn("out.correspondent_failed", { subId: sub.id, ...errInfo(e) });
-      }
+        ]),
+        { subId: sub.id },
+      );
       continue;
     }
     external.push({ id: r.id, address: r.address, role: r.role });

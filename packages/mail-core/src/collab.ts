@@ -6,6 +6,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { grantedUserIds } from "./mailbox";
 import { recordAssigned } from "./notify";
+import { tryLog } from "./log";
 import type { EventHubNamespace } from "./events-hub";
 import type { WebPushEnv } from "./web-push";
 
@@ -100,8 +101,9 @@ export async function assignThread(
 
   // Durable notification for the assignee — best-effort, never fails the assign.
   if (input.assigneeUserId) {
-    try {
-      await recordAssigned(
+    await tryLog(
+      "collab.assign_notify_failed",
+      recordAssigned(
         db,
         {
           orgId: input.orgId,
@@ -112,10 +114,9 @@ export async function assignThread(
         },
         hub,
         push,
-      );
-    } catch {
-      // a missing bell row is not worth failing the assignment
-    }
+      ),
+      { threadId: input.threadId },
+    );
   }
 }
 

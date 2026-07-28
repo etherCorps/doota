@@ -11,6 +11,8 @@
  * submission), `r2Key` (inbound raw), or `msgId` (provider/RFC message-id) —
  * so one grep or dash filter follows a message across workers.
  */
+import { tryCatch } from "@doota/utils/try-catch";
+
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const;
 
 type Fields = Record<string, unknown>;
@@ -55,3 +57,17 @@ export const log = {
     console.error({ event, ...fields });
   },
 };
+
+/**
+ * Best-effort side effect: await `promise`, and on failure `log.warn(event)`
+ * with the error fields merged in — never throws. Collapses the ubiquitous
+ * `try { await x } catch (e) { log.warn(event, { ...errInfo(e) }) }` used for
+ * notifications, cache busts, and correspondent upserts — work that must not
+ * fail the mail path. Returns whether it succeeded, for the rare caller that
+ * wants to branch on it.
+ */
+export async function tryLog(event: string, promise: Promise<unknown>, fields?: Fields): Promise<boolean> {
+  const { error } = await tryCatch(promise);
+  if (error) log.warn(event, { ...fields, ...errInfo(error) });
+  return !error;
+}
