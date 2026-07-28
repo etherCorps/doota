@@ -262,7 +262,16 @@ export function stripQuotesText(body: string): string {
 export function stripQuotesHtml(html: string): string {
   const marker = /<blockquote\b|<div[^>]*(?:gmail_quote|yahoo_quoted|moz-cite-prefix)/i;
   const at = html.search(marker);
-  return (at === -1 ? html : html.slice(0, at)).trim();
+  if (at === -1) return html.trim();
+  // A REPLY has the new message text ABOVE the quote — that's what we keep. A
+  // FORWARD (Gmail wraps the whole original in a top-level `gmail_quote`) or a
+  // top-quote has ~nothing before the marker, so cutting there would drop the
+  // entire message. When there's no real text before the first quote container,
+  // it isn't reply history — keep the whole body. Otherwise a forwarded
+  // newsletter renders as an empty stub (and misclassifies as plain/no-images).
+  const head = html.slice(0, at);
+  if (stripHtmlTags(head).replace(/&nbsp;|[\s ]/gi, "").length < 2) return html.trim();
+  return head.trim();
 }
 
 /**

@@ -68,6 +68,16 @@ describe("quote stripping", () => {
       '<div dir="ltr">new</div><div class="gmail_quote"><div>q1</div><div>q2</div></div>';
     expect(stripQuotesHtml(gmail)).toBe('<div dir="ltr">new</div>');
   });
+  it("KEEPS a forwarded message (no reply text before the quote)", () => {
+    // Gmail wraps a forward's whole original in a top-level gmail_quote with an
+    // empty head — that's not reply history to drop, it's the message itself.
+    const fwd =
+      '<div dir="ltr"><br></div><br><div class="gmail_quote">---------- Forwarded message ---------<table><tr><td>rich newsletter</td></tr></table></div>';
+    expect(stripQuotesHtml(fwd)).toBe(fwd);
+    // A leading blockquote (top-quote) is likewise kept whole.
+    const topq = "<blockquote><table><tr><td>content</td></tr></table></blockquote>";
+    expect(stripQuotesHtml(topq)).toBe(topq);
+  });
   it("strips tags to plain text", () => {
     expect(stripHtmlTags("<p>Hello&nbsp;<b>world</b></p>")).toBe("Hello world");
   });
