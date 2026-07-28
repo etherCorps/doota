@@ -29,11 +29,15 @@
 		busy = true;
 		try {
 			if (next) {
-				await enableOsNotifications(); // requests permission + subscribes
-				subscribed = await isPushSubscribed();
-				if (notifPerm.current !== 'granted') toast.error('Notifications are blocked in your browser.');
-				else if (!subscribed) toast.error('Could not enable notifications on this device.');
-				else toast.success('Notifications on.');
+				// Awaits the full chain: permission → browser subscribe → server save.
+				// "ok" means browser AND server are in sync — not just a local sub.
+				const res = await enableOsNotifications();
+				subscribed = res === 'ok';
+				if (res === 'ok') toast.success('Notifications on.');
+				else if (res === 'denied') toast.error('Notifications are blocked in your browser.');
+				else if (res === 'no-vapid') toast.error('Push isn’t set up on the server yet.');
+				else if (res === 'unsupported') toast.error('This browser doesn’t support push notifications.');
+				else toast.error('Could not enable notifications on this device.');
 			} else {
 				await unsubscribeFromPush();
 				subscribed = false;

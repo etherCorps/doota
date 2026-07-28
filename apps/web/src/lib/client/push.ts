@@ -48,12 +48,20 @@ export async function isPushSubscribed(): Promise<boolean> {
 	}
 }
 
-/** Subscribe this browser + persist. Idempotent (reuses an existing subscription).
- * Call after permission is granted, and on load when permission is already on. */
-export async function subscribeToPush(): Promise<void> {
-	if (!supported() || Notification.permission !== 'granted') return;
+/** Outcome of an enable attempt — lets the settings UI say WHY it failed instead
+ * of one generic error, and guarantees "ok" means the server has the subscription
+ * (not just the browser), so app-closed delivery actually works. */
+export type PushEnableResult = 'ok' | 'unsupported' | 'denied' | 'no-vapid' | 'failed';
+
+/** Subscribe this browser AND persist to the server. Idempotent (reuses an
+ * existing subscription). Call after permission is granted, and on load when
+ * permission is already on. Returns the true outcome — 'ok' only when the
+ * server accepted the subscription. */
+export async function subscribeToPush(): Promise<PushEnableResult> {
+	if (!supported()) return 'unsupported';
+	if (Notification.permission !== 'granted') return 'denied';
 	const vapid = await pushPublicKey();
-	if (!vapid) return;
+	if (!vapid) return 'no-vapid'; // server has no VAPID key configured
 	try {
 		const reg = await navigator.serviceWorker.ready;
 		const sub =
@@ -64,10 +72,14 @@ export async function subscribeToPush(): Promise<void> {
 			}));
 		const p256dh = keyOf(sub, 'p256dh');
 		const auth = keyOf(sub, 'auth');
-		if (!p256dh || !auth) return;
+		if (!p256dh || !auth) return 'failed';
+		// Persist to the server — this is what makes app-closed delivery work, so
+		// a failure here means NOT enabled (a browser subscription alone delivers
+		// nothing). Await it: the caller decides success on the full round-trip.
 		await savePushSubscription({ endpoint: sub.endpoint, p256dh, auth, userAgent: navigator.userAgent });
+		return 'ok';
 	} catch {
-		// denied / no push service — silent; focused-tab notifications still work.
+		return 'failed';
 	}
 }
 

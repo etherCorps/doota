@@ -2,7 +2,7 @@
 // Tab-open OS notifications (Notification API) for the FOCUSED/visible case. The
 // app-closed case is Web Push (client/push.ts + the service worker); granting
 // permission here also registers the push subscription.
-import { subscribeToPush } from './push';
+import { subscribeToPush, type PushEnableResult } from './push';
 
 export const notifPerm = $state({
 	current: (typeof Notification === 'undefined'
@@ -10,11 +10,14 @@ export const notifPerm = $state({
 		: Notification.permission) as NotificationPermission
 });
 
-/** Must be called from a user gesture (browsers block ambient prompts). */
-export async function enableOsNotifications() {
-	if (typeof Notification === 'undefined') return;
+/** Must be called from a user gesture (browsers block ambient prompts). Awaits
+ * the full chain — permission → browser subscribe → server persist — and returns
+ * the outcome so the caller knows browser AND server are in sync (or why not). */
+export async function enableOsNotifications(): Promise<PushEnableResult> {
+	if (typeof Notification === 'undefined') return 'unsupported';
 	notifPerm.current = await Notification.requestPermission();
-	if (notifPerm.current === 'granted') void subscribeToPush();
+	if (notifPerm.current !== 'granted') return 'denied';
+	return subscribeToPush();
 }
 
 // Soft two-tone chirp for the focused-tab case (where the OS notification
