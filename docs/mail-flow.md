@@ -208,9 +208,33 @@ touches the body.
    Cloudflare. Only runs when the reader opted into images.
 6. **Frame** — one opaque-origin `<body>` (`buildFramedDocument`): sandboxed,
    `viewport=device-width` (the email's own `@media` rules fire → responsive, not
-   just shrunk), forced light card, strict CSP (`default-src 'none'`; same-origin
-   `img-src`; `font-src`/`media-src data:` so remote fonts/video can't load;
+   just shrunk), theme-aware card (see below), strict CSP (`default-src 'none'`;
+   same-origin `img-src`; `font-src 'self' {origin} data:`; `media-src data:`;
    `script-src` pinned to the injected height/link script's hash).
+
+**Frame typography, theme & quote stripping** (landed after the original
+walkthrough):
+
+- **Custom fonts** — `font-src` allows `'self' {origin} data:`, so an email's
+  `@font-face` rules load through the **same-origin proxy** (step 5) or inline
+  `data:` URIs. Rich typography renders; the sender still never sees a direct font
+  fetch. Direct external font URLs are blocked by CSP.
+- **Dark mode** — the frame injects `color-scheme: light dark` and paints the card
+  with `light-dark()` (`sanitize-email.ts`: `FRAME_INK/PAPER` vs
+  `FRAME_INK_DARK/PAPER_DARK`). A plain email auto-flips to light ink on a dark
+  surface when the reader is in dark mode; a dark-designed email renders faithfully.
+- **Forward-aware quote stripping** — `stripQuotesHtml` (`mail-thread-contract.ts`)
+  runs on the derived HTML before sanitize. A **forward** (`--- Forwarded
+  message ---`, `moz-forward-container`, Outlook `divRplyFwdMsg` + `FW:`) is kept
+  **whole** — the forwarded content *is* the message. A **reply** is cut at the
+  first quote marker (`gmail_quote`, `yahoo_quoted`, `moz-cite-prefix`,
+  `blockquote`, `-----Original Message-----`), since the quoted history is already
+  in the timeline. An empty-head guard keeps the whole body rather than stripping
+  to nothing. Same basis `getThread`'s render flags are computed on, so the list
+  and the open agree.
+- **Text-only bodies** — no HTML part → `rawObjectToText` derives the full text
+  from R2 raw for the fallback render, so a long text-only message shows whole even
+  though its D1 `body_*_enc` twins are capped (see *Data model*).
 
 ### Caching (why R2 reads stay flat)
 

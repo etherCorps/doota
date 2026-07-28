@@ -77,8 +77,16 @@ building.
   them instead.
 - **assigned** — `collab.ts` `assignThread` → row for the assignee, `actorUserId`
   = the assigner.
-- **send_failed** — `applyBounce` / outbound fail → row for `createdByUserId`.
-- **mention** — enum reserved, **not wired** (feature doesn't exist yet).
+- **send_failed** — `bounce.ts applyBounce` (the DSN/complaint path), when a
+  bounce links to a submission → `notify.ts recordSendFailed`: inserts the row for
+  the submission's sender, pings the live bell, and sends an OS push ("Delivery
+  failed"), tagged per submission so distinct failures don't collapse. Best-effort
+  (`tryLog`-wrapped) — a notify failure never fails the bounce handling.
+- **mention** — **wired** (`notify.ts recordMention`). When a user is @mentioned
+  in an internal note, `notes.ts createNote` parses `@username` mentions
+  (`parseMentions`), resolves those who can access the mailbox (`resolveMentions`),
+  and fires a `mention` row + push ("You were mentioned") per mentioned user.
+  `actorUserId` = the note author.
 
 ### Read / mark API (`notification.remote.ts`, Drizzle builder only)
 
@@ -142,9 +150,14 @@ Cheap now; annoying to add once the count query is org-scoped everywhere.
 `pushSubscription`: `id, userId fk cascade, endpoint (unique), p256dh, auth,
 userAgent, createdAt, lastSeenAt`.
 
-- Subscribe on the existing permission gesture (`enableOsNotifications`) →
-  `pushManager.subscribe({ applicationServerKey })` → `savePushSubscription`
-  command, upsert on `endpoint`.
+- **Enable-sync flow** — the user gesture `enableOsNotifications`
+  (`os-notify.svelte.ts`) calls `Notification.requestPermission()`; on grant it
+  runs `subscribeToPush` (`push.ts`): waits for `serviceWorker.ready`, calls
+  `pushManager.subscribe({ applicationServerKey: VAPID public key })`, extracts the
+  `p256dh` + `auth` keys from the subscription, and posts them to the
+  `savePushSubscription` command (`notification.remote.ts`), which upserts on
+  `endpoint` and stamps `lastSeenAt`. Only a server-accepted persist counts as
+  enabled — that row is what lets push fire when the app is closed.
 - Re-subscribe on `pushsubscriptionchange`. Unsubscribe on logout.
 - **Prune** endpoints returning **404/410** on send; drop `lastSeenAt > 90d` in
   the same daily cron.

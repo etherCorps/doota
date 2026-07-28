@@ -128,10 +128,10 @@ erDiagram
         text fromAddr
         text toAddrs "JSON"
         text ccAddrs "JSON"
-        text r2RawKey "→ R2 blob"
+        text r2RawKey "→ R2 raw (HTML derived from this on render)"
         text subjectEnc
-        text bodyFullEnc
-        text bodyHtmlEnc
+        text bodyStrippedEnc "capped text preview, 64k"
+        text bodyFullEnc "capped full text, 64k"
         text itemType "external_message|note|event"
     }
     delivery {
@@ -334,7 +334,7 @@ flowchart TB
 
     subgraph storage["Storage & state"]
         d1[("D1 · DB<br/>relational model")]
-        r2[("R2 · MAIL_RAW<br/>raw RFC5322 + attachments + drafts")]
+        r2[("R2 · MAIL_RAW<br/>raw RFC5322 + attachments + drafts<br/>+ outbound JSON + render cache · encrypted at rest")]
         kv[("KV · AUTH_KV<br/>session read-cache")]
         hub{{"Durable Object<br/>MailEventHub (MAIL_EVENTS)<br/>live send-state ticks"}}
     end
