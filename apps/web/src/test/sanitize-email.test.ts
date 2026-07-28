@@ -111,7 +111,13 @@ describe("framed document (A2)", () => {
     // No nested structural wrappers survived inside.
     expect(doc.match(/<html\b/gi)?.length).toBe(1);
     expect(doc).toContain('<meta charset="utf-8">');
-    expect(doc).toContain("color-scheme:light"); // Part I: force light
+    expect(doc).toContain("color-scheme:light dark"); // follows the reader's scheme
+  });
+  it("frame chrome adapts to the reader's color scheme (dark mode allowed)", () => {
+    const doc = buildFramedDocument(clean("<p>hi</p>"), { csp: "default-src 'none'" });
+    expect(doc).toContain('<meta name="color-scheme" content="light dark">');
+    expect(doc).toMatch(/background:light-dark\(/);
+    expect(doc).toMatch(/color:light-dark\(/);
   });
 });
 

@@ -244,7 +244,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     "default-src 'none'",
     `img-src 'self' ${url.origin} data:`,
     "style-src 'unsafe-inline'",
-    "font-src data:",
+    `font-src 'self' ${url.origin} data:`, // custom @font-face fonts, proxied same-origin
     "media-src data:",
     `script-src 'sha256-${scriptHash}'`,
     "form-action 'none'",

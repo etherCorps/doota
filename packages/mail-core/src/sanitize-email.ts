@@ -59,6 +59,11 @@ const sanitizer = Sanitizer.builder({ tags: TAGS, attrs: ATTRS }).build();
 // keep server-injected chrome (e.g. the clipped-message notice) on the same set.
 export const FRAME_INK = "#25252c";
 export const FRAME_PAPER = "#ffffff";
+// Dark-scheme counterparts — the frame follows the reader's color scheme so a
+// dark-mode-designed email renders dark, and a plain email stays readable
+// (light ink on dark) instead of a jarring white card in a dark UI.
+export const FRAME_INK_DARK = "#e4e4e7";
+export const FRAME_PAPER_DARK = "#1c1c1f";
 export const FRAME_RULE = "#e4e4e7";
 
 // DoS guards, sized for REAL mail: table-based newsletters/receipts (Amazon,
@@ -226,22 +231,27 @@ export function buildFramedDocument(
     .trim();
   const reset =
     "*{resize:none!important}" + // stray editor drag-grips from legacy sends
-    "html{color-scheme:light}" + // email's prefers-color-scheme:dark must NOT fire (Part I)
+    // Honor BOTH schemes: the email's own `@media (prefers-color-scheme: dark)`
+    // rules fire when the reader is in dark mode, and `light-dark()` below gives
+    // our own defaults a matching value.
+    "html{color-scheme:light dark}" +
     // Images shrink to the frame on narrow panes (phone/tablet) instead of forcing
     // horizontal overflow. Fixed-width layout tables can still scroll — that's the
     // sender's markup, not ours to reflow.
     "img,video{max-width:100%!important;height:auto}" +
-    // A SOLID light surface: with color-scheme forced light, dark text on a
-    // transparent body would be invisible over a dark app bubble. Renders the
-    // email as its own light card (Gmail-style) regardless of app theme. Small
-    // padding so content isn't flush to the rounded frame; the email brings the rest.
-    `body{margin:0;padding:10px;font:14px system-ui,sans-serif;color:${FRAME_INK};background:${FRAME_PAPER}}`;
+    // The frame's surface follows the color scheme (light-dark()): a solid card
+    // whose paper + ink flip in dark mode, so a plain email stays readable and a
+    // dark-designed one renders dark — instead of a white card in a dark UI.
+    // Padding so content isn't flush to the rounded frame; the email brings the rest.
+    `body{margin:0;padding:10px;font:14px system-ui,sans-serif;` +
+    `color:light-dark(${FRAME_INK},${FRAME_INK_DARK});` +
+    `background:light-dark(${FRAME_PAPER},${FRAME_PAPER_DARK})}`;
   return (
     `<!doctype html><html><head>` +
     `<meta charset="utf-8">` + // forced: removes charset-confusion ambiguity (Part B)
     `<meta name="viewport" content="width=device-width">` +
     `<meta http-equiv="Content-Security-Policy" content="${opts.csp}">` +
-    `<meta name="color-scheme" content="light">` +
+    `<meta name="color-scheme" content="light dark">` +
     `<style>${reset}</style>${opts.headExtra ?? ""}</head>` +
     `<body ${bodyAttrs}>${flat}${opts.bodyExtra ?? ""}</body></html>`
   );

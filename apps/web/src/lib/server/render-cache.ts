@@ -19,7 +19,7 @@
  * rule. Baked into every render ETag, so a bump invalidates all cached copies
  * globally on their next revalidation.
  */
-export const RENDER_CACHE_VERSION = "11";
+export const RENDER_CACHE_VERSION = "12";
 
 /** Weak ETag over the version + a per-resource key. Weak (`W/`) because a
  * re-render isn't guaranteed byte-identical (sanitizer output can vary), only

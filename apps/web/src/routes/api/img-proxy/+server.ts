@@ -61,7 +61,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
         redirect: "manual", // follow by hand so each hop is re-validated
         signal: controller.signal,
         // No cookies (Workers don't attach any) and no Referer leaks the reader.
-        headers: { Accept: "image/*", "Accept-Encoding": "identity" },
+        headers: { Accept: "image/*,font/*;q=0.9,application/font-woff;q=0.8,*/*;q=0.1", "Accept-Encoding": "identity" },
         referrerPolicy: "no-referrer",
       });
       if (res.status >= 300 && res.status < 400) {
@@ -74,9 +74,13 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     }
     if (!res || !res.ok) error(502, "Image fetch failed");
 
-    // Trust the RESPONSE type, not the request — must actually be an image.
+    // Trust the RESPONSE type, not the request — must be an image OR a web font
+    // (custom @font-face). Nothing else: the sandboxed frame renders these as
+    // inert pixels/glyphs, never executes them. Fonts served as octet-stream are
+    // rejected (fail closed → text falls back to system fonts).
     const ct = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!ct.startsWith("image/")) error(415, "Not an image");
+    const OK_CT = /^(?:image\/|font\/|application\/(?:font-woff|x-font-(?:woff2?|ttf|otf|opentype|truetype)|vnd\.ms-fontobject))/;
+    if (!OK_CT.test(ct)) error(415, "Unsupported content type");
     const len = Number(res.headers.get("content-length") ?? "0");
     if (len > MAX_BYTES) error(413, "Image too large");
 
