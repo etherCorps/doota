@@ -11,6 +11,8 @@ import {
   replySubject,
   isRichHtml,
   deriveContentKind,
+  cidMatches,
+  isCidReferenced,
 } from "@doota/mail-core/mail-thread-contract";
 import { importKey, encryptContent, decryptContent } from "@doota/mail-core/crypto";
 import { tokensFor } from "@doota/mail-core/search";
@@ -74,6 +76,26 @@ describe("quote stripping", () => {
     expect(htmlToText("a<br>b<br><br>c")).toBe("a\nb\n\nc");
     // Runaway blank lines capped at one; stripHtmlTags would flatten all of this.
     expect(htmlToText("<p>a</p><p></p><p></p><p></p><p>b</p>")).toBe("a\n\nb");
+  });
+});
+
+describe("cid inline-image matching", () => {
+  const partId = "<c91ad142-87c7-478c-a44b-54f0f318334b@icloud.com>"; // Apple Mail Content-ID
+  it("matches the full cid (brackets stripped)", () => {
+    expect(cidMatches(partId, "c91ad142-87c7-478c-a44b-54f0f318334b@icloud.com")).toBe(true);
+  });
+  it("matches on the local-part when the ref drops the domain", () => {
+    expect(cidMatches(partId, "c91ad142-87c7-478c-a44b-54f0f318334b")).toBe(true);
+  });
+  it("rejects a different id and empties", () => {
+    expect(cidMatches(partId, "other@icloud.com")).toBe(false);
+    expect(cidMatches(null, "x")).toBe(false);
+    expect(cidMatches(partId, "")).toBe(false);
+  });
+  it("isCidReferenced finds the ref in html (domain-tolerant)", () => {
+    expect(isCidReferenced('<img src="cid:c91ad142-87c7-478c-a44b-54f0f318334b@icloud.com">', partId)).toBe(true);
+    expect(isCidReferenced('<img src="cid:c91ad142-87c7-478c-a44b-54f0f318334b">', partId)).toBe(true);
+    expect(isCidReferenced("<p>no images</p>", partId)).toBe(false);
   });
 });
 

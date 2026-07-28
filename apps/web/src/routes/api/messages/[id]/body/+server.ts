@@ -5,7 +5,7 @@ import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { sanitizeEmailHtml, buildFramedDocument, FRAME_RULE } from "@doota/mail-core/sanitize-email";
-import { stripQuotesHtml } from "@doota/mail-core/mail-thread-contract";
+import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
@@ -150,7 +150,10 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     .from(schema.attachment)
     .where(eq(schema.attachment.messageId, msg.id));
   const resolveCid = (cid: string): string | null => {
-    const a = atts.find((x) => (x.partId ?? "").replace(/^<|>$/g, "") === cid);
+    // Exact-first, then the shared (bracket + local-part tolerant) match, so a
+    // provider that references `cid:localpart` for a `<localpart@host>` part still
+    // resolves (Apple Mail) without a same-local-part collision stealing an exact hit.
+    const a = atts.find((x) => cidMatches(x.partId, cid));
     return a ? `/api/attachments/${a.id}` : null;
   };
 

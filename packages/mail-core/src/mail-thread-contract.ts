@@ -317,9 +317,27 @@ export function hasRemoteHttpImages(html: string | null | undefined): boolean {
 }
 
 /** The HTML references this MIME part inline via `cid:` (angle brackets optional). */
+/** Normalize a Content-ID / cid value: drop angle brackets, trim, lowercase. */
+const normCid = (s: string): string => s.replace(/^<|>$/g, "").trim().toLowerCase();
+
+/**
+ * Does a stored part's Content-ID match a `cid:` reference from the HTML? Exact
+ * after bracket-stripping, OR on the local-part (before `@`) — Apple Mail (and
+ * others) sometimes write `src="cid:localpart"` while the Content-ID header is
+ * `<localpart@icloud.com>`, so a strict compare silently blanks the image.
+ */
+export function cidMatches(partId: string | null | undefined, cid: string | null | undefined): boolean {
+  if (!partId || !cid) return false;
+  const p = normCid(partId);
+  const c = normCid(cid);
+  if (!p || !c) return false;
+  return p === c || p.split("@")[0] === c.split("@")[0];
+}
+
 export function isCidReferenced(html: string | null | undefined, partId: string | null): boolean {
   if (!html || !partId) return false;
-  return html.includes(`cid:${partId.replace(/^<|>$/g, "")}`);
+  const refs = html.match(/cid:[^"'\s)>]+/gi);
+  return !!refs && refs.some((r) => cidMatches(partId, r.slice(4)));
 }
 
 /**
