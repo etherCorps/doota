@@ -5,6 +5,8 @@ import {
   buildFramedDocument,
   MAX_HTML_BYTES,
   MAX_NODES,
+  collectRemoteResourceUrls,
+  rewriteRemoteResourceUrls,
 } from "@doota/mail-core/sanitize-email";
 
 // neosanitize emits a full <html><head><body> skeleton (we allow those tags so
@@ -110,5 +112,54 @@ describe("framed document (A2)", () => {
     expect(doc.match(/<html\b/gi)?.length).toBe(1);
     expect(doc).toContain('<meta charset="utf-8">');
     expect(doc).toContain("color-scheme:light"); // Part I: force light
+  });
+});
+
+describe("remote resource rewriting (golden image handling)", () => {
+  const proxy = (u: string) => `/api/img-proxy?url=${encodeURIComponent(u)}`;
+
+  it("collects remote URLs from img, background attr, srcset, and CSS url()", () => {
+    const html =
+      '<img src="https://cdn.x/a.png">' +
+      '<td background="https://cdn.x/hero.png">' +
+      '<img srcset="https://cdn.x/1.png 1x, https://cdn.x/2.png 2x">' +
+      '<div style="background-image:url(https://cdn.x/bg.png)">' +
+      '<style>.h{background:url("https://cdn.x/s.png")}</style>';
+    const urls = collectRemoteResourceUrls(html);
+    expect(urls).toContain("https://cdn.x/a.png");
+    expect(urls).toContain("https://cdn.x/hero.png");
+    expect(urls).toContain("https://cdn.x/1.png");
+    expect(urls).toContain("https://cdn.x/2.png");
+    expect(urls).toContain("https://cdn.x/bg.png");
+    expect(urls).toContain("https://cdn.x/s.png");
+  });
+
+  it("rewrites every remote reference through the proxy (backgrounds included)", () => {
+    const html =
+      '<td background="https://cdn.x/hero.png"><div style="background-image:url(https://cdn.x/bg.png)">hi</div></td>';
+    const out = rewriteRemoteResourceUrls(html, proxy);
+    expect(out).toContain(`background="${proxy("https://cdn.x/hero.png")}"`);
+    expect(out).toContain(`url('${proxy("https://cdn.x/bg.png")}')`);
+    expect(out).not.toContain("cdn.x/hero.png\"");
+  });
+
+  it("strips @import outright (no external stylesheets)", () => {
+    const html = '<style>@import url("https://evil/track.css");.a{color:red}</style>';
+    const out = rewriteRemoteResourceUrls(html, proxy);
+    expect(out).not.toContain("@import");
+    expect(out).toContain(".a{color:red}");
+  });
+
+  it("drops a URL the resolver blanks (images-off pass)", () => {
+    const html = '<img src="https://cdn.x/a.png"><div style="background:url(https://cdn.x/b.png)">';
+    const out = rewriteRemoteResourceUrls(html, () => null);
+    expect(out).not.toContain("cdn.x");
+    expect(out).toContain("url()");
+  });
+
+  it("leaves cid/data URLs and relative paths untouched", () => {
+    const html = '<img src="cid:logo"><img src="data:image/png;base64,AAAA"><img src="/local.png">';
+    expect(collectRemoteResourceUrls(html)).toEqual([]);
+    expect(rewriteRemoteResourceUrls(html, proxy)).toBe(html.replace(/@import\b[^;]*;?/gi, ""));
   });
 });

@@ -4,7 +4,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
-import { sanitizeEmailHtml, buildFramedDocument, FRAME_RULE } from "@doota/mail-core/sanitize-email";
+import {
+  sanitizeEmailHtml,
+  buildFramedDocument,
+  FRAME_RULE,
+  collectRemoteResourceUrls,
+  rewriteRemoteResourceUrls,
+} from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
 import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
@@ -91,14 +97,16 @@ const escapeAttr = (s: string) =>
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
  * 'self' and the browser never fetches from the sender directly. Each proxied URL
  * carries a signed token so the sandboxed (cookie-less) MailFrame can load it. */
-async function proxyRemoteImages(html: string, sign: (resource: string) => Promise<string>): Promise<string> {
-  const re = /(\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi;
-  const urls = [...new Set([...html.matchAll(re)].map((m) => m[2]))];
+// Route EVERY remote resource (img/poster/background/srcset + CSS url()) through
+// the same-origin privacy proxy with a per-URL signed token (the sandboxed frame
+// can't send the session cookie cross-site). Backgrounds + logos render; the
+// sender only ever sees Cloudflare. @import is stripped in the rewriter.
+async function proxyRemoteResources(html: string, sign: (resource: string) => Promise<string>): Promise<string> {
+  const urls = collectRemoteResourceUrls(html);
   const tokens = new Map(await Promise.all(urls.map(async (u) => [u, await sign(`img:${u}`)] as const)));
-  return html.replace(re, (_m, pre, url, post) => {
-    const t = tokens.get(url);
-    const q = t ? `&t=${t}` : "";
-    return `${pre}/api/img-proxy?url=${encodeURIComponent(url)}${q}${post}`;
+  return rewriteRemoteResourceUrls(html, (u) => {
+    const t = tokens.get(u);
+    return `/api/img-proxy?url=${encodeURIComponent(u)}${t ? `&t=${t}` : ""}`;
   });
 }
 
@@ -179,7 +187,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
       })
     : null;
   if (result && result.ok) {
-    inner = loadImages ? await proxyRemoteImages(result.html, sign) : result.html;
+    inner = loadImages ? await proxyRemoteResources(result.html, sign) : result.html;
   } else {
     // No HTML, or oversized/hostile (Part F) → fall back to the plain-text body,
     // with URLs/emails linkified (anchors are inert data; clicks go through the

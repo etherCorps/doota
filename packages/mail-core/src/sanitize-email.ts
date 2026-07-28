@@ -125,6 +125,66 @@ export function sanitizeEmailHtml(
   return { ok: true, html };
 }
 
+// Remote-resource rewriting (golden-standard image handling). Real HTML mail
+// references remote URLs in FIVE places, not just `<img src>`: `src`/`poster`
+// attrs, the `background=` attr (table-based hero art), `srcset`, and CSS
+// `url(...)` in inline styles AND `<style>` blocks. Gmail/Apple proxy ALL of
+// them at parse time; we do the same so backgrounds/logos render AND every
+// remote fetch goes through our privacy proxy (never straight to the sender).
+const ATTR_URL_RE = /\b(?:src|poster|background)\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+const SRCSET_RE = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
+const CSS_URL_RE = /url\(\s*(['"]?)(https?:\/\/[^)'"]+?)\1\s*\)/gi;
+/** Each URL in a srcset descriptor list ("a.png 1x, b.png 2x"). */
+function srcsetUrls(list: string): string[] {
+  return list
+    .split(",")
+    .map((part) => part.trim().split(/\s+/)[0])
+    .filter((u) => /^https?:\/\//i.test(u));
+}
+
+/** Every distinct remote http(s) URL the email would fetch — across img/poster/
+ * background attrs, srcset, and CSS url(). Caller signs these, then rewrites. */
+export function collectRemoteResourceUrls(html: string): string[] {
+  const urls = new Set<string>();
+  for (const m of html.matchAll(ATTR_URL_RE)) urls.add(m[1]);
+  for (const m of html.matchAll(SRCSET_RE)) for (const u of srcsetUrls(m[1])) urls.add(u);
+  for (const m of html.matchAll(CSS_URL_RE)) urls.add(m[2]);
+  return [...urls];
+}
+
+/**
+ * Rewrite every remote resource URL via `resolve` (→ our same-origin proxy).
+ * A URL `resolve` maps to null is dropped (blanked) — used for the images-off
+ * pass so nothing remote is referenced at all. Also strips `@import` outright:
+ * external CSS is a tracking + injection vector with no place in mail.
+ */
+export function rewriteRemoteResourceUrls(html: string, resolve: (url: string) => string | null): string {
+  const out = html.replace(/@import\b[^;]*;?/gi, ""); // no external stylesheets, ever
+  return out
+    .replace(ATTR_URL_RE, (whole, url) => {
+      const r = resolve(url);
+      return r === null ? whole.replace(url, "") : whole.replace(url, r);
+    })
+    .replace(SRCSET_RE, (whole, list: string) => {
+      const rewritten = list
+        .split(",")
+        .map((part) => {
+          const seg = part.trim();
+          const [u, ...rest] = seg.split(/\s+/);
+          if (!/^https?:\/\//i.test(u)) return seg;
+          const r = resolve(u);
+          return r === null ? "" : [r, ...rest].join(" ");
+        })
+        .filter(Boolean)
+        .join(", ");
+      return `srcset="${rewritten}"`;
+    })
+    .replace(CSS_URL_RE, (whole, _q, url) => {
+      const r = resolve(url);
+      return r === null ? "url()" : `url('${r}')`;
+    });
+}
+
 /**
  * Reshape already-sanitized HTML into ONE framed document (A2): our head (charset,
  * viewport, reset, CSP meta, forced light color-scheme) + a SINGLE body carrying
