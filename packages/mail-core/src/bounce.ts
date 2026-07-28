@@ -58,6 +58,20 @@ export function looksLikeBounce(input: {
 }
 
 /**
+ * Structural DSN/ARF check: a real bounce or complaint is a `multipart/report`
+ * (RFC 3464 delivery-status, RFC 5965 feedback-report) — a human who forwards or
+ * quotes a bounce sends `text/*`. Read ONLY the top header block (before the
+ * first blank line) so a reply that quotes a bounce's headers doesn't count.
+ * This gates the DROP: `looksLikeBounce` + a parseable failure is not enough —
+ * the message must actually be a report, or it's delivered as normal mail.
+ */
+export function isDeliveryReport(rawText: string): boolean {
+  const end = rawText.search(/\r?\n\r?\n/);
+  const head = end === -1 ? rawText.slice(0, 8192) : rawText.slice(0, end);
+  return /^content-type:[^\n]*multipart\/report/im.test(head);
+}
+
+/**
  * Parse a DSN/ARF body: original Message-ID, failed recipients + hard/soft, and
  * whether it's a complaint. Hard = SMTP 5.x.x / Status 5.x.x; soft = 4.x.x.
  */

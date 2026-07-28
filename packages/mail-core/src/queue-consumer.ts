@@ -6,7 +6,7 @@ import * as schema from "@doota/db/schema";
 import { importKey, encryptContent, type ContentKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
-import { looksLikeBounce, parseBounce, applyBounce } from "./bounce";
+import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { sendGrantUserIds } from "./mailbox";
 import { recordNewMail } from "./notify";
@@ -242,8 +242,12 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         // (subject regex, or addressed to the return-path subdomain) with no
         // parseable failures is a real reply that tripped the heuristic — deliver
         // it instead of eating it silently (the historical misclassification bug).
-        const bounce = parseBounce(new TextDecoder().decode(buf));
-        if (bounce.failures.length > 0 || bounce.isComplaint) {
+        const rawText = new TextDecoder().decode(buf);
+        // DROP only a STRUCTURAL report (multipart/report). A real reply that
+        // merely quotes a bounce is text/* — parseable failures alone must not
+        // eat it. Non-report bounces still update state via the primary event path.
+        const bounce = parseBounce(rawText);
+        if (isDeliveryReport(rawText) && (bounce.failures.length > 0 || bounce.isComplaint)) {
           // DSN fallback path (structured event subscriptions are primary; a DSN
           // that slips through still updates state and wakes the user's stream —
           // client-side dedupe absorbs any double notification).

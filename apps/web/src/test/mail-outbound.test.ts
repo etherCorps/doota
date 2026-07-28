@@ -10,7 +10,7 @@ import { enqueueSend, cancelSend, sweepDueSubmissions } from "@doota/mail-core/o
 import { processSubmission } from "@doota/mail-core/outbound-consumer";
 import { materializeMessage, materializeDelivery } from "@doota/mail-core/materialize";
 import { listThreads } from "@doota/mail-core/read";
-import { parseBounce, looksLikeBounce, applyBounce } from "@doota/mail-core/bounce";
+import { parseBounce, looksLikeBounce, applyBounce, isDeliveryReport } from "@doota/mail-core/bounce";
 import {
   buildQuotedText,
   buildQuotedHtml,
@@ -177,6 +177,21 @@ describe("bounce parsing (Part F)", () => {
     expect(hard.failures).toEqual([{ address: "dead@x.com", kind: "hard" }]);
     const soft = parseBounce("Final-Recipient: rfc822; busy@x.com\nStatus: 4.2.2");
     expect(soft.failures[0].kind).toBe("soft");
+  });
+
+  it("isDeliveryReport gates on multipart/report, not quoted DSN text", () => {
+    // A real DSN.
+    expect(
+      isDeliveryReport('Content-Type: multipart/report; report-type=delivery-status;\r\n\tboundary="b"\r\n\r\nbody'),
+    ).toBe(true);
+    // A human reply that QUOTES a bounce — text/plain, DSN text only in the body.
+    expect(
+      isDeliveryReport(
+        "Content-Type: text/plain\r\n\r\nsee this bounce:\r\nFinal-Recipient: rfc822; dead@x.com\r\nStatus: 5.1.1",
+      ),
+    ).toBe(false);
+    // No content-type at all.
+    expect(isDeliveryReport("Subject: hi\r\n\r\nhello")).toBe(false);
   });
 });
 
