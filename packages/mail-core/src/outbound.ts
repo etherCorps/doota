@@ -12,6 +12,7 @@ import {
   type PlacementPolicy,
 } from "./materialize";
 import { mintMessageId, threadingHeaders } from "./mail-thread-contract";
+import { recordCorrespondents } from "./contacts";
 import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
 import { log } from "./log";
 
@@ -230,6 +231,16 @@ export async function enqueueSend(
         })),
       )
       .onConflictDoNothing();
+    // Sent-side autocomplete: everyone we just addressed becomes a correspondent
+    // of the sending mailbox. Best-effort; a send never fails over the index.
+    try {
+      await recordCorrespondents(
+        db,
+        recips.map((r) => ({ mailboxId: req.mailboxId, address: r.address, name: null, seenAt: now })),
+      );
+    } catch {
+      // autocomplete hygiene only
+    }
   }
 
   // Hold the job for the undo window / until the scheduled time via the queue's

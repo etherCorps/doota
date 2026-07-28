@@ -26,10 +26,13 @@ export async function runScheduledSweeps(
   env: OutboundEnv,
 ): Promise<{ dueEnqueued: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number }> {
   const dueEnqueued = await sweepDueSubmissions(db, env.MAIL_OUT_QUEUE);
-  const staleDraftsDeleted = await sweepStaleDrafts(db, env);
-  // Daily-gated GC (both bounded scans): read notifications past retention +
-  // push subscriptions that stopped refreshing.
+  // Daily-gated GC — all bounded scans that don't need per-5-min frequency:
+  // abandoned-draft + stuck-send tombstones, read notifications past retention,
+  // push subscriptions that stopped refreshing. Draft GC ran ~288×/day for a
+  // tombstone sweep a once-daily pass covers (a crashed send's draft reopening
+  // within ~a day is fine — the mail already went out before the crash).
   const daily = Math.random() < DAILY_ODDS;
+  const staleDraftsDeleted = daily ? await sweepStaleDrafts(db, env) : 0;
   const notificationsPruned = daily ? await pruneStaleNotifications(db) : 0;
   const pushSubsPruned = daily ? await pruneStalePushSubscriptions(db) : 0;
   return { dueEnqueued, staleDraftsDeleted, notificationsPruned, pushSubsPruned };

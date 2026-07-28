@@ -4,6 +4,8 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { recordSendFailed } from "./notify";
+import type { EventHubNamespace } from "./events-hub";
+import type { WebPushEnv } from "./web-push";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -120,7 +122,12 @@ export type AppliedBounce = {
   worstStatus: (typeof WORST_STATUS)[number] | null;
 };
 
-export async function applyBounce(db: Db, orgId: string, parsed: ParsedBounce): Promise<AppliedBounce> {
+export async function applyBounce(
+  db: Db,
+  orgId: string,
+  parsed: ParsedBounce,
+  notify?: { hub?: EventHubNamespace; push?: WebPushEnv },
+): Promise<AppliedBounce> {
   if (parsed.failures.length === 0) return { matchedSubmission: null, suppressed: [], worstStatus: null };
 
   // Link to the submission via our original Message-ID → message → submission.
@@ -180,13 +187,18 @@ export async function applyBounce(db: Db, orgId: string, parsed: ParsedBounce): 
     // Durable notification for the sender — best-effort, never fails bounce handling.
     if (notifyTarget) {
       try {
-        await recordSendFailed(db, {
-          orgId,
-          userId: notifyTarget.userId,
-          mailboxId: notifyTarget.mailboxId,
-          threadId: notifyTarget.threadId,
-          submissionId,
-        });
+        await recordSendFailed(
+          db,
+          {
+            orgId,
+            userId: notifyTarget.userId,
+            mailboxId: notifyTarget.mailboxId,
+            threadId: notifyTarget.threadId,
+            submissionId,
+          },
+          notify?.hub,
+          notify?.push,
+        );
       } catch {
         // a missing bell row is not worth failing the bounce update
       }

@@ -342,10 +342,12 @@ describe("consumer send (Parts B/C/G)", () => {
     const to = Array.from({ length: 60 }, (_, i) => `r${i}@ext.com`);
     const id = await ready({ to });
     await processSubmission(db, { ...consEnv(fakeSender()), MAIL_EVENTS: hub as never }, ck, msg(id));
-    expect(hub.notified).toHaveLength(1);
+    // Two frames: the submission-state flip, then the durable send_failed bell.
+    expect(hub.notified).toHaveLength(2);
     expect(hub.notified[0].url).toContain("/notify");
     expect(hub.notified[0].body).toMatchObject({ type: "send_state", submissionId: id, status: "failed" });
     expect(hub.notified[0].body.threadId).toBeTruthy();
+    expect(hub.notified[1].body).toMatchObject({ type: "notification" });
 
     // Success path: rollup pushes `sent` so an open thread flips its tick live.
     hub.notified.length = 0;

@@ -10,6 +10,7 @@ import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./b
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { sendGrantUserIds } from "./mailbox";
 import { recordNewMail } from "./notify";
+import { recordCorrespondents } from "./contacts";
 import { log, errInfo } from "./log";
 import type { InboundJob, MailEnv } from "./inbound-worker";
 
@@ -251,7 +252,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           // DSN fallback path (structured event subscriptions are primary; a DSN
           // that slips through still updates state and wakes the user's stream —
           // client-side dedupe absorbs any double notification).
-          const applied = await applyBounce(db, job.orgId, bounce);
+          const applied = await applyBounce(db, job.orgId, bounce, { hub: env.MAIL_EVENTS, push: env });
           if (applied.matchedSubmission && applied.worstStatus) {
             await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
           }
@@ -312,9 +313,17 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         log.warn("in.notify_failed", { threadId, ...errInfo(e) });
       }
 
-      // A new correspondent just landed — bust the recipients' cached contact
-      // candidates (key shape shared with draft.remote.ts contactsKey) so the
-      // sender shows up in suggestions immediately, not after the KV TTL.
+      // A new correspondent just landed — record the sender against this mailbox
+      // (autocomplete index) and bust the recipients' cached contact candidates
+      // (key shape shared with draft.remote.ts contactsKey) so the sender shows
+      // up in suggestions immediately, not after the KV TTL.
+      try {
+        await recordCorrespondents(db, [
+          { mailboxId: job.resolvedMailboxId, address: pm.from, name: pm.fromName, seenAt: pm.sentAt },
+        ]);
+      } catch (e) {
+        log.warn("in.correspondent_failed", { threadId, ...errInfo(e) }); // never fail delivery over autocomplete
+      }
       if (env.AUTH_KV) {
         try {
           const userIds = await sendGrantUserIds(db, job.resolvedMailboxId);

@@ -508,9 +508,15 @@ export const notification = sqliteTable(
     index("notification_feed_idx").on(t.userId, t.createdAt),
     // Unread count — partial so read rows drop out and it stays tiny.
     index("notification_unread_idx").on(t.userId).where(sql`read_at is null`),
-    // Dedupe: find an existing unread new_mail row for (user, thread) before
-    // insert so a reply burst collapses.
-    index("notification_dedupe_idx").on(t.userId, t.threadId).where(sql`read_at is null`),
+    // Dedupe: at most ONE unread new_mail row per (user, thread). UNIQUE so a
+    // race between two concurrent queue consumers (both SELECT-miss, both
+    // INSERT) collapses at the DB instead of stacking a dup — recordNewMail's
+    // insert is onConflictDoNothing. Scoped to new_mail in the predicate so it
+    // never constrains send_failed/assigned/note (whose natural keys differ and
+    // which legitimately repeat per thread).
+    uniqueIndex("notification_dedupe_idx")
+      .on(t.userId, t.threadId)
+      .where(sql`read_at is null and type = 'new_mail'`),
   ],
 );
 
@@ -901,6 +907,37 @@ export const senderImageTrust = sqliteTable(
     createdAt: now(),
   },
   (t) => [uniqueIndex("sender_image_trust_uidx").on(t.userId, t.senderAddr)],
+);
+
+/**
+ * Materialized correspondent index for recipient autocomplete. One row per
+ * (mailbox, address): the people a mailbox has sent to OR received from, with
+ * the best-known display name and the most recent contact time. Upserted in the
+ * inbound consumer (sender → recipient mailbox) and on send (recipient → sender
+ * mailbox). Denormalization — same move as thread_state — so autocomplete is a
+ * bounded prefix scan over a mailbox's few hundred contacts instead of a
+ * GROUP BY over the whole delivery + submission history on every compose open.
+ * Display-only, never an authorization surface; scoped by the caller's
+ * accessible mailboxes.
+ */
+export const correspondent = sqliteTable(
+  "correspondent",
+  {
+    id: id(),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    address: text("address").notNull(), // lowercased
+    name: text("name"), // best-known display name, null if never seen with one
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("correspondent_mailbox_address_uidx").on(t.mailboxId, t.address),
+    // Recency list (no prefix) + the scan target for prefix filtering.
+    index("correspondent_recency_idx").on(t.mailboxId, t.lastSeenAt),
+  ],
 );
 
 export const mailboxRelations = relations(mailbox, ({ many }) => ({

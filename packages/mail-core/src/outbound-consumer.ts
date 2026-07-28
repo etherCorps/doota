@@ -10,6 +10,7 @@ import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
 import { recordNewMail, recordSendFailed } from "./notify";
+import { recordCorrespondents } from "./contacts";
 import { buildQuotedText, buildQuotedHtml, type QuotedParent } from "./mail-thread-contract";
 import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
@@ -158,13 +159,18 @@ export async function processSubmission(
     // the submission at read time; null here keeps the fail path cheap.
     if (sub.createdByUserId && sub.orgId) {
       try {
-        await recordSendFailed(db, {
-          orgId: sub.orgId,
-          userId: sub.createdByUserId,
-          mailboxId: sub.mailboxId,
-          threadId: null,
-          submissionId: sub.id,
-        });
+        await recordSendFailed(
+          db,
+          {
+            orgId: sub.orgId,
+            userId: sub.createdByUserId,
+            mailboxId: sub.mailboxId,
+            threadId: null,
+            submissionId: sub.id,
+          },
+          env.MAIL_EVENTS,
+          env,
+        );
       } catch {
         // best-effort; never block the fail path
       }
@@ -277,6 +283,15 @@ export async function processSubmission(
         );
       } catch (e) {
         log.warn("out.notify_failed", { subId: sub.id, ...errInfo(e) });
+      }
+      // Received-side autocomplete: the sender is now a correspondent of the
+      // internal recipient's mailbox (the sent-side is recorded in submit()).
+      try {
+        await recordCorrespondents(db, [
+          { mailboxId: resolved.mailboxId, address: sub.envelopeFrom, name: fromName ?? null, seenAt: message.sentAt ? message.sentAt.getTime() : now },
+        ]);
+      } catch (e) {
+        log.warn("out.correspondent_failed", { subId: sub.id, ...errInfo(e) });
       }
       continue;
     }

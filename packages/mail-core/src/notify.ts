@@ -110,15 +110,21 @@ export async function recordNewMail(
   const bumped = new Set(existing.map((e) => e.userId));
   const fresh = userIds.filter((u) => !bumped.has(u));
   if (fresh.length) {
-    await db.insert(mail.notification).values(
-      fresh.map((userId) => ({
-        userId,
-        orgId: input.orgId,
-        type: "new_mail",
-        mailboxId: input.mailboxId,
-        threadId: input.threadId,
-      })),
-    );
+    // onConflictDoNothing collapses the race where two concurrent consumers both
+    // SELECT-miss above and both insert for the same (user, thread): the unique
+    // partial index (notification_dedupe_idx, new_mail + unread) keeps one row.
+    await db
+      .insert(mail.notification)
+      .values(
+        fresh.map((userId) => ({
+          userId,
+          orgId: input.orgId,
+          type: "new_mail",
+          mailboxId: input.mailboxId,
+          threadId: input.threadId,
+        })),
+      )
+      .onConflictDoNothing();
   }
   // OS push (app closed) for every eligible recipient — tag per thread so a
   // reply burst collapses. Best-effort; no-op without VAPID.
@@ -222,7 +228,10 @@ export async function recordNote(
     ).catch(() => {});
 }
 
-/** A send the user owns failed (hard/soft bounce, complaint, or send error). */
+/** A send the user owns failed (hard/soft bounce, complaint, or send error).
+ * Durable bell row + live ping + OS push (app closed) — a failed send is at
+ * least as notify-worthy as new mail. Tagged per submission so distinct
+ * failures don't collapse into one push. */
 export async function recordSendFailed(
   db: Db,
   input: {
@@ -232,6 +241,8 @@ export async function recordSendFailed(
     threadId: string | null;
     submissionId: string;
   },
+  hub?: EventHubNamespace,
+  push?: WebPushEnv,
 ): Promise<void> {
   await db.insert(mail.notification).values({
     userId: input.userId,
@@ -241,4 +252,18 @@ export async function recordSendFailed(
     threadId: input.threadId,
     submissionId: input.submissionId,
   });
+  await notifyNotification(hub, input.userId); // live bell (no-op without a hub)
+  if (push)
+    await sendPushToUser(
+      db,
+      push,
+      input.userId,
+      {
+        title: "Delivery failed",
+        body: "A message you sent couldn't be delivered",
+        url: threadUrl(input.mailboxId, input.threadId),
+        tag: `send-failed-${input.submissionId}`,
+      },
+      await orgSubject(db, input.orgId),
+    ).catch(() => {});
 }

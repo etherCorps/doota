@@ -61,46 +61,28 @@ async function gather(
     for (const m of mates) keep(m.email, m.name ?? null, TOP);
   }
 
-  // People the user has emailed, most-recent first. GROUP BY dedups in SQL.
-  const sentLast = sql<number>`max(${schema.submission.createdAt})`;
-  const sent = await db
-    .select({ address: schema.submissionRecipient.address, last: sentLast })
-    .from(schema.submissionRecipient)
-    .innerJoin(schema.submission, eq(schema.submission.id, schema.submissionRecipient.submissionId))
-    .where(
-      and(
-        eq(schema.submission.createdByUserId, userId),
-        p ? like(schema.submissionRecipient.address, `%${p}%`) : undefined,
-      ),
-    )
-    .groupBy(schema.submissionRecipient.address)
-    .orderBy(desc(sentLast))
-    .limit(limit);
-  for (const r of sent) keep(r.address, null, Number(r.last ?? 0));
-
-  // People who have written to the user's mailboxes, most-recent first.
+  // Prior correspondents (sent-to + received-from), read straight off the
+  // materialized `correspondent` index — a bounded scan of the user's accessible
+  // mailboxes' contacts, not a GROUP BY over all mail. Scoped by access; the
+  // table is maintained by recordCorrespondents() on inbound + send.
   // ponytail: assigned-only mailboxes are dropped wholesale rather than joined
   // through thread_state — suggestions lose a few addresses instead of leaking
-  // correspondents from threads the member can't open. Join it in if the
-  // missing suggestions actually bite.
+  // correspondents from threads the member can't open.
   const restricted = new Set(await assignedOnlyMailboxIds(db, userId));
   const boxIds = (await accessibleMailboxIds(db, userId)).filter((id) => !restricted.has(id));
   if (boxIds.length) {
-    const recvLast = sql<number>`max(${schema.message.sentAt})`;
-    const recv = await db
-      .select({ address: schema.message.fromAddr, last: recvLast })
-      .from(schema.delivery)
-      .innerJoin(schema.message, eq(schema.message.id, schema.delivery.messageId))
+    const rows = await db
+      .select({ address: schema.correspondent.address, name: schema.correspondent.name, last: schema.correspondent.lastSeenAt })
+      .from(schema.correspondent)
       .where(
         and(
-          inArray(schema.delivery.mailboxId, boxIds),
-          p ? like(schema.message.fromAddr, `%${p}%`) : undefined,
+          inArray(schema.correspondent.mailboxId, boxIds),
+          p ? like(schema.correspondent.address, `%${p}%`) : undefined,
         ),
       )
-      .groupBy(schema.message.fromAddr)
-      .orderBy(desc(recvLast))
+      .orderBy(desc(schema.correspondent.lastSeenAt))
       .limit(limit);
-    for (const r of recv) keep(r.address, null, Number(r.last ?? 0));
+    for (const r of rows) keep(r.address, r.name ?? null, r.last?.getTime() ?? 0);
   }
 
   return [...rank.entries()]
@@ -125,4 +107,37 @@ export function suggestRecipients(
  */
 export function topRecipients(db: Db, userId: string, limit = 200): Promise<RecipientSuggestion[]> {
   return gather(db, userId, null, limit);
+}
+
+/**
+ * Upsert correspondents for a mailbox — called on inbound delivery (sender →
+ * recipient mailbox) and on send (each recipient → sender mailbox). Idempotent:
+ * keeps the newest last_seen_at and fills a display name if we learn one.
+ * Best-effort maintenance of the autocomplete index; never fail mail flow on it.
+ */
+export async function recordCorrespondents(
+  db: Db,
+  entries: { mailboxId: string; address: string | null | undefined; name?: string | null; seenAt: number | null }[],
+): Promise<void> {
+  const rows = entries
+    .map((e) => ({
+      mailboxId: e.mailboxId,
+      address: e.address?.trim().toLowerCase(),
+      name: e.name?.trim() || null,
+      lastSeenAt: new Date(e.seenAt ?? Date.now()),
+    }))
+    .filter((e): e is { mailboxId: string; address: string; name: string | null; lastSeenAt: Date } => !!e.address);
+  if (!rows.length) return;
+  await db
+    .insert(schema.correspondent)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [schema.correspondent.mailboxId, schema.correspondent.address],
+      set: {
+        // Monotonic: never move recency backwards on an out-of-order write.
+        lastSeenAt: sql`max(excluded.last_seen_at, ${schema.correspondent.lastSeenAt})`,
+        // Prefer a freshly-seen name, else keep what we had.
+        name: sql`coalesce(excluded.name, ${schema.correspondent.name})`,
+      },
+    });
 }
