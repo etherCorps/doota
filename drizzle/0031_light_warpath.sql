@@ -1,0 +1,1 @@
+CREATE INDEX `thread_state_snoozed_idx` ON `thread_state` (`snoozed_until`) WHERE "thread_state"."snoozed_until" is not null;

@@ -304,8 +304,8 @@ export const threadState = sqliteTable(
     // Snooze: when set (future), the thread is hidden from the inbox and lives in
     // the Snoozed view. The 5-min cron nulls it when due, returning the thread to
     // the inbox top, unread. A new inbound reply also clears it (un-snooze early).
-    // ponytail: no index — the snoozed set is tiny, so the inbox query filters
-    // `snoozed_until is null` at the row level. Add to the list index if it grows.
+    // Partial index below (snoozed_snoozed_idx) keeps the tiny snoozed set — so the
+    // cron's due-sweep and the Snoozed view are index-served, not full scans.
     snoozedUntil: integer("snoozed_until", { mode: "timestamp_ms" }),
     createdAt: now(),
   },
@@ -322,6 +322,12 @@ export const threadState = sqliteTable(
     index("thread_state_unread_idx")
       .on(t.mailboxId, t.placement, t.lastInboundAt)
       .where(sql`${t.hiddenAt} is null`),
+    // Snooze: partial index over only the (tiny) snoozed set. Serves the cron's
+    // due-sweep (snoozed_until <= now) and the Snoozed view without full-scanning
+    // thread_state; costs a write only when a thread is actually snoozed.
+    index("thread_state_snoozed_idx")
+      .on(t.snoozedUntil)
+      .where(sql`${t.snoozedUntil} is not null`),
   ],
 );
 
