@@ -175,7 +175,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const result = forRender
     ? sanitizeEmailHtml(forRender, {
         resolveCid,
-        ...(fullView ? { maxBytes: 5_000_000, maxNodes: 100_000 } : {}),
+        ...(fullView ? { maxBytes: 10_000_000, maxNodes: 250_000 } : {}),
       })
     : null;
   if (result && result.ok) {

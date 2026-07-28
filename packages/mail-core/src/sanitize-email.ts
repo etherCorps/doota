@@ -61,10 +61,16 @@ export const FRAME_INK = "#25252c";
 export const FRAME_PAPER = "#ffffff";
 export const FRAME_RULE = "#e4e4e7";
 
+// DoS guards, sized for REAL mail: table-based newsletters/receipts (Amazon,
+// Postcards/Designmodo, Mailchimp) routinely run 200-600KB and 20k-50k tags of
+// deeply-nested tables. The old 1MB/15k ceiling rejected those and dumped the
+// ugly text/plain alternative — so genuine marketing HTML rendered as walls of
+// text. These caps still bound pathological input; the "view entire message"
+// path raises them further (body/+server.ts).
 /** Bodies larger than this are treated as hostile/DoS and fall back to text. */
-export const MAX_HTML_BYTES = 1_000_000;
+export const MAX_HTML_BYTES = 2_500_000;
 /** Rough tag-count ceiling (counts `<`), a cheap guard before the parser runs. */
-export const MAX_NODES = 15_000;
+export const MAX_NODES = 60_000;
 
 export type SanitizeResult =
   | { ok: true; html: string }

@@ -4,6 +4,7 @@ import {
   sanitizeEmailHtml,
   buildFramedDocument,
   MAX_HTML_BYTES,
+  MAX_NODES,
 } from "@doota/mail-core/sanitize-email";
 
 // neosanitize emits a full <html><head><body> skeleton (we allow those tags so
@@ -59,10 +60,19 @@ describe("email sanitizer — DoS caps (Part F)", () => {
     if (!r.ok) expect(r.reason).toBe("too-large");
   });
   it("falls back on absurd node counts", () => {
-    const deep = "<div>".repeat(20_000);
+    const deep = "<div>".repeat(MAX_NODES + 100);
     const r = sanitizeEmailHtml(deep);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("too-many-nodes");
+  });
+  it("renders a realistically-large table newsletter inline (not text fallback)", () => {
+    // ~24k tags of nested tables — a normal marketing email, well over the old
+    // 15k cap that used to dump it to plain text.
+    const cell = "<table><tr><td><span>x</span></td></tr></table>";
+    const news = `<div>${cell.repeat(3_000)}</div>`; // 3000 * 8 ≈ 24k tags
+    expect((news.match(/</g) ?? []).length).toBeGreaterThan(15_000);
+    const r = sanitizeEmailHtml(news);
+    expect(r.ok).toBe(true);
   });
 });
 
