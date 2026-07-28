@@ -259,9 +259,21 @@ export function stripQuotesText(body: string): string {
  * ponytail: top-post cut. If interleaved/bottom-posted replies must keep their
  * post-quote tail, swap in a depth-counting scanner — bodyFull stays canonical.
  */
+// A FORWARD's original content IS the message — never strip it, even with a note
+// typed above. Gmail wraps it in a `gmail_quote` after a "-- Forwarded message --"
+// line; Outlook uses a `divRplyFwdMsg` divider whose header reads `FW:`;
+// Thunderbird uses `moz-forward-container`.
+const FORWARD_MARKER =
+  /-{2,}\s*forwarded message\s*-{2,}|moz-forward-container|\bid=["']?divRplyFwdMsg[^>]*>[\s\S]{0,300}?\bfw:/i;
+// A REPLY quote container: everything from here down is prior history. Covers
+// Gmail/Yahoo/Thunderbird, Apple/generic (`<blockquote>`), and Outlook
+// (`divRplyFwdMsg`/`appendonsend` reply divider, `-----Original Message-----`).
+const REPLY_QUOTE_MARKER =
+  /<blockquote\b|<div[^>]*(?:gmail_quote|yahoo_quoted|moz-cite-prefix|\bid=["']?(?:divRplyFwdMsg|appendonsend))|-{4,}\s*original message\s*-{4,}/i;
+
 export function stripQuotesHtml(html: string): string {
-  const marker = /<blockquote\b|<div[^>]*(?:gmail_quote|yahoo_quoted|moz-cite-prefix)/i;
-  const at = html.search(marker);
+  if (FORWARD_MARKER.test(html)) return html.trim(); // forward → keep the whole body
+  const at = html.search(REPLY_QUOTE_MARKER);
   if (at === -1) return html.trim();
   // A REPLY has the new message text ABOVE the quote — that's what we keep. A
   // FORWARD (Gmail wraps the whole original in a top-level `gmail_quote`) or a

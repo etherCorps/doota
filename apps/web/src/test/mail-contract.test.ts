@@ -77,6 +77,28 @@ describe("quote stripping", () => {
     // A leading blockquote (top-quote) is likewise kept whole.
     const topq = "<blockquote><table><tr><td>content</td></tr></table></blockquote>";
     expect(stripQuotesHtml(topq)).toBe(topq);
+    // Forward WITH a note above it → still kept whole (the forward is the point).
+    const noted = '<div dir="ltr">FYI</div><div class="gmail_quote">---------- Forwarded message ---------<p>orig</p></div>';
+    expect(stripQuotesHtml(noted)).toBe(noted);
+  });
+  it("handles the major clients' reply vs forward markers", () => {
+    // Outlook reply (divRplyFwdMsg divider, RE:) → strip the quote.
+    const oReply =
+      '<div>my answer</div><div id="divRplyFwdMsg">From: a<br>Subject: RE: hi</div><div>original</div>';
+    expect(stripQuotesHtml(oReply)).toBe("<div>my answer</div>");
+    // Outlook FORWARD (divRplyFwdMsg + FW:) → keep whole, even with a note.
+    const oFwd =
+      '<div>see below</div><div id="divRplyFwdMsg">From: a<br>Subject: FW: hi</div><table><tr><td>orig</td></tr></table>';
+    expect(stripQuotesHtml(oFwd)).toBe(oFwd);
+    // "-----Original Message-----" plain divider → strip.
+    const orig = "<p>reply text</p>-----Original Message-----<br>quoted";
+    expect(stripQuotesHtml(orig)).toBe("<p>reply text</p>");
+    // Thunderbird reply (moz-cite-prefix) → strip.
+    const tb = '<p>hi there</p><div class="moz-cite-prefix">On x wrote:</div><blockquote>q</blockquote>';
+    expect(stripQuotesHtml(tb)).toBe("<p>hi there</p>");
+    // Thunderbird forward container → keep whole.
+    const tbFwd = '<div class="moz-forward-container"><table><tr><td>orig</td></tr></table></div>';
+    expect(stripQuotesHtml(tbFwd)).toBe(tbFwd);
   });
   it("strips tags to plain text", () => {
     expect(stripHtmlTags("<p>Hello&nbsp;<b>world</b></p>")).toBe("Hello world");
