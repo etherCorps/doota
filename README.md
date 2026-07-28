@@ -27,6 +27,42 @@ as the source of truth.
 It still speaks plain email underneath, so you can write to anyone on Gmail or
 Outlook, and they can write back.
 
+## Preview
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/thread-dark.png">
+  <img src="apps/docs/public/media/thread-light.png" alt="Threaded conversation view" width="820">
+</picture>
+
+<p><em>Every conversation as one chat-style timeline.</em></p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/composer-dark.png"><img src="apps/docs/public/media/composer-light.png" alt="Composer"></picture>
+      <br><strong>Composer</strong> — rich text, scheduled send, undo.
+    </td>
+    <td width="50%">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/aliases-dark.png"><img src="apps/docs/public/media/aliases-light.png" alt="Hide-my-email aliases"></picture>
+      <br><strong>Aliases</strong> — throwaway addresses on your own domain.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/admin-org-dashboard-dark.png"><img src="apps/docs/public/media/admin-org-dashboard-light.png" alt="Admin dashboard"></picture>
+      <br><strong>Admin</strong> — org, members, domains in one place.
+    </td>
+    <td width="50%">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/sign-in-dark.png"><img src="apps/docs/public/media/sign-in-light.png" alt="Sign in"></picture>
+      <br><strong>Sign in</strong> — passwords or passkeys, out of the box.
+    </td>
+  </tr>
+</table>
+
+</div>
+
 ## Features
 
 - **Threads, not folders** — every conversation is one simple timeline of
