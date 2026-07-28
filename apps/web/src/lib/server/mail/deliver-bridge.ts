@@ -29,6 +29,10 @@ export function deliverInBackground(submissionId: string, undoSeconds: number): 
     EMAIL_SENDER: env.EMAIL_SENDER,
     MAIL_OUT_QUEUE: env.MAIL_OUT_QUEUE,
     MAIL_EVENTS: env.MAIL_EVENTS,
+    // Forward VAPID so an INTERNAL delivery (short-circuited in-app, never
+    // touching the send binding) still fires the OS push, not just the bell.
+    VAPID_PUBLIC_KEY: env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: env.VAPID_PRIVATE_KEY,
   };
 
   console.log(`[mailer:bridge] queued ${submissionId} — delivering in ${undoSeconds}s (undo window)`);
