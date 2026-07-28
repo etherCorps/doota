@@ -28,6 +28,15 @@ WebCrypto, instance DEK in Worker secret / Secrets Store, rotation-ready envelop
 and threading metadata stays cleartext so the hot path and threading work without
 decryption. This is zero-access at rest, **not** E2EE — operator oversight is intended.
 
+**R2 content is encrypted at rest too.** The RFC 5322 raw, attachment bytes, and the
+outbound `{text,html}` blob are **gzip + AES-256-GCM** encrypted before they hit R2 (email
+MIME compresses ~5-8×, so the blob is smaller than the plaintext raw). Decrypted only in the
+worker that parses/derives/serves — nothing plaintext lives in R2. Helpers: `packBlob` /
+`unpackBlob` + `putEncryptedBlob` / `getDecryptedBlob` (crypto.ts). Public blobs (BIMI,
+avatars) and draft-*staged* attachments are the exceptions (non-content / transient).
+`unpackBlob` currently tolerates a legacy plaintext blob (no `0x01` version byte) for the
+transition — **remove that before release** (fail closed).
+
 ---
 
 ## 2. The three-level split

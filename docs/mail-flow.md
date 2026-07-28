@@ -28,8 +28,10 @@ minimum so a processing outage never loses mail.
    match → strip `+tag` if subaddressing enabled → active mailbox, else enabled
    alias → its active mailbox. Unknown/disabled → `setReject` (clean bounce,
    nothing stored).
-2. Buffer raw, put to R2 at `raw/{orgId}/{safe(Message-ID) | sha256(raw)}` —
-   content-stable key, redelivery overwrites identical bytes.
+2. Buffer raw, **gzip+encrypt** (`putEncryptedBlob`), put to R2 at
+   `raw/{orgId}/{safe(Message-ID) | sha256(raw)}` — content-stable key,
+   redelivery overwrites identical bytes. Nothing plaintext lands in R2; the
+   queue consumer + render path decrypt via `getDecryptedBlob`/`unpackBlob`.
 3. Enqueue `InboundJob` (r2 key, recipient, resolved mailbox, alias, tag,
    envelope from). No parsing here.
 
