@@ -18,9 +18,70 @@
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Doota" />
+		<!-- Installed-PWA launch splash: iOS/Android/desktop boot to a blank screen
+		     with no native startup image, so paint a branded logo from the first
+		     frame (standalone only) and fade it once the app hydrates
+		     (routes/+layout.svelte adds html.app-ready, then removes the node). -->
+		<style>
+			#app-splash {
+				position: fixed;
+				inset: 0;
+				z-index: 2147483647;
+				display: none;
+				align-items: center;
+				justify-content: center;
+				background: #15171e;
+			}
+			@media all and (display-mode: standalone) {
+				#app-splash {
+					display: flex;
+				}
+			}
+			#app-splash svg {
+				width: 92px;
+				height: 92px;
+				animation: app-splash-pulse 1.5s ease-in-out infinite;
+			}
+			html.app-ready #app-splash {
+				opacity: 0;
+				pointer-events: none;
+				transition: opacity 0.35s ease;
+			}
+			@keyframes app-splash-pulse {
+				0%,
+				100% {
+					transform: scale(1);
+					opacity: 0.85;
+				}
+				50% {
+					transform: scale(1.06);
+					opacity: 1;
+				}
+			}
+			@media (prefers-reduced-motion: reduce) {
+				#app-splash svg {
+					animation: none;
+				}
+			}
+		</style>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<div id="app-splash" aria-hidden="true">
+			<svg width="92" height="92" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Doota">
+				<rect width="96" height="96" rx="22" fill="#0E7AE6" />
+				<g transform="rotate(-9 48 33)">
+					<rect x="28" y="16" width="40" height="39" rx="6" fill="#A9C8E8" />
+					<rect x="28" y="10" width="40" height="39" rx="6" fill="#FFFFFF" />
+					<rect x="35" y="17" width="8" height="18" rx="4" fill="#0E7AE6" />
+				</g>
+				<g transform="rotate(4 48 68)">
+					<rect x="12" y="56" width="72" height="31" rx="10" fill="#083E75" />
+					<rect x="12" y="50" width="72" height="31" rx="10" fill="#0B5FB4" />
+					<path d="M17 50l31 19 31-19z" fill="#1877D6" />
+				</g>
+			</svg>
+		</div>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>
