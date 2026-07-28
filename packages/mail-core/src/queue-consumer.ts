@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";
 import * as schema from "@doota/db/schema";
-import { importKey, encryptContent, type ContentKey } from "./crypto";
+import { importKey, encryptContent, putEncryptedBlob, getDecryptedBlob, type ContentKey } from "./crypto";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
 import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
 import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./bounce";
@@ -132,6 +132,7 @@ async function stageInboundAttachments(
   orgId: string,
   parsed: PMParsed,
   pm: ParsedMessage,
+  ck: ContentKey,
 ): Promise<void> {
   const parts = realAttachments(parsed); // same filter + order as toParsedMessage
   for (let i = 0; i < pm.attachments.length; i++) {
@@ -139,8 +140,10 @@ async function stageInboundAttachments(
     if (content == null) continue;
     const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
     const key = `attachments/${orgId}/${crypto.randomUUID()}`;
-    await env.MAIL_RAW.put(key, bytes, {
-      httpMetadata: { contentType: pm.attachments[i].contentType ?? "application/octet-stream" },
+    // Attachment bytes encrypted at rest, same as the raw. The declared type
+    // lives on the D1 attachment row; the R2 object is opaque ciphertext.
+    await putEncryptedBlob(env.MAIL_RAW, key, ck, bytes, {
+      httpMetadata: { contentType: "application/octet-stream" },
     });
     pm.attachments[i].r2Key = key;
   }
@@ -213,14 +216,13 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
   for (const m of batch.messages) {
     const job = m.body;
     try {
-      const obj = await env.MAIL_RAW.get(job.r2RawKey);
-      if (!obj) {
+      const buf = await getDecryptedBlob(env.MAIL_RAW, job.r2RawKey, ck);
+      if (!buf) {
         // Raw is gone (already processed + swept, or never landed). Nothing to
         // reconstruct — ack so the job doesn't retry forever.
         m.ack();
         continue;
       }
-      const buf = await obj.arrayBuffer();
       const parsed = (await PostalMime.parse(buf)) as PMParsed;
 
       // Bounce/complaint short-circuit (Part F): a DSN routed to our return-path
@@ -281,7 +283,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       }
 
       const pm = toParsedMessage(parsed, job);
-      await stageInboundAttachments(env, job.orgId, parsed, pm);
+      await stageInboundAttachments(env, job.orgId, parsed, pm, ck);
 
       const { messageId, threadId } = await materializeMessage(db, job.orgId, pm, deps);
 

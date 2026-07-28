@@ -11,7 +11,7 @@ import PostalMime from "postal-mime";
  *   - outbound: our own sent mail, stored as JSON `{ text, html }` under
  *     `outbound/…` (outbound.ts writes it; outbound-consumer reads the twin).
  */
-export async function rawObjectToHtml(key: string, bytes: ArrayBuffer): Promise<string | null> {
+export async function rawObjectToHtml(key: string, bytes: ArrayBuffer | Uint8Array): Promise<string | null> {
   if (key.startsWith("outbound/")) {
     try {
       const j = JSON.parse(new TextDecoder().decode(bytes)) as { html?: string | null };

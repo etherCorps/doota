@@ -3,7 +3,7 @@ import { error, type RequestHandler } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { importKey, decryptContent, getDecryptedBlob, packBlob, unpackBlob } from "@doota/mail-core/crypto";
 import { rawObjectToHtml } from "@doota/mail-core/mime";
 import {
   sanitizeEmailHtml,
@@ -166,14 +166,27 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const bodyCache = (caches as { default?: Cache }).default;
   const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
   let rawHtml: string | null = null;
+  // The cache holds CIPHERTEXT (gzip+encrypted) — the CF edge never stores
+  // plaintext email. Decrypt on hit; a corrupt/legacy entry falls through to a
+  // fresh derive.
   const cachedBody = bodyCache ? await bodyCache.match(bodyCacheKey) : null;
   if (cachedBody) {
-    rawHtml = (await cachedBody.text()) || null;
-  } else {
-    const rawObj = msg.r2RawKey && platform?.env?.MAIL_RAW ? await platform.env.MAIL_RAW.get(msg.r2RawKey) : null;
-    rawHtml = rawObj ? await rawObjectToHtml(msg.r2RawKey!, await rawObj.arrayBuffer()) : null;
+    try {
+      rawHtml = new TextDecoder().decode(await unpackBlob(ck, new Uint8Array(await cachedBody.arrayBuffer()))) || null;
+    } catch {
+      rawHtml = null;
+    }
+  }
+  if (rawHtml === null) {
+    // Not cached (or bad entry): read + decrypt the raw from R2, then parse.
+    const rawBytes =
+      msg.r2RawKey && platform?.env?.MAIL_RAW
+        ? await getDecryptedBlob(platform.env.MAIL_RAW, msg.r2RawKey, ck)
+        : null;
+    rawHtml = rawBytes ? await rawObjectToHtml(msg.r2RawKey!, rawBytes) : null;
     if (bodyCache && rawHtml !== null) {
-      const store = new Response(rawHtml, { headers: { "Cache-Control": "private, max-age=86400" } });
+      const enc = await packBlob(ck, new TextEncoder().encode(rawHtml));
+      const store = new Response(enc as BodyInit, { headers: { "Cache-Control": "private, max-age=86400" } });
       const put = bodyCache.put(bodyCacheKey, store);
       if (platform?.ctx?.waitUntil) platform.ctx.waitUntil(put);
       else await put;

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { importKey, decryptContent, getDecryptedBlob } from "@doota/mail-core/crypto";
 import {
   createDraft,
   saveDraft,
@@ -222,9 +222,10 @@ describe("drafts — send integration & alias defaulting", () => {
     const { submissionId } = await sendDraft(db, env(), ck, "u1", { draftId: d.id });
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
     const message = await db.query.message.findFirst({ where: eq(schema.message.id, sub.messageId) });
-    // The HTML body is no longer stored in D1 — it lives in the R2 raw (outbound
-    // JSON). Read it there to assert the send-path trimming.
-    const raw = JSON.parse(await (await r2.get(message.r2RawKey))!.text()) as { html: string };
+    // The HTML body lives in the R2 outbound blob — gzip+encrypted at rest, so
+    // decrypt it to assert the send-path trimming (also proves it's ciphertext).
+    const dec = await getDecryptedBlob(r2 as never, message.r2RawKey, ck);
+    const raw = JSON.parse(new TextDecoder().decode(dec!)) as { html: string };
     expect(raw.html).toBe("<p>hello <strong>world</strong></p>");
   });
 

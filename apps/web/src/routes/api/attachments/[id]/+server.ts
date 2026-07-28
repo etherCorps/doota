@@ -7,6 +7,7 @@ import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/a
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { sanitizeFilename } from "$lib/utils/filename";
 import { verifyResourceToken } from "$lib/server/resource-token.js";
+import { importKey, getDecryptedBlob } from "@doota/mail-core/crypto";
 
 // Content types we'll serve as declared. Everything else (HTML, SVG, XML, …) is
 // forced to octet-stream so it can't be rendered/executed even if opened directly.
@@ -76,8 +77,12 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     return new Response(null, { status: 304, headers: revalidateHeaders(etag) });
   }
 
-  const obj = await env.MAIL_RAW.get(att.r2Key);
-  if (!obj) error(404, "Attachment bytes are missing.");
+  // Attachment bytes are gzip+encrypted at rest — decrypt before serving. Buffered
+  // (not streamed) since GCM must verify the whole blob; attachments are bounded.
+  if (!env.MAIL_DEK) error(500, "Mail encryption key is not configured.");
+  const ck = await importKey(env.MAIL_DEK);
+  const bytes = await getDecryptedBlob(env.MAIL_RAW, att.r2Key, ck);
+  if (!bytes) error(404, "Attachment bytes are missing.");
 
   // Never trust the email's declared type — serve known-safe media as-is, force
   // everything else to octet-stream. Disposition:attachment forces a download
@@ -86,7 +91,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const declared = (att.contentType ?? "").split(";")[0].trim().toLowerCase();
   const serveType = SAFE_CONTENT_TYPES.has(declared) ? declared : "application/octet-stream";
   const filename = sanitizeFilename(att.filename);
-  return new Response(obj.body, {
+  return new Response(bytes as BodyInit, {
     headers: {
       "Content-Type": serveType,
       "Content-Disposition": `attachment; filename="${filename}"`,

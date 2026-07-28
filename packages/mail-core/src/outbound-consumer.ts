@@ -5,7 +5,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can, type Actor } from "@doota/db/can";
 import { routingForHost } from "@doota/db/org-domains";
-import { importKey, decryptContent, type ContentKey } from "./crypto";
+import { importKey, decryptContent, getDecryptedBlob, type ContentKey } from "./crypto";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
@@ -354,7 +354,7 @@ export async function processSubmission(
     const headers: Record<string, string> = { "Message-ID": message.messageIdHeader };
     if (message.inReplyTo) headers["In-Reply-To"] = message.inReplyTo;
     if (message.references) headers["References"] = message.references;
-    const attachments = [...((await loadAttachments(db, env, sub.messageId)) ?? []), ...images];
+    const attachments = [...((await loadAttachments(db, env, ck, sub.messageId)) ?? []), ...images];
     const from = { name: fromName, email: sub.envelopeFrom };
 
     for (const chunk of batches) {
@@ -440,9 +440,9 @@ async function buildBody(
   let newText: string | null = null;
   let newHtml: string | null = null;
   if (message.r2RawKey) {
-    const obj = await env.MAIL_RAW.get(message.r2RawKey);
-    if (obj) {
-      const raw = JSON.parse(await obj.text()) as { text: string | null; html: string | null };
+    const buf = await getDecryptedBlob(env.MAIL_RAW, message.r2RawKey, ck);
+    if (buf) {
+      const raw = JSON.parse(new TextDecoder().decode(buf)) as { text: string | null; html: string | null };
       newText = raw.text;
       newHtml = raw.html;
     }
@@ -487,6 +487,7 @@ async function buildBody(
 async function loadAttachments(
   db: Db,
   env: OutboundConsumerEnv,
+  ck: ContentKey,
   messageId: string,
 ): Promise<OutboundEmail["attachments"]> {
   const rows = await db.query.attachment.findMany({
@@ -496,12 +497,12 @@ async function loadAttachments(
   const out: NonNullable<OutboundEmail["attachments"]> = [];
   for (const a of rows) {
     if (!a.r2Key) continue;
-    const obj = await env.MAIL_RAW.get(a.r2Key);
-    if (!obj) continue;
+    const bytes = await getDecryptedBlob(env.MAIL_RAW, a.r2Key, ck); // decrypt at rest
+    if (!bytes) continue;
     out.push({
       filename: a.filename ?? "attachment",
       contentType: a.contentType ?? "application/octet-stream",
-      content: await obj.arrayBuffer(),
+      content: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     });
   }
   return out.length ? out : undefined;

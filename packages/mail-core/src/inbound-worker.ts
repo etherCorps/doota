@@ -2,6 +2,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { resolveRecipient } from "./resolver";
+import { importKey, putEncryptedBlob } from "./crypto";
 
 /**
  * `mail-in` handler — Cloudflare Email Routing catch-all target. Runs merged
@@ -84,8 +85,10 @@ export async function handleEmail(
   const r2RawKey = `raw/${resolved.orgId}/${keyId}`;
 
   // Idempotent put — same key overwrites identical bytes; a redelivery is a no-op.
-  await env.MAIL_RAW.put(r2RawKey, rawBuf, {
-    httpMetadata: { contentType: "message/rfc822" },
+  // Stored gzip+encrypted at rest (zero-access): no plaintext email lives in R2.
+  const ck = await importKey(env.MAIL_DEK);
+  await putEncryptedBlob(env.MAIL_RAW, r2RawKey, ck, rawBuf, {
+    httpMetadata: { contentType: "application/octet-stream" },
   });
 
   const job: InboundJob = {

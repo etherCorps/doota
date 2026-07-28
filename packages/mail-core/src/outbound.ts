@@ -4,7 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { domainOf } from "@doota/db/org-domains";
-import { importKey } from "./crypto";
+import { importKey, putEncryptedBlob } from "./crypto";
 import {
   materializeMessage,
   materializeDelivery,
@@ -143,10 +143,12 @@ export async function enqueueSend(
   // inbound, so html survives (D1 keeps only text) and a redelivered job rebuilds
   // identical content. D1 columns remain the encrypted ones.
   const r2RawKey = `outbound/${req.orgId}/${crypto.randomUUID()}`;
-  await env.MAIL_RAW.put(
+  await putEncryptedBlob(
+    env.MAIL_RAW,
     r2RawKey,
+    ck,
     JSON.stringify({ text: req.text ?? null, html: req.html ?? null }),
-    { httpMetadata: { contentType: "application/json" } },
+    { httpMetadata: { contentType: "application/octet-stream" } },
   );
 
   // The stored timeline copy holds what the sender wrote (a bubble); the quoted

@@ -91,3 +91,77 @@ export async function decryptContent(
   );
   return new TextDecoder().decode(pt);
 }
+
+// ---- Binary blobs (R2 objects: raw MIME, attachment bytes, outbound JSON) ----
+// These are large + read as bytes, so they use a compact BINARY envelope
+// instead of the base64 string envelope above: [1-byte version][12-byte iv]
+// [ciphertext+tag]. Version 1 = AES-256-GCM. gzip first (email MIME compresses
+// ~5-8x) so the stored/cached blob stays small.
+
+const BLOB_V1 = 1;
+
+async function pipe(data: Uint8Array, t: "gzip" | "gunzip"): Promise<Uint8Array> {
+  const stream = t === "gzip" ? new CompressionStream("gzip") : new DecompressionStream("gzip");
+  const out = new Response(new Response(data as BodyInit).body!.pipeThrough(stream));
+  return new Uint8Array(await out.arrayBuffer());
+}
+
+/** Encrypt raw bytes → binary envelope (no compression; caller decides). */
+export async function encryptBytes(ck: ContentKey, data: Uint8Array): Promise<Uint8Array> {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, ck.key, data as BufferSource));
+  const out = new Uint8Array(1 + IV_BYTES + ct.length);
+  out[0] = BLOB_V1;
+  out.set(iv, 1);
+  out.set(ct, 1 + IV_BYTES);
+  return out;
+}
+
+/** Decrypt a binary envelope from encryptBytes. Throws on tamper/bad version. */
+export async function decryptBytes(ck: ContentKey, blob: Uint8Array): Promise<Uint8Array> {
+  if (blob[0] !== BLOB_V1) throw new Error("unrecognized blob envelope");
+  const iv = blob.subarray(1, 1 + IV_BYTES);
+  const ct = blob.subarray(1 + IV_BYTES);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, ck.key, ct as BufferSource));
+}
+
+/** Store shape for an R2 content blob: gzip → encrypt. Small + zero-access. */
+export async function packBlob(ck: ContentKey, data: Uint8Array): Promise<Uint8Array> {
+  return encryptBytes(ck, await pipe(data, "gzip"));
+}
+
+/** Read shape: decrypt → gunzip. Inverse of packBlob. */
+export async function unpackBlob(ck: ContentKey, blob: Uint8Array): Promise<Uint8Array> {
+  return pipe(await decryptBytes(ck, blob), "gunzip");
+}
+
+// Centralized R2 read/write for content blobs, so every call site is a safe
+// one-liner (put→gzip+encrypt, get→decrypt+gunzip) and no site can forget half.
+type R2Like = {
+  put(key: string, value: ArrayBuffer | ArrayBufferView | string, options?: unknown): Promise<unknown>;
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+};
+
+/** gzip+encrypt `data` and store it at `key`. */
+export async function putEncryptedBlob(
+  bucket: R2Like,
+  key: string,
+  ck: ContentKey,
+  data: Uint8Array | ArrayBuffer | string,
+  options?: unknown,
+): Promise<void> {
+  const bytes =
+    typeof data === "string"
+      ? new TextEncoder().encode(data)
+      : data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : data;
+  await bucket.put(key, await packBlob(ck, bytes), options);
+}
+
+/** Fetch + decrypt+gunzip the blob at `key`, or null if absent. */
+export async function getDecryptedBlob(bucket: R2Like, key: string, ck: ContentKey): Promise<Uint8Array | null> {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  return unpackBlob(ck, new Uint8Array(await obj.arrayBuffer()));
+}

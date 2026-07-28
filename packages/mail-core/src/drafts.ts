@@ -4,7 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { error } from "@sveltejs/kit";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
-import { decryptContent, encryptContent, type ContentKey } from "./crypto";
+import { decryptContent, encryptContent, putEncryptedBlob, type ContentKey } from "./crypto";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
 import { notifySubmissionState } from "./events-hub";
@@ -603,13 +603,16 @@ export async function removeDraftAttachment(
   return nextList;
 }
 
-/** Copy a staged draft object to an outbound key the message will own. */
-async function copyToOutbound(env: OutboundEnv, orgId: string, ref: AttachmentRef): Promise<AttachmentRef> {
+/** Copy a staged draft object to an outbound key the message will own. The
+ * outbound copy is encrypted at rest — the message-attachment readers
+ * (loadAttachments, the attachment route) decrypt it. (Draft-staged objects are
+ * transient plaintext; encrypting those at rest is a follow-up.) */
+async function copyToOutbound(env: OutboundEnv, ck: ContentKey, orgId: string, ref: AttachmentRef): Promise<AttachmentRef> {
   const obj = await env.MAIL_RAW.get(ref.r2Key);
   if (!obj) error(409, "A staged attachment is missing; re-attach it and try again.");
   const newKey = `outbound/${orgId}/${crypto.randomUUID()}`;
-  await env.MAIL_RAW.put(newKey, await obj.arrayBuffer(), {
-    httpMetadata: { contentType: ref.contentType },
+  await putEncryptedBlob(env.MAIL_RAW, newKey, ck, await obj.arrayBuffer(), {
+    httpMetadata: { contentType: "application/octet-stream" },
   });
   return { ...ref, r2Key: newKey };
 }
@@ -655,7 +658,7 @@ export async function sendDraft(
     ]);
 
     const staged = jsonArray<AttachmentRef>(row.attachments);
-    const outboundAttachments = await Promise.all(staged.map((a) => copyToOutbound(env, row.orgId, a)));
+    const outboundAttachments = await Promise.all(staged.map((a) => copyToOutbound(env, ck, row.orgId, a)));
     const { html, text } = toHtmlAndText(body);
 
     const res = await enqueueSend(db, env, {
