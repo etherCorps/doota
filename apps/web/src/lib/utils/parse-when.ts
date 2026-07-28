@@ -28,8 +28,10 @@ export function parseWhen(input: string, now: Date = new Date()): Date | null {
   const s = input.trim().toLowerCase().replace(/\s+/g, " ");
   if (!s) return null;
 
-  // "in N minutes/hours/days/weeks" — fully relative, time is implied.
-  const rel = s.match(/\bin (\d+) ?(min|minute|hr|hour|day|week)s?\b/);
+  // Fully-relative offsets, time implied: "in 2 hours", "2 days from now",
+  // "3 weeks later", or a bare "2 days". Prefix "in" and suffix "from now"/
+  // "later" are optional; a unit word is required (so "5pm" never matches).
+  const rel = s.match(/\b(?:in )?(\d+) ?(min|minute|hr|hour|day|week)s?(?: (?:from now|later))?\b/);
   if (rel) {
     const n = +rel[1];
     const u = rel[2];
@@ -49,10 +51,24 @@ export function parseWhen(input: string, now: Date = new Date()): Date | null {
   // ---- day ----
   const next = /\bnext\b/.test(s);
   const wdKey = Object.keys(WD).find((k) => new RegExp(`\\b${k}\\b`).test(s));
-  if (/\btoday\b|\btonight\b/.test(s)) {
+  if (/\bday after tomorrow\b|\bovermorrow\b/.test(s)) {
+    // Checked BEFORE "tomorrow" — the substring would otherwise match +1.
+    d.setDate(d.getDate() + 2);
+    dayMatched = true;
+  } else if (/\btoday\b|\btonight\b/.test(s)) {
     dayMatched = true;
   } else if (/\btomorrow\b|\btmrw?\b/.test(s)) {
     d.setDate(d.getDate() + 1);
+    dayMatched = true;
+  } else if (/\bnext week\b/.test(s)) {
+    // Monday of next week (Gmail "next week" = Mon morning).
+    d.setDate(d.getDate() + (((1 - d.getDay() + 7) % 7) || 7));
+    dayMatched = true;
+  } else if (/\bweekend\b/.test(s)) {
+    // Coming Saturday ("this weekend"); "next weekend" is the week after.
+    let ahead = (6 - d.getDay() + 7) % 7;
+    if (next) ahead += 7;
+    d.setDate(d.getDate() + ahead);
     dayMatched = true;
   } else if (wdKey) {
     // Nearest future occurrence (same weekday → next week, never today).

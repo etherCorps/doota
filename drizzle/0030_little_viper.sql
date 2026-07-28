@@ -1,0 +1,1 @@
+ALTER TABLE `thread_state` ADD `snoozed_until` integer;

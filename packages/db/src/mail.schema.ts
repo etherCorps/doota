@@ -301,6 +301,12 @@ export const threadState = sqliteTable(
     // "Empty trash/spam" hides — never a hard delete. Hidden threads drop out of
     // every list; moving a thread to a new placement clears it.
     hiddenAt: integer("hidden_at", { mode: "timestamp_ms" }),
+    // Snooze: when set (future), the thread is hidden from the inbox and lives in
+    // the Snoozed view. The 5-min cron nulls it when due, returning the thread to
+    // the inbox top, unread. A new inbound reply also clears it (un-snooze early).
+    // ponytail: no index — the snoozed set is tiny, so the inbox query filters
+    // `snoozed_until is null` at the row level. Add to the list index if it grows.
+    snoozedUntil: integer("snoozed_until", { mode: "timestamp_ms" }),
     createdAt: now(),
   },
   (t) => [

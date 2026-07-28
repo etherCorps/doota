@@ -15,6 +15,7 @@
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import ClockIcon from '@lucide/svelte/icons/clock';
+	import AlarmClockIcon from '@lucide/svelte/icons/alarm-clock';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -39,6 +40,7 @@
 	// virtual client folders; the rest are thread placements).
 	const FOLDERS = [
 		{ id: 'inbox', name: 'Inbox', icon: InboxIcon },
+		{ id: 'snoozed', name: 'Snoozed', icon: AlarmClockIcon },
 		{ id: 'sent', name: 'Sent', icon: SendIcon },
 		{ id: 'drafts', name: 'Drafts', icon: FileTextIcon },
 		{ id: 'scheduled', name: 'Scheduled', icon: ClockIcon },

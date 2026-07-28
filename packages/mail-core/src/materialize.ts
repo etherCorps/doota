@@ -468,6 +468,10 @@ async function ensureThreadState(
   };
   if (inbound) {
     set.lastInboundAt = sql`MAX(COALESCE(${mail.threadState.lastInboundAt}, 0), ${sentAtMs})`;
+    // A new inbound reply wakes a snoozed thread early (Gmail semantics): clearing
+    // snoozedUntil returns it to the inbox, and the recency bumps above put it at
+    // the top, unread.
+    set.snoozedUntil = null;
   }
   if (policy.unarchiveOnReply && existing.placement === "archived") set.placement = "inbox";
   await db.update(mail.threadState).set(set).where(eq(mail.threadState.id, existing.id));

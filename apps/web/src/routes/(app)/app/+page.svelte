@@ -15,6 +15,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
+	import SnoozeMenu from '$lib/components/mail/snooze-menu.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
 	import ContactHoverCard from '$lib/components/mail/contact-hovercard.svelte';
 	import { AvatarGroup } from '$lib/components/ui/avatar/index.js';
@@ -88,6 +89,7 @@
 	import ReplyIcon from '@lucide/svelte/icons/reply';
 	import ReplyAllIcon from '@lucide/svelte/icons/reply-all';
 	import StarIcon from '@lucide/svelte/icons/star';
+	import AlarmClockIcon from '@lucide/svelte/icons/alarm-clock';
 	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import * as Popover from '$lib/components/ui/popover/index.js';
@@ -115,6 +117,7 @@
 
 	const FOLDERS = [
 		{ id: 'inbox', name: 'Inbox', icon: InboxIcon },
+		{ id: 'snoozed', name: 'Snoozed', icon: AlarmClockIcon },
 		{ id: 'sent', name: 'Sent', icon: SendIcon },
 		{ id: 'drafts', name: 'Drafts', icon: FileTextIcon },
 		{ id: 'scheduled', name: 'Scheduled', icon: ClockIcon },
@@ -811,6 +814,16 @@
 			void loadThreads(true);
 		}
 	}
+	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
+	// and drop its row (it left the current view), same optimistic shape as move().
+	function afterSnoozeChange() {
+		const id = threadId;
+		if (!id) return;
+		nav({ thread: null });
+		items = items.filter((t) => t.threadId !== id);
+		void refreshUnread();
+	}
+
 	// One-shot pop on the star glyph (transitions.dev scale+blur) — keyed by a
 	// counter so rapid re-toggles restart the animation.
 	let starPop = $state(0);
@@ -2073,6 +2086,9 @@
 								<button type="button" title="Move to inbox" onclick={() => move('inbox')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg shadow-none transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 									<InboxDownIcon class="size-4" />
 								</button>
+							{/if}
+							{#if (placement === 'inbox' || placement === 'snoozed') && mailboxId && threadId}
+								<SnoozeMenu {mailboxId} {threadId} snoozed={placement === 'snoozed'} onchange={afterSnoozeChange} />
 							{/if}
 							{#if placement !== 'archived'}
 								<Tooltip.Provider delayDuration={600}>

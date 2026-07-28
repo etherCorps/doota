@@ -10,7 +10,8 @@ import {
   materializeDelivery,
   type ParsedMessage,
 } from "@doota/mail-core/materialize";
-import { countUnread, getThread } from "@doota/mail-core/read";
+import { countUnread, getThread, listThreads } from "@doota/mail-core/read";
+import { sweepDueSnoozes } from "@doota/mail-core/snooze";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 
 const KEY_B64 = btoa("0123456789abcdef0123456789abcdef");
@@ -174,6 +175,53 @@ describe("materialize idempotency + dedupe (Part D)", () => {
 
     const state = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, m1.threadId) });
     expect(state.placement).toBe("inbox");
+  });
+
+  it("snooze hides a thread from inbox and surfaces it in the snoozed view", async () => {
+    const first = parsed({ messageIdHeader: "<sn1@ext>" });
+    const m = await materializeMessage(db, ORG, first, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: first.sentAt });
+
+    await db.update(schema.threadState).set({ snoozedUntil: new Date(Date.now() + 3_600_000) }).where(eq(schema.threadState.threadId, m.threadId));
+
+    const inbox = await listThreads(db, { mailboxId: "mb_apex", placement: "inbox", ck: deps.ck });
+    const snoozed = await listThreads(db, { mailboxId: "mb_apex", placement: "snoozed", ck: deps.ck });
+    expect(inbox.some((t) => t.threadId === m.threadId)).toBe(false);
+    expect(snoozed.some((t) => t.threadId === m.threadId)).toBe(true);
+  });
+
+  it("cron wakes a due snooze back into the inbox, unread", async () => {
+    const first = parsed({ messageIdHeader: "<sn2@ext>" });
+    const m = await materializeMessage(db, ORG, first, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: first.sentAt });
+    // Mark read so we can prove the wake resets it to unread.
+    await db.insert(schema.user).values({ id: "u_sn", name: "u", email: "u_sn@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date() });
+    await db.insert(schema.threadRead).values({ id: "tr_sn2", orgId: ORG, threadId: m.threadId, mailboxId: "mb_apex", userId: "u_sn", lastReadAt: new Date() });
+    await db.update(schema.threadState).set({ snoozedUntil: new Date(Date.now() - 1000) }).where(eq(schema.threadState.threadId, m.threadId));
+
+    const woken = await sweepDueSnoozes(db);
+    expect(woken).toBe(1);
+    const state = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, m.threadId) });
+    expect(state!.snoozedUntil).toBeNull();
+    const inbox = await listThreads(db, { mailboxId: "mb_apex", placement: "inbox", ck: deps.ck });
+    expect(inbox.some((t) => t.threadId === m.threadId)).toBe(true);
+    // Read cursor dropped → unread again.
+    const read = await db.query.threadRead.findFirst({ where: eq(schema.threadRead.threadId, m.threadId) });
+    expect(read).toBeUndefined();
+  });
+
+  it("a new inbound reply un-snoozes the thread early", async () => {
+    const first = parsed({ messageIdHeader: "<sn3@ext>" });
+    const m1 = await materializeMessage(db, ORG, first, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m1, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: first.sentAt });
+    await db.update(schema.threadState).set({ snoozedUntil: new Date(Date.now() + 3_600_000) }).where(eq(schema.threadState.threadId, m1.threadId));
+
+    const reply = parsed({ messageIdHeader: "<sn3b@ext>", inReplyTo: "<sn3@ext>", subject: "Re: Hello", sentAt: Date.now() + 1000 });
+    const m2 = await materializeMessage(db, ORG, reply, deps);
+    await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_apex", role: "to", viaAliasId: null, subaddressTag: null, sentAt: reply.sentAt });
+
+    const state = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, m1.threadId) });
+    expect(state!.snoozedUntil).toBeNull(); // reply woke it
   });
 
   it("threads a reply carrying the provider-rewritten Message-ID", async () => {

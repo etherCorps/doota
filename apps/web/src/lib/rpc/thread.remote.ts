@@ -130,7 +130,8 @@ async function assertMailboxManage(mailboxId: string) {
 // Real placements a thread can be MOVED to. `sent` is a view (threads this
 // mailbox sent something in), listable but never a move target.
 const MOVE_PLACEMENTS = ["inbox", "archived", "spam", "trash"] as const;
-const VIEW_PLACEMENTS = [...MOVE_PLACEMENTS, "sent"] as const;
+// `sent` and `snoozed` are views, not move targets (see listThreads).
+const VIEW_PLACEMENTS = [...MOVE_PLACEMENTS, "sent", "snoozed"] as const;
 
 // Kept local: a remote-function module may export ONLY remote functions.
 const PAGE_SIZE = 30;
@@ -296,6 +297,43 @@ export const moveThread = command(
         toPlacement: placement,
       });
     }
+    return { ok: true as const };
+  },
+);
+
+/** Snooze: park the thread out of the inbox until `until` (ms epoch, future).
+ * The 5-min cron wakes it back to the inbox top, unread (see sweepDueSnoozes).
+ * Per-mailbox, like placement — on a shared mailbox it snoozes for the team. */
+export const snoozeThread = command(
+  z.object({
+    mailboxId: z.string().min(1),
+    threadId: z.string().min(1),
+    until: z.number().int().positive(),
+  }),
+  async ({ mailboxId, threadId, until }) => {
+    await assertThreadGrant(mailboxId, threadId);
+    if (until <= Date.now()) error(400, "Snooze time must be in the future.");
+    const { locals } = getRequestEvent();
+    // Park in the inbox (so it returns here on wake) and hide it via snoozedUntil.
+    await locals.db
+      .update(mail.threadState)
+      .set({ snoozedUntil: new Date(until), placement: "inbox", hiddenAt: null })
+      .where(and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)));
+    return { ok: true as const, until };
+  },
+);
+
+/** Manual un-snooze: bring the thread back to the inbox now. Keeps its read
+ * state (the user chose to surface it) — unlike the cron wake, which marks unread. */
+export const unsnoozeThread = command(
+  z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
+  async ({ mailboxId, threadId }) => {
+    await assertThreadGrant(mailboxId, threadId);
+    const { locals } = getRequestEvent();
+    await locals.db
+      .update(mail.threadState)
+      .set({ snoozedUntil: null })
+      .where(and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)));
     return { ok: true as const };
   },
 );

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
@@ -80,6 +80,10 @@ export async function listThreads(
     assignedTo?: string | null;
   },
 ): Promise<ThreadSummary[]> {
+  // `snoozed` is a VIEW like `sent`: any non-spam/trash thread with a pending
+  // snooze, soonest-to-wake first. Every other placement EXCLUDES snoozed threads
+  // (they've left the inbox until the cron wakes them — see the where clause).
+  const isSnoozedView = input.placement === "snoozed";
   const placementCond =
     input.placement === "sent"
       ? and(
@@ -98,7 +102,12 @@ export async function listThreads(
               ),
           ),
         )
-      : eq(schema.threadState.placement, input.placement);
+      : isSnoozedView
+        ? and(
+            notInArray(schema.threadState.placement, ["spam", "trash"]),
+            isNotNull(schema.threadState.snoozedUntil),
+          )
+        : eq(schema.threadState.placement, input.placement);
 
   // Sort on the denormalized recency column (mirrors thread.last_message_at) so
   // thread_state_list_idx serves ORDER BY + LIMIT without joining `thread`.
@@ -115,12 +124,18 @@ export async function listThreads(
         eq(schema.threadState.mailboxId, input.mailboxId),
         placementCond,
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
+        // Snoozed threads are hidden from every other view until they wake.
+        isSnoozedView ? undefined : isNull(schema.threadState.snoozedUntil),
         input.assignedTo
           ? eq(schema.threadState.assigneeUserId, input.assignedTo)
           : undefined,
       ),
     )
-    .orderBy(desc(schema.threadState.lastActivityAt))
+    .orderBy(
+      isSnoozedView
+        ? asc(schema.threadState.snoozedUntil) // next to wake at the top
+        : desc(schema.threadState.lastActivityAt),
+    )
     .limit(input.limit ?? 30)
     .offset(input.offset ?? 0);
 
@@ -272,6 +287,7 @@ export async function recentUnread(
         inArray(schema.threadState.mailboxId, input.mailboxIds),
         eq(schema.threadState.placement, "inbox"),
         isNull(schema.threadState.hiddenAt),
+        isNull(schema.threadState.snoozedUntil), // snoozed = out of inbox, not unread
         restricted,
         isNotNull(schema.threadState.lastInboundAt),
         or(
@@ -352,6 +368,7 @@ export async function countUnread(
         eq(schema.threadState.mailboxId, input.mailboxId),
         eq(schema.threadState.placement, "inbox"),
         isNull(schema.threadState.hiddenAt),
+        isNull(schema.threadState.snoozedUntil), // snoozed = out of inbox, not unread
         input.assignedTo ? eq(schema.threadState.assigneeUserId, input.assignedTo) : undefined,
         newerThanCursor,
       ),
