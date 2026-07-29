@@ -298,7 +298,7 @@ export const revokeMailboxAccess = command(
 /** Issue a send-only API key against a SERVICE mailbox. Admin/manager only; the
  * key authorizes the mailbox directly (no owning user). Secret shown once. */
 export const createServiceKey = command(
-  z.object({ mailboxId: z.string().min(1), name: z.string().trim().max(80).optional() }),
+  z.object({ mailboxId: z.string().min(1), name: z.string().trim().min(1, "Name the key so it's identifiable.").max(80) }),
   async ({ mailboxId, name }) => {
     const box = await assertManageMailbox(mailboxId);
     if (!box.isService) error(400, "API keys can only be issued for service mailboxes.");
@@ -307,7 +307,7 @@ export const createServiceKey = command(
       orgId: box.orgId,
       mailboxId,
       createdByUserId: locals.user!.id,
-      name: name?.trim() || undefined,
+      name,
     });
     return { id: created.id, key: created.key, prefix: created.prefix };
   },

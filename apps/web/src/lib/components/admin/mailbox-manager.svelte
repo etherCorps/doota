@@ -166,7 +166,7 @@
 
 	async function createKey() {
 		creatingKey = true;
-		const req = createServiceKey({ mailboxId: mb.id, name: keyName || undefined });
+		const req = createServiceKey({ mailboxId: mb.id, name: keyName.trim() });
 		toast.promise(req, {
 			loading: 'Creating key…',
 			success: 'Service key created.',
@@ -530,12 +530,13 @@
 		{:else}
 			<div class="flex flex-col gap-3 py-2">
 				<Field.Field>
-					<Field.Label>Name (optional)</Field.Label>
+					<Field.Label>Name</Field.Label>
 					<Input bind:value={keyName} placeholder="CI deploy bot" autocomplete="off" />
+					<p class="text-muted-foreground text-xs">Name it after where it's used, so it's identifiable later.</p>
 				</Field.Field>
 				<div class="flex justify-end gap-2 pt-1">
 					<Button type="button" variant="ghost" onclick={closeKeyDialog} disabled={creatingKey}>Cancel</Button>
-					<Button type="button" onclick={createKey} disabled={creatingKey}>
+					<Button type="button" onclick={createKey} disabled={creatingKey || !keyName.trim()}>
 						{#if creatingKey}<Spinner class="mr-1" />{/if}
 						Create key
 					</Button>
