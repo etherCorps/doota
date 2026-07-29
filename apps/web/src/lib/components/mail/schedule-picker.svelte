@@ -106,7 +106,7 @@
 			<div class="relative">
 				<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
 				<Input
-					class="h-8 pl-7 text-xs"
+					class="h-8 pl-7 text-xs pointer-coarse:text-base"
 					placeholder="Type a time — “tomorrow 9am”"
 					bind:value={nlp}
 					onkeydown={onNlpKey}
