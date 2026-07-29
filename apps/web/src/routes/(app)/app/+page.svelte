@@ -829,6 +829,13 @@
 		items = items.filter((t) => t.threadId !== id);
 		void refreshUnread();
 	}
+	// Same, from a list-row snooze. Also close the detail if that row's thread
+	// happens to be the one open, so the two panes stay in sync.
+	function afterRowSnooze(id: string) {
+		items = items.filter((t) => t.threadId !== id);
+		if (id === threadId) nav({ thread: null });
+		void refreshUnread();
+	}
 
 	// One-shot pop on the star glyph (transitions.dev scale+blur) — keyed by a
 	// counter so rapid re-toggles restart the animation.
@@ -1868,6 +1875,15 @@
 									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
 							</button>
+							{#if mailboxId && (placement === 'inbox' || placement === 'snoozed')}
+								<SnoozeMenu
+									{mailboxId}
+									threadId={t.threadId}
+									snoozed={placement === 'snoozed'}
+									onchange={() => afterRowSnooze(t.threadId)}
+									triggerClass="grid size-8 shrink-0 self-center place-items-center rounded-md text-faint transition-colors outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:opacity-100"
+								/>
+							{/if}
 							<!-- Star from the list — filled + always visible when starred; a faint
 							     hover-reveal affordance otherwise (always shown on touch). -->
 							<button

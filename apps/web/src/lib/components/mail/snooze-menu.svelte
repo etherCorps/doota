@@ -6,6 +6,8 @@
 	// the row out. When already snoozed, offers Unsnooze instead of a wake time.
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Calendar } from '$lib/components/ui/calendar/index.js';
+	import { getLocalTimeZone, today, type DateValue } from '@internationalized/date';
 	import { toast } from 'svelte-sonner';
 	import { parseWhen } from '$lib/utils/parse-when';
 	import { snoozeThread, unsnoozeThread } from '$lib/rpc/thread.remote';
@@ -16,7 +18,8 @@
 		mailboxId,
 		threadId,
 		snoozed = false,
-		onchange
+		onchange,
+		triggerClass = ''
 	}: {
 		mailboxId: string;
 		threadId: string;
@@ -24,7 +27,19 @@
 		snoozed?: boolean;
 		/** Fired after a successful snooze/unsnooze so the caller can drop the row. */
 		onchange?: () => void;
+		/** Override the trigger button styling (e.g. a hover-reveal list-row action). */
+		triggerClass?: string;
 	} = $props();
+
+	const minDay = today(getLocalTimeZone());
+	// A picked calendar day snoozes to 9am local that morning (the sensible default;
+	// the phrase box handles specific times).
+	function pickDate(v: DateValue | undefined) {
+		if (!v) return;
+		const d = v.toDate(getLocalTimeZone());
+		d.setHours(9, 0, 0, 0);
+		void snooze(d);
+	}
 
 	let open = $state(false);
 	let busy = $state(false);
@@ -93,7 +108,8 @@
 				type="button"
 				title={snoozed ? 'Snoozed' : 'Snooze'}
 				aria-label={snoozed ? 'Snoozed' : 'Snooze'}
-				class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg outline-none transition-colors hover:shadow-xs focus-visible:ring-2 {snoozed
+				class="{triggerClass ||
+					'text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg outline-none transition-colors hover:shadow-xs focus-visible:ring-2'} {snoozed
 					? 'text-warn'
 					: ''}"
 			>
@@ -101,7 +117,7 @@
 			</button>
 		{/snippet}
 	</Popover.Trigger>
-	<Popover.Content align="end" class="w-56 p-0">
+	<Popover.Content align="end" class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0">
 		{#if snoozed}
 			<button
 				type="button"
@@ -139,6 +155,11 @@
 					</li>
 				{/each}
 			</ul>
+			<!-- Manual date — snoozes to 9am on the picked morning. -->
+			<div class="border-t">
+				<p class="text-muted-foreground px-3 pt-2 text-[11px]">Pick a date (9:00am)</p>
+				<Calendar type="single" minValue={minDay} onValueChange={pickDate} class="p-2" />
+			</div>
 		{/if}
 	</Popover.Content>
 </Popover.Root>
