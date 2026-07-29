@@ -42,6 +42,8 @@ export type SendRequest = {
   mailboxId: string;
   /** Null for service-key sends (no human author). */
   createdByUserId: string | null;
+  /** API key that originated this send, when programmatic. Null = interactive. */
+  apiKeyId?: string | null;
   /** Header + envelope From — the mailbox address or one of its aliases. */
   fromAddress: string;
   fromName?: string | null;
@@ -203,6 +205,7 @@ export async function enqueueSend(
       envelopeFrom: req.fromAddress,
       fromAliasId: req.fromAliasId ?? null,
       createdByUserId: req.createdByUserId,
+      apiKeyId: req.apiKeyId ?? null,
       sendAt: req.sendAt ? new Date(req.sendAt) : null,
       undoUntil,
       status: "queued",

@@ -6,6 +6,7 @@ import { sweepStaleDrafts } from "./drafts";
 import { sweepDueSnoozes } from "./snooze";
 import { pruneStaleNotifications } from "./notify";
 import { pruneStalePushSubscriptions } from "./web-push";
+import { purgeExpiredSendData } from "./send-log";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -25,7 +26,7 @@ const DAILY_ODDS = 1 / 288;
 export async function runScheduledSweeps(
   db: Db,
   env: OutboundEnv,
-): Promise<{ dueEnqueued: number; snoozesWoken: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number }> {
+): Promise<{ dueEnqueued: number; snoozesWoken: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number; sendDataPurged: number }> {
   const dueEnqueued = await sweepDueSubmissions(db, env.MAIL_OUT_QUEUE);
   // User-facing timing (a snooze returning to the inbox) — runs every 5 min, not
   // daily-gated.
@@ -39,5 +40,7 @@ export async function runScheduledSweeps(
   const staleDraftsDeleted = daily ? await sweepStaleDrafts(db, env) : 0;
   const notificationsPruned = daily ? await pruneStaleNotifications(db) : 0;
   const pushSubsPruned = daily ? await pruneStalePushSubscriptions(db) : 0;
-  return { dueEnqueued, snoozesWoken, staleDraftsDeleted, notificationsPruned, pushSubsPruned };
+  // Null out send-log payloads past their retention TTL (metadata rows stay).
+  const sendDataPurged = daily ? await purgeExpiredSendData(db) : 0;
+  return { dueEnqueued, snoozesWoken, staleDraftsDeleted, notificationsPruned, pushSubsPruned, sendDataPurged };
 }

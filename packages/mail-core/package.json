@@ -33,6 +33,7 @@
     "./resolver": "./src/resolver.ts",
     "./sanitize-email": "./src/sanitize-email.ts",
     "./search": "./src/search.ts",
+    "./send-log": "./src/send-log.ts",
     "./snooze": "./src/snooze.ts",
     "./sender-trust": "./src/sender-trust.ts",
     "./web-push": "./src/web-push.ts"

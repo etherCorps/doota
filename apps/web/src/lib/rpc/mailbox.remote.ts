@@ -20,6 +20,7 @@ import {
   revokeApiKey,
   apiKeyMailbox,
 } from "$lib/server/auth/api-key.js";
+import { listSendEvents } from "@doota/mail-core/send-log";
 import { inArray } from "drizzle-orm";
 
 /**
@@ -303,4 +304,13 @@ export const revokeServiceKey = command(z.object({ keyId: z.string().min(1) }), 
   await assertManageMailbox(km.mailboxId);
   await revokeApiKey(locals.db, keyId);
   return { ok: true as const };
+});
+
+// ---- Service-account send log -----------------------------------------------
+
+/** The service account's send log (metadata only, newest first). Manager-gated. */
+export const listSendLog = query(z.string().min(1), async (mailboxId) => {
+  await assertManageMailbox(mailboxId);
+  const { locals } = getRequestEvent();
+  return listSendEvents(locals.db, mailboxId, 100);
 });

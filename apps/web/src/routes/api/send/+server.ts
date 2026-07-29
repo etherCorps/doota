@@ -3,6 +3,9 @@ import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { bearerFromHeaders, verifyApiKey } from "$lib/server/auth/api-key.js";
 import { enqueueSend, type OutboundEnv } from "@doota/mail-core/outbound";
 import { resolveSender, resolveServiceSender } from "@doota/mail-core/resolver";
+import { logSendEvent } from "@doota/mail-core/send-log";
+import { tryLog } from "@doota/mail-core/log";
+import { loadTemplateForSend, renderTemplate, sensitiveKeysOf } from "$lib/server/templates.js";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
@@ -58,23 +61,71 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const bcc = asAddrs(body.bcc);
   if (to.length + cc.length + bcc.length === 0) error(400, "At least one recipient is required");
 
+  // Templated send: load the org's template, render subject + html with the
+  // caller's `data` (un-jinja). Raw sends pass subject/text/html directly.
+  const templateId = typeof body.templateId === "string" ? body.templateId : null;
+  const data =
+    body.data && typeof body.data === "object" && !Array.isArray(body.data)
+      ? (body.data as Record<string, unknown>)
+      : {};
+  let subject = typeof body.subject === "string" ? body.subject : "";
+  let text = typeof body.text === "string" ? body.text : null;
+  let html = typeof body.html === "string" ? body.html : null;
+  let templateVersion: number | null = null;
+  let sensitiveKeys: string[] = [];
+  if (templateId) {
+    const tmpl = await loadTemplateForSend(locals.db, sender.orgId, templateId);
+    if (!tmpl) error(404, "Template not found for this account");
+    const rendered = renderTemplate(tmpl, data);
+    subject = rendered.subject;
+    html = rendered.html;
+    text = null; // template renders HTML; the provider derives the text part.
+    templateVersion = tmpl.version;
+    sensitiveKeys = sensitiveKeysOf(tmpl.variablesSchema);
+  }
+
   const res = await enqueueSend(locals.db, outbound, {
     orgId: sender.orgId,
     mailboxId,
     createdByUserId,
+    apiKeyId: actor.keyId,
     fromAddress: sender.fromAddress,
     fromName: sender.fromName,
     fromAliasId: sender.fromAliasId,
     to,
     cc,
     bcc,
-    subject: typeof body.subject === "string" ? body.subject : "",
-    text: typeof body.text === "string" ? body.text : null,
-    html: typeof body.html === "string" ? body.html : null,
+    subject,
+    text,
+    html,
     parentMessageId: typeof body.parentMessageId === "string" ? body.parentMessageId : null,
     sendAt: typeof body.sendAt === "number" ? body.sendAt : null,
     idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : crypto.randomUUID(),
   });
+
+  // Service-account send log (best-effort — never fail a send because logging did).
+  // Raw sends log metadata only; templated sends (Phase 2) also log the payload.
+  if (actor.isService && !res.deduped) {
+    await tryLog(
+      "out.sendlog_failed",
+      logSendEvent(locals.db, {
+        orgId: sender.orgId,
+        mailboxId,
+        apiKeyId: actor.keyId,
+        submissionId: res.submissionId,
+        templateId,
+        templateVersion,
+        to,
+        cc,
+        bcc,
+        subject,
+        status: "queued",
+        data: templateId ? data : null,
+        sensitiveKeys,
+        dek: env.MAIL_DEK,
+      }),
+    );
+  }
 
   return json({ submissionId: res.submissionId, deduped: res.deduped }, { status: 202 });
 };

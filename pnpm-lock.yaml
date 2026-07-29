@@ -151,6 +151,9 @@ importers:
       '@doota/mail-core':
         specifier: workspace:*
         version: link:../../packages/mail-core
+      '@doota/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@doota/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -187,6 +190,9 @@ importers:
       harper.js:
         specifier: ^2.4.0
         version: 2.4.0
+      mrml:
+        specifier: ^1.6.1
+        version: 1.6.1
       pdfjs-dist:
         specifier: ^6.1.200
         version: 6.1.200
@@ -196,6 +202,9 @@ importers:
       runed:
         specifier: ^0.37.1
         version: 0.37.1(@sveltejs/kit@2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.2(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)))(svelte@5.56.4)(zod@4.3.6)
+      svelte-dnd-action:
+        specifier: ^0.9.75
+        version: 0.9.75(svelte@5.56.4)
       uqr:
         specifier: ^0.1.3
         version: 0.1.3
@@ -369,6 +378,12 @@ importers:
         version: 2.69.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@8.1.4(@types/node@24.11.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)))(svelte@5.56.4)(typescript@5.9.3)(vite@8.1.4(@types/node@24.11.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       typescript:
         specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/sdk:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.2
         version: 5.9.3
 
   packages/utils:
@@ -5551,6 +5566,9 @@ packages:
     resolution: {integrity: sha512-Y3wQdFg2Va6etvQ5I82yUhGdsKrcYox6p7FfL1LbK2J4V01F9TGlepTIhnK24t7koZibmg82KGglhA1XK5IsLQ==}
     engines: {node: '>=10'}
 
+  mrml@1.6.1:
+    resolution: {integrity: sha512-yA+AjczelRhVSvHTfnRPM9TKwNjMWhu9oIM33J05HU8Q9wSvAsAV/dJvcJ7/Y9sOPTkP40G7hKhchirK3Z3O5w==}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -6393,6 +6411,11 @@ packages:
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: '>=5.0.0'
+
+  svelte-dnd-action@0.9.75:
+    resolution: {integrity: sha512-HxIfrNQXFQoNiY3G0/j4uVXJkTxhsZhTNobnAzFUASyMg24YepCXLKH60xuQVhhJL79oaEieQeK9TR/+VrlORQ==}
+    peerDependencies:
+      svelte: '>=3.23.0 || ^5.0.0-next.0'
 
   svelte-sonner@1.1.0:
     resolution: {integrity: sha512-3lYM6ZIqWe+p9vwwWHGWP/ZdvHiUtzURsud2quIxivrX4rvpXh6i+geBGn0m3JS6KwW6W8VgbOl3xQMcDuh6gg==}
@@ -12734,6 +12757,8 @@ snapshots:
 
   mrmime@2.0.1: {}
 
+  mrml@1.6.1: {}
+
   ms@2.1.3: {}
 
   muggle-string@0.4.1: {}
@@ -13969,6 +13994,10 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte-dnd-action@0.9.75(svelte@5.56.4):
+    dependencies:
+      svelte: 5.56.4
 
   svelte-sonner@1.1.0(svelte@5.56.4):
     dependencies:
