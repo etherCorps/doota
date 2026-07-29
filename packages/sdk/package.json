@@ -1,0 +1,16 @@
+{
+  "name": "@doota/sdk",
+  "version": "0.0.1",
+  "description": "Resend-shaped client for the Doota send API.",
+  "type": "module",
+  "//": "Publishable client SDK for POST /api/send (bearer dk_ keys). Source TS consumed directly in-repo; add a tsup/tsc build before publishing under a public name (see docs/service-accounts.md § SDK).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2"
+  }
+}

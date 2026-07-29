@@ -10,26 +10,32 @@ A key goes through the **same** authorization (`can()` mailbox SEND capability)
 and the **same** submission pipeline as an interactive session — there's no
 parallel permission path.
 
-<Aside type="note" title="An SDK is on the way">
-  Today you call the HTTP endpoint directly (below). A Resend-style client SDK
-  is planned for the near future to make programmatic sending a one-liner —
-  until then, the `POST /api/send` contract here is stable to build against.
-</Aside>
+## Service accounts
+
+Programmatic sending happens through a **service account** — a mailbox
+(`notifications@`, `billing@`) that your apps send *as*, with no human owner, so
+its keys survive staff changes. A service account owns three things: **keys**,
+**templates**, and a **send log**.
+
+Anyone with **manage** access to the mailbox administers it in-app: open it from
+the mailbox switcher's **Manage mailbox** link → **API keys** / **Send log**
+tabs. No admin dashboard required.
 
 ## Mint a key
 
-Create keys from **`/account/developer`**. A key:
+From the service account's **API keys** tab, choose **New key**. A key:
 
-- Is presented as a bearer token prefixed `dk_…` — shown once at creation, so
-  copy it immediately. Only a hash is stored.
-- Can be **mailbox-scoped** — bound to a single mailbox, and may only send as
+- Is presented as a bearer token prefixed `dk_…` — **shown once** at creation, so
+  copy it immediately. Only a hash is stored; it can never be shown again.
+- Authorizes the service mailbox directly (no owning user), and may only send as
   that mailbox.
-- Resolves to its owning user (or, for a **service** key, authorizes the mailbox
-  directly).
+
+To let a teammate send too, give them **manage** access to the service account —
+they mint their **own** key. You never re-share a secret.
 
 <Aside type="caution">
-  Treat the key like a password. It can send mail as you. Scope it to a single
-  mailbox where possible, and revoke it from `/account/developer` if it leaks.
+  Treat the key like a password. Revoke it from the **API keys** tab if it leaks
+  and mint a replacement.
 </Aside>
 
 ## Send a message
@@ -61,15 +67,35 @@ The message is now in the outbound pipeline; track its
 `queued → sending → sent → delivered` (or `bounced`) status by the returned
 `submissionId`.
 
+## Send with a template
+
+Instead of `subject`/`html`, pass a **`templateId`** and its **`data`**. Doota
+renders the hosted [template](#templates) with your merge variables (Jinja
+`{{ name }}`, auto-escaped) and sends the result:
+
+```sh title="Templated send"
+curl -X POST https://mail.acme.com/api/send \
+  -H "Authorization: Bearer dk_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": ["ana@example.com"],
+    "templateId": "tmpl_welcome",
+    "data": { "name": "Ana", "code": "1234" },
+    "idempotencyKey": "welcome-user-9012"
+  }'
+```
+
 ## Request body
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `mailboxId` | string | Required unless the key is mailbox-scoped. If the key is bound, this must match the bound mailbox. |
 | `to` / `cc` / `bcc` | string[] | At least one recipient across the three is required. |
-| `subject` | string | Defaults to empty. |
-| `text` | string | Plain-text body (or `null`). |
-| `html` | string | HTML body (or `null`). |
+| `templateId` | string | Send a hosted [template](#templates). Overrides `subject`/`html`. |
+| `data` | object | Merge variables for the template. |
+| `subject` | string | Raw send. Defaults to empty. Ignored when `templateId` is set. |
+| `text` | string | Plain-text body (or `null`). Ignored when `templateId` is set. |
+| `html` | string | HTML body (or `null`). Ignored when `templateId` is set. |
 | `fromAliasId` | string | Send as an [alias](/guide/aliases) instead of the mailbox's primary address. |
 | `parentMessageId` | string | Thread the send onto an existing message (a reply). |
 | `sendAt` | number | Unix epoch (ms) for a [scheduled send](/guide/composing#scheduled-send). Released on the next 5-minute cron tick. |
@@ -87,5 +113,47 @@ Reusing an `idempotencyKey` returns the original submission with
 | --- | --- |
 | `401` | Missing or invalid API key. |
 | `403` | Key is mailbox-scoped and `mailboxId` doesn't match its bound mailbox. |
+| `404` | `templateId` doesn't exist for this account (or is archived). |
 | `400` | Bad JSON, missing `mailboxId`, or no recipients. |
 | `500` | Outbound mail isn't configured on the Worker (missing bindings/secrets). |
+
+## Templates
+
+Build reusable emails once, send them with data. From **Templates** (sidebar),
+create a template in the **drag-and-drop editor** — headings, text, buttons,
+images, dividers, spacers, and raw-HTML blocks. Put `{{ variable }}` tags
+anywhere for merge data; hit **Refresh** to preview the compiled, responsive
+email.
+
+Under the hood the builder is Svelte-native and open-source: blocks compile to
+[MJML](https://mjml.io) via MRML (WebAssembly) into cross-client HTML, and merge
+tags render with un-jinja at send. Editing a template creates a new **version**;
+each send pins the version it used, so the log reproduces exactly what went out.
+
+## Send log
+
+Every API send from a service account is recorded under its **Send log** tab:
+timestamp, recipients, subject, which key, and which template. The merge `data`
+you passed is **encrypted at rest and auto-expires after 30 days** (configurable),
+then only the metadata remains — you keep an audit trail without a permanent copy
+of personal details. Variables you flag *sensitive* are never logged at all.
+
+## Client SDK
+
+A Resend-shaped client wraps the endpoint:
+
+```ts title="@doota/sdk"
+import { Doota } from "@doota/sdk";
+
+const doota = new Doota("dk_your_key_here", { baseUrl: "https://mail.acme.com" });
+
+await doota.emails.send({
+  to: "ana@example.com",
+  templateId: "tmpl_welcome",
+  data: { name: "Ana", code: "1234" },
+});
+```
+
+It returns `{ submissionId, deduped }` and throws a `DootaError` (with the HTTP
+`status`) on failure. Raw sends work too — pass `subject` + `text`/`html`
+instead of `templateId`/`data`.
