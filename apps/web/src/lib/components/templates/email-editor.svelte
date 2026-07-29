@@ -75,6 +75,9 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SendIcon from '@lucide/svelte/icons/send';
+	import MonitorIcon from '@lucide/svelte/icons/monitor';
+	import SmartphoneIcon from '@lucide/svelte/icons/smartphone';
+	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 
 	let {
 		orgId,
@@ -110,8 +113,11 @@
 	// Selected block (a NodeSelection) → drives the contextual config panel.
 	let sel = $state<{ type: string; pos: number; attrs: Record<string, unknown> } | null>(null);
 
-	let editorEl: HTMLDivElement;
+	let editorEl = $state<HTMLDivElement>();
 	let editor: Editor | undefined;
+	// The 3-pane builder can't work on a phone — gate it (see the mobile block in
+	// the markup). Templates list + preview stay reachable everywhere.
+	const mobile = new IsMobile();
 
 	// OPFS draft cache — templates can be large, so persist to disk (crash-safe).
 	const draftKey = untrack(() => `tmpl-draft-${templateId ?? 'new'}.json`);
@@ -154,6 +160,9 @@
 	}
 
 	onMount(() => {
+		// Mobile shows the "needs a bigger screen" gate — editorEl isn't rendered,
+		// so don't spin up Tiptap. (Resize→desktop needs a reload; acceptable.)
+		if (mobile.current || !editorEl) return;
 		editor = new Editor({
 			element: editorEl,
 			extensions: [
@@ -406,6 +415,7 @@
 	let previewHtml = $state('');
 	let previewSubject = $state('');
 	let previewError = $state('');
+	let previewDevice = $state<'desktop' | 'mobile'>('desktop');
 	const now = new Date();
 	// Sensible defaults so built-in vars aren't blank in the preview.
 	const SAMPLE_BUILTINS: Record<string, string> = {
@@ -483,6 +493,19 @@
 	const previewVars = $derived(Object.keys(sampleData));
 </script>
 
+{#if mobile.current}
+	<!-- The 3-pane builder is unusable on a phone — gate it with a friendly nudge. -->
+	<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+		<div class="bg-muted grid size-14 place-items-center rounded-2xl">
+			<MonitorIcon class="text-muted-foreground size-7" />
+		</div>
+		<div class="space-y-1">
+			<p class="text-base font-medium">Build on a bigger screen</p>
+			<p class="text-muted-foreground mx-auto max-w-xs text-sm">The email template builder needs a desktop-sized window. Open this on a computer to design your template.</p>
+		</div>
+		<a href={resolve('/templates')} class="border-input hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium transition-colors">Back to templates</a>
+	</div>
+{:else}
 <div class="flex h-full min-h-0">
 	<!-- Left rail -->
 	<aside class="flex w-12 shrink-0 flex-col items-center gap-1 py-2 border-r">
@@ -753,6 +776,7 @@
 		</div>
 	</div>
 </div>
+{/if}
 
 {#if showPreview}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -795,12 +819,18 @@
 			<div class="flex min-w-0 flex-1 flex-col">
 				<header class="flex h-12 shrink-0 items-center gap-2 border-b px-4">
 					<p class="min-w-0 truncate text-sm"><span class="text-muted-foreground">Subject:</span> {previewSubject || '—'}</p>
-					<button type="button" class="text-muted-foreground hover:text-foreground hover:bg-muted ml-auto grid size-8 shrink-0 place-items-center rounded-md" onclick={() => (showPreview = false)} aria-label="Close preview"><XIcon class="size-4" /></button>
+					<div class="ml-auto flex items-center gap-0.5 rounded-md border p-0.5">
+							<button type="button" onclick={() => (previewDevice = 'desktop')} class="grid size-7 place-items-center rounded {previewDevice === 'desktop' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}" aria-label="Desktop view" aria-pressed={previewDevice === 'desktop'}><MonitorIcon class="size-4" /></button>
+							<button type="button" onclick={() => (previewDevice = 'mobile')} class="grid size-7 place-items-center rounded {previewDevice === 'mobile' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}" aria-label="Mobile view" aria-pressed={previewDevice === 'mobile'}><SmartphoneIcon class="size-4" /></button>
+						</div>
+						<button type="button" class="text-muted-foreground hover:text-foreground hover:bg-muted grid size-8 shrink-0 place-items-center rounded-md" onclick={() => (showPreview = false)} aria-label="Close preview"><XIcon class="size-4" /></button>
 				</header>
 				{#if previewError}
 					<div class="text-destructive p-4 text-sm">{previewError}</div>
 				{:else}
-					<iframe title="Email preview" srcdoc={previewHtml} sandbox="" class="min-h-0 flex-1 bg-white"></iframe>
+					<div class="bg-muted/30 flex min-h-0 flex-1 justify-center overflow-auto">
+							<iframe title="Email preview" srcdoc={previewHtml} sandbox="" class="bg-white {previewDevice === 'mobile' ? 'my-4 w-[390px] shrink-0 rounded-xl shadow-lg ring-1 ring-black/10' : 'w-full'}"></iframe>
+						</div>
 				{/if}
 			</div>
 		</div>
