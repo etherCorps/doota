@@ -2,8 +2,9 @@
 	// SPDX-License-Identifier: Apache-2.0
 	// Shared calendar + half-hour time-slot scroller, used by the schedule picker
 	// (send-later) and the snooze menu. Callback-driven so each parent keeps its own
-	// value model (datetime-local string vs. separate date+time) with no two-way
-	// bind loops. Past slots disable when the picked day is today.
+	// value model with no two-way bind loops. Past slots disable when the picked day
+	// is today. On mobile the parents give this the whole sheet (presets/NLP hidden),
+	// so calendar-above-time stacks without crowding.
 	import { Calendar } from '$lib/components/ui/calendar/index.js';
 	import { getLocalTimeZone, today, type DateValue } from '@internationalized/date';
 
@@ -40,19 +41,34 @@
 	}
 
 	let scroller = $state<HTMLElement>();
-	// Bring the active slot into view whenever the popover opens.
+	// Centre the active slot in the time list when the picker opens. Set scrollTop
+	// directly instead of scrollIntoView — the latter also scrolls every ancestor,
+	// which on mobile drags the whole bottom-sheet down and clips the calendar/NLP
+	// off the top. This confines the scroll to the time column.
 	$effect(() => {
-		if (open && scroller) scroller.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'center' });
+		if (!open || !scroller) return;
+		const active = scroller.querySelector<HTMLElement>('[data-active="true"]');
+		if (!active) return;
+		// Rect delta (not offsetTop — the scroller isn't the offsetParent) so the
+		// active slot lands in the middle of the time column only.
+		scroller.scrollTop +=
+			active.getBoundingClientRect().top -
+			scroller.getBoundingClientRect().top -
+			(scroller.clientHeight - active.clientHeight) / 2;
 	});
 </script>
 
-<!-- Side column ≥ sm; stacked under the calendar on narrow phones (calendar +
-     112px column won't fit under ~390px). -->
-<div class="flex flex-col sm:flex-row sm:items-start">
-	<Calendar type="single" value={date} onValueChange={onDate} minValue={minDay} class="px-2 py-1" />
-	<div class="flex w-full flex-col border-t sm:w-28 sm:border-t-0 sm:border-l pb-4">
+<!-- Time column sits beside the calendar ≥ md (768px — matches IsMobile, so the
+     drawer shell and the stacked layout flip at the same width); stacks beneath it
+     below that, where the parent has hidden presets/NLP to free the whole sheet. -->
+<div class="flex flex-col md:flex-row md:items-start">
+	<Calendar type="single" value={date} onValueChange={onDate} minValue={minDay} class="mx-auto px-2 py-1 md:mx-0" />
+	<div class="flex w-full flex-col border-t md:w-28 md:border-t-0 md:border-l md:pb-4">
 		<div class="text-muted-foreground border-b px-3 py-2 text-xs font-medium">Time</div>
-		<div bind:this={scroller} class="scrollbar-thin h-32 space-y-0.5 overflow-y-auto p-2 sm:h-56">
+		<div
+			bind:this={scroller}
+			class="scrollbar-thin h-40 space-y-0.5 overflow-y-auto p-2 md:h-56"
+		>
 			{#each SLOTS as s (s)}
 				{@const active = s === time}
 				<button
@@ -60,7 +76,7 @@
 					data-active={active}
 					disabled={slotPast(s)}
 					onclick={() => onTime(s)}
-					class="focus-visible:ring-ring/50 w-full rounded-md px-2 py-1.5 text-left text-xs tabular-nums transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 {active
+					class="focus-visible:ring-ring/50 w-full rounded-md px-2 py-1.5 text-left text-sm tabular-nums transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 pointer-fine:text-xs {active
 						? 'bg-accent text-accent-foreground font-medium'
 						: 'hover:bg-muted'}"
 				>

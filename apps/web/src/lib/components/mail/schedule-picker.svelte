@@ -10,6 +10,9 @@
 	import { parseWhen, toLocalDatetime } from '$lib/utils/parse-when';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import CalendarIcon from '@lucide/svelte/icons/calendar';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 
 	// `value` is a datetime-local string (YYYY-MM-DDTHH:mm) — the same shape the
 	// composer feeds to `new Date(...)`. '' means no schedule. It's the single
@@ -20,12 +23,14 @@
 	}: { value?: string; open?: boolean } = $props();
 
 	let nlp = $state('');
-	// Mobile: don't steal focus on open (keyboard would shove the picker off
-	// screen), and hide the calendar/time while the phrase box is focused so the
-	// popover fits above the keyboard. Tap away → keyboard closes → picker back.
+	// Mobile: NLP-first. The full calendar/time is revealed on demand so the phrase
+	// box + Clear/Done stay above the fold (and above the keyboard). Desktop shows
+	// the calendar inline — there's room, so no extra tap.
 	const isMobile = new IsMobile();
-	let nlpFocused = $state(false);
-	const showPicker = $derived(!(isMobile.current && nlpFocused));
+	let showCal = $state(false);
+	// Mobile only: an open calendar takes the WHOLE sheet — NLP is swapped out so the
+	// month grid + time list aren't crowded. Desktop shows the calendar inline.
+	const fullCal = $derived(isMobile.current && showCal);
 
 	const cal = $derived.by<DateValue | undefined>(() => {
 		if (!value) return undefined;
@@ -89,7 +94,44 @@
 	<span class="truncate">{label || 'Schedule'}</span>
 {/snippet}
 
+<!-- Clear / Done — sticky to the sheet bottom, reachable in every mode. -->
+{#snippet footer()}
+	<div class="bg-popover sticky bottom-0 flex items-center gap-2 border-t p-2">
+		{#if isPast}
+			<span class="text-destructive text-[11px]">That time has passed</span>
+		{:else if value}
+			<span class="text-muted-foreground text-[11px] tabular-nums">{label}</span>
+		{/if}
+		<Button
+			variant="ghost"
+			size="sm"
+			class="text-muted-foreground hover:text-destructive ml-auto h-8"
+			onclick={() => {
+				value = '';
+				open = false;
+			}}
+		>
+			Clear
+		</Button>
+		<Button size="sm" class="h-8 px-4" disabled={!value || isPast} onclick={() => (open = false)}>Done</Button>
+	</div>
+{/snippet}
+
 {#snippet body()}
+	{#if fullCal}
+		<!-- Mobile full-sheet calendar: NLP swapped out for room. -->
+		<div class="flex items-center border-b p-1.5">
+			<button
+				type="button"
+				onclick={() => (showCal = false)}
+				class="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1 rounded-md px-2 py-1 text-sm outline-none focus-visible:ring-2"
+			>
+				<ChevronLeftIcon class="size-4" /> Back
+			</button>
+		</div>
+		<DateTimeFields date={cal} time={time} {open} onDate={setDate} onTime={setTime} />
+		{@render footer()}
+	{:else}
 		<!-- Natural-language quick entry -->
 		<div class="border-b p-2">
 			<div class="relative">
@@ -99,8 +141,6 @@
 					placeholder="Type a time — “tomorrow 9am”"
 					bind:value={nlp}
 					onkeydown={onNlpKey}
-					onfocus={() => (nlpFocused = true)}
-					onblur={() => (nlpFocused = false)}
 				/>
 			</div>
 			{#if nlp.trim()}
@@ -111,43 +151,45 @@
 						Couldn’t read that time
 					{/if}
 				</p>
+			{:else if value}
+				<!-- Confirmation of the current pick, right under the input. -->
+				<p class="text-muted-foreground mt-1 px-1 text-[11px]">
+					Scheduled for <span class="text-foreground font-medium">{label}</span>
+				</p>
 			{/if}
 		</div>
 
-		{#if showPicker}
-			<DateTimeFields date={cal} time={time} {open} onDate={setDate} onTime={setTime} />
-		{/if}
-
-		<div class="flex items-center gap-2 border-t p-2">
-			{#if isPast}
-				<span class="text-destructive text-[11px]">That time has passed</span>
-			{/if}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="text-muted-foreground hover:text-destructive ml-auto h-8"
-				onclick={() => {
-					value = '';
-					open = false;
-				}}
+		{#if isMobile.current}
+			<!-- Opens the full-sheet calendar mode above. -->
+			<button
+				type="button"
+				onclick={() => (showCal = true)}
+				class="text-muted-foreground hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-2 border-t px-3 py-2.5 text-sm outline-none focus-visible:ring-2"
 			>
-				Clear
-			</Button>
-			<Button size="sm" class="h-8 px-4" disabled={!value || isPast} onclick={() => (open = false)}>Done</Button>
-		</div>
+				<span class="flex items-center gap-2"><CalendarIcon class="size-4" /> Pick exact date &amp; time</span>
+				<ChevronDownIcon class="size-4" />
+			</button>
+		{:else}
+			<!-- Desktop: calendar inline. -->
+			<div class="border-t">
+				<DateTimeFields date={cal} time={time} {open} onDate={setDate} onTime={setTime} />
+			</div>
+		{/if}
+		{@render footer()}
+	{/if}
 {/snippet}
 
 {#if isMobile.current}
 	<Drawer.Root bind:open>
 		<Drawer.Trigger class={triggerCls}>{@render triggerInner()}</Drawer.Trigger>
 		<Drawer.Content class="p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
-			<div class="max-h-[78vh] overflow-y-auto">{@render body()}</div>
+			<div class="min-h-0 flex-1 overflow-y-auto">{@render body()}</div>
 		</Drawer.Content>
 	</Drawer.Root>
 {:else}
 	<Popover.Root bind:open>
 		<Popover.Trigger class={triggerCls}>{@render triggerInner()}</Popover.Trigger>
-		<Popover.Content align="end" class="w-auto max-w-[calc(100vw-1rem)] p-0">
+		<Popover.Content align="end" class="max-h-[85vh] w-auto max-w-[calc(100vw-1rem)] overflow-y-auto p-0">
 			{@render body()}
 		</Popover.Content>
 	</Popover.Root>
