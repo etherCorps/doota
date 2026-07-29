@@ -321,12 +321,16 @@
 			clientRevision = res.clientRevision;
 			if (body === sentBody) clearMirror(mirrorKey);
 		} else {
-			// Same warn-on-adopt as the compose panel: never silently swap content.
+			// Adopt the winning revision. But if we're mid-send, this is the send's
+			// own flushSave racing a pending autosave (same draft, same tab) — not a
+			// real cross-tab edit — so adopt silently: no body reload, no false toast.
 			clientRevision = res.draft.clientRevision;
-			body = res.draft.body ?? body;
-			subjectText = res.draft.subject ?? subjectText;
-			editorKey++;
-			toast.warning('Draft updated in another tab — loaded the latest version.');
+			if (!sending) {
+				body = res.draft.body ?? body;
+				subjectText = res.draft.subject ?? subjectText;
+				editorKey++;
+				toast.warning('Draft updated in another tab — loaded the latest version.');
+			}
 		}
 	}
 
@@ -345,9 +349,12 @@
 		// One toast that carries the whole send: spinner while it flies, then flips
 		// to the "sent · Undo" acknowledgement (or an error) on the same id.
 		const toastId = toast.loading('Sending…');
-		// Persist the latest text, then FREE THE COMPOSER before the send network
-		// call — optimistic close. The send flies in the background; on failure the
-		// (already-saved) draft stays in Drafts.
+		// Fold the docked composer IMMEDIATELY — the editor stays mounted under the
+		// grid-collapse, so flushSave below still reads the body. This is what makes
+		// the close feel instant instead of waiting on the save round-trips.
+		collapsed = true;
+		// Persist the latest text; the send then flies in the background. On failure
+		// the (already-saved) draft stays in Drafts.
 		await flushSave();
 		await ensureDraft();
 		const id = draftId;
@@ -362,7 +369,6 @@
 		body = '';
 		attachments = []; // clear the chips — they belonged to the sent draft
 		editorKey++;
-		collapsed = true; // fold the docked composer back to its "Reply…" bar
 		onsent?.(); // clear the parent's reply target → next reply defaults to latest
 		try {
 			const res = await sendDraftById({ draftId: id, undoSeconds: UNDO_SECONDS });
@@ -584,7 +590,7 @@
 					{#if sending}
 						<Spinner class="size-3.5" /> Sending…
 					{:else}
-						<SendIcon class="size-3.5" /> Send
+						<SendIcon class="size-3.5" /> Reply
 					{/if}
 				</Button>
 			</div>

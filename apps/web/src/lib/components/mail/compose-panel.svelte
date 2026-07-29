@@ -359,13 +359,26 @@
 		return draftId;
 	}
 
-	async function flushSave() {
+	// Serialize saves so a debounce-flush, a visibility save, and the send's own
+	// flush can't race the SAME clientRevision (the loser would false-warn "updated
+	// in another tab"). Each queued save sees the previous one's bumped revision.
+	let saveChain: Promise<void> = Promise.resolve();
+	function enqueueSave(): Promise<void> {
+		saveChain = saveChain.then(doSave, doSave);
+		return saveChain;
+	}
+	function flushSave(): Promise<void> {
 		debouncedSave.cancel();
-		if (phase !== 'editing' || !mailboxId) return;
+		// Don't autosave once we're sending/sent — send() drives its own final save.
+		if (phase !== 'editing' || !mailboxId) return saveChain;
+		return enqueueSave();
+	}
+
+	async function doSave() {
+		if (!mailboxId) return;
 		if (!draftId) {
 			if (!hasContent) return;
-			// The create may already be in flight carrying an older snapshot —
-			// fall through and autosave the current content instead of trusting it.
+			// A create may be in flight — ensure it, then autosave the current content.
 			await ensureDraft();
 			if (!draftId) return;
 		}
@@ -385,18 +398,21 @@
 			saved = true;
 			if (snapshot() === sent) clearMirror(mirrorKey);
 		} else {
-			// Optimistic-concurrency miss: another tab saved a newer revision. Adopt
-			// the server copy (never overwrite it) and SAY so — a silent content swap
-			// under the user's cursor reads as data loss.
+			// Adopt the winning revision. Mid-send this is our own flush racing a
+			// pending autosave (same tab) — not a real cross-tab edit — so adopt
+			// silently. Otherwise a genuine other-tab edit: swap in the server copy
+			// (never overwrite it) and SAY so, since a silent swap reads as data loss.
 			const d = res.draft;
 			clientRevision = d.clientRevision;
-			to = d.to;
-			cc = d.cc;
-			bcc = d.bcc;
-			subject = d.subject ?? '';
-			body = d.body ?? '';
-			editorKey++;
-			toast.warning('Draft updated in another tab — loaded the latest version.');
+			if (phase !== 'sending') {
+				to = d.to;
+				cc = d.cc;
+				bcc = d.bcc;
+				subject = d.subject ?? '';
+				body = d.body ?? '';
+				editorKey++;
+				toast.warning('Draft updated in another tab — loaded the latest version.');
+			}
 		}
 	}
 
@@ -459,13 +475,17 @@
 		// One toast for the whole send: spinner while it flies, then flips to the
 		// sent/scheduled acknowledgement (or an error) on the same id.
 		const toastId = toast.loading(sendAt ? 'Scheduling…' : 'Sending…');
-		// Persist the latest text, then FREE THE COMPOSER before the send network
-		// call — Gmail/Superhuman-style optimistic close. The send flies in the
-		// background; on failure the (already-saved) draft stays in Drafts.
-		await flushSave();
+		// Close the drawer IMMEDIATELY (state survives until reset() below), then
+		// persist + send in the background — Gmail/Superhuman-style optimistic close.
+		open = false;
+		// Real final save (enqueueSave bypasses flushSave's editing-only guard);
+		// ensures the draft even if its create is still in flight (fast forward+send).
+		await enqueueSave();
 		const id = draftId;
 		if (!id) {
+			// No draft persisted (empty / create failed) — reopen so nothing is lost.
 			phase = 'editing';
+			open = true;
 			toast.dismiss(toastId);
 			return;
 		}
