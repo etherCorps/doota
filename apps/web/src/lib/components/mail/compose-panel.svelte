@@ -18,6 +18,7 @@
 	import { toLocalDatetime } from '$lib/utils/parse-when';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { toast } from 'svelte-sonner';
+	import { sendToast } from '$lib/utils/send-toast';
 	import { goto } from '$app/navigation';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import { portal } from '$lib/client/portal';
@@ -472,9 +473,9 @@
 		}
 		phase = 'sending';
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
-		// One toast for the whole send: spinner while it flies, then flips to the
-		// sent/scheduled acknowledgement (or an error) on the same id.
-		const toastId = toast.loading(sendAt ? 'Scheduling…' : 'Sending…');
+		// One toast for the whole send, morphing on a single id: Sending… → Queued…
+		// → sent (or Scheduling… → scheduled), or an error.
+		const t = sendToast(sendAt ? 'Scheduling…' : 'Sending…');
 		// Close the drawer IMMEDIATELY (state survives until reset() below), then
 		// persist + send in the background — Gmail/Superhuman-style optimistic close.
 		open = false;
@@ -486,7 +487,7 @@
 			// No draft persisted (empty / create failed) — reopen so nothing is lost.
 			phase = 'editing';
 			open = true;
-			toast.dismiss(toastId);
+			t.dismiss();
 			return;
 		}
 		const scheduled = sendAt != null && sendAt > Date.now() + UNDO_SECONDS * 1000;
@@ -502,22 +503,23 @@
 		reset();
 		open = false;
 		try {
+			if (!scheduled) t.queued(); // draft persisted; delivery request now in flight
 			const res = await sendDraftById({ draftId: id, sendAt, undoSeconds: UNDO_SECONDS });
 			if (scheduled) {
 				// Scheduled sends have no undo countdown — they sit in the Scheduled folder.
-				toast(`Scheduled for ${whenLabel}`, {
-					id: toastId,
-					action: { label: 'View', onClick: () => goto('/app?folder=scheduled') }
+				t.note(`Scheduled for ${whenLabel}`, {
+					label: 'View',
+					onClick: () => goto('/app?folder=scheduled')
 				});
 			} else {
-				toast.success('Message sent', {
-					id: toastId,
-					duration: UNDO_SECONDS * 1000,
-					action: { label: 'Undo', onClick: () => undoSend(res.submissionId) }
-				});
+				t.sent(
+					'Message sent',
+					{ label: 'Undo', onClick: () => undoSend(res.submissionId) },
+					UNDO_SECONDS * 1000
+				);
 			}
 		} catch {
-			toast.error('Send failed — your draft is saved in Drafts.', { id: toastId });
+			t.fail('Send failed — your draft is saved in Drafts.');
 		}
 	}
 

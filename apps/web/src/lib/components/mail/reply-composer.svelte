@@ -10,6 +10,7 @@
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { toast } from 'svelte-sonner';
+	import { sendToast } from '$lib/utils/send-toast';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -346,9 +347,9 @@
 	async function send() {
 		if (!canSend || sending) return;
 		sending = true;
-		// One toast that carries the whole send: spinner while it flies, then flips
-		// to the "sent · Undo" acknowledgement (or an error) on the same id.
-		const toastId = toast.loading('Sending…');
+		// One toast that carries the whole send: Sending… → Queued… → sent·Undo (or
+		// an error), morphing on a single id so it reads as one acknowledgement.
+		const t = sendToast();
 		// Fold the docked composer IMMEDIATELY — the editor stays mounted under the
 		// grid-collapse, so flushSave below still reads the body. This is what makes
 		// the close feel instant instead of waiting on the save round-trips.
@@ -360,7 +361,7 @@
 		const id = draftId;
 		sending = false;
 		if (!id) {
-			toast.dismiss(toastId);
+			t.dismiss();
 			return;
 		}
 		clearMirror(mirrorKey);
@@ -371,15 +372,16 @@
 		editorKey++;
 		onsent?.(); // clear the parent's reply target → next reply defaults to latest
 		try {
+			t.queued(); // draft persisted; delivery request now in flight
 			const res = await sendDraftById({ draftId: id, undoSeconds: UNDO_SECONDS });
 			onchange?.(); // the sent bubble now exists in this mailbox's timeline
-			toast.success('Reply sent', {
-				id: toastId,
-				duration: UNDO_SECONDS * 1000,
-				action: { label: 'Undo', onClick: () => undoSend(res.submissionId) }
-			});
+			t.sent(
+				'Reply sent',
+				{ label: 'Undo', onClick: () => undoSend(res.submissionId) },
+				UNDO_SECONDS * 1000
+			);
 		} catch {
-			toast.error('Send failed — your draft is saved in Drafts.', { id: toastId });
+			t.fail('Send failed — your draft is saved in Drafts.');
 		}
 	}
 
