@@ -39,9 +39,12 @@
 	import { SlashCommand, type SlashItem } from '$lib/mjml/slash-command';
 	import { tiptapToMjml, tiptapVariables, type TiptapDoc, type PageSettings } from '$lib/mjml/tiptap-mjml';
 	import { compileMjml } from '$lib/mjml/compile.client';
+	import { render as renderJinja } from '@ethercorps/un-jinja';
 	import { BUILTIN_VARIABLES, variablesSchemaJson } from '$lib/mjml/variables';
 	import { opfsWrite, opfsRead, opfsDelete } from '$lib/client/opfs-cache';
 	import { createOrgTemplate, updateOrgTemplate } from '$lib/rpc/template.remote';
+	import { sendMessage } from '$lib/rpc/send.remote';
+	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import CodeIcon from '@lucide/svelte/icons/code';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
@@ -69,6 +72,9 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import XIcon from '@lucide/svelte/icons/x';
+	import SendIcon from '@lucide/svelte/icons/send';
 
 	let {
 		orgId,
@@ -360,6 +366,88 @@
 			saving = false;
 		}
 	}
+
+	// ---- preview (client-side render with sample merge data) ------------------
+	let showPreview = $state(false);
+	let sampleData = $state<Record<string, string>>({});
+	let previewHtml = $state('');
+	let previewSubject = $state('');
+	let previewError = $state('');
+	const now = new Date();
+	// Sensible defaults so built-in vars aren't blank in the preview.
+	const SAMPLE_BUILTINS: Record<string, string> = {
+		recipient: 'you@example.com',
+		sender_name: 'Your Team',
+		sender_email: 'team@example.com',
+		year: String(now.getUTCFullYear()),
+		date: now.toISOString().slice(0, 10)
+	};
+
+	function openPreview() {
+		const vars = tiptapVariables(currentDoc(), subject);
+		const next: Record<string, string> = {};
+		for (const v of vars) next[v] = sampleData[v] ?? SAMPLE_BUILTINS[v] ?? '';
+		sampleData = next;
+		showPreview = true;
+		void renderPreview();
+		void loadMailboxes();
+	}
+
+	// ---- test send (reuses the interactive send path) -------------------------
+	type Mbx = { id: string; address: string; displayName: string | null; isPersonal: boolean; isService: boolean; isActive: boolean };
+	let mailboxes = $state<Mbx[]>([]);
+	let fromId = $state('');
+	let testTo = $state('');
+	let sendingTest = $state(false);
+	let mailboxesLoaded = false;
+	async function loadMailboxes() {
+		if (mailboxesLoaded) return;
+		try {
+			const list = ((await myMailboxes()) as Mbx[]).filter((m) => m.isActive);
+			mailboxes = list;
+			// Default: send FROM a service mailbox if any (the template's real sender),
+			// TO the user's own personal mailbox (round-trips into their inbox).
+			fromId = (list.find((m) => m.isService) ?? list[0])?.id ?? '';
+			testTo = list.find((m) => m.isPersonal)?.address ?? '';
+			mailboxesLoaded = true;
+		} catch {
+			// Picker stays empty; the user can still type a recipient.
+		}
+	}
+	async function sendTest() {
+		if (!fromId) return toast.error('Pick a mailbox to send from.');
+		if (!testTo.trim()) return toast.error('Enter a recipient address.');
+		sendingTest = true;
+		const req = sendMessage({ mailboxId: fromId, to: [testTo.trim()], subject: previewSubject || '(no subject)', html: previewHtml });
+		toast.promise(req as Promise<unknown>, {
+			loading: 'Sending test…',
+			success: 'Test email sent.',
+			error: (e) => (e instanceof Error ? e.message : 'Could not send the test.')
+		});
+		try {
+			await req;
+		} catch {
+			// surfaced by toast
+		} finally {
+			sendingTest = false;
+		}
+	}
+	let previewTimer: ReturnType<typeof setTimeout> | null = null;
+	function schedulePreview() {
+		if (previewTimer) clearTimeout(previewTimer);
+		previewTimer = setTimeout(renderPreview, 250);
+	}
+	async function renderPreview() {
+		try {
+			const html = await compileMjml(tiptapToMjml(currentDoc(), settings()));
+			previewHtml = renderJinja(html, { ...sampleData });
+			previewSubject = renderJinja(subject || '', { ...sampleData });
+			previewError = '';
+		} catch (e) {
+			previewError = e instanceof Error ? e.message : 'Could not render the preview.';
+		}
+	}
+	const previewVars = $derived(Object.keys(sampleData));
 </script>
 
 <div class="flex h-full min-h-0">
@@ -387,6 +475,7 @@
 			</div>
 			<div class="ml-auto flex items-center gap-2">
 				{#if saving}<LoaderIcon class="text-muted-foreground size-4 animate-spin" />{/if}
+				<Button size="sm" variant="outline" onclick={openPreview}><EyeIcon class="size-4" /> Preview</Button>
 				<Button size="sm" onclick={save} disabled={saving}>Publish</Button>
 			</div>
 		</header>
@@ -608,6 +697,59 @@
 		</div>
 	</div>
 </div>
+
+{#if showPreview}
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 z-50 flex bg-black/40 p-4 backdrop-blur-sm" onclick={() => (showPreview = false)}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="bg-background m-auto flex h-[85vh] w-[92vw] max-w-5xl overflow-hidden rounded-xl shadow-2xl" onclick={(e) => e.stopPropagation()}>
+			<!-- Sample data -->
+			<aside class="w-64 shrink-0 space-y-3 overflow-y-auto border-r p-4">
+				<p class="text-sm font-semibold">Sample data</p>
+				<p class="text-muted-foreground text-xs">Fill in values to preview how the merged email looks.</p>
+				{#each previewVars as v (v)}
+					<label class="block space-y-1">
+						<span class="text-muted-foreground font-mono text-[11px]">{`{{ ${v} }}`}</span>
+						<Input value={sampleData[v]} oninput={(e) => { sampleData[v] = e.currentTarget.value; schedulePreview(); }} class="h-8" />
+					</label>
+				{/each}
+				{#if !previewVars.length}
+					<p class="text-muted-foreground text-xs">This template has no variables.</p>
+				{/if}
+				<div class="space-y-2 border-t pt-3">
+					<p class="text-sm font-semibold">Send a test</p>
+					<label class="block space-y-1">
+						<span class="text-muted-foreground text-[11px]">From</span>
+						<select bind:value={fromId} class="border-input bg-background h-8 w-full rounded-md border px-2 text-xs" aria-label="Send from mailbox">
+							{#each mailboxes as m (m.id)}<option value={m.id}>{m.displayName || m.address}</option>{/each}
+						</select>
+					</label>
+					<label class="block space-y-1">
+						<span class="text-muted-foreground text-[11px]">To</span>
+						<Input value={testTo} oninput={(e) => (testTo = e.currentTarget.value)} placeholder="you@example.com" class="h-8" />
+					</label>
+					<Button size="sm" class="w-full" onclick={sendTest} disabled={sendingTest}>
+						{#if sendingTest}<LoaderIcon class="size-4 animate-spin" />{:else}<SendIcon class="size-4" />{/if}
+						Send test
+					</Button>
+					<p class="text-muted-foreground text-[11px]">Sends the merged email with the sample values above.</p>
+				</div>
+			</aside>
+			<!-- Rendered email -->
+			<div class="flex min-w-0 flex-1 flex-col">
+				<header class="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+					<p class="min-w-0 truncate text-sm"><span class="text-muted-foreground">Subject:</span> {previewSubject || '—'}</p>
+					<button type="button" class="text-muted-foreground hover:text-foreground hover:bg-muted ml-auto grid size-8 shrink-0 place-items-center rounded-md" onclick={() => (showPreview = false)} aria-label="Close preview"><XIcon class="size-4" /></button>
+				</header>
+				{#if previewError}
+					<div class="text-destructive p-4 text-sm">{previewError}</div>
+				{:else}
+					<iframe title="Email preview" srcdoc={previewHtml} sandbox="" class="min-h-0 flex-1 bg-white"></iframe>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.email-canvas :global(.ProseMirror) {
