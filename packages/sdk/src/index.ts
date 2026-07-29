@@ -10,6 +10,18 @@
 
 export type Address = string | string[];
 
+/** A file to attach. Supply exactly one of `content` (raw bytes/base64) or
+ * `url` (a public URL Doota fetches, SSRF-guarded). */
+export type Attachment = {
+  filename: string;
+  /** Raw bytes or a base64 string. `Buffer`/`Uint8Array` are base64-encoded for you. */
+  content?: string | Uint8Array;
+  /** A remote URL to fetch the file from instead of sending bytes. */
+  url?: string;
+  /** MIME type (defaults to the fetched type, or application/octet-stream). */
+  contentType?: string;
+};
+
 export type SendParams = {
   /** Recipients — at least one across to/cc/bcc. */
   to?: Address;
@@ -32,6 +44,8 @@ export type SendParams = {
   sendAt?: number;
   /** Dedupe key — a repeated value returns the original submission. */
   idempotencyKey?: string;
+  /** Files to attach — inline bytes/base64, or a URL for Doota to fetch. */
+  attachments?: Attachment[];
 };
 
 export type SendResult = { submissionId: string; deduped: boolean };
@@ -56,6 +70,22 @@ export class DootaError extends Error {
 function asArray(v: Address | undefined): string[] | undefined {
   if (v == null) return undefined;
   return Array.isArray(v) ? v : [v];
+}
+
+function toBase64(bytes: Uint8Array): string {
+  // Prefer Buffer in Node; fall back to btoa in browsers/workers.
+  const B = (globalThis as { Buffer?: { from(b: Uint8Array): { toString(enc: string): string } } }).Buffer;
+  if (B) return B.from(bytes).toString("base64");
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+/** Wire form of an attachment: bytes → base64 `content`, or pass `url` through. */
+function wireAttachment(a: Attachment): Record<string, unknown> {
+  if (a.url) return { filename: a.filename, url: a.url, contentType: a.contentType };
+  const content = typeof a.content === "string" ? a.content : toBase64(a.content ?? new Uint8Array());
+  return { filename: a.filename, content, contentType: a.contentType };
 }
 
 export class Doota {
@@ -88,6 +118,7 @@ export class Doota {
         parentMessageId: params.parentMessageId,
         sendAt: params.sendAt,
         idempotencyKey: params.idempotencyKey,
+        attachments: params.attachments?.map(wireAttachment),
       };
       for (const k of Object.keys(body)) if (body[k] === undefined) delete body[k];
 

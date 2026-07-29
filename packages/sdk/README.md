@@ -42,7 +42,11 @@ await doota.emails.send({
 
 `doota.emails.send(params)` — see `SendParams`: `to`/`cc`/`bcc`, `subject`,
 `text`, `html`, `templateId`, `data`, `mailboxId`, `fromAliasId`,
-`parentMessageId`, `sendAt`, `idempotencyKey`.
+`parentMessageId`, `sendAt`, `idempotencyKey`, `attachments`.
+
+`attachments` — each `{ filename, content }` (a `Buffer`/`Uint8Array` or base64
+string, encoded for you) **or** `{ filename, url }` (fetched server-side, SSRF-
+guarded). Up to 20 files, 25 MB each, 40 MB total.
 
 Full endpoint reference: the [API keys guide](https://github.com/etherCorps/doota).
 

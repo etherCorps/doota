@@ -102,6 +102,41 @@ curl -X POST https://mail.acme.com/api/send \
 | `parentMessageId` | string | Thread the send onto an existing message (a reply). |
 | `sendAt` | number | Unix epoch (ms) for a [scheduled send](/guide/composing#scheduled-send). Released on the next 5-minute cron tick. |
 | `idempotencyKey` | string | Dedupes retries. If omitted, a random one is generated — so **always set your own** for safe retries. |
+| `attachments` | object[] | Files to attach — see [Attachments](#attachments). Each is `{ filename, content }` (base64) **or** `{ filename, url }`. |
+
+## Attachments
+
+Attach files with an `attachments` array. Each entry has a `filename` and
+**exactly one** of:
+
+- **`content`** — the file's bytes as a **base64** string (the SDK base64-encodes
+  a `Buffer` / `Uint8Array` for you). Best for files you generate in-memory.
+- **`url`** — a public URL Doota fetches server-side. The fetch is **SSRF-guarded**
+  (private / loopback / link-local hosts are rejected, re-checked on every
+  redirect). Best for files already hosted somewhere.
+
+Optionally set `contentType` (defaults to the fetched type, or
+`application/octet-stream`).
+
+```sh title="Send with attachments"
+curl -X POST https://mail.acme.com/api/send \
+  -H "Authorization: Bearer dk_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": ["ana@example.com"],
+    "subject": "Your receipt",
+    "html": "<p>Thanks — receipt attached.</p>",
+    "attachments": [
+      { "filename": "receipt.pdf", "content": "JVBERi0xLjQK…" },
+      { "filename": "logo.png", "url": "https://cdn.acme.com/logo.png" }
+    ],
+    "idempotencyKey": "receipt-4571"
+  }'
+```
+
+**Limits:** up to **20 files**, **25 MB each**, **40 MB total** per send. Bytes are
+**encrypted at rest** and ride the same pipeline as the message body; attachment
+contents are never written to the send log.
 
 ## Idempotency
 
@@ -205,3 +240,18 @@ await doota.emails.send({
 It returns `{ submissionId, deduped }` and throws a `DootaError` (with the HTTP
 `status`) on failure. Raw sends work too — pass `subject` + `text`/`html`
 instead of `templateId`/`data`.
+
+[Attachments](#attachments) take a `Buffer`/`Uint8Array` (base64-encoded for you)
+or a `url`:
+
+```ts title="With attachments"
+await doota.emails.send({
+  to: "ana@example.com",
+  subject: "Your receipt",
+  html: "<p>Receipt attached.</p>",
+  attachments: [
+    { filename: "receipt.pdf", content: pdfBuffer },
+    { filename: "logo.png", url: "https://cdn.acme.com/logo.png" },
+  ],
+});
+```

@@ -8,6 +8,7 @@ import { tryLog } from "@doota/mail-core/log";
 import { loadTemplateForSend, renderTemplate, sensitiveKeysOf } from "$lib/server/templates.js";
 import { builtinMergeData } from "$lib/mjml/variables.js";
 import { unsubscribeUrlFor } from "@doota/mail-core/unsubscribe";
+import { resolveApiAttachments, type ApiAttachmentInput } from "$lib/server/api-attachments.js";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
@@ -97,6 +98,11 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
     sensitiveKeys = sensitiveKeysOf(tmpl.variablesSchema);
   }
 
+  // Attachments (inline base64 `content` or a remote `url`) → encrypted R2 blobs.
+  const attachments = Array.isArray(body.attachments)
+    ? await resolveApiAttachments({ MAIL_RAW: env.MAIL_RAW, MAIL_DEK: env.MAIL_DEK }, sender.orgId, body.attachments as ApiAttachmentInput[])
+    : [];
+
   const res = await enqueueSend(locals.db, outbound, {
     orgId: sender.orgId,
     mailboxId,
@@ -114,6 +120,7 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
     parentMessageId: typeof body.parentMessageId === "string" ? body.parentMessageId : null,
     sendAt: typeof body.sendAt === "number" ? body.sendAt : null,
     idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : crypto.randomUUID(),
+    attachments,
   });
 
   // Service-account send log (best-effort — never fail a send because logging did).
