@@ -322,6 +322,16 @@
 	.no-scrollbar::-webkit-scrollbar {
 		display: none;
 	}
+	/* bits-ui ScrollArea renders its OWN overlay scrollbar, but sets the viewport
+	   to `overflow: hidden scroll` — so without hiding the native bar the browser
+	   also shows the real one, stealing ~15px and insetting the content (the
+	   mail-view cards no longer line up with the fixed header → apparent shift). */
+	.cn-scroll-area-viewport {
+		scrollbar-width: none;
+	}
+	.cn-scroll-area-viewport::-webkit-scrollbar {
+		display: none;
+	}
 }
 
 /* Single-pane thread navigation (mobile): the list↔thread swap slides like a

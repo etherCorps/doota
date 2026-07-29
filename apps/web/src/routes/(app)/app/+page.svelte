@@ -598,6 +598,12 @@
 	const isShared = $derived(members.length > 1);
 	let composeMode = $state<'reply' | 'note'>('reply');
 	let assignFilter = $state<'all' | 'mine' | 'unassigned'>('all');
+	// Unassigned is manager-only; if a member lands on it (stale state, switched
+	// mailbox, lost manage rights) fall back to All so they don't see an empty,
+	// unswitchable view.
+	$effect(() => {
+		if (assignFilter === 'unassigned' && !canManageActive) assignFilter = 'all';
+	});
 	// Quick filters narrow the loaded pages client-side (ponytail: filters what's
 	// fetched, not the whole mailbox — server-side filtering if that ever bites).
 	let quickFilter = $state<'all' | 'unread' | 'starred'>('all');
@@ -1074,18 +1080,22 @@
 	// collapsible card stack, reads as correspondence).
 	const threadView = new PersistedState<'chat' | 'mail'>('doota:thread-view', 'chat');
 
-	// Land on the newest message when a thread opens (or the view flips): chat
-	// scrolls to the bottom, mail brings the newest card's header into view.
-	// Keyed on thread id — a refresh() of the same thread never yanks the scroll.
+	// Land on the newest message when a thread OPENS — once per thread, not on
+	// every view toggle. Toggling chat↔mail used to re-run this and yank the scroll
+	// (chat→bottom, mail→top), which read as the header "shifting" and pushed short
+	// mail threads up with a gap above the reply bar. Anchoring to the bottom (paired
+	// with `justify-end` on the stream) keeps the newest by the reply bar in both
+	// views with no jump. Keyed on id, so a refresh() of the same thread never yanks.
 	let streamEl = $state<HTMLElement>();
+	let scrolledForId: string | null = null;
 	$effect(() => {
 		const id = openDto?.id;
-		const view = threadView.current;
 		if (!id || !streamEl) return;
+		if (id === scrolledForId) return; // already anchored this thread; ignore view flips
+		scrolledForId = id;
 		requestAnimationFrame(() => {
-			streamEl
-				?.querySelector('[data-newest="true"]')
-				?.scrollIntoView(view === 'chat' ? { block: 'end' } : { block: 'start' });
+			const vp = streamEl?.closest('[data-scroll-area-viewport]');
+			if (vp) vp.scrollTop = vp.scrollHeight; // newest sits at the bottom, by the composer
 		});
 	});
 
@@ -1363,8 +1373,9 @@
 			</span>
 		{:else}
 			<AvatarStack {participants} class="size-9 text-xs" />
+			<!-- Fades/scales in on hover (opacity, not a display swap, so it can animate). -->
 			<span
-				class="bg-background/95 text-muted-foreground pointer-fine:group-hover/row:grid absolute inset-0 hidden place-items-center rounded-full border"
+				class="bg-background/95 text-muted-foreground absolute inset-0 grid scale-95 place-items-center rounded-full border opacity-0 transition duration-150 ease-out motion-reduce:transition-none pointer-fine:group-hover/row:scale-100 pointer-fine:group-hover/row:opacity-100"
 			>
 				<CheckIcon class="size-4" />
 			</span>
@@ -1491,11 +1502,15 @@
 <!-- @container: the list/thread split reacts to THIS region's width (sidebar
      open/closed included), not the viewport — collapsing the sidebar on a small
      laptop earns the two-pane layout. -->
-<div class="@container flex h-full" bind:clientWidth={regionW}>
+<!-- min-h-0 + overflow-hidden: the mail view is app-shell (fixed height, panes
+     scroll internally). Without it, a flex column's default min-height:auto lets
+     tall content (e.g. the mail-view card stack) push the region past its height
+     into the outer scroller — shifting the header and un-pinning the reply bar. -->
+<div class="@container flex h-full min-h-0 overflow-hidden" bind:clientWidth={regionW}>
 	<!-- List pane -->
 	<!-- Single-pane swap (list OR thread) until the mail region is ≥ 56rem wide;
 	     then the real two-pane split. -->
-	<div class="@4xl:w-[360px] @4xl:shrink-0 relative flex w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
+	<div class="@4xl:w-[360px] @4xl:shrink-0 relative flex min-h-0 w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
 		<!-- List header — folder identity (or the active search) + settings -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
 			{#if searchQ}
@@ -1577,8 +1592,10 @@
 					{/each}
 				</div>
 				{#if isShared}
+					<!-- Unassigned is a triage view — only managers can (re)assign, so only
+					     they get the filter. Members see All / Mine. -->
 					<div class="bg-muted/60 ml-auto flex items-center gap-0.5 rounded-full p-0.5 text-xs">
-						{#each [['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']] as [id, label] (id)}
+						{#each [['all', 'All'], ['mine', 'Mine'], ...(canManageActive ? [['unassigned', 'Unassigned']] : [])] as [id, label] (id)}
 							<button
 								type="button"
 								class="focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2 {assignFilter === id ? 'bg-card text-foreground shadow-xs font-medium' : 'text-muted-foreground hover:text-foreground'}"
@@ -1867,11 +1884,7 @@
 								)}
 							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
-									<div class="flex items-baseline gap-2">
-										<span class="min-w-0 flex-1 truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
-										<AvatarRow participants={t.participants} total={t.participantCount} />
-										<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
-									</div>
+									<span class="block truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
 									<div class="flex items-center gap-1.5">
 										{#if t.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
 										<!-- Sent is a cross-cut view — flag rows that also live in the Inbox. -->
@@ -1885,28 +1898,49 @@
 									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
 								</div>
 							</button>
-							{#if mailboxId && (placement === 'inbox' || placement === 'snoozed')}
-								<SnoozeMenu
-									{mailboxId}
-									threadId={t.threadId}
-									snoozed={placement === 'snoozed'}
-									onchange={(info) => afterRowSnooze(t.threadId, info)}
-									triggerClass="grid size-8 shrink-0 self-center place-items-center rounded-md text-faint transition-colors outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:opacity-100"
-								/>
-							{/if}
-							<!-- Star from the list — filled + always visible when starred; a faint
-							     hover-reveal affordance otherwise (always shown on touch). -->
-							<button
-								type="button"
-								title={t.isStarred ? 'Unstar' : 'Star'}
-								aria-pressed={t.isStarred}
-								onclick={() => starRow(t.threadId, t.isStarred)}
-								class="focus-visible:ring-ring/50 mr-1 grid size-8 shrink-0 place-items-center self-center rounded-md outline-none transition-colors focus-visible:ring-2 {t.isStarred
-									? 'text-p3'
-									: 'text-faint hover:text-p3 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100'}"
-							>
-								<StarIcon class="size-4 {t.isStarred ? 'fill-current' : ''}" />
-							</button>
+							<!-- Right rail, three stacked rows aligned to the text lines: metadata
+							     (always shown) over the hover-reveal actions, so the row's right edge
+							     reads as one clean column instead of floating icons. -->
+							<div class="flex shrink-0 flex-col items-end gap-0.5 self-center pr-1">
+								<!-- Row 1: participants + time -->
+								<div class="text-faint flex items-center gap-1.5">
+									<AvatarRow participants={t.participants} total={t.participantCount} />
+									<span class="text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
+								</div>
+								<!-- Row 2: snooze + star + archive -->
+								<div class="flex items-center gap-0.5">
+									{#if mailboxId && (placement === 'inbox' || placement === 'snoozed')}
+										<SnoozeMenu
+											{mailboxId}
+											threadId={t.threadId}
+											snoozed={placement === 'snoozed'}
+											onchange={(info) => afterRowSnooze(t.threadId, info)}
+											triggerClass="grid size-7 place-items-center rounded-md text-faint transition duration-150 ease-out outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:translate-x-0 pointer-fine:data-[state=open]:opacity-100"
+										/>
+									{/if}
+									{#if placement !== 'archived' && placement !== 'trash'}
+										<button
+											type="button"
+											title="Archive"
+											onclick={() => moveRow(t.threadId, 'archived')}
+											class="focus-visible:ring-ring/50 text-faint hover:text-ok grid size-7 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100"
+										>
+											<ArchiveIcon class="size-4" />
+										</button>
+									{/if}
+									<button
+										type="button"
+										title={t.isStarred ? 'Unstar' : 'Star'}
+										aria-pressed={t.isStarred}
+										onclick={() => starRow(t.threadId, t.isStarred)}
+										class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {t.isStarred
+											? 'text-p3'
+											: 'text-faint hover:text-p3 pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100'}"
+									>
+										<StarIcon class="size-4 {t.isStarred ? 'fill-current' : ''}" />
+									</button>
+								</div>
+							</div>
 								</div>
 							</div>
 						{/each}
@@ -1963,7 +1997,7 @@
 	</div>
 
 	<!-- Conversation -->
-	<div class="relative min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
+	<div class="relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
@@ -2241,7 +2275,10 @@
 					<div class="flex min-h-0 min-w-0 flex-1">
 					<ScrollArea class="min-h-0 min-w-0 flex-1">
 						<!-- chat: WhatsApp-style flow (default). mail: full-width card stack. -->
-						<div bind:this={streamEl} class="@container/thread flex w-full flex-col p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
+						<!-- min-h-full + justify-end: the newest message anchors to the bottom by
+						     the composer; a short thread sits there too (space collapses above
+						     the oldest, not as a gap over the reply bar). -->
+						<div bind:this={streamEl} class="@container/thread flex min-h-full w-full flex-col justify-end p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
 							{#each thread.items as item, i (item.id)}
 								{#if threadView.current === 'chat' && isNewDay(thread.items, i)}
 									{@const ms = itemMs(item)}
