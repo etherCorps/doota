@@ -163,6 +163,28 @@ describe("tiptap → mjml", () => {
     expect(html).toContain("{{ unsubscribe_url }}");
   });
 
+  it("applies theme typography defaults to paragraph + heading", () => {
+    const d: TiptapDoc = {
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "T" }] },
+        { type: "paragraph", content: [{ type: "text", text: "body" }] },
+      ],
+    };
+    const mjml = tiptapToMjml(d, {
+      theme: { text: { color: "#334155", size: 16, lineHeight: 1.7 }, title: { color: "#0f172a", size: 34, weight: 800 } },
+    });
+    // paragraph picks up theme.text
+    expect(mjml).toContain('color="#334155"');
+    expect(mjml).toContain('font-size="16px"');
+    expect(mjml).toContain('line-height="1.7"');
+    // h1 picks up theme.title (overrides default 28px/700)
+    expect(mjml).toContain('font-size="34px"');
+    expect(mjml).toContain('font-weight="800"');
+    expect(mjml).toContain('color="#0f172a"');
+    expect(compile(mjml)).toContain("body");
+  });
+
   it("serializes hero text color + height", () => {
     const d: TiptapDoc = { type: "doc", content: [{ type: "hero", attrs: { heading: "Hi", textColor: "#111827", height: 420 } }] };
     const mjml = tiptapToMjml(d);

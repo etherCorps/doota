@@ -19,12 +19,29 @@ export type TiptapNode = {
 };
 export type TiptapDoc = { type: "doc"; content?: TiptapNode[] };
 
+/** Per-type typography defaults (the Theme panel). Applied to every block of
+ * that role unless the block carries its own inline override. */
+export type ThemeType = { color?: string; size?: number; weight?: number; lineHeight?: number };
+export type Theme = { text?: ThemeType; title?: ThemeType; subtitle?: ThemeType; heading?: ThemeType };
+
 export type PageSettings = {
   background?: string;
   width?: number;
   preview?: string;
   css?: string;
+  theme?: Theme;
 };
+
+/** Serialize a ThemeType into mj-text attribute fragments. */
+function typeAttrs(t: ThemeType | undefined): string[] {
+  const p: string[] = [];
+  if (!t) return p;
+  if (t.color) p.push(`color="${attr(String(t.color))}"`);
+  if (t.size) p.push(`font-size="${Number(t.size)}px"`);
+  if (t.weight) p.push(`font-weight="${Number(t.weight)}"`);
+  if (t.lineHeight) p.push(`line-height="${Number(t.lineHeight)}"`);
+  return p;
+}
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -84,16 +101,23 @@ function listItems(nodes: TiptapNode[] | undefined): string {
 }
 
 /** Component-level MJML for a node (no section wrapper) — usable inside columns. */
-function blockInner(node: TiptapNode): string {
+function blockInner(node: TiptapNode, theme: Theme = {}): string {
   const a = node.attrs ?? {};
   const al = a.textAlign && a.textAlign !== "left" ? ` align="${attr(String(a.textAlign))}"` : "";
   switch (node.type) {
-    case "paragraph":
-      return `<mj-text${al}>${inline(node.content) || "&nbsp;"}</mj-text>`;
+    case "paragraph": {
+      const ta = typeAttrs(theme.text);
+      return `<mj-text${ta.length ? " " + ta.join(" ") : ""}${al}>${inline(node.content) || "&nbsp;"}</mj-text>`;
+    }
     case "heading": {
       const level = Number(a.level ?? 2);
-      const size = level === 1 ? "28px" : level === 3 ? "18px" : "22px";
-      return `<mj-text font-size="${size}" font-weight="700"${al}>${inline(node.content)}</mj-text>`;
+      const th = level === 1 ? theme.title : level === 2 ? theme.subtitle : theme.heading;
+      const size = th?.size ? `${Number(th.size)}px` : level === 1 ? "28px" : level === 3 ? "18px" : "22px";
+      const weight = th?.weight ?? 700;
+      const extra: string[] = [];
+      if (th?.color) extra.push(`color="${attr(String(th.color))}"`);
+      if (th?.lineHeight) extra.push(`line-height="${Number(th.lineHeight)}"`);
+      return `<mj-text font-size="${size}" font-weight="${weight}"${extra.length ? " " + extra.join(" ") : ""}${al}>${inline(node.content)}</mj-text>`;
     }
     case "bulletList":
       return `<mj-text><ul style="margin:0;padding-left:20px;">${listItems(node.content)}</ul></mj-text>`;
@@ -152,13 +176,13 @@ function sectionStyle(a: Record<string, unknown>): string {
 }
 
 /** One top-level node → a full body-level MJML chunk (section, hero, or empty). */
-function block(node: TiptapNode): string {
+function block(node: TiptapNode, theme: Theme = {}): string {
   const a = node.attrs ?? {};
   const ss = sectionStyle(a);
   if (node.type === "columns") {
     const cols = (node.content ?? [])
       .filter((c) => c.type === "column")
-      .map((c) => `<mj-column>${(c.content ?? []).map(blockInner).join("")}</mj-column>`)
+      .map((c) => `<mj-column>${(c.content ?? []).map((n) => blockInner(n, theme)).join("")}</mj-column>`)
       .join("");
     return `<mj-section${ss}>${cols}</mj-section>`;
   }
@@ -177,13 +201,14 @@ function block(node: TiptapNode): string {
       : "";
     return `<mj-hero mode="fixed-height" height="${height}px" background-url="${attr(String(a.src ?? ""))}" background-color="#222831" background-position="center center" padding="60px 24px"><mj-text align="center" color="${color}" font-size="26px" font-weight="700">${esc(String(a.heading ?? ""))}</mj-text>${sub}${btn}</mj-hero>`;
   }
-  const inner = blockInner(node);
+  const inner = blockInner(node, theme);
   return inner ? `<mj-section${ss}><mj-column>${inner}</mj-column></mj-section>` : "";
 }
 
 /** Serialize a Tiptap doc + page settings to an MJML string. */
 export function tiptapToMjml(doc: TiptapDoc, settings: PageSettings = {}): string {
-  const sections = (doc.content ?? []).map(block).join("");
+  const theme = settings.theme ?? {};
+  const sections = (doc.content ?? []).map((n) => block(n, theme)).join("");
   const headParts: string[] = [];
   if (settings.preview) headParts.push(`<mj-preview>${esc(settings.preview)}</mj-preview>`);
   const css = settings.css?.trim().replaceAll(/<\/style>/gi, "");

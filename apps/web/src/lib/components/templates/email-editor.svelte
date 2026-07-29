@@ -37,7 +37,7 @@
 	import CodeEditor from './code-editor.svelte';
 	import { EMAIL_NODES } from '$lib/mjml/tiptap-nodes';
 	import { SlashCommand, type SlashItem } from '$lib/mjml/slash-command';
-	import { tiptapToMjml, tiptapVariables, type TiptapDoc, type PageSettings } from '$lib/mjml/tiptap-mjml';
+	import { tiptapToMjml, tiptapVariables, type TiptapDoc, type PageSettings, type Theme, type ThemeType } from '$lib/mjml/tiptap-mjml';
 	import { compileMjml } from '$lib/mjml/compile.client';
 	import { render as renderJinja } from '@ethercorps/un-jinja';
 	import { BUILTIN_VARIABLES, variablesSchemaJson } from '$lib/mjml/variables';
@@ -98,6 +98,7 @@
 	let background = $state(untrack(() => initialSettings.background ?? '#ffffff'));
 	let width = $state(untrack(() => initialSettings.width ?? 600));
 	let globalCss = $state(untrack(() => initialSettings.css ?? ''));
+	let theme = $state<Theme>(untrack(() => initialSettings.theme ?? {}));
 	let saving = $state(false);
 	let view: 'edit' | 'code' = $state('edit');
 	let codeHtml = $state('');
@@ -189,6 +190,7 @@
 						width = d.settings.width ?? width;
 						previewText = d.settings.preview ?? previewText;
 						globalCss = d.settings.css ?? globalCss;
+						if (d.settings.theme) theme = d.settings.theme;
 					}
 					toast.info('Restored your unsaved draft.');
 				} catch {
@@ -317,8 +319,39 @@
 
 	// ---- publish --------------------------------------------------------------
 	function settings(): PageSettings {
-		return { background, width: Number(width) || 600, preview: previewText || undefined, css: globalCss || undefined };
+		const th = $state.snapshot(theme);
+		return { background, width: Number(width) || 600, preview: previewText || undefined, css: globalCss || undefined, theme: Object.keys(th).length ? th : undefined };
 	}
+	// ---- theme (per-type typography defaults) ---------------------------------
+	const THEME_ROLES: { key: keyof Theme; label: string }[] = [
+		{ key: 'text', label: 'Text' },
+		{ key: 'title', label: 'Title' },
+		{ key: 'subtitle', label: 'Subtitle' },
+		{ key: 'heading', label: 'Heading' }
+	];
+	function setTheme(role: keyof Theme, key: keyof ThemeType, value: string | number | undefined) {
+		const next: ThemeType = { ...(theme[role] ?? {}) };
+		if (value === undefined || value === '' || value === 0) delete next[key];
+		else (next[key] as string | number) = value;
+		theme = { ...theme, [role]: next };
+	}
+	function cssVar(name: string, val: string | number | undefined, unit = ''): string {
+		return val != null && val !== '' ? `${name}:${val}${unit}` : '';
+	}
+	const themeVars = $derived(
+		THEME_ROLES.flatMap(({ key }) => {
+			const t = theme[key] ?? {};
+			const p = key === 'text' ? 'p' : key === 'title' ? 'h1' : key === 'subtitle' ? 'h2' : 'h3';
+			return [
+				cssVar(`--th-${p}-color`, t.color),
+				cssVar(`--th-${p}-size`, t.size, 'px'),
+				cssVar(`--th-${p}-weight`, t.weight),
+				cssVar(`--th-${p}-lh`, t.lineHeight)
+			];
+		})
+			.filter(Boolean)
+			.join(';')
+	);
 	function currentDoc(): TiptapDoc {
 		return (editor?.getJSON() as TiptapDoc) ?? { type: 'doc', content: [] };
 	}
@@ -565,7 +598,7 @@
 								}}
 								aria-label="Link"><LinkIcon class="size-3.5" /></button>
 						</div>
-						<div bind:this={editorEl} class="email-canvas min-h-[24rem] px-6 py-4"></div>
+						<div bind:this={editorEl} class="email-canvas min-h-[24rem] px-6 py-4" style={themeVars}></div>
 					</div>
 				</div>
 				{#if view === 'code'}
@@ -690,6 +723,27 @@
 						</div>
 					</div>
 					<div class="border-t pt-3">
+						<p class="mb-1 text-xs font-semibold tracking-wide uppercase">Theme</p>
+						<p class="text-muted-foreground mb-2 text-[11px]">Default typography per text type.</p>
+						<div class="space-y-2.5">
+							{#each THEME_ROLES as r (r.key)}
+								{@const t = theme[r.key] ?? {}}
+								<div class="space-y-1">
+									<p class="text-muted-foreground text-[11px] font-medium">{r.label}</p>
+									<div class="flex items-center gap-1.5">
+										<input type="color" value={t.color ?? '#111827'} oninput={(e) => setTheme(r.key, 'color', e.currentTarget.value)} class="border-input size-7 shrink-0 cursor-pointer rounded border p-0.5" aria-label="{r.label} color" />
+										<input type="number" value={t.size ?? ''} oninput={(e) => setTheme(r.key, 'size', Number(e.currentTarget.value) || undefined)} placeholder="size" class="border-input bg-background h-7 w-14 rounded-md border px-1.5 text-xs" aria-label="{r.label} size" />
+										<select value={String(t.weight ?? '')} onchange={(e) => setTheme(r.key, 'weight', Number(e.currentTarget.value) || undefined)} class="border-input bg-background h-7 flex-1 rounded-md border px-1 text-xs" aria-label="{r.label} weight">
+											<option value="">weight</option>
+											<option value="400">400</option><option value="500">500</option><option value="600">600</option><option value="700">700</option>
+										</select>
+										<input type="number" step="0.1" value={t.lineHeight ?? ''} oninput={(e) => setTheme(r.key, 'lineHeight', Number(e.currentTarget.value) || undefined)} placeholder="lh" class="border-input bg-background h-7 w-12 rounded-md border px-1.5 text-xs" aria-label="{r.label} line height" />
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+					<div class="border-t pt-3">
 						<p class="mb-2 text-xs font-semibold tracking-wide uppercase">Global CSS</p>
 						<CodeEditor bind:value={globalCss} language="css" rows={5} placeholder={cssPlaceholder} />
 					</div>
@@ -756,14 +810,15 @@
 <style>
 	.email-canvas :global(.ProseMirror) {
 		outline: none;
-		color: #1f2937;
-		font-size: 15px;
-		line-height: 1.6;
+		color: var(--th-p-color, #1f2937);
+		font-size: var(--th-p-size, 15px);
+		font-weight: var(--th-p-weight, 400);
+		line-height: var(--th-p-lh, 1.6);
 		min-height: 12rem;
 	}
-	.email-canvas :global(.ProseMirror h1) { font-size: 28px; font-weight: 700; margin: 0.4em 0; }
-	.email-canvas :global(.ProseMirror h2) { font-size: 22px; font-weight: 700; margin: 0.4em 0; }
-	.email-canvas :global(.ProseMirror h3) { font-size: 18px; font-weight: 700; margin: 0.4em 0; }
+	.email-canvas :global(.ProseMirror h1) { font-size: var(--th-h1-size, 28px); font-weight: var(--th-h1-weight, 700); color: var(--th-h1-color, inherit); line-height: var(--th-h1-lh, normal); margin: 0.4em 0; }
+	.email-canvas :global(.ProseMirror h2) { font-size: var(--th-h2-size, 22px); font-weight: var(--th-h2-weight, 700); color: var(--th-h2-color, inherit); line-height: var(--th-h2-lh, normal); margin: 0.4em 0; }
+	.email-canvas :global(.ProseMirror h3) { font-size: var(--th-h3-size, 18px); font-weight: var(--th-h3-weight, 700); color: var(--th-h3-color, inherit); line-height: var(--th-h3-lh, normal); margin: 0.4em 0; }
 	.email-canvas :global(.ProseMirror p) { margin: 0.5em 0; }
 	.email-canvas :global(.ProseMirror ul),
 	.email-canvas :global(.ProseMirror ol) { padding-left: 1.4em; margin: 0.5em 0; }
