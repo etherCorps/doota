@@ -177,6 +177,16 @@
 			{/if}
 			{#if user.role === 'admin'}
 				<Sidebar.MenuItem>
+					<Sidebar.MenuButton tooltipContent="Templates">
+						{#snippet child({ props })}
+							<a href={resolve('/templates')} {...mergeProps(props, { onclick: closeMobile })}>
+								<FileTextIcon class="size-4" />
+								<span>Templates</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+				<Sidebar.MenuItem>
 					<Sidebar.MenuButton tooltipContent="Admin dashboard">
 						{#snippet child({ props })}
 							<a href={resolve('/admin')} {...mergeProps(props, { onclick: closeMobile })}>

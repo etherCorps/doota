@@ -22,7 +22,8 @@
 		revokeMailboxAccess,
 		listServiceKeys,
 		createServiceKey,
-		revokeServiceKey
+		revokeServiceKey,
+		listSendLog
 	} from '$lib/rpc/mailbox.remote';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import BotIcon from '@lucide/svelte/icons/bot';
@@ -153,6 +154,11 @@
 
 	// --- Service keys (service mailboxes only) ----------------------------------
 	const keysQ = $derived(mb.isService ? listServiceKeys(mb.id) : null);
+	// --- Send log (service mailboxes only) --------------------------------------
+	const logQ = $derived(mb.isService ? listSendLog(mb.id) : null);
+	const keyNameById = $derived(
+		new Map((keysQ?.current ?? []).map((k) => [k.id, k.name || `${k.prefix}…`]))
+	);
 	let keyDialogOpen = $state(false);
 	let keyName = $state('');
 	let creatingKey = $state(false);
@@ -287,6 +293,7 @@
 			<Tabs.Trigger value="settings">Settings</Tabs.Trigger>
 			<Tabs.Trigger value="access">Access <Badge variant="secondary" class="ml-1.5 tabular-nums">{grantsMap.size}</Badge></Tabs.Trigger>
 			{#if mb.isService}<Tabs.Trigger value="keys">API keys</Tabs.Trigger>{/if}
+			{#if mb.isService}<Tabs.Trigger value="logs">Send log</Tabs.Trigger>{/if}
 			<Tabs.Trigger value="activity">Activity</Tabs.Trigger>
 		</Tabs.List>
 
@@ -392,6 +399,52 @@
 								</ul>
 							{:else}
 								<p class="text-muted-foreground text-sm">No API keys yet. Create one to send programmatically.</p>
+							{/if}
+						{:else}
+							<div class="flex flex-col gap-3">
+								<Skeleton class="h-10 w-full rounded-md" />
+								<Skeleton class="h-10 w-full rounded-md" />
+							</div>
+						{/if}
+					</Card.CardContent>
+				</Card.Card>
+			</Tabs.Content>
+
+			<Tabs.Content value="logs" class="mt-4">
+				<Card.Card>
+					<Card.CardHeader>
+						<Card.CardTitle class="font-heading">Send log</Card.CardTitle>
+						<Card.CardDescription>
+							Every message sent via the API — when, to whom, and which key. Merge
+							data is encrypted and auto-expires; only metadata is kept long-term.
+						</Card.CardDescription>
+					</Card.CardHeader>
+					<Card.CardContent>
+						{#if logQ?.current}
+							{@const events = logQ.current}
+							{#if events.length}
+								<ul class="flex flex-col divide-y">
+									{#each events as e (e.id)}
+										<li class="flex items-center gap-3 py-2.5">
+											<div class="flex min-w-0 flex-1 flex-col">
+												<span class="truncate text-sm font-medium">{e.subject || '(no subject)'}</span>
+												<span class="text-muted-foreground truncate font-mono text-xs">
+													{e.toAddresses.join(', ') || '—'}
+												</span>
+												<span class="text-muted-foreground truncate text-xs">
+													{fmt(e.createdAt)}
+													{#if e.apiKeyId} · {keyNameById.get(e.apiKeyId) ?? 'key'}{/if}
+													{#if e.templateId} · template{/if}
+												</span>
+											</div>
+											<Badge variant={e.status === 'failed' || e.status === 'bounced' ? 'destructive' : 'secondary'}>
+												{e.status}
+											</Badge>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="text-muted-foreground text-sm">No sends yet. Messages sent via the API appear here.</p>
 							{/if}
 						{:else}
 							<div class="flex flex-col gap-3">
