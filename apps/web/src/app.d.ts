@@ -26,6 +26,10 @@ declare global {
      * derived per push from the org's own domain, so there's no subject var. */
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
+    /** Deployment's unsubscribe endpoint (operator-hosted). Filled into templated
+     * sends as the {{ unsubscribe_url }} variable; a `{email}` token is replaced
+     * with the recipient. Absent → the variable renders empty. */
+    UNSUBSCRIBE_URL?: string;
   }
 
   namespace App {

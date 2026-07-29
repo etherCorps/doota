@@ -36,6 +36,7 @@
     "./send-log": "./src/send-log.ts",
     "./snooze": "./src/snooze.ts",
     "./sender-trust": "./src/sender-trust.ts",
+    "./unsubscribe": "./src/unsubscribe.ts",
     "./web-push": "./src/web-push.ts"
   },
   "dependencies": {

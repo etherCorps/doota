@@ -15,6 +15,7 @@ export const BUILTIN_VARIABLES: BuiltinVariable[] = [
   { name: "sender_email", description: "The sending mailbox address." },
   { name: "year", description: "Current year, e.g. 2026." },
   { name: "date", description: "Current date, YYYY-MM-DD." },
+  { name: "unsubscribe_url", description: "One-click unsubscribe link for the recipient (filled at send)." },
 ];
 
 /** Reserved built-in names — used to split provided vs custom in the builder. */

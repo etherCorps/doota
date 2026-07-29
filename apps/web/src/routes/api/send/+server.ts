@@ -7,6 +7,7 @@ import { logSendEvent } from "@doota/mail-core/send-log";
 import { tryLog } from "@doota/mail-core/log";
 import { loadTemplateForSend, renderTemplate, sensitiveKeysOf } from "$lib/server/templates.js";
 import { builtinMergeData } from "$lib/mjml/variables.js";
+import { unsubscribeUrlFor } from "@doota/mail-core/unsubscribe";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
@@ -79,9 +80,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     if (!tmpl) error(404, "Template not found for this account");
     // Built-in variables (recipient, sender, date…) are filled by us and win over
     // caller data of the same name; everything else comes from the caller's `data`.
+    // Unsubscribe link for the primary recipient — from the deployment's
+    // configured UNSUBSCRIBE_URL, exposed as {{ unsubscribe_url }}. Built-ins win
+    // over caller data.
+    const primary = [...to, ...cc, ...bcc][0];
     const mergeData = {
       ...data,
       ...builtinMergeData({ fromAddress: sender.fromAddress, fromName: sender.fromName, recipients: [...to, ...cc, ...bcc] }),
+      unsubscribe_url: unsubscribeUrlFor(env.UNSUBSCRIBE_URL, primary ?? ""),
     };
     const rendered = renderTemplate(tmpl, mergeData);
     subject = rendered.subject;
