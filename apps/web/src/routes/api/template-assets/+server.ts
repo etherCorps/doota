@@ -2,15 +2,14 @@
 import { json, error, type RequestHandler } from "@sveltejs/kit";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { serviceMailboxManagerOrgIds } from "$lib/server/templates.js";
-import { ORIGIN } from "$app/env/public";
 
 /**
  * Template image upload. Multipart POST: `orgId` + `file`. Stored UNENCRYPTED
  * under `tpl/{orgId}/{id}` in R2 (email images must be publicly fetchable by the
  * recipient's client — see the public GET at [orgId]/[id]). Auth = a template
- * manager (org admin or service-mailbox manager). Returns a HOST-ABSOLUTE URL
- * (canonical ORIGIN, not the request origin) so it resolves in email clients and
- * CSS `url()` backgrounds regardless of which host served the upload.
+ * manager (org admin or service-mailbox manager). Returns a host-absolute URL
+ * built from the request (page) origin so it resolves in email clients and CSS
+ * `url()` backgrounds, not a bare `/api` path.
  */
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -41,5 +40,5 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
     httpMetadata: { contentType: file.type },
   });
 
-  return json({ url: `${ORIGIN || url.origin}/api/template-assets/${orgId}/${id}` }, { status: 201 });
+  return json({ url: `${url.origin}/api/template-assets/${orgId}/${id}` }, { status: 201 });
 };
