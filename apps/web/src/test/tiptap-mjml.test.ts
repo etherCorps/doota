@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from "vitest";
 import { Engine } from "mrml";
-import { tiptapToMjml, tiptapVariables, type TiptapDoc } from "$lib/mjml/tiptap-mjml.js";
+import { tiptapToMjml, tiptapVariables, type TiptapDoc, type TiptapNode } from "$lib/mjml/tiptap-mjml.js";
 
 const engine = new Engine();
 function compile(mjml: string) {
@@ -117,6 +117,50 @@ describe("tiptap → mjml", () => {
     expect(html).toContain("<b>raw</b>");
     expect(html).toContain("Welcome");
     expect(html).toContain("Join");
+  });
+
+  it("serializes button styling (fill, size, radius, full-width) as mj-button attrs", () => {
+    const d: TiptapDoc = {
+      type: "doc",
+      content: [{ type: "button", attrs: { text: "Go", href: "https://x", btnBg: "#16a34a", btnColor: "#f0fdf4", size: "lg", btnRadius: 20, fullWidth: true } }],
+    };
+    const mjml = tiptapToMjml(d);
+    expect(mjml).toContain('background-color="#16a34a"');
+    expect(mjml).toContain('color="#f0fdf4"');
+    expect(mjml).toContain('border-radius="20px"');
+    expect(mjml).toContain('font-size="16px"'); // lg
+    expect(mjml).toContain('width="100%"'); // full-width
+    expect(compile(mjml)).toContain("Go");
+  });
+
+  it("serializes image width + alignment onto mj-image", () => {
+    const d: TiptapDoc = { type: "doc", content: [{ type: "emImage", attrs: { src: "https://img/a.png", width: 240, align: "left" } }] };
+    const mjml = tiptapToMjml(d);
+    expect(mjml).toContain('width="240px"');
+    expect(mjml).toContain('align="left"');
+    expect(compile(mjml)).toContain("https://img/a.png");
+  });
+
+  it("serializes a three-column layout", () => {
+    const col = (t: string): TiptapNode => ({ type: "column", content: [{ type: "paragraph", content: [{ type: "text", text: t }] }] });
+    const d: TiptapDoc = { type: "doc", content: [{ type: "columns", content: [col("A"), col("B"), col("C")] }] };
+    const mjml = tiptapToMjml(d);
+    expect((mjml.match(/<mj-column>/g) ?? []).length).toBe(3);
+    const html = compile(mjml);
+    for (const t of ["A", "B", "C"]) expect(html).toContain(t);
+  });
+
+  it("serializes a footer with an unsubscribe link + surviving merge tags", () => {
+    const d: TiptapDoc = {
+      type: "doc",
+      content: [{ type: "footer", attrs: { text: "© {{ year }} Acme", unsubscribeLabel: "Opt out", unsubscribeUrl: "{{ unsubscribe_url }}" } }],
+    };
+    const mjml = tiptapToMjml(d);
+    expect(mjml).toContain('<a href="{{ unsubscribe_url }}"');
+    expect(mjml).toContain("Opt out");
+    const html = compile(mjml);
+    expect(html).toContain("{{ year }}");
+    expect(html).toContain("{{ unsubscribe_url }}");
   });
 
   it("serializes a variable pill inline + a two-column layout", () => {

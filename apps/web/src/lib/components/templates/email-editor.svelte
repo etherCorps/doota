@@ -50,6 +50,9 @@
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import MousePointerClickIcon from '@lucide/svelte/icons/mouse-pointer-click';
 	import Columns2Icon from '@lucide/svelte/icons/columns-2';
+	import Columns3Icon from '@lucide/svelte/icons/columns-3';
+	import Columns4Icon from '@lucide/svelte/icons/columns-4';
+	import PanelBottomIcon from '@lucide/svelte/icons/panel-bottom';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import PanelTopIcon from '@lucide/svelte/icons/panel-top';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -65,6 +68,7 @@
 	import AlignRightIcon from '@lucide/svelte/icons/align-right';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 
 	let {
 		orgId,
@@ -124,10 +128,12 @@
 		{ title: 'Image', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'emImage' }).run() },
 		{ title: 'Button', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'button' }).run() },
 		{ title: '2 columns', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
+		{ title: '3 columns', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
 		{ title: 'Hero', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'hero' }).run() },
 		{ title: 'Social', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'social' }).run() },
 		{ title: 'Spacer', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'spacer' }).run() },
 		{ title: 'Divider', action: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
+		{ title: 'Footer', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'footer' }).run() },
 		{ title: 'HTML', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'htmlBlock' }).run() }
 	];
 
@@ -192,7 +198,7 @@
 		editor?.chain().focus().insertContent(node).run();
 	}
 	type MenuItem = { label: string; icon: Component; run: () => void };
-	const cols = () => ins({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] });
+	const colsN = (n: number) => ins({ type: 'columns', content: Array.from({ length: n }, () => ({ type: 'column', content: [{ type: 'paragraph' }] })) });
 	// Grouped insert menus (Resend-style flyouts off the pill).
 	const GROUPS: { key: string; label: string; icon: Component; items: MenuItem[] }[] = [
 		{
@@ -216,10 +222,13 @@
 			items: [
 				{ label: 'Button', icon: MousePointerClickIcon, run: () => ins({ type: 'button' }) },
 				{ label: 'Divider', icon: MinusIcon, run: () => editor?.chain().focus().setHorizontalRule().run() },
-				{ label: '2 columns', icon: Columns2Icon, run: cols },
+				{ label: '2 columns', icon: Columns2Icon, run: () => colsN(2) },
+				{ label: '3 columns', icon: Columns3Icon, run: () => colsN(3) },
+				{ label: '4 columns', icon: Columns4Icon, run: () => colsN(4) },
 				{ label: 'Hero', icon: PanelTopIcon, run: () => ins({ type: 'hero' }) },
 				{ label: 'Social', icon: Share2Icon, run: () => ins({ type: 'social' }) },
 				{ label: 'Spacer', icon: MoveVerticalIcon, run: () => ins({ type: 'spacer' }) },
+				{ label: 'Footer', icon: PanelBottomIcon, run: () => ins({ type: 'footer' }) },
 				{ label: 'HTML', icon: CodeIcon, run: () => ins({ type: 'htmlBlock' }) }
 			]
 		}
@@ -244,7 +253,7 @@
 		editor.chain().setNodeSelection(sel.pos).updateAttributes(sel.type, { [key]: value }).run();
 	}
 	// Block nodes that render as an mj-section → get Background/Spacing/Border controls.
-	const SECTION_TYPES = new Set(['button', 'emImage', 'spacer', 'hero', 'social', 'htmlBlock', 'columns']);
+	const SECTION_TYPES = new Set(['button', 'emImage', 'spacer', 'hero', 'social', 'htmlBlock', 'columns', 'footer']);
 	const TYPE_LABEL: Record<string, string> = {
 		button: 'Button',
 		emImage: 'Image',
@@ -253,8 +262,25 @@
 		social: 'Social',
 		htmlBlock: 'HTML',
 		variable: 'Variable',
-		columns: 'Columns'
+		columns: 'Columns',
+		footer: 'Footer'
 	};
+	// Social-network editing (the config panel's add/remove/edit rows).
+	const SOCIAL_NETWORKS = ['github', 'twitter', 'x', 'facebook', 'instagram', 'linkedin', 'youtube', 'web'];
+	type SocialItem = { network: string; href: string };
+	function socialItems(): SocialItem[] {
+		return Array.isArray(sel?.attrs.items) ? (sel!.attrs.items as SocialItem[]) : [];
+	}
+	function updateSocial(i: number, key: keyof SocialItem, value: string) {
+		const items = socialItems().map((it, j) => (j === i ? { ...it, [key]: value } : it));
+		setAttr('items', items);
+	}
+	function addSocial() {
+		setAttr('items', [...socialItems(), { network: 'github', href: 'https://' }]);
+	}
+	function removeSocial(i: number) {
+		setAttr('items', socialItems().filter((_, j) => j !== i));
+	}
 	function deleteSelected() {
 		editor?.chain().focus().deleteSelection().run();
 		sel = null;
@@ -338,7 +364,7 @@
 
 <div class="flex h-full min-h-0">
 	<!-- Left rail -->
-	<aside class="bg-muted/20 flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2">
+	<aside class="flex w-12 shrink-0 flex-col items-center gap-1 py-2 border-r">
 		<button type="button" class="grid size-8 place-items-center rounded-md {view === 'edit' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (view = 'edit')} aria-label="Edit">
 			<PencilIcon class="size-4" />
 		</button>
@@ -350,6 +376,9 @@
 	<div class="flex min-w-0 flex-1 flex-col">
 		<!-- Top bar -->
 		<header class="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+			<a href={resolve('/templates')} class="text-muted-foreground hover:text-foreground hover:bg-muted grid size-8 shrink-0 place-items-center rounded-md" aria-label="Back to templates">
+				<ArrowLeftIcon class="size-4" />
+			</a>
 			<div class="flex min-w-0 items-center gap-1.5 text-sm">
 				<a href={resolve('/templates')} class="text-muted-foreground hover:text-foreground">Templates</a>
 				<span class="text-muted-foreground">/</span>
@@ -362,10 +391,9 @@
 			</div>
 		</header>
 
-		<div class="flex min-h-0 flex-1">
-			<!-- Insert rail — floating dark pill with grouped flyout menus -->
-			<aside class="flex w-16 shrink-0 items-center justify-center">
-				<div class="sticky top-1/2 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-full bg-neutral-900 p-1 shadow-lg ring-1 ring-white/10">
+		<div class="relative flex min-h-0 flex-1">
+			<!-- Insert pill — floats over the canvas left edge (no reserved lane) -->
+			<div class="absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-full bg-neutral-900 p-1 shadow-lg ring-1 ring-white/10">
 					{#each GROUPS as g (g.key)}
 						{@const GIcon = g.icon}
 						<div class="relative">
@@ -406,8 +434,6 @@
 						{/if}
 					</div>
 				</div>
-			</aside>
-
 			<!-- Canvas / code -->
 			<section class="bg-muted/40 min-h-0 flex-1 overflow-y-auto p-6">
 				<div class="mx-auto max-w-[600px]" style:display={view === 'edit' ? 'block' : 'none'}>
@@ -469,9 +495,18 @@
 						{#if sel.type === 'button'}
 							<Input value={String(sel.attrs.text ?? '')} oninput={(e) => setAttr('text', e.currentTarget.value)} placeholder="Label" />
 							<Input value={String(sel.attrs.href ?? '')} oninput={(e) => setAttr('href', e.currentTarget.value)} placeholder="https://…" />
-							<select value={String(sel.attrs.align ?? 'center')} onchange={(e) => setAttr('align', e.currentTarget.value)} class="border-input bg-background h-8 rounded-md border px-2 text-xs">
-								<option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
-							</select>
+							<div class="flex gap-1.5">
+								<select value={String(sel.attrs.align ?? 'center')} onchange={(e) => setAttr('align', e.currentTarget.value)} class="border-input bg-background h-8 flex-1 rounded-md border px-2 text-xs">
+									<option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+								</select>
+								<select value={String(sel.attrs.size ?? 'md')} onchange={(e) => setAttr('size', e.currentTarget.value)} class="border-input bg-background h-8 flex-1 rounded-md border px-2 text-xs" aria-label="Button size">
+									<option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option>
+								</select>
+							</div>
+							<label class="flex items-center justify-between gap-2"><span class="text-muted-foreground text-xs">Fill</span><span class="flex items-center gap-1.5"><input type="color" value={String(sel.attrs.btnBg ?? '#2563eb')} oninput={(e) => setAttr('btnBg', e.currentTarget.value)} class="border-input size-7 cursor-pointer rounded border p-0.5" aria-label="Button color" /><Input value={String(sel.attrs.btnBg ?? '')} oninput={(e) => setAttr('btnBg', e.currentTarget.value)} class="h-7 w-24 font-mono text-xs" /></span></label>
+							<label class="flex items-center justify-between gap-2"><span class="text-muted-foreground text-xs">Text</span><input type="color" value={String(sel.attrs.btnColor ?? '#ffffff')} oninput={(e) => setAttr('btnColor', e.currentTarget.value)} class="border-input size-7 cursor-pointer rounded border p-0.5" aria-label="Text color" /></label>
+							<label class="flex items-center justify-between gap-2"><span class="text-muted-foreground text-xs">Radius</span><span class="flex items-center gap-1"><Input type="number" value={Number(sel.attrs.btnRadius ?? 6)} oninput={(e) => setAttr('btnRadius', Number(e.currentTarget.value))} class="h-7 w-20" /><span class="text-muted-foreground text-xs">px</span></span></label>
+							<label class="flex items-center gap-2 text-xs"><input type="checkbox" checked={Boolean(sel.attrs.fullWidth)} onchange={(e) => setAttr('fullWidth', e.currentTarget.checked)} class="size-3.5" /><span class="text-muted-foreground">Full width</span></label>
 						{:else if sel.type === 'emImage'}
 							<div class="flex gap-1.5">
 								<Input value={String(sel.attrs.src ?? '')} oninput={(e) => setAttr('src', e.currentTarget.value)} placeholder="Image URL" class="min-w-0 flex-1" />
@@ -479,6 +514,27 @@
 							</div>
 							<Input value={String(sel.attrs.alt ?? '')} oninput={(e) => setAttr('alt', e.currentTarget.value)} placeholder="Alt text" />
 							<Input value={String(sel.attrs.href ?? '')} oninput={(e) => setAttr('href', e.currentTarget.value)} placeholder="Link (optional)" />
+							<div class="flex gap-1.5">
+								<label class="flex flex-1 items-center gap-1"><Input type="number" value={sel.attrs.width != null ? Number(sel.attrs.width) : ''} oninput={(e) => setAttr('width', e.currentTarget.value ? Number(e.currentTarget.value) : null)} placeholder="auto" class="h-8" /><span class="text-muted-foreground text-xs">px</span></label>
+								<select value={String(sel.attrs.align ?? 'center')} onchange={(e) => setAttr('align', e.currentTarget.value)} class="border-input bg-background h-8 flex-1 rounded-md border px-2 text-xs" aria-label="Image alignment">
+									<option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+								</select>
+							</div>
+						{:else if sel.type === 'social'}
+							{#each socialItems() as it, i (i)}
+								<div class="flex items-center gap-1.5">
+									<select value={it.network} onchange={(e) => updateSocial(i, 'network', e.currentTarget.value)} class="border-input bg-background h-8 shrink-0 rounded-md border px-1.5 text-xs capitalize" aria-label="Network">
+										{#each SOCIAL_NETWORKS as n (n)}<option value={n}>{n}</option>{/each}
+									</select>
+									<Input value={it.href} oninput={(e) => updateSocial(i, 'href', e.currentTarget.value)} placeholder="https://…" class="h-8 min-w-0 flex-1" />
+									<button type="button" class="text-muted-foreground hover:text-destructive shrink-0" onclick={() => removeSocial(i)} aria-label="Remove network">✕</button>
+								</div>
+							{/each}
+							<Button size="sm" variant="outline" onclick={addSocial}>+ Add network</Button>
+						{:else if sel.type === 'footer'}
+							<textarea value={String(sel.attrs.text ?? '')} oninput={(e) => setAttr('text', e.currentTarget.value)} rows={3} class="border-input bg-background w-full rounded-md border p-2 text-xs" placeholder="© {'{{ year }}'} Company · Address"></textarea>
+							<Input value={String(sel.attrs.unsubscribeLabel ?? '')} oninput={(e) => setAttr('unsubscribeLabel', e.currentTarget.value)} placeholder="Unsubscribe label" />
+							<Input value={String(sel.attrs.unsubscribeUrl ?? '')} oninput={(e) => setAttr('unsubscribeUrl', e.currentTarget.value)} placeholder="Unsubscribe URL" class="font-mono text-xs" />
 						{:else if sel.type === 'hero'}
 							<div class="flex gap-1.5">
 								<Input value={String(sel.attrs.src ?? '')} oninput={(e) => setAttr('src', e.currentTarget.value)} placeholder="Background image URL" class="min-w-0 flex-1" />
@@ -580,6 +636,7 @@
 	.email-canvas :global(.em-social) { display: flex; gap: 8px; }
 	.email-canvas :global(.em-social-item) { background: #eef2ff; color: #4338ca; padding: 3px 8px; border-radius: 4px; font-size: 12px; text-transform: capitalize; }
 	.email-canvas :global(.em-html) { border: 1px dashed #cbd5e1; color: #64748b; padding: 10px; border-radius: 6px; font-size: 13px; }
+	.email-canvas :global(.em-footer) { text-align: center; color: #94a3b8; font-size: 12px; line-height: 1.6; }
 	.email-canvas :global(.em-var) { background: #eef2ff; color: #4338ca; padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.9em; }
 	.email-canvas :global(.em-cols) { display: flex; gap: 12px; }
 	.email-canvas :global(.em-col) { flex: 1; min-width: 0; border: 1px dashed #e5e7eb; border-radius: 6px; padding: 8px; }

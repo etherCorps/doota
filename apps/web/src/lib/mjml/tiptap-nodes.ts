@@ -37,19 +37,37 @@ function previewStyle(a: StyleAttrs, extra = ''): string {
 	return s.join(';');
 }
 
+/** Button size → preview padding + font-size (shared with the MJML serializer). */
+export const BTN_SIZE = { sm: { pad: '6px 12px', fs: '13px' }, md: { pad: '10px 18px', fs: '14px' }, lg: { pad: '14px 26px', fs: '16px' } } as const;
+
 export const ButtonNode = Node.create({
 	name: 'button',
 	group: 'block',
 	atom: true,
 	selectable: true,
 	draggable: true,
-	addAttributes: () => ({ text: { default: 'Click me' }, href: { default: 'https://' }, align: { default: 'center' }, ...styleAttrs() }),
+	addAttributes: () => ({
+		text: { default: 'Click me' },
+		href: { default: 'https://' },
+		align: { default: 'center' },
+		btnBg: { default: '#2563eb' },
+		btnColor: { default: '#ffffff' },
+		size: { default: 'md' },
+		btnRadius: { default: 6 },
+		fullWidth: { default: false },
+		...styleAttrs()
+	}),
 	parseHTML: () => [{ tag: 'div[data-email-button]' }],
-	renderHTML: ({ node }) => [
-		'div',
-		{ 'data-email-button': '', class: 'em-block em-btn', style: previewStyle(node.attrs, `text-align:${node.attrs.align}`) },
-		['span', { class: 'em-btn-inner' }, node.attrs.text || 'Button']
-	]
+	renderHTML: ({ node }) => {
+		const a = node.attrs;
+		const sz = BTN_SIZE[(a.size as keyof typeof BTN_SIZE) ?? 'md'] ?? BTN_SIZE.md;
+		const inner = `background:${a.btnBg || '#2563eb'};color:${a.btnColor || '#ffffff'};border-radius:${a.btnRadius ?? 6}px;padding:${sz.pad};font-size:${sz.fs};${a.fullWidth ? 'display:block;text-align:center' : 'display:inline-block'}`;
+		return [
+			'div',
+			{ 'data-email-button': '', class: 'em-block em-btn', style: previewStyle(a, `text-align:${a.align}`) },
+			['span', { class: 'em-btn-inner', style: inner }, a.text || 'Button']
+		];
+	}
 });
 
 export const ImageNode = Node.create({
@@ -58,13 +76,18 @@ export const ImageNode = Node.create({
 	atom: true,
 	selectable: true,
 	draggable: true,
-	addAttributes: () => ({ src: { default: '' }, alt: { default: '' }, href: { default: '' }, ...styleAttrs() }),
+	addAttributes: () => ({ src: { default: '' }, alt: { default: '' }, href: { default: '' }, width: { default: null }, align: { default: 'center' }, ...styleAttrs() }),
 	parseHTML: () => [{ tag: 'img[data-email-image]' }],
-	renderHTML: ({ node }) => [
-		'div',
-		{ class: 'em-block em-img', style: previewStyle(node.attrs) },
-		['img', mergeAttributes({ 'data-email-image': '', src: node.attrs.src || IMG_PLACEHOLDER, alt: node.attrs.alt })]
-	]
+	renderHTML: ({ node }) => {
+		const a = node.attrs;
+		const m = a.align === 'left' ? '0' : a.align === 'right' ? '0 0 0 auto' : '0 auto';
+		const imgStyle = `display:block;max-width:100%;margin:${m};${a.width ? `width:${Number(a.width)}px;` : ''}`;
+		return [
+			'div',
+			{ class: 'em-block em-img', style: previewStyle(a) },
+			['img', mergeAttributes({ 'data-email-image': '', src: a.src || IMG_PLACEHOLDER, alt: a.alt, style: imgStyle })]
+		];
+	}
 });
 
 export const SpacerNode = Node.create({
@@ -145,12 +168,32 @@ export const ColumnNode = Node.create({
 export const ColumnsNode = Node.create({
 	name: 'columns',
 	group: 'block',
-	content: 'column column',
+	content: 'column{2,4}',
 	draggable: true,
 	selectable: true,
 	addAttributes: () => ({ ...styleAttrs() }),
 	renderHTML: ({ node }) => ['div', { class: 'em-cols', style: previewStyle(node.attrs) }, 0]
 });
 
+export const FooterNode = Node.create({
+	name: 'footer',
+	group: 'block',
+	atom: true,
+	selectable: true,
+	draggable: true,
+	addAttributes: () => ({
+		text: { default: '© {{ year }} Company · 123 Street, City, Country' },
+		unsubscribeLabel: { default: 'Unsubscribe' },
+		unsubscribeUrl: { default: '{{ unsubscribe_url }}' },
+		...styleAttrs()
+	}),
+	parseHTML: () => [{ tag: 'div[data-email-footer]' }],
+	renderHTML: ({ node }) => [
+		'div',
+		{ 'data-email-footer': '', class: 'em-block em-footer', style: previewStyle(node.attrs) },
+		`${node.attrs.text}${node.attrs.unsubscribeLabel ? ` · ${node.attrs.unsubscribeLabel}` : ''}`
+	]
+});
+
 /** All custom node extensions, for the editor's extension list. */
-export const EMAIL_NODES = [ButtonNode, ImageNode, SpacerNode, HeroNode, SocialNode, HtmlNode, VariableNode, ColumnsNode, ColumnNode];
+export const EMAIL_NODES = [ButtonNode, ImageNode, SpacerNode, HeroNode, SocialNode, HtmlNode, VariableNode, FooterNode, ColumnsNode, ColumnNode];

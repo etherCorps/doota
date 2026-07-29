@@ -101,10 +101,37 @@ function blockInner(node: TiptapNode): string {
       return `<mj-text><ol style="margin:0;padding-left:20px;">${listItems(node.content)}</ol></mj-text>`;
     case "horizontalRule":
       return `<mj-divider />`;
-    case "button":
-      return `<mj-button href="${attr(String(a.href ?? "#"))}" align="${attr(String(a.align ?? "center"))}">${esc(String(a.text ?? "Button"))}</mj-button>`;
-    case "emImage":
-      return a.src ? `<mj-image src="${attr(String(a.src))}"${a.alt ? ` alt="${attr(String(a.alt))}"` : ""}${a.href ? ` href="${attr(String(a.href))}"` : ""} />` : "";
+    case "button": {
+      const size = String(a.size ?? "md");
+      const fs = size === "sm" ? "13px" : size === "lg" ? "16px" : "14px";
+      const ip = size === "sm" ? "6px 12px" : size === "lg" ? "14px 26px" : "10px 18px";
+      const bp = [
+        `href="${attr(String(a.href ?? "#"))}"`,
+        `align="${attr(String(a.align ?? "center"))}"`,
+        `background-color="${attr(String(a.btnBg ?? "#2563eb"))}"`,
+        `color="${attr(String(a.btnColor ?? "#ffffff"))}"`,
+        `border-radius="${Number(a.btnRadius ?? 6)}px"`,
+        `font-size="${fs}"`,
+        `inner-padding="${ip}"`,
+      ];
+      if (a.fullWidth) bp.push(`width="100%"`);
+      return `<mj-button ${bp.join(" ")}>${esc(String(a.text ?? "Button"))}</mj-button>`;
+    }
+    case "emImage": {
+      if (!a.src) return "";
+      const ip = [`src="${attr(String(a.src))}"`];
+      if (a.alt) ip.push(`alt="${attr(String(a.alt))}"`);
+      if (a.href) ip.push(`href="${attr(String(a.href))}"`);
+      if (a.width) ip.push(`width="${Number(a.width)}px"`);
+      if (a.align) ip.push(`align="${attr(String(a.align))}"`);
+      return `<mj-image ${ip.join(" ")} />`;
+    }
+    case "footer": {
+      const unsub = a.unsubscribeUrl
+        ? ` · <a href="${attr(String(a.unsubscribeUrl))}" style="color:inherit;">${esc(String(a.unsubscribeLabel ?? "Unsubscribe"))}</a>`
+        : "";
+      return `<mj-text align="center" color="#94a3b8" font-size="12px" line-height="1.6">${esc(String(a.text ?? ""))}${unsub}</mj-text>`;
+    }
     case "spacer":
       return `<mj-spacer height="${Number(a.height ?? 24)}px" />`;
     case "htmlBlock":
