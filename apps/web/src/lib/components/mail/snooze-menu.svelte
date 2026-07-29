@@ -16,6 +16,10 @@
 	import { snoozeThread, unsnoozeThread } from '$lib/rpc/thread.remote';
 	import AlarmClockIcon from '@lucide/svelte/icons/alarm-clock';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import CalendarIcon from '@lucide/svelte/icons/calendar';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import AlarmClockOffIcon from '@lucide/svelte/icons/alarm-clock-off';
 
 	let {
 		mailboxId,
@@ -26,10 +30,12 @@
 	}: {
 		mailboxId: string;
 		threadId: string;
-		/** True in the Snoozed view — show Unsnooze instead of preset times. */
+		/** True in the Snoozed view — adds an Unsnooze action alongside reschedule. */
 		snoozed?: boolean;
-		/** Fired after a successful snooze/unsnooze so the caller can drop the row. */
-		onchange?: () => void;
+		/** Fired after a successful snooze/unsnooze. `kept` = the thread is still
+		 *  snoozed (a reschedule from the Snoozed view) so the caller should keep +
+		 *  re-sort the row rather than drop it. */
+		onchange?: (info?: { kept?: boolean }) => void;
 		/** Override the trigger button styling (e.g. a hover-reveal list-row action). */
 		triggerClass?: string;
 	} = $props();
@@ -64,12 +70,15 @@
 	let open = $state(false);
 	let busy = $state(false);
 	let nlp = $state('');
-	// Mobile: don't steal focus on open (keyboard would shove the picker off
-	// screen), and while the phrase box IS focused hide the tall calendar/time so
-	// the popover fits above the keyboard. Tap away → keyboard closes → picker back.
+	// Mobile: presets-first. The full calendar/time is revealed on demand so the
+	// quick options + commit button stay above the fold (and above the keyboard).
+	// Desktop shows the calendar inline — there's room, so no extra tap.
 	const isMobile = new IsMobile();
-	let nlpFocused = $state(false);
-	const showPicker = $derived(!(isMobile.current && nlpFocused));
+	let showCal = $state(false);
+	// Mobile only: when the calendar is open it takes the WHOLE sheet — presets + NLP
+	// are swapped out so the month grid + time list aren't crowded off the fold.
+	// Desktop always shows the calendar inline (there's room), so no switch there.
+	const fullCal = $derived(isMobile.current && showCal);
 
 	// Presets resolve through parseWhen so wording + rules stay in one place.
 	const PRESETS = [
@@ -95,7 +104,9 @@
 			toast.success(`Snoozed until ${fmt(until)}.`);
 			open = false;
 			nlp = '';
-			onchange?.();
+			// From the Snoozed view this is a reschedule — the thread stays snoozed, so
+			// tell the caller to keep the row (re-sort) instead of dropping it.
+			onchange?.(snoozed ? { kept: true } : undefined);
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Could not snooze.');
 		} finally {
@@ -131,54 +142,98 @@
 	const triggerTitle = $derived(snoozed ? 'Snoozed' : 'Snooze');
 </script>
 
+<!-- Selected time + Snooze — sticky to the sheet bottom so it never scrolls off. -->
+{#snippet manualFooter()}
+	<div class="bg-popover sticky bottom-0 flex items-center gap-2 border-t p-2">
+		{#if customPast}
+			<p class="text-destructive text-[11px] leading-tight">That time has passed.</p>
+		{:else if customUntil}
+			<p class="text-muted-foreground text-[11px] leading-tight tabular-nums">Snoozes {fmt(customUntil)}</p>
+		{/if}
+		<Button size="sm" class="ml-auto h-8" disabled={!customUntil || customPast || busy} onclick={snoozeCustom}>Snooze</Button>
+	</div>
+{/snippet}
+
 {#snippet body()}
-		{#if snoozed}
+	{#if fullCal}
+		<!-- Mobile full-sheet calendar: presets + NLP swapped out for room. -->
+		<div class="flex items-center border-b p-1.5">
 			<button
 				type="button"
-				disabled={busy}
-				onclick={wake}
-				class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center px-3 py-2 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
+				onclick={() => (showCal = false)}
+				class="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1 rounded-md px-2 py-1 text-sm outline-none focus-visible:ring-2"
 			>
-				Unsnooze — back to inbox
+				<ChevronLeftIcon class="size-4" /> Back
+			</button>
+		</div>
+		<DateTimeFields
+			date={calDate}
+			time={calTime}
+			{open}
+			onDate={(v) => (calDate = v)}
+			onTime={(t) => (calTime = t)}
+		/>
+		{@render manualFooter()}
+	{:else}
+		{#if snoozed}
+			<!-- Snoozed view: unsnooze (remove) up top; the picker below reschedules
+			     (edit) — the presets/NLP/calendar re-snooze to a new time. -->
+			<div class="border-b p-1">
+				<Button
+					variant="destructive"
+					size="sm"
+					disabled={busy}
+					onclick={wake}
+					class="text-warn py-4 hover:text-warn hover:bg-warn/10 w-full justify-start gap-2"
+				>
+					<AlarmClockOffIcon class="size-4" /> Unsnooze — back to inbox
+				</Button>
+			</div>
+		{/if}
+		<div class="border-b p-2">
+			<div class="relative">
+				<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
+				<Input
+					class="h-8 pl-7 text-xs pointer-coarse:text-base"
+					placeholder="Type a time — “2 days from now”"
+					bind:value={nlp}
+					onkeydown={onNlpKey}
+				/>
+			</div>
+			{#if nlp.trim()}
+				<p class="text-muted-foreground mt-1 px-1 text-[11px]">
+					{#if nlpPreview}→ {fmt(nlpPreview)} · press Enter{:else}Couldn’t read that time{/if}
+				</p>
+			{/if}
+		</div>
+		<ul class="p-1">
+			{#each PRESETS as p (p.label)}
+				{@const when = parseWhen(p.phrase)}
+				<li>
+					<button
+						type="button"
+						disabled={busy || !when}
+						onclick={() => when && snooze(when)}
+						class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
+					>
+						<span>{p.label}</span>
+						{#if when}<span class="text-muted-foreground text-[11px] tabular-nums">{fmt(when)}</span>{/if}
+					</button>
+				</li>
+			{/each}
+		</ul>
+		{#if isMobile.current}
+			<!-- Opens the full-sheet calendar mode above. -->
+			<button
+				type="button"
+				onclick={() => (showCal = true)}
+				class="text-muted-foreground hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-2 border-t px-3 py-2.5 text-sm outline-none focus-visible:ring-2"
+			>
+				<span class="flex items-center gap-2"><CalendarIcon class="size-4" /> Pick exact date &amp; time</span>
+				<ChevronDownIcon class="size-4" />
 			</button>
 		{:else}
-			<div class="border-b p-2">
-				<div class="relative">
-					<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
-					<Input
-						class="h-8 pl-7 text-xs pointer-coarse:text-base"
-						placeholder="Type a time — “2 days from now”"
-						bind:value={nlp}
-						onkeydown={onNlpKey}
-						onfocus={() => (nlpFocused = true)}
-						onblur={() => (nlpFocused = false)}
-					/>
-				</div>
-				{#if nlp.trim()}
-					<p class="text-muted-foreground mt-1 px-1 text-[11px]">
-						{#if nlpPreview}→ {fmt(nlpPreview)} · press Enter{:else}Couldn’t read that time{/if}
-					</p>
-				{/if}
-			</div>
-			<ul class="p-1">
-				{#each PRESETS as p (p.label)}
-					{@const when = parseWhen(p.phrase)}
-					<li>
-						<button
-							type="button"
-							disabled={busy || !when}
-							onclick={() => when && snooze(when)}
-							class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
-						>
-							<span>{p.label}</span>
-							{#if when}<span class="text-muted-foreground text-[11px] tabular-nums">{fmt(when)}</span>{/if}
-						</button>
-					</li>
-				{/each}
-			</ul>
-			<!-- Manual date + time — hidden while the phrase box is focused on mobile
-			     so the on-screen keyboard doesn't shove it off screen. -->
-			{#if showPicker}
+			<!-- Desktop: calendar inline (room for it beside the presets). -->
 			<div class="border-t">
 				<DateTimeFields
 					date={calDate}
@@ -187,17 +242,10 @@
 					onDate={(v) => (calDate = v)}
 					onTime={(t) => (calTime = t)}
 				/>
-				<div class="flex items-center gap-2 border-t p-2">
-					{#if customPast}
-						<p class="text-destructive text-[11px] leading-tight">That time has passed.</p>
-					{:else}
-						<p class="text-muted-foreground text-[11px] leading-tight">Wakes within ~5&nbsp;min of the set time.</p>
-					{/if}
-					<Button size="sm" class="ml-auto h-8" disabled={!customUntil || customPast || busy} onclick={snoozeCustom}>Snooze</Button>
-				</div>
 			</div>
-			{/if}
+			{@render manualFooter()}
 		{/if}
+	{/if}
 {/snippet}
 
 {#if isMobile.current}
@@ -206,7 +254,7 @@
 			<AlarmClockIcon class="size-4" />
 		</Drawer.Trigger>
 		<Drawer.Content class="p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
-			<div class="max-h-[78vh] overflow-y-auto">{@render body()}</div>
+			<div class="min-h-0 flex-1 overflow-y-auto">{@render body()}</div>
 		</Drawer.Content>
 	</Drawer.Root>
 {:else}
@@ -214,7 +262,7 @@
 		<Popover.Trigger title={triggerTitle} aria-label={triggerTitle} class={triggerCls}>
 			<AlarmClockIcon class="size-4" />
 		</Popover.Trigger>
-		<Popover.Content align="end" class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0">
+		<Popover.Content align="end" class="max-h-[85vh] w-auto max-w-[calc(100vw-1rem)] overflow-y-auto p-0">
 			{@render body()}
 		</Popover.Content>
 	</Popover.Root>

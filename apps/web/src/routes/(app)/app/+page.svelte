@@ -822,16 +822,26 @@
 	}
 	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
 	// and drop its row (it left the current view), same optimistic shape as move().
-	function afterSnoozeChange() {
+	function afterSnoozeChange(info?: { kept?: boolean }) {
 		const id = threadId;
 		if (!id) return;
+		// Reschedule from the Snoozed view — the thread stays snoozed, so keep it and
+		// refetch to re-sort by the new wake time rather than dropping the row.
+		if (info?.kept) {
+			void loadThreads(true);
+			return;
+		}
 		nav({ thread: null });
 		items = items.filter((t) => t.threadId !== id);
 		void refreshUnread();
 	}
 	// Same, from a list-row snooze. Also close the detail if that row's thread
 	// happens to be the one open, so the two panes stay in sync.
-	function afterRowSnooze(id: string) {
+	function afterRowSnooze(id: string, info?: { kept?: boolean }) {
+		if (info?.kept) {
+			void loadThreads(true);
+			return;
+		}
 		items = items.filter((t) => t.threadId !== id);
 		if (id === threadId) nav({ thread: null });
 		void refreshUnread();
@@ -1880,7 +1890,7 @@
 									{mailboxId}
 									threadId={t.threadId}
 									snoozed={placement === 'snoozed'}
-									onchange={() => afterRowSnooze(t.threadId)}
+									onchange={(info) => afterRowSnooze(t.threadId, info)}
 									triggerClass="grid size-8 shrink-0 self-center place-items-center rounded-md text-faint transition-colors outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:opacity-100"
 								/>
 							{/if}
@@ -2074,7 +2084,7 @@
 							{#key starPop}<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
 						</Button>
 						{#if msgs.length}
-							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward conversation" onclick={() => forwardThread(msgs, thread.subject)}>
+							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward" onclick={() => forwardThread(msgs, thread.subject)}>
 								<ForwardIcon class="size-4" />
 							</Button>
 						{/if}
@@ -2157,7 +2167,7 @@
 								</DropdownMenu.Item>
 								{#if msgs.length}
 									<DropdownMenu.Item onSelect={() => forwardThread(msgs, thread.subject)}>
-										<ForwardIcon class="size-4" /> Forward conversation
+										<ForwardIcon class="size-4" /> Forward
 									</DropdownMenu.Item>
 								{/if}
 								<DropdownMenu.Separator />
