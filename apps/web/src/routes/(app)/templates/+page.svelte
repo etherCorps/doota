@@ -10,7 +10,7 @@
 	const fmt = (ms: number) => new Date(ms).toLocaleDateString();
 </script>
 
-<div class="mx-auto w-full max-w-4xl p-4 sm:p-6 md:p-8">
+<div class="w-full p-4 sm:p-6 md:p-8">
 	<div class="mb-4 flex items-center justify-between gap-3">
 		<div>
 			<h1 class="font-heading text-xl font-semibold">Templates</h1>

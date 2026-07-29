@@ -6,6 +6,7 @@ import { resolveSender, resolveServiceSender } from "@doota/mail-core/resolver";
 import { logSendEvent } from "@doota/mail-core/send-log";
 import { tryLog } from "@doota/mail-core/log";
 import { loadTemplateForSend, renderTemplate, sensitiveKeysOf } from "$lib/server/templates.js";
+import { builtinMergeData } from "$lib/mjml/variables.js";
 
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
@@ -76,7 +77,13 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   if (templateId) {
     const tmpl = await loadTemplateForSend(locals.db, sender.orgId, templateId);
     if (!tmpl) error(404, "Template not found for this account");
-    const rendered = renderTemplate(tmpl, data);
+    // Built-in variables (recipient, sender, date…) are filled by us and win over
+    // caller data of the same name; everything else comes from the caller's `data`.
+    const mergeData = {
+      ...data,
+      ...builtinMergeData({ fromAddress: sender.fromAddress, fromName: sender.fromName, recipients: [...to, ...cc, ...bcc] }),
+    };
+    const rendered = renderTemplate(tmpl, mergeData);
     subject = rendered.subject;
     html = rendered.html;
     text = null; // template renders HTML; the provider derives the text part.

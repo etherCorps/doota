@@ -121,14 +121,41 @@ Reusing an `idempotencyKey` returns the original submission with
 
 Build reusable emails once, send them with data. From **Templates** (sidebar),
 create a template in the **drag-and-drop editor** — headings, text, buttons,
-images, dividers, spacers, and raw-HTML blocks. Put `{{ variable }}` tags
-anywhere for merge data; hit **Refresh** to preview the compiled, responsive
-email.
+images, lists, quotes, two-column rows, social links, a **hero** (full-width
+**background image** with heading + button), dividers, spacers, and raw-HTML
+blocks. Image and hero blocks accept a URL or an **upload** (PNG/JPEG/GIF/WebP,
+2 MB max — served from a public, cached URL so recipients' clients can load it).
+The **Settings** panel (gear) sets a body **background colour** and, for advanced
+cases, **custom CSS**. Every block also has its own **Custom CSS** field, and the
+HTML block and CSS fields are a full code editor (**CodeMirror**) with syntax
+highlighting, **autocomplete**, and bracket matching. (Per-block and global CSS
+compile to an `mj-style` block — note many email clients ignore `<style>`, so
+prefer the block options where you can.) Put `{{ variable }}` tags anywhere for
+merge data; the preview updates live as you type.
 
 Under the hood the builder is Svelte-native and open-source: blocks compile to
 [MJML](https://mjml.io) via MRML (WebAssembly) into cross-client HTML, and merge
 tags render with un-jinja at send. Editing a template creates a new **version**;
 each send pins the version it used, so the log reproduces exactly what went out.
+
+### Variables
+
+Two kinds, both written as `{{ name }}`:
+
+- **Provided** — Doota fills these automatically; you don't send them (and they
+  override any `data` field of the same name):
+
+  | Variable | Value |
+  | --- | --- |
+  | `{{ recipient }}` | the recipient's email address |
+  | `{{ sender_name }}` | the sending mailbox's display name |
+  | `{{ sender_email }}` | the sending mailbox address |
+  | `{{ year }}` | current year |
+  | `{{ date }}` | current date (`YYYY-MM-DD`) |
+
+- **Yours** — any other `{{ name }}` you use. Supply them in the API `data`
+  object; missing values render empty. The builder's **Variables** panel lists
+  both (click a chip to copy its tag).
 
 ## Send log
 

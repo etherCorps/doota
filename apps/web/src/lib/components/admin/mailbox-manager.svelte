@@ -406,6 +406,9 @@
 								<Skeleton class="h-10 w-full rounded-md" />
 							</div>
 						{/if}
+						<p class="text-muted-foreground mt-4 border-t pt-3 text-xs">
+							Send templated mail via the API? <a href="/templates" class="text-foreground underline underline-offset-2">Manage templates →</a>
+						</p>
 					</Card.CardContent>
 				</Card.Card>
 			</Tabs.Content>

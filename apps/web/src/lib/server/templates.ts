@@ -18,6 +18,26 @@ type Db = DrizzleD1Database<typeof schema>;
 export type VariableSpec = { required?: boolean; sensitive?: boolean };
 export type VariablesSchema = Record<string, VariableSpec>;
 
+/**
+ * Orgs where the user manages templates by virtue of managing a **service
+ * mailbox** there (a `canManage` grant on an `isService` box) — the delegated
+ * path, alongside org-admins. Distinct org ids.
+ */
+export async function serviceMailboxManagerOrgIds(db: Db, userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ orgId: mail.mailbox.orgId })
+    .from(mail.mailboxAccess)
+    .innerJoin(mail.mailbox, eq(mail.mailbox.id, mail.mailboxAccess.mailboxId))
+    .where(
+      and(
+        eq(mail.mailboxAccess.userId, userId),
+        eq(mail.mailboxAccess.canManage, true),
+        eq(mail.mailbox.isService, true),
+      ),
+    );
+  return [...new Set(rows.map((r) => r.orgId))];
+}
+
 /** name → url-safe slug, the stable id the API references. */
 export function slugify(name: string): string {
   return (

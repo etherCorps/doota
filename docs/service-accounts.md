@@ -15,27 +15,30 @@ full web suite green, mail-core + sdk `tsc` clean.
 - **Phase 2** — `template` + `template_version` (migration `0033`);
   `server/templates.ts` (CRUD + un-jinja render); `rpc/template.remote.ts`;
   templated `/api/send` path.
-- **Phase 3** — `server/mjml.ts` (block schema → MJML → **MRML** compile, merge
-  tags preserved); compile-at-save wired into the template RPCs + `previewTemplate`;
+- **Phase 3** — `lib/mjml/blocks.ts` (pure, client-safe block schema → MJML
+  serializer + variable extraction); the builder compiles **in the browser** via
+  `mrml/web` (dynamic-imported + Vite `?url`, SSR-safe); the RPC just stores the
+  client-supplied `compiledHtml` + `editorJson` + `variablesSchema`.
   `template-builder.svelte` (svelte-dnd-action) + `(app)/templates` routes +
   sidebar entry.
-- **Phase 4** — `packages/sdk` (`@doota/sdk`, Resend-shaped); docs guide +
-  changelog; `admin/api-keys.mdx` refreshed.
+- **Phase 4** — `packages/sdk` (`@doota/sdk`, Resend-shaped; publishable —
+  `publishConfig` ships built `dist`, `pnpm build` via `prepublishOnly`); docs
+  guide + changelog; `admin/api-keys.mdx` refreshed.
 
-### Deviations & follow-ups (deliberate)
+### Notes & follow-ups
 
-- **Compile runs server-side at save**, not client-side in the browser. Rare
-  path (template edits), keeps the builder route free of WASM + vite config; the
-  hot send path is still un-jinja only. Same performance outcome.
-- **⚠ Verify on deploy:** MRML (`mrml`) is Node-verified here; confirm the WASM
-  bundles for the Cloudflare Worker (may need a `.wasm` import/wrangler rule). If
-  it doesn't bundle, move compile to the builder client (browser WASM) — the code
-  seam (`compileTemplate`) is unchanged either way.
+- **Compile is client-side** (browser WASM, `mrml/web`), per the plan — the
+  builder route carries the WASM; the Worker and hot send path stay WASM-free
+  (un-jinja renders the stored HTML at send). No MRML-on-Workers concern.
+  ⚠ Verify in a browser that the `?url` wasm loads under Vite (the one bit that
+  can't be headless-tested); MRML compile itself is proven in the mjml test via
+  the node build.
+- **Template access**: org admins **and** service-mailbox managers (a `canManage`
+  grant on an `isService` box) — `serviceMailboxManagerOrgIds` + widened guard.
+  Non-admin managers reach `/templates` via a link in the account's keys tab.
+- **SDK name**: `@doota/sdk` (scoped — the bare `doota` is the app package).
 - **Local D1**: apply migrations `0032` + `0033` with `pnpm db:migrate:local`
   (tests run them in-memory automatically).
-- **Access**: template management is currently gated to **org admins**
-  (`assertManageOrg`); widening to service-account managers is a later call (see
-  open questions).
 - **Builder MVP**: 8 core blocks, no nested columns yet.
 
 
@@ -359,4 +362,3 @@ guide in `apps/docs` + changelog; update `apps/docs/.../admin/api-keys.mdx`
 - **Log visibility:** `canManage`-only, or `canSend` members get read-only?
 - **Naming in UI:** "Service account" (dev-friendly) vs "Service mailbox"
   (model-consistent). Affects copy everywhere.
-- **SDK public package name.**

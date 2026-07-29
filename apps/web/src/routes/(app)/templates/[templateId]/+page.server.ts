@@ -3,7 +3,7 @@ import { error, redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import * as mail from "@doota/db/mail.schema";
 import { actorOrgAdminOf } from "$lib/server/provisioning.js";
-import { getTemplate } from "$lib/server/templates.js";
+import { getTemplate, serviceMailboxManagerOrgIds } from "$lib/server/templates.js";
 
 export const load = async ({ locals, params }) => {
   const user = locals.user;
@@ -13,8 +13,11 @@ export const load = async ({ locals, params }) => {
     columns: { orgId: true },
   });
   if (!row) error(404, "Template not found");
-  const orgIds = await actorOrgAdminOf(locals.db, user.id);
-  if (!orgIds.includes(row.orgId)) error(403, "You don't manage this template.");
+  const [admin, svc] = await Promise.all([
+    actorOrgAdminOf(locals.db, user.id),
+    serviceMailboxManagerOrgIds(locals.db, user.id),
+  ]);
+  if (![...admin, ...svc].includes(row.orgId)) error(403, "You don't manage this template.");
   const template = await getTemplate(locals.db, row.orgId, params.templateId);
   if (!template) error(404, "Template not found");
   return { orgId: row.orgId, template };

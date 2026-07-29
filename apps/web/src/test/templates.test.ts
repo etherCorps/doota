@@ -12,6 +12,7 @@ import {
   sensitiveKeysOf,
   slugify,
 } from "$lib/server/templates.js";
+import { builtinMergeData, BUILTIN_NAMES } from "$lib/mjml/variables.js";
 
 const ORG = "org1";
 const ORG2 = "org2";
@@ -92,6 +93,26 @@ describe("templates", () => {
     const b = await createTemplate(db, base);
     expect(a.slug).toBe("welcome-email");
     expect(b.slug).toBe("welcome-email-2");
+  });
+
+  it("fills + renders built-in variables without caller data", () => {
+    const b = builtinMergeData({ fromAddress: "billing@acme.com", fromName: "Billing", recipients: ["ana@x.com", "b@x.com"] });
+    expect(b.recipient).toBe("ana@x.com");
+    expect(b.sender_name).toBe("Billing");
+    expect(b.sender_email).toBe("billing@acme.com");
+    expect(b.year).toMatch(/^\d{4}$/);
+    expect(b.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(BUILTIN_NAMES.has("recipient")).toBe(true);
+
+    // Built-ins win over caller data of the same name; customs pass through.
+    const merged = { recipient: "spoof@x", plan: "Pro", ...b };
+    const out = renderTemplate(
+      { subjectTemplate: "Hi {{ recipient }}", compiledHtml: "<p>{{ sender_name }} · {{ plan }}</p>" },
+      merged,
+    );
+    expect(out.subject).toBe("Hi ana@x.com"); // built-in overrode caller's spoof
+    expect(out.html).toContain("Billing");
+    expect(out.html).toContain("Pro");
   });
 
   it("archived + cross-org templates don't load for send", async () => {
