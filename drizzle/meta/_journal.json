@@ -225,6 +225,20 @@
       "when": 1785254078471,
       "tag": "0031_light_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1785314343678,
+      "tag": "0032_flat_valeria_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1785314766790,
+      "tag": "0033_fuzzy_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

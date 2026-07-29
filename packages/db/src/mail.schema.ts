@@ -758,6 +758,9 @@ export const submission = sqliteTable(
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // The API key that originated this send (null for interactive sends). The
+    // join between the service-account send log and the outbound pipeline.
+    apiKeyId: text("api_key_id").references(() => apiKey.id, { onDelete: "set null" }),
     // Scheduled send; null = send now (still held for the undo window below).
     sendAt: integer("send_at", { mode: "timestamp_ms" }),
     // Cancellation is possible while now < undo_until — the row is the source of
@@ -914,6 +917,124 @@ export const apiKey = sqliteTable(
   (t) => [
     uniqueIndex("api_key_hash_uidx").on(t.keyHash),
     index("api_key_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Send log for API-originated mail (service accounts). Two tiers:
+ *   1. durable metadata — who/when/which key/which template/status/recipients —
+ *      retained long (the audit trail);
+ *   2. a short-TTL, ENCRYPTED `data_cipher` — the template merge payload, often
+ *      PII — purged by the cron sweep after `data_expires_at`, leaving the
+ *      metadata row intact.
+ * Rendered HTML is never stored: reconstruct from template + data while in TTL.
+ * Variables flagged `sensitive` on the template are dropped before storage
+ * (`redacted_keys` records their names). See docs/service-accounts.md.
+ */
+export const sendEvent = sqliteTable(
+  "send_event",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    // The service account this send went out as.
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    // Which key sent it (null if interactive / key later deleted).
+    apiKeyId: text("api_key_id").references(() => apiKey.id, { onDelete: "set null" }),
+    // Link into the outbound pipeline for delivery status.
+    submissionId: text("submission_id").references(() => submission.id, {
+      onDelete: "set null",
+    }),
+    // Template used (Phase 2). Kept as plain text ids — no hard FK so a deleted
+    // template doesn't cascade-wipe the audit log; the version pins what went out.
+    templateId: text("template_id"),
+    templateVersion: integer("template_version"),
+    // Recipients + rendered subject — low-sensitivity audit. JSON string array.
+    toAddresses: text("to_addresses").notNull(),
+    subject: text("subject").default("").notNull(),
+    // queued | sent | bounced | failed — mirrors the submission lifecycle.
+    status: text("status").default("queued").notNull(),
+    // Encrypted merge payload (mail-core crypto envelope). Nulled by the sweep.
+    dataCipher: text("data_cipher"),
+    dataExpiresAt: integer("data_expires_at", { mode: "timestamp_ms" }),
+    // Variable names dropped before storage (flagged sensitive). JSON string array.
+    redactedKeys: text("redacted_keys"),
+    createdAt: now(),
+  },
+  (t) => [
+    index("send_event_mailbox_idx").on(t.mailboxId),
+    index("send_event_org_idx").on(t.orgId),
+    index("send_event_key_idx").on(t.apiKeyId),
+    // The purge sweep scans rows whose payload TTL is due.
+    index("send_event_data_expiry_idx").on(t.dataExpiresAt),
+  ],
+);
+
+/**
+ * Hosted mail templates (docs/service-accounts.md § Templates) — an ORG-scoped
+ * library reusable by any of the org's service accounts. `current_version_id`
+ * points at the live version; edits create a new immutable version so a send's
+ * pinned `template_version` reproduces exactly what went out.
+ */
+export const template = sqliteTable(
+  "template",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Stable id used by the API (`POST /api/send { templateId }`). Unique per org.
+    slug: text("slug").notNull(),
+    // The live version. Plain text (no FK) to avoid a circular table reference.
+    currentVersionId: text("current_version_id"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    createdAt: now(),
+  },
+  (t) => [
+    uniqueIndex("template_org_slug_uidx").on(t.orgId, t.slug),
+    index("template_org_idx").on(t.orgId),
+  ],
+);
+
+/**
+ * Immutable template version snapshot. `subjectTemplate` + `compiledHtml` carry
+ * Jinja `{{ var }}` merge tags (rendered by un-jinja at send). `editorJson` is
+ * the builder's block document (Phase 3), null for API/code-authored templates.
+ * `variablesSchema` is the derived merge-tag list ({ name: { required, sensitive } }).
+ */
+export const templateVersion = sqliteTable(
+  "template_version",
+  {
+    id: id(),
+    templateId: text("template_id")
+      .notNull()
+      .references(() => template.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    subjectTemplate: text("subject_template").notNull(),
+    compiledHtml: text("compiled_html").notNull(),
+    // Builder block document (JSON string), null for code-authored templates.
+    editorJson: text("editor_json"),
+    // Derived merge-tag schema (JSON string), null when unspecified.
+    variablesSchema: text("variables_schema"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: now(),
+  },
+  (t) => [
+    uniqueIndex("template_version_uidx").on(t.templateId, t.version),
+    index("template_version_template_idx").on(t.templateId),
   ],
 );
 
