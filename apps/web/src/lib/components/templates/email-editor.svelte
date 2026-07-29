@@ -78,6 +78,8 @@
 	import MonitorIcon from '@lucide/svelte/icons/monitor';
 	import SmartphoneIcon from '@lucide/svelte/icons/smartphone';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
+	import { page } from '$app/state';
+	import { unsubscribeUrlFor } from '@doota/mail-core/unsubscribe';
 
 	let {
 		orgId,
@@ -430,6 +432,11 @@
 		const vars = tiptapVariables(currentDoc(), subject);
 		const next: Record<string, string> = {};
 		for (const v of vars) next[v] = sampleData[v] ?? SAMPLE_BUILTINS[v] ?? '';
+		// unsubscribe_url is host-derived at send — mirror that in the preview using
+		// this page's origin so the sample link is realistic.
+		if (vars.includes('unsubscribe_url') && !next.unsubscribe_url) {
+			next.unsubscribe_url = unsubscribeUrlFor(page.url.origin, next.recipient || SAMPLE_BUILTINS.recipient);
+		}
 		sampleData = next;
 		showPreview = true;
 		void renderPreview();

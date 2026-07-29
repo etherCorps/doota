@@ -26,9 +26,10 @@ declare global {
      * derived per push from the org's own domain, so there's no subject var. */
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
-    /** Deployment's unsubscribe endpoint (operator-hosted). Filled into templated
-     * sends as the {{ unsubscribe_url }} variable; a `{email}` token is replaced
-     * with the recipient. Absent → the variable renders empty. */
+    /** Optional path/query override for the {{ unsubscribe_url }} template variable
+     * (default "/unsubscribe"). The HOST is taken from the request origin — never
+     * from env — so one worker serving multiple domains links each recipient to
+     * the correct host. May also be an absolute URL for an external system. */
     UNSUBSCRIBE_URL?: string;
   }
 

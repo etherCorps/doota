@@ -16,7 +16,7 @@ import { unsubscribeUrlFor } from "@doota/mail-core/unsubscribe";
  * session — no parallel permission path. If the key is mailbox-scoped, that
  * mailbox is used and any body mailboxId must match.
  */
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, locals, platform, url }) => {
   const presented = bearerFromHeaders(request.headers);
   if (!presented) error(401, "Missing bearer API key");
 
@@ -80,14 +80,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     if (!tmpl) error(404, "Template not found for this account");
     // Built-in variables (recipient, sender, date…) are filled by us and win over
     // caller data of the same name; everything else comes from the caller's `data`.
-    // Unsubscribe link for the primary recipient — from the deployment's
-    // configured UNSUBSCRIBE_URL, exposed as {{ unsubscribe_url }}. Built-ins win
-    // over caller data.
+    // Unsubscribe link for the primary recipient — host from THIS request's
+    // origin (multi-domain safe), path optionally overridden by UNSUBSCRIBE_URL.
+    // Exposed as {{ unsubscribe_url }}; built-ins win over caller data.
     const primary = [...to, ...cc, ...bcc][0];
     const mergeData = {
       ...data,
       ...builtinMergeData({ fromAddress: sender.fromAddress, fromName: sender.fromName, recipients: [...to, ...cc, ...bcc] }),
-      unsubscribe_url: unsubscribeUrlFor(env.UNSUBSCRIBE_URL, primary ?? ""),
+      unsubscribe_url: unsubscribeUrlFor(url.origin, primary ?? "", env.UNSUBSCRIBE_URL),
     };
     const rendered = renderTemplate(tmpl, mergeData);
     subject = rendered.subject;
