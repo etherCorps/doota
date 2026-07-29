@@ -125,6 +125,16 @@ const subject = render(template.subjectTemplate, data);
 
 ### 3.2 Builder — Svelte-native, own the editor, borrow only rendering
 
+> **Shipped as (2026-07-29):** the builder landed as a **Resend-style Tiptap
+> WYSIWYG** (vanilla `@tiptap/core` mounted in Svelte + custom email nodes),
+> **not** the block-palette + `svelte-dnd-action` drag model described below. The
+> core principle held — own the editor, borrow only MJML→HTML compilation (MRML /
+> WASM, client-side) — only the interaction model changed: type on the canvas, a
+> `/` command menu, a grouped insert rail, a right-hand config panel, a **Theme**
+> panel (per-type typography), and a **Preview** (desktop/mobile) with **test
+> send**. `svelte-dnd-action` was dropped. See `email-editor.svelte`,
+> `tiptap-nodes.ts`, `tiptap-mjml.ts`.
+
 We build the drag-and-drop builder **in Svelte** rather than embed a
 ready-made editor. Every off-the-shelf option brings its own runtime or a
 license string: GrapesJS ships its own view stack, `@templatical/editor` is

@@ -24,6 +24,7 @@ the rest are plain vars (`wrangler.jsonc` `vars` or the dashboard, protected by
 | `CRON_SECRET` | ✓ | ✓ | Bearer secret the cron trigger presents to `POST /api/cron` for maintenance sweeps. |
 | `SETUP_TOKEN` | — | ✓ | One-time token that gates the `/setup` genesis wizard. Leave unset to disable the web wizard (use the CLI instead). |
 | `LOG_LEVEL` | — | — | Mail-pipeline log level: `debug` \| `info` \| `warn` \| `error`. Defaults to `info`. |
+| `UNSUBSCRIBE_URL` | — | — | Path/query for the `{{ unsubscribe_url }}` template variable (default `/unsubscribe`). The host is taken from the **request origin**, never from here, so one deployment serving multiple domains links each recipient to the correct host. Set an absolute URL to point at an external unsubscribe system. |
 | `DATABASE_URL` | dev only | — | Local Drizzle target (`file:local.db`). Production uses the D1 binding. |
 
 ## Mail Workers (`doota-mail-inbound`, `doota-mail-jobs`)

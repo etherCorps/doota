@@ -23,7 +23,9 @@ tabs. No admin dashboard required.
 
 ## Mint a key
 
-From the service account's **API keys** tab, choose **New key**. A key:
+From the service account's **API keys** tab, choose **New key**. Give it a
+**name** (required) — name it after where it runs (`CI deploy`, `billing worker`)
+so you can recognise it in the list later. A key:
 
 - Is presented as a bearer token prefixed `dk_…` — **shown once** at creation, so
   copy it immediately. Only a hash is stored; it can never be shown again.
@@ -120,18 +122,36 @@ Reusing an `idempotencyKey` returns the original submission with
 ## Templates
 
 Build reusable emails once, send them with data. From **Templates** (sidebar),
-create a template in the **drag-and-drop editor** — headings, text, buttons,
-images, lists, quotes, two-column rows, social links, a **hero** (full-width
-**background image** with heading + button), dividers, spacers, and raw-HTML
-blocks. Image and hero blocks accept a URL or an **upload** (PNG/JPEG/GIF/WebP,
-2 MB max — served from a public, cached URL so recipients' clients can load it).
-The **Settings** panel (gear) sets a body **background colour** and, for advanced
-cases, **custom CSS**. Every block also has its own **Custom CSS** field, and the
-HTML block and CSS fields are a full code editor (**CodeMirror**) with syntax
-highlighting, **autocomplete**, and bracket matching. (Per-block and global CSS
-compile to an `mj-style` block — note many email clients ignore `<style>`, so
-prefer the block options where you can.) Put `{{ variable }}` tags anywhere for
-merge data; the preview updates live as you type.
+create a template in the **WYSIWYG editor** — write directly on the email canvas,
+press **`/`** for a command menu, or use the floating **insert** rail (grouped
+**Text · Media · Layout · Variables**). Blocks include headings (**Title /
+Subtitle / Heading**), text and lists, **buttons**, **images**, **2–4 column**
+rows, a **hero** (full-width background image with heading + button), **social**
+links, a **footer** (address + unsubscribe line), dividers, spacers, and
+raw-**HTML** blocks. Image and hero blocks accept a URL or an **upload**
+(PNG/JPEG/GIF/WebP, 2 MB max — served from a public, cached URL so recipients'
+clients can load it).
+
+Select any block to style it in the right panel: buttons take a **fill / text
+colour / size / radius / full-width**, images a **width + alignment**, the hero a
+**text colour + height**, and every block a **background / padding / border**.
+
+The **Theme** panel sets default typography per text type (**Text / Title /
+Subtitle / Heading** → colour, size, weight, line-height) so the whole email stays
+consistent without touching each block. **Page style** sets the body **background
+colour** and **width**; **Global CSS** and each block's own **Custom CSS** are a
+full code editor (**CodeMirror**) with highlighting, **autocomplete**, and bracket
+matching. (CSS compiles to an `mj-style` block — many email clients ignore
+`<style>`, so prefer the block controls where you can.)
+
+Put `{{ variable }}` tags anywhere for merge data. Hit **Preview** (eye icon) to
+render the email with sample values — toggle **Desktop / Mobile**, and **Send a
+test** to your own inbox to check it end-to-end before going live.
+
+<Aside type="note">
+  The builder needs a desktop-sized screen — on a phone it shows a "build on a
+  bigger screen" notice. You can still preview and send tests from a computer.
+</Aside>
 
 Under the hood the builder is Svelte-native and open-source: blocks compile to
 [MJML](https://mjml.io) via MRML (WebAssembly) into cross-client HTML, and merge
@@ -152,6 +172,7 @@ Two kinds, both written as `{{ name }}`:
   | `{{ sender_email }}` | the sending mailbox address |
   | `{{ year }}` | current year |
   | `{{ date }}` | current date (`YYYY-MM-DD`) |
+  | `{{ unsubscribe_url }}` | the recipient's unsubscribe link (host taken from the sending domain; path from `UNSUBSCRIBE_URL`, default `/unsubscribe`) |
 
 - **Yours** — any other `{{ name }}` you use. Supply them in the API `data`
   object; missing values render empty. The builder's **Variables** panel lists
