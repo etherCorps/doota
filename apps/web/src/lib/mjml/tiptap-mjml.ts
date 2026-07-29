@@ -169,11 +169,13 @@ function block(node: TiptapNode): string {
     return `<mj-section${ss}><mj-column><mj-social mode="horizontal">${els}</mj-social></mj-column></mj-section>`;
   }
   if (node.type === "hero") {
-    const sub = a.text ? `<mj-text align="center" color="#ffffff" font-size="15px">${esc(String(a.text))}</mj-text>` : "";
+    const color = attr(String(a.textColor ?? "#ffffff"));
+    const height = Number(a.height ?? 300);
+    const sub = a.text ? `<mj-text align="center" color="${color}" font-size="15px">${esc(String(a.text))}</mj-text>` : "";
     const btn = a.buttonText
       ? `<mj-button href="${attr(String(a.buttonHref ?? "#"))}">${esc(String(a.buttonText))}</mj-button>`
       : "";
-    return `<mj-hero mode="fixed-height" height="300px" background-url="${attr(String(a.src ?? ""))}" background-color="#222831" background-position="center center" padding="60px 24px"><mj-text align="center" color="#ffffff" font-size="26px" font-weight="700">${esc(String(a.heading ?? ""))}</mj-text>${sub}${btn}</mj-hero>`;
+    return `<mj-hero mode="fixed-height" height="${height}px" background-url="${attr(String(a.src ?? ""))}" background-color="#222831" background-position="center center" padding="60px 24px"><mj-text align="center" color="${color}" font-size="26px" font-weight="700">${esc(String(a.heading ?? ""))}</mj-text>${sub}${btn}</mj-hero>`;
   }
   const inner = blockInner(node);
   return inner ? `<mj-section${ss}><mj-column>${inner}</mj-column></mj-section>` : "";

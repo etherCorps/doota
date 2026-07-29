@@ -163,6 +163,14 @@ describe("tiptap → mjml", () => {
     expect(html).toContain("{{ unsubscribe_url }}");
   });
 
+  it("serializes hero text color + height", () => {
+    const d: TiptapDoc = { type: "doc", content: [{ type: "hero", attrs: { heading: "Hi", textColor: "#111827", height: 420 } }] };
+    const mjml = tiptapToMjml(d);
+    expect(mjml).toContain('height="420px"');
+    expect(mjml).toContain('color="#111827"');
+    expect(compile(mjml)).toContain("Hi");
+  });
+
   it("serializes a variable pill inline + a two-column layout", () => {
     const d: TiptapDoc = {
       type: "doc",

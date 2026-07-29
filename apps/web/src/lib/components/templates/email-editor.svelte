@@ -633,6 +633,8 @@
 							<Input value={String(sel.attrs.text ?? '')} oninput={(e) => setAttr('text', e.currentTarget.value)} placeholder="Subtext" />
 							<Input value={String(sel.attrs.buttonText ?? '')} oninput={(e) => setAttr('buttonText', e.currentTarget.value)} placeholder="Button label" />
 							<Input value={String(sel.attrs.buttonHref ?? '')} oninput={(e) => setAttr('buttonHref', e.currentTarget.value)} placeholder="Button URL" />
+							<label class="flex items-center justify-between gap-2"><span class="text-muted-foreground text-xs">Text color</span><input type="color" value={String(sel.attrs.textColor ?? '#ffffff')} oninput={(e) => setAttr('textColor', e.currentTarget.value)} class="border-input size-7 cursor-pointer rounded border p-0.5" aria-label="Hero text color" /></label>
+							<label class="flex items-center justify-between gap-2"><span class="text-muted-foreground text-xs">Height</span><span class="flex items-center gap-1"><Input type="number" value={Number(sel.attrs.height ?? 300)} oninput={(e) => setAttr('height', Number(e.currentTarget.value) || 300)} class="h-7 w-20" /><span class="text-muted-foreground text-xs">px</span></span></label>
 						{:else if sel.type === 'spacer'}
 							<label class="flex items-center gap-2"><span class="text-muted-foreground text-xs">Height</span><Input type="number" value={Number(sel.attrs.height ?? 24)} oninput={(e) => setAttr('height', Number(e.currentTarget.value))} class="h-8 w-24" /><span class="text-muted-foreground text-xs">px</span></label>
 						{:else if sel.type === 'variable'}

@@ -110,11 +110,11 @@ export const HeroNode = Node.create({
 	atom: true,
 	selectable: true,
 	draggable: true,
-	addAttributes: () => ({ src: { default: '' }, heading: { default: 'Big headline' }, text: { default: '' }, buttonText: { default: '' }, buttonHref: { default: 'https://' }, ...styleAttrs() }),
+	addAttributes: () => ({ src: { default: '' }, heading: { default: 'Big headline' }, text: { default: '' }, buttonText: { default: '' }, buttonHref: { default: 'https://' }, textColor: { default: '#ffffff' }, height: { default: 300 }, ...styleAttrs() }),
 	parseHTML: () => [{ tag: 'div[data-email-hero]' }],
 	renderHTML: ({ node }) => [
 		'div',
-		{ 'data-email-hero': '', class: 'em-block em-hero', style: previewStyle(node.attrs, node.attrs.src ? `background-image:url(${node.attrs.src})` : '') },
+		{ 'data-email-hero': '', class: 'em-block em-hero', style: previewStyle(node.attrs, `${node.attrs.src ? `background-image:url(${node.attrs.src});` : ''}color:${node.attrs.textColor || '#ffffff'};min-height:${Number(node.attrs.height) || 300}px`) },
 		['div', { class: 'em-hero-h' }, node.attrs.heading || 'Hero'],
 		...(node.attrs.text ? [['div', { class: 'em-hero-t' }, node.attrs.text]] : []),
 		...(node.attrs.buttonText ? [['div', { class: 'em-hero-b' }, node.attrs.buttonText]] : [])
