@@ -39,8 +39,7 @@
 	import { SlashCommand, type SlashItem } from '$lib/mjml/slash-command';
 	import { tiptapToMjml, tiptapVariables, type TiptapDoc, type PageSettings } from '$lib/mjml/tiptap-mjml';
 	import { compileMjml } from '$lib/mjml/compile.client';
-	import { variablesSchemaJson } from '$lib/mjml/blocks';
-	import { BUILTIN_VARIABLES } from '$lib/mjml/variables';
+	import { BUILTIN_VARIABLES, variablesSchemaJson } from '$lib/mjml/variables';
 	import { opfsWrite, opfsRead, opfsDelete } from '$lib/client/opfs-cache';
 	import { createOrgTemplate, updateOrgTemplate } from '$lib/rpc/template.remote';
 	import PencilIcon from '@lucide/svelte/icons/pencil';

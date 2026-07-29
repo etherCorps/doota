@@ -20,6 +20,14 @@ export const BUILTIN_VARIABLES: BuiltinVariable[] = [
 /** Reserved built-in names — used to split provided vs custom in the builder. */
 export const BUILTIN_NAMES: ReadonlySet<string> = new Set(BUILTIN_VARIABLES.map((v) => v.name));
 
+/** Build a template's variablesSchema JSON from names + a caller-supplied sensitive set. */
+export function variablesSchemaJson(names: string[], sensitive: string[] = []): string {
+  const set = new Set(sensitive);
+  const schema: Record<string, { sensitive?: boolean }> = {};
+  for (const n of names) schema[n] = set.has(n) ? { sensitive: true } : {};
+  return JSON.stringify(schema);
+}
+
 /** Fill the built-in values for a send. These override caller `data` of the same name. */
 export function builtinMergeData(opts: {
   fromAddress: string;
