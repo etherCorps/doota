@@ -185,6 +185,28 @@ describe("tiptap → mjml", () => {
     expect(compile(mjml)).toContain("body");
   });
 
+  it("groups consecutive flow blocks into one section, breaks out styled/structural ones", () => {
+    const d: TiptapDoc = {
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "T" }] },
+        { type: "paragraph", content: [{ type: "text", text: "a" }] },
+        { type: "paragraph", content: [{ type: "text", text: "b" }] }, // 3 flow blocks → 1 section
+        { type: "button", attrs: { text: "Go", href: "https://x", bg: "#eee" } }, // own container style → own section
+        { type: "paragraph", content: [{ type: "text", text: "c" }] }, // new flow group → 1 section
+        { type: "hero", attrs: { heading: "H" } }, // structural → own section
+      ],
+    };
+    const mjml = tiptapToMjml(d);
+    // 3 mj-sections: grouped flow (heading+a+b) · styled button · flow (c).
+    expect((mjml.match(/<mj-section/g) ?? []).length).toBe(3);
+    expect(mjml).toContain("<mj-hero"); // hero breaks out (its own mj-hero, not a section)
+    // The heading + two paragraphs live in ONE column together.
+    expect(mjml).toContain('<mj-column><mj-text font-size="28px" font-weight="700">T</mj-text><mj-text>a</mj-text><mj-text>b</mj-text></mj-column>');
+    expect(mjml).toContain('background-color="#eee"'); // button broke out with its style
+    expect(compile(mjml)).toContain("Go");
+  });
+
   it("serializes hero text color + height", () => {
     const d: TiptapDoc = { type: "doc", content: [{ type: "hero", attrs: { heading: "Hi", textColor: "#111827", height: 420 } }] };
     const mjml = tiptapToMjml(d);

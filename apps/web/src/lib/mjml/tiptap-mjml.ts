@@ -205,10 +205,41 @@ function block(node: TiptapNode, theme: Theme = {}): string {
   return inner ? `<mj-section${ss}><mj-column>${inner}</mj-column></mj-section>` : "";
 }
 
+/** Blocks that own a section (special layout) — never merged with siblings. */
+function isStructural(type: string): boolean {
+  return type === "columns" || type === "hero" || type === "social";
+}
+/** A block carries its own container style → it must be its own section so the
+ * bg/padding/border apply to it alone, not to grouped siblings. */
+function hasSectionStyle(a: Record<string, unknown>): boolean {
+  return !!(a.bg || (a.pad != null && a.pad !== "") || a.borderWidth || a.radius);
+}
+
 /** Serialize a Tiptap doc + page settings to an MJML string. */
 export function tiptapToMjml(doc: TiptapDoc, settings: PageSettings = {}): string {
   const theme = settings.theme ?? {};
-  const sections = (doc.content ?? []).map((n) => block(n, theme)).join("");
+  // Group consecutive "flow" blocks (text/heading/list/button/image/…) into ONE
+  // mj-section so they stack with only element padding — the Resend / idiomatic-
+  // MJML rhythm. A structural block (columns/hero/social) or a block with its own
+  // background/border/padding breaks out into its own section.
+  const out: string[] = [];
+  let group: TiptapNode[] = [];
+  const flush = () => {
+    if (!group.length) return;
+    const inner = group.map((n) => blockInner(n, theme)).filter(Boolean).join("");
+    if (inner) out.push(`<mj-section><mj-column>${inner}</mj-column></mj-section>`);
+    group = [];
+  };
+  for (const n of doc.content ?? []) {
+    if (isStructural(n.type) || hasSectionStyle(n.attrs ?? {})) {
+      flush();
+      out.push(block(n, theme));
+    } else {
+      group.push(n);
+    }
+  }
+  flush();
+  const sections = out.join("");
   const headParts: string[] = [];
   if (settings.preview) headParts.push(`<mj-preview>${esc(settings.preview)}</mj-preview>`);
   const css = settings.css?.trim().replaceAll(/<\/style>/gi, "");
