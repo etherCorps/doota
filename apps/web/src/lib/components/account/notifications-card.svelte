@@ -11,7 +11,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
-	import { pushSupported, isPushSubscribed, unsubscribeFromPush } from '$lib/client/push.js';
+	import { pushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush } from '$lib/client/push.js';
 
 	const supported = pushSupported();
 	let subscribed = $state(false);
@@ -22,6 +22,16 @@
 
 	onMount(async () => {
 		subscribed = await isPushSubscribed();
+		// Permission already granted but no live subscription on THIS device (new
+		// device, the push endpoint rotated, or a prior enable that never persisted):
+		// reconcile silently so the toggle reflects reality instead of showing off.
+		if (!subscribed && supported && notifPerm.current === 'granted') {
+			try {
+				subscribed = (await subscribeToPush()) === 'ok';
+			} catch {
+				/* leave off — the toggle still works */
+			}
+		}
 	});
 
 	async function toggle(next: boolean) {
@@ -43,6 +53,11 @@
 				subscribed = false;
 				toast.success('Notifications off.');
 			}
+		} catch (e) {
+			// Belt to the internal catches — never let a rejected permission/RPC call
+			// escape as an unhandled error; surface it and keep the toggle usable.
+			console.error('notifications toggle failed', e);
+			toast.error('Something went wrong updating notifications.');
 		} finally {
 			busy = false;
 		}

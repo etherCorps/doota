@@ -60,9 +60,9 @@ export type PushEnableResult = 'ok' | 'unsupported' | 'denied' | 'no-vapid' | 'f
 export async function subscribeToPush(): Promise<PushEnableResult> {
 	if (!supported()) return 'unsupported';
 	if (Notification.permission !== 'granted') return 'denied';
-	const vapid = await pushPublicKey();
-	if (!vapid) return 'no-vapid'; // server has no VAPID key configured
 	try {
+		const vapid = await pushPublicKey();
+		if (!vapid) return 'no-vapid'; // server has no VAPID key configured
 		const reg = await navigator.serviceWorker.ready;
 		const sub =
 			(await reg.pushManager.getSubscription()) ??
