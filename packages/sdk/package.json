@@ -1,14 +1,57 @@
 {
   "name": "@doota/sdk",
-  "version": "0.0.1",
-  "description": "Resend-shaped client for the Doota send API.",
+  "version": "0.1.0",
+  "description": "Official client for the Doota email API — send transactional and templated mail with a bearer key.",
+  "keywords": [
+    "email",
+    "transactional-email",
+    "templated-email",
+    "doota",
+    "mail",
+    "api-client",
+    "sdk"
+  ],
+  "license": "Apache-2.0",
+  "author": "etherCorps",
+  "homepage": "https://github.com/etherCorps/doota/tree/main/packages/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/etherCorps/doota.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/etherCorps/doota/issues"
+  },
   "type": "module",
-  "//": "Publishable client SDK for POST /api/send (bearer dk_ keys). Source TS consumed directly in-repo; add a tsup/tsc build before publishing under a public name (see docs/service-accounts.md § SDK).",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "//": "Scoped @doota/sdk — the bare name `doota` is the app package. In-repo (workspace) consumers resolve `exports` → src TS directly; on publish pnpm applies `publishConfig` so the tarball ships built dist + types. Run `pnpm build` (prepublishOnly does this).",
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "check": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   },
   "devDependencies": {
     "typescript": "^5.6.2"
