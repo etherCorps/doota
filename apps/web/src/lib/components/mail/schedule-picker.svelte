@@ -1,9 +1,10 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { Calendar } from '$lib/components/ui/calendar/index.js';
+	import DateTimeFields from './date-time-fields.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 	import { getLocalTimeZone, parseDate, today, type DateValue } from '@internationalized/date';
 	import { parseWhen, toLocalDatetime } from '$lib/utils/parse-when';
 	import ClockIcon from '@lucide/svelte/icons/clock';
@@ -17,10 +18,13 @@
 		open = $bindable(false)
 	}: { value?: string; open?: boolean } = $props();
 
-	const pad = (n: number) => String(n).padStart(2, '0');
-
 	let nlp = $state('');
-	let scroller = $state<HTMLElement>();
+	// Mobile: don't steal focus on open (keyboard would shove the picker off
+	// screen), and hide the calendar/time while the phrase box is focused so the
+	// popover fits above the keyboard. Tap away → keyboard closes → picker back.
+	const isMobile = new IsMobile();
+	let nlpFocused = $state(false);
+	const showPicker = $derived(!(isMobile.current && nlpFocused));
 
 	const cal = $derived.by<DateValue | undefined>(() => {
 		if (!value) return undefined;
@@ -43,22 +47,7 @@
 		value = toLocalDatetime(d);
 	}
 
-	// Half-hour slots 00:00 … 23:30 for the scroll column; odd minutes go through
-	// the phrase box. Past slots are disabled when the picked day is today.
-	const SLOTS = Array.from({ length: 48 }, (_, i) => `${pad(Math.floor(i / 2))}:${i % 2 ? '30' : '00'}`);
-	const fmtSlot = (s: string) =>
-		new Date(`2000-01-01T${s}:00`).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-
-	const minDay = today(getLocalTimeZone());
-	const isToday = $derived(!!cal && cal.toString() === minDay.toString());
 	const isPast = $derived(!!value && new Date(value).getTime() < Date.now());
-	function slotPast(s: string): boolean {
-		if (!isToday) return false;
-		const [h, m] = s.split(':').map(Number);
-		const d = new Date();
-		d.setHours(h, m, 0, 0);
-		return d.getTime() < Date.now();
-	}
 
 	// Live preview of the typed phrase; committed on Enter.
 	const nlpPreview = $derived(nlp.trim() ? parseWhen(nlp) : null);
@@ -74,13 +63,6 @@
 			applyNlp();
 		}
 	}
-
-	// Bring the selected slot into view whenever the popover opens.
-	$effect(() => {
-		if (open && scroller) {
-			scroller.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'center' });
-		}
-	});
 
 	const label = $derived(
 		value
@@ -112,7 +94,13 @@
 			</button>
 		{/snippet}
 	</Popover.Trigger>
-	<Popover.Content align="end" class="w-auto max-w-[calc(100vw-1rem)] p-0">
+	<Popover.Content
+		align="end"
+		class="w-auto max-w-[calc(100vw-1rem)] p-0"
+		onOpenAutoFocus={(e) => {
+			if (isMobile.current) e.preventDefault();
+		}}
+	>
 		<!-- Natural-language quick entry -->
 		<div class="border-b p-2">
 			<div class="relative">
@@ -122,6 +110,8 @@
 					placeholder="Type a time — “tomorrow 9am”"
 					bind:value={nlp}
 					onkeydown={onNlpKey}
+					onfocus={() => (nlpFocused = true)}
+					onblur={() => (nlpFocused = false)}
 				/>
 			</div>
 			{#if nlp.trim()}
@@ -135,30 +125,9 @@
 			{/if}
 		</div>
 
-		<!-- Date + time slots: side column ≥ sm; stacked under the calendar on
-		     narrow phones (calendar + 112px column won't fit under ~390px). -->
-		<div class="flex flex-col sm:flex-row sm:items-start">
-			<Calendar type="single" value={cal} onValueChange={setDate} minValue={minDay} class="p-2" />
-			<div class="flex w-full flex-col border-t sm:w-28 sm:border-t-0 sm:border-l">
-				<div class="text-muted-foreground border-b px-3 py-2 text-xs font-medium">Time</div>
-				<div bind:this={scroller} class="scrollbar-thin h-32 space-y-0.5 overflow-y-auto p-2 sm:h-64">
-					{#each SLOTS as s (s)}
-						{@const active = s === time}
-						<button
-							type="button"
-							data-active={active}
-							disabled={slotPast(s)}
-							onclick={() => setTime(s)}
-							class="focus-visible:ring-ring/50 w-full rounded-md px-2 py-1.5 text-left text-xs tabular-nums transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 {active
-								? 'bg-accent text-accent-foreground font-medium'
-								: 'hover:bg-muted'}"
-						>
-							{fmtSlot(s)}
-						</button>
-					{/each}
-				</div>
-			</div>
-		</div>
+		{#if showPicker}
+			<DateTimeFields date={cal} time={time} {open} onDate={setDate} onTime={setTime} />
+		{/if}
 
 		<div class="flex items-center gap-2 border-t p-2">
 			{#if isPast}

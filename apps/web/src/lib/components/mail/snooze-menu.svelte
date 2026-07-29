@@ -6,7 +6,9 @@
 	// the row out. When already snoozed, offers Unsnooze instead of a wake time.
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import { Calendar } from '$lib/components/ui/calendar/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import DateTimeFields from './date-time-fields.svelte';
+	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 	import { getLocalTimeZone, today, type DateValue } from '@internationalized/date';
 	import { toast } from 'svelte-sonner';
 	import { parseWhen } from '$lib/utils/parse-when';
@@ -31,19 +33,42 @@
 		triggerClass?: string;
 	} = $props();
 
-	const minDay = today(getLocalTimeZone());
-	// A picked calendar day snoozes to 9am local that morning (the sensible default;
-	// the phrase box handles specific times).
-	function pickDate(v: DateValue | undefined) {
-		if (!v) return;
-		const d = v.toDate(getLocalTimeZone());
-		d.setHours(9, 0, 0, 0);
-		void snooze(d);
+	// Manual date + time — the calendar + slot scroller live in DateTimeFields.
+	const pad = (n: number) => String(n).padStart(2, '0');
+	// Nearest upcoming half-hour (rounds now UP) — the time selector opens on a
+	// sensible default instead of a fixed 9am.
+	function nearestSlot(): string {
+		const now = new Date();
+		const h = now.getHours();
+		return now.getMinutes() < 30 ? `${pad(h)}:30` : `${pad((h + 1) % 24)}:00`;
+	}
+	// Default to today + the nearest slot so the picker opens on a valid, one-tap
+	// future time (past slots for today are disabled below).
+	let calDate = $state<DateValue | undefined>(today(getLocalTimeZone()));
+	let calTime = $state(nearestSlot());
+	// The composed date+time; null until a day is picked. Drives the Snooze button
+	// so a past selection can't be committed (belt to the calendar/slot disabling).
+	const customUntil = $derived.by<Date | null>(() => {
+		if (!calDate) return null;
+		const d = calDate.toDate(getLocalTimeZone());
+		const [h, m] = calTime.split(':').map(Number);
+		d.setHours(h, m, 0, 0);
+		return d;
+	});
+	const customPast = $derived(!!customUntil && customUntil.getTime() <= Date.now());
+	function snoozeCustom() {
+		if (customUntil) void snooze(customUntil);
 	}
 
 	let open = $state(false);
 	let busy = $state(false);
 	let nlp = $state('');
+	// Mobile: don't steal focus on open (keyboard would shove the picker off
+	// screen), and while the phrase box IS focused hide the tall calendar/time so
+	// the popover fits above the keyboard. Tap away → keyboard closes → picker back.
+	const isMobile = new IsMobile();
+	let nlpFocused = $state(false);
+	const showPicker = $derived(!(isMobile.current && nlpFocused));
 
 	// Presets resolve through parseWhen so wording + rules stay in one place.
 	const PRESETS = [
@@ -117,7 +142,13 @@
 			</button>
 		{/snippet}
 	</Popover.Trigger>
-	<Popover.Content align="end" class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0">
+	<Popover.Content
+		align="end"
+		class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0"
+		onOpenAutoFocus={(e) => {
+			if (isMobile.current) e.preventDefault();
+		}}
+	>
 		{#if snoozed}
 			<button
 				type="button"
@@ -131,7 +162,14 @@
 			<div class="border-b p-2">
 				<div class="relative">
 					<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
-					<Input class="h-8 pl-7 text-xs" placeholder="Type a time — “2 days from now”" bind:value={nlp} onkeydown={onNlpKey} />
+					<Input
+						class="h-8 pl-7 text-xs"
+						placeholder="Type a time — “2 days from now”"
+						bind:value={nlp}
+						onkeydown={onNlpKey}
+						onfocus={() => (nlpFocused = true)}
+						onblur={() => (nlpFocused = false)}
+					/>
 				</div>
 				{#if nlp.trim()}
 					<p class="text-muted-foreground mt-1 px-1 text-[11px]">
@@ -155,11 +193,27 @@
 					</li>
 				{/each}
 			</ul>
-			<!-- Manual date — snoozes to 9am on the picked morning. -->
+			<!-- Manual date + time — hidden while the phrase box is focused on mobile
+			     so the on-screen keyboard doesn't shove it off screen. -->
+			{#if showPicker}
 			<div class="border-t">
-				<p class="text-muted-foreground px-3 pt-2 text-[11px]">Pick a date (9:00am)</p>
-				<Calendar type="single" minValue={minDay} onValueChange={pickDate} class="p-2" />
+				<DateTimeFields
+					date={calDate}
+					time={calTime}
+					{open}
+					onDate={(v) => (calDate = v)}
+					onTime={(t) => (calTime = t)}
+				/>
+				<div class="flex items-center gap-2 border-t p-2">
+					{#if customPast}
+						<p class="text-destructive text-[11px] leading-tight">That time has passed.</p>
+					{:else}
+						<p class="text-muted-foreground text-[11px] leading-tight">Wakes within ~5&nbsp;min of the set time.</p>
+					{/if}
+					<Button size="sm" class="ml-auto h-8" disabled={!customUntil || customPast || busy} onclick={snoozeCustom}>Snooze</Button>
+				</div>
 			</div>
+			{/if}
 		{/if}
 	</Popover.Content>
 </Popover.Root>
