@@ -110,11 +110,17 @@
 
 	async function run(userId: string, fn: () => Promise<unknown>) {
 		busyUser = userId;
+		const req = fn();
+		toast.promise(req, {
+			loading: 'Updating access…',
+			success: 'Access updated.',
+			error: (err) => (err instanceof Error ? err.message : 'Could not update access.')
+		});
 		try {
-			await fn();
+			await req;
 			await invalidateAll();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update access.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busyUser = null;
 		}
@@ -154,24 +160,35 @@
 
 	async function createKey() {
 		creatingKey = true;
+		const req = createServiceKey({ mailboxId: mb.id, name: keyName || undefined });
+		toast.promise(req, {
+			loading: 'Creating key…',
+			success: 'Service key created.',
+			error: (err) => (err instanceof Error ? err.message : 'Could not create the key.')
+		});
 		try {
-			const res = await createServiceKey({ mailboxId: mb.id, name: keyName || undefined });
+			const res = await req;
 			newSecret = res.key;
 			keyName = '';
 			await keysQ?.refresh();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create the key.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			creatingKey = false;
 		}
 	}
 	async function revokeKey(keyId: string) {
+		const req = revokeServiceKey({ keyId });
+		toast.promise(req, {
+			loading: 'Revoking key…',
+			success: 'Key revoked.',
+			error: (err) => (err instanceof Error ? err.message : 'Could not revoke the key.')
+		});
 		try {
-			await revokeServiceKey({ keyId });
-			toast.success('Key revoked.');
+			await req;
 			await keysQ?.refresh();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not revoke the key.');
+			void err; // error surfaced by toast.promise
 		}
 	}
 	async function copySecret(text: string) {

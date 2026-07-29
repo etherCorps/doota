@@ -475,7 +475,7 @@
 		const sendAt = scheduleAt ? new Date(scheduleAt).getTime() : null;
 		// One toast for the whole send, morphing on a single id: Sending… → Queued…
 		// → sent (or Scheduling… → scheduled), or an error.
-		const t = sendToast(sendAt ? 'Scheduling…' : 'Sending…');
+		const sendProgress = sendToast(sendAt ? 'Scheduling…' : 'Sending…');
 		// Close the drawer IMMEDIATELY (state survives until reset() below), then
 		// persist + send in the background — Gmail/Superhuman-style optimistic close.
 		open = false;
@@ -487,7 +487,7 @@
 			// No draft persisted (empty / create failed) — reopen so nothing is lost.
 			phase = 'editing';
 			open = true;
-			t.dismiss();
+			sendProgress.dismiss();
 			return;
 		}
 		const scheduled = sendAt != null && sendAt > Date.now() + UNDO_SECONDS * 1000;
@@ -503,23 +503,23 @@
 		reset();
 		open = false;
 		try {
-			if (!scheduled) t.queued(); // draft persisted; delivery request now in flight
+			if (!scheduled) sendProgress.queued(); // draft persisted; delivery request now in flight
 			const res = await sendDraftById({ draftId: id, sendAt, undoSeconds: UNDO_SECONDS });
 			if (scheduled) {
 				// Scheduled sends have no undo countdown — they sit in the Scheduled folder.
-				t.note(`Scheduled for ${whenLabel}`, {
+				sendProgress.note(`Scheduled for ${whenLabel}`, {
 					label: 'View',
 					onClick: () => goto('/app?folder=scheduled')
 				});
 			} else {
-				t.sent(
+				sendProgress.sent(
 					'Message sent',
 					{ label: 'Undo', onClick: () => undoSend(res.submissionId) },
 					UNDO_SECONDS * 1000
 				);
 			}
 		} catch {
-			t.fail('Send failed — your draft is saved in Drafts.');
+			sendProgress.fail('Send failed — your draft is saved in Drafts.');
 		}
 	}
 

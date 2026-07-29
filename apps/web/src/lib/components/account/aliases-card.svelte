@@ -15,12 +15,17 @@
 
 	async function generate(mailboxId: string) {
 		busy = mailboxId;
+		const req = generateAlias({ mailboxId });
+		toast.promise(req, {
+			loading: 'Creating alias…',
+			success: (res) => `Created ${res.address}`,
+			error: (err) => (err instanceof Error ? err.message : 'Could not create an alias.')
+		});
 		try {
-			const res = await generateAlias({ mailboxId });
-			toast.success(`Created ${res.address}`);
+			await req;
 			await listAliases(mailboxId).refresh();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create an alias.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busy = null;
 		}
@@ -40,12 +45,17 @@
 
 	async function remove(mailboxId: string, aliasId: string) {
 		busy = aliasId;
+		const req = deleteAlias(aliasId);
+		toast.promise(req, {
+			loading: 'Deleting alias…',
+			success: 'Alias deleted.',
+			error: (err) => (err instanceof Error ? err.message : 'Could not delete the alias.')
+		});
 		try {
-			await deleteAlias(aliasId);
-			toast.success('Alias deleted.');
+			await req;
 			await listAliases(mailboxId).refresh();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not delete the alias.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busy = null;
 		}

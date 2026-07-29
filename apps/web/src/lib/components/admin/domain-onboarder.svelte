@@ -42,24 +42,29 @@
 		if (!d) return;
 		busy = d;
 		nameservers = null;
+		// Reject on a logical failure (res.success === false) so the promise toast's
+		// error branch fires — otherwise a rejected-by-payload result reads as success.
+		const req = onboardDomain({ domain: d, sendingSubdomain }).then((res) => {
+			if (!res.success) throw new Error(res.message ?? 'Could not onboard domain.');
+			return res;
+		});
+		toast.promise(req, {
+			loading: `Onboarding ${d}…`,
+			success: (res) =>
+				res.status === 'active'
+					? `${d} is active — mail is wired.`
+					: `${d} added. Delegate the nameservers, then Refresh in its DNS tab.`,
+			error: (e) => (e instanceof Error ? e.message : 'Onboarding failed.')
+		});
 		try {
-			const res = await onboardDomain({ domain: d, sendingSubdomain });
-			if (!res.success) {
-				toast.error(res.message ?? 'Could not onboard domain.');
-				return;
-			}
-			if (res.status === 'active') {
-				toast.success(`${d} is active — mail is wired.`);
-			} else {
-				toast.success(`${d} added. Delegate the nameservers, then Refresh in its DNS tab.`);
-				if (res.nameServers?.length) nameservers = { domain: d, ns: res.nameServers };
-			}
+			const res = await req;
+			if (res.status !== 'active' && res.nameServers?.length) nameservers = { domain: d, ns: res.nameServers };
 			subFor = null;
 			subValue = '';
 			await loadZones();
 			onChange?.();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Onboarding failed.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busy = null;
 		}
@@ -67,17 +72,21 @@
 
 	async function link(domain: string) {
 		busy = domain;
+		const req = linkDomain(domain).then((res) => {
+			if (!res.success) throw new Error(res.message ?? 'Could not link domain.');
+			return res;
+		});
+		toast.promise(req, {
+			loading: `Linking ${domain}…`,
+			success: `${domain} linked — synced from Cloudflare.`,
+			error: (e) => (e instanceof Error ? e.message : 'Link failed.')
+		});
 		try {
-			const res = await linkDomain(domain);
-			if (!res.success) {
-				toast.error(res.message ?? 'Could not link domain.');
-				return;
-			}
-			toast.success(`${domain} linked — synced from Cloudflare.`);
+			await req;
 			await loadZones();
 			onChange?.();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Link failed.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busy = null;
 		}

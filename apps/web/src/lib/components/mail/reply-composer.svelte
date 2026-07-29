@@ -349,7 +349,7 @@
 		sending = true;
 		// One toast that carries the whole send: Sending… → Queued… → sent·Undo (or
 		// an error), morphing on a single id so it reads as one acknowledgement.
-		const t = sendToast();
+		const sendProgress = sendToast();
 		// Fold the docked composer IMMEDIATELY — the editor stays mounted under the
 		// grid-collapse, so flushSave below still reads the body. This is what makes
 		// the close feel instant instead of waiting on the save round-trips.
@@ -361,7 +361,7 @@
 		const id = draftId;
 		sending = false;
 		if (!id) {
-			t.dismiss();
+			sendProgress.dismiss();
 			return;
 		}
 		clearMirror(mirrorKey);
@@ -372,16 +372,16 @@
 		editorKey++;
 		onsent?.(); // clear the parent's reply target → next reply defaults to latest
 		try {
-			t.queued(); // draft persisted; delivery request now in flight
+			sendProgress.queued(); // draft persisted; delivery request now in flight
 			const res = await sendDraftById({ draftId: id, undoSeconds: UNDO_SECONDS });
 			onchange?.(); // the sent bubble now exists in this mailbox's timeline
-			t.sent(
+			sendProgress.sent(
 				'Reply sent',
 				{ label: 'Undo', onClick: () => undoSend(res.submissionId) },
 				UNDO_SECONDS * 1000
 			);
 		} catch {
-			t.fail('Send failed — your draft is saved in Drafts.');
+			sendProgress.fail('Send failed — your draft is saved in Drafts.');
 		}
 	}
 

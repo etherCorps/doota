@@ -99,16 +99,21 @@
 			return;
 		}
 		busy = true;
+		open = false; // optimistic close — the promise toast tracks the rest
+		const req = snoozeThread({ mailboxId, threadId, until: until.getTime() });
+		toast.promise(req, {
+			loading: 'Snoozing…',
+			success: `Snoozed until ${fmt(until)}.`,
+			error: (e) => (e instanceof Error ? e.message : 'Could not snooze.')
+		});
 		try {
-			await snoozeThread({ mailboxId, threadId, until: until.getTime() });
-			toast.success(`Snoozed until ${fmt(until)}.`);
-			open = false;
+			await req;
 			nlp = '';
 			// From the Snoozed view this is a reschedule — the thread stays snoozed, so
 			// tell the caller to keep the row (re-sort) instead of dropping it.
 			onchange?.(snoozed ? { kept: true } : undefined);
-		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not snooze.');
+		} catch {
+			// Error already surfaced by toast.promise; leave the row in place.
 		} finally {
 			busy = false;
 		}
@@ -117,13 +122,18 @@
 	async function wake() {
 		if (busy) return;
 		busy = true;
+		open = false;
+		const req = unsnoozeThread({ mailboxId, threadId });
+		toast.promise(req, {
+			loading: 'Moving to inbox…',
+			success: 'Back in your inbox.',
+			error: (e) => (e instanceof Error ? e.message : 'Could not unsnooze.')
+		});
 		try {
-			await unsnoozeThread({ mailboxId, threadId });
-			toast.success('Back in your inbox.');
-			open = false;
+			await req;
 			onchange?.();
-		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not unsnooze.');
+		} catch {
+			// Error surfaced by toast.promise.
 		} finally {
 			busy = false;
 		}
