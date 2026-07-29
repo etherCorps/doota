@@ -12,6 +12,7 @@ import {
   grantAccess,
   accessibleMailboxIds,
   manageGrantUserIds,
+  sendGrantUserIds,
   addressHosts,
 } from "@doota/mail-core/mailbox";
 import {
@@ -88,6 +89,29 @@ async function assertManageMailbox(mailboxId: string) {
     })
   ) {
     error(403, "You don't manage this mailbox.");
+  }
+  return box;
+}
+
+/**
+ * Assert the actor may manage OR send as THIS mailbox — used for read surfaces
+ * (the send log) that senders, not just managers, are allowed to see.
+ */
+async function assertManageOrSendMailbox(mailboxId: string) {
+  const { locals } = getRequestEvent();
+  const box = await locals.db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, mailboxId),
+    columns: { id: true, orgId: true, isService: true },
+  });
+  if (!box) error(404, "Mailbox not found");
+  const a = await actor();
+  const [grantedManagerIds, grantedSenderIds] = await Promise.all([
+    manageGrantUserIds(locals.db, mailboxId),
+    sendGrantUserIds(locals.db, mailboxId),
+  ]);
+  const base = { type: "mailbox" as const, ownerId: "", organizationId: box.orgId };
+  if (!can(a, "manage", { ...base, grantedManagerIds }) && !can(a, "send", { ...base, grantedSenderIds })) {
+    error(403, "You can't view this mailbox's send log.");
   }
   return box;
 }
@@ -308,9 +332,10 @@ export const revokeServiceKey = command(z.object({ keyId: z.string().min(1) }), 
 
 // ---- Service-account send log -----------------------------------------------
 
-/** The service account's send log (metadata only, newest first). Manager-gated. */
+/** The service account's send log (metadata only, newest first). Readable by
+ * anyone who can manage OR send as the mailbox. */
 export const listSendLog = query(z.string().min(1), async (mailboxId) => {
-  await assertManageMailbox(mailboxId);
+  await assertManageOrSendMailbox(mailboxId);
   const { locals } = getRequestEvent();
   return listSendEvents(locals.db, mailboxId, 100);
 });
