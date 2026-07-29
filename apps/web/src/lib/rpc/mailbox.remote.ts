@@ -118,7 +118,7 @@ export const myMailboxes = query(async () => {
   if (!ids.length) return [];
   return locals.db.query.mailbox.findMany({
     where: inArray(schema.mailbox.id, ids),
-    columns: { id: true, address: true, displayName: true, isActive: true, isPersonal: true },
+    columns: { id: true, address: true, displayName: true, isActive: true, isPersonal: true, isService: true },
     orderBy: (m, { asc }) => asc(m.createdAt), // oldest first (old on top in the switcher)
   });
 });
