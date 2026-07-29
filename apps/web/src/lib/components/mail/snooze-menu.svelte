@@ -5,6 +5,7 @@
 	// tomorrow", "fri 5pm"). Commits immediately via snoozeThread; the caller patches
 	// the row out. When already snoozed, offers Unsnooze instead of a wake time.
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateTimeFields from './date-time-fields.svelte';
@@ -123,32 +124,14 @@
 			void snooze(nlpPreview);
 		}
 	}
+
+	const triggerCls = $derived(
+		`${triggerClass || 'text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg outline-none transition-colors hover:shadow-xs focus-visible:ring-2'} ${snoozed ? 'text-warn' : ''}`
+	);
+	const triggerTitle = $derived(snoozed ? 'Snoozed' : 'Snooze');
 </script>
 
-<Popover.Root bind:open>
-	<Popover.Trigger>
-		{#snippet child({ props })}
-			<button
-				{...props}
-				type="button"
-				title={snoozed ? 'Snoozed' : 'Snooze'}
-				aria-label={snoozed ? 'Snoozed' : 'Snooze'}
-				class="{triggerClass ||
-					'text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg outline-none transition-colors hover:shadow-xs focus-visible:ring-2'} {snoozed
-					? 'text-warn'
-					: ''}"
-			>
-				<AlarmClockIcon class="size-4" />
-			</button>
-		{/snippet}
-	</Popover.Trigger>
-	<Popover.Content
-		align="end"
-		class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0"
-		onOpenAutoFocus={(e) => {
-			if (isMobile.current) e.preventDefault();
-		}}
-	>
+{#snippet body()}
 		{#if snoozed}
 			<button
 				type="button"
@@ -215,5 +198,24 @@
 			</div>
 			{/if}
 		{/if}
-	</Popover.Content>
-</Popover.Root>
+{/snippet}
+
+{#if isMobile.current}
+	<Drawer.Root bind:open>
+		<Drawer.Trigger title={triggerTitle} aria-label={triggerTitle} class={triggerCls}>
+			<AlarmClockIcon class="size-4" />
+		</Drawer.Trigger>
+		<Drawer.Content class="p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+			<div class="max-h-[78vh] overflow-y-auto">{@render body()}</div>
+		</Drawer.Content>
+	</Drawer.Root>
+{:else}
+	<Popover.Root bind:open>
+		<Popover.Trigger title={triggerTitle} aria-label={triggerTitle} class={triggerCls}>
+			<AlarmClockIcon class="size-4" />
+		</Popover.Trigger>
+		<Popover.Content align="end" class="{snoozed ? 'w-56' : 'w-auto max-w-[calc(100vw-1rem)]'} p-0">
+			{@render body()}
+		</Popover.Content>
+	</Popover.Root>
+{/if}

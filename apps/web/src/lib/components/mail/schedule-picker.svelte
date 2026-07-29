@@ -2,6 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	import DateTimeFields from './date-time-fields.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
@@ -77,30 +78,18 @@
 	);
 	const fmtPreview = (d: Date) =>
 		d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+	const triggerCls = $derived(
+		`focus-visible:ring-ring/50 flex max-w-[11rem] items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none ${value ? 'text-warn hover:bg-warn/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`
+	);
 </script>
 
-<Popover.Root bind:open>
-	<Popover.Trigger>
-		{#snippet child({ props })}
-			<button
-				{...props}
-				type="button"
-				class="focus-visible:ring-ring/50 flex max-w-[11rem] items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none {value
-					? 'text-warn hover:bg-warn/10'
-					: 'text-muted-foreground hover:text-foreground hover:bg-muted'}"
-			>
-				<ClockIcon class="size-3.5 shrink-0" />
-				<span class="truncate">{label || 'Schedule'}</span>
-			</button>
-		{/snippet}
-	</Popover.Trigger>
-	<Popover.Content
-		align="end"
-		class="w-auto max-w-[calc(100vw-1rem)] p-0"
-		onOpenAutoFocus={(e) => {
-			if (isMobile.current) e.preventDefault();
-		}}
-	>
+{#snippet triggerInner()}
+	<ClockIcon class="size-3.5 shrink-0" />
+	<span class="truncate">{label || 'Schedule'}</span>
+{/snippet}
+
+{#snippet body()}
 		<!-- Natural-language quick entry -->
 		<div class="border-b p-2">
 			<div class="relative">
@@ -146,5 +135,20 @@
 			</Button>
 			<Button size="sm" class="h-8 px-4" disabled={!value || isPast} onclick={() => (open = false)}>Done</Button>
 		</div>
-	</Popover.Content>
-</Popover.Root>
+{/snippet}
+
+{#if isMobile.current}
+	<Drawer.Root bind:open>
+		<Drawer.Trigger class={triggerCls}>{@render triggerInner()}</Drawer.Trigger>
+		<Drawer.Content class="p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+			<div class="max-h-[78vh] overflow-y-auto">{@render body()}</div>
+		</Drawer.Content>
+	</Drawer.Root>
+{:else}
+	<Popover.Root bind:open>
+		<Popover.Trigger class={triggerCls}>{@render triggerInner()}</Popover.Trigger>
+		<Popover.Content align="end" class="w-auto max-w-[calc(100vw-1rem)] p-0">
+			{@render body()}
+		</Popover.Content>
+	</Popover.Root>
+{/if}
