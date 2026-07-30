@@ -47,7 +47,7 @@
 	function commit(addr: string) {
 		const a = addr.trim().toLowerCase();
 		if (a && a.includes('@') && !value.includes(a)) {
-			value.push(a); // in-place (R3) — bindable proxy propagates the mutation
+			value = [...value, a];
 			onchange?.();
 		}
 		text = '';
@@ -56,8 +56,7 @@
 		active = -1;
 	}
 	function remove(a: string) {
-		const i = value.indexOf(a);
-		if (i >= 0) value.splice(i, 1); // in-place (R3), not a filter-rebuild
+		value = value.filter((x) => x !== a);
 		onchange?.();
 	}
 	function onInput() {

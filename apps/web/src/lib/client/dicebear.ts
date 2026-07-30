@@ -18,16 +18,10 @@ const diceCache = new Map<string, string>();
 /** Addresses that 404'd on /api/sender-avatar — skip the request next time. */
 export const noServerAvatar = new Set<string>();
 
-// Data URIs are ~1-2KB each; cap so a long session skimming many senders can't
-// grow the cache without bound (R6). FIFO is fine — avatars are deterministic,
-// so an evicted seed just regenerates on next sight.
-const MAX = 500;
-
 export function dicebearFor(seed: string): string {
   let uri = diceCache.get(seed);
   if (!uri) {
     uri = createAvatar(adventurer, { seed }).toDataUri();
-    if (diceCache.size >= MAX) diceCache.delete(diceCache.keys().next().value!);
     diceCache.set(seed, uri);
   }
   return uri;
