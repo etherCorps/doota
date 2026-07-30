@@ -24,6 +24,7 @@
 	import { swipeX } from '$lib/utils/swipe';
 	import { pullToRefresh } from '$lib/utils/pull-refresh';
 	import { pushRecentThread } from '$lib/client/recent-threads';
+	import { optimistic } from '$lib/client/optimistic';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
@@ -403,12 +404,17 @@
 		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
-		// Optimistic: rows leave immediately (exit transition reads rowFx); a
-		// loading toast tracks the write, flipping to Undo on success (same flow as
-		// swipe triage), or to an error + list reload on failure.
-		// Remove selected rows in place (R3) — backward splice so indices hold.
+		// Optimistic: rows leave immediately (exit transition reads rowFx); a loading
+		// toast tracks the write, flipping to Undo on success. Snapshot each removed
+		// row with its index so failure restores them exactly in place — not a
+		// whole-list refetch (which drops scroll + other pending edits).
+		// Backward splice so indices hold; `removed` ends up descending by index.
+		const removed: { idx: number; row: ThreadSummary }[] = [];
 		for (let i = items.length - 1; i >= 0; i--)
-			if (threadSel.has(items[i].threadId)) items.splice(i, 1);
+			if (threadSel.has(items[i].threadId)) {
+				removed.push({ idx: i, row: items[i] });
+				items.splice(i, 1);
+			}
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
@@ -416,7 +422,9 @@
 		try {
 			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (id) => toastUndoMove(prevs, pl, id) });
 			if (ok) void refreshUnread();
-			else void loadThreads(true);
+			// Re-insert ascending (reverse the descending capture) so each row lands
+			// back at its original index.
+			else for (const r of removed.reverse()) items.splice(Math.min(r.idx, items.length), 0, r.row);
 		} finally {
 			setTimeout(() => {
 				for (const id of ids) rowFx.delete(id);
@@ -786,21 +794,30 @@
 		if (!mailboxId) return;
 		const mb = mailboxId;
 		const prev = rowPrev(id);
+		const idx = items.findIndex((t) => t.threadId === id);
+		const row = items[idx];
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
-		removeItem(id);
-		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
-		if (threadId === id) nav({ thread: null });
 		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
-		try {
-			await moveThread({ mailboxId: mb, threadId: id, placement: target });
+		const ok = await optimistic({
+			snapshot: () => ({ idx, row }),
+			apply: () => {
+				removeItem(id);
+				swipeProg.delete(id); // stale progress would re-render the reveal if the row returns
+				if (threadId === id) nav({ thread: null });
+			},
+			commit: () => moveThread({ mailboxId: mb, threadId: id, placement: target }),
+			// Precise restore — re-insert the row where it was, NOT a whole-list
+			// refetch (which would lose scroll position and other pending edits).
+			rollback: (s) => {
+				if (s.row) items.splice(Math.min(s.idx, items.length), 0, s.row);
+			},
+			onError: () => toast.error('Action failed — restoring the row.', { id: tid })
+		});
+		if (ok) {
 			toastUndoMove([{ threadId: id, prev }], target, tid);
 			void refreshUnread();
-		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
-			void loadThreads(true);
-		} finally {
-			setTimeout(() => rowFx.delete(id), 350);
 		}
+		setTimeout(() => rowFx.delete(id), 350);
 	}
 
 	// Live swipe progress per row (-1..1) — drives the action reveal underneath.
@@ -833,16 +850,23 @@
 		const mb = mailboxId;
 		const id = threadId;
 		const prev = rowPrev(id);
+		const idx = items.findIndex((t) => t.threadId === id);
+		const row = items[idx];
 		nav({ thread: null });
-		removeItem(id);
 		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
-		try {
-			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
+		const ok = await optimistic({
+			snapshot: () => ({ idx, row }),
+			apply: () => removeItem(id),
+			commit: () => moveThread({ mailboxId: mb, threadId: id, placement: placement as never }),
+			// Precise restore, not a full refetch (keeps scroll + other pending edits).
+			rollback: (s) => {
+				if (s.row) items.splice(Math.min(s.idx, items.length), 0, s.row);
+			},
+			onError: () => toast.error('Action failed — restoring the row.', { id: tid })
+		});
+		if (ok) {
 			toastUndoMove([{ threadId: id, prev }], placement, tid);
 			void refreshUnread();
-		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
-			void loadThreads(true);
 		}
 	}
 	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
@@ -878,33 +902,43 @@
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
+		const mb = mailboxId;
 		const next = !current;
 		if (next) starPop++; // pop only when starring on, not off
-		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
-		// failure (star carries no server-side side effects to re-pull).
-		Object.assign(openFlagOverride, { isStarred: next });
-		patchItem(id, { isStarred: next });
-		try {
-			await starThread({ mailboxId, threadId: id, starred: next });
-		} catch {
-			Object.assign(openFlagOverride, { isStarred: current });
-			patchItem(id, { isStarred: current });
-		}
+		// Coherent: flip both surfaces. Star is fully client-predictable, so success
+		// does nothing (no refetch); rollback restores the boolean on both surfaces.
+		await optimistic({
+			snapshot: () => current,
+			apply: () => {
+				Object.assign(openFlagOverride, { isStarred: next });
+				patchItem(id, { isStarred: next });
+			},
+			commit: () => starThread({ mailboxId: mb, threadId: id, starred: next }),
+			rollback: (prev) => {
+				Object.assign(openFlagOverride, { isStarred: prev });
+				patchItem(id, { isStarred: prev });
+			}
+		});
 	}
 	// Star straight from a list row (id may differ from the open thread). Keeps the
 	// open-thread override coherent when they happen to match.
 	async function starRow(id: string, current: boolean) {
 		if (!mailboxId) return;
+		const mb = mailboxId;
 		const next = !current;
 		if (next && id === threadId) starPop++;
-		patchItem(id, { isStarred: next });
-		if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: next };
-		try {
-			await starThread({ mailboxId, threadId: id, starred: next });
-		} catch {
-			patchItem(id, { isStarred: current });
-			if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: current };
-		}
+		await optimistic({
+			snapshot: () => current,
+			apply: () => {
+				patchItem(id, { isStarred: next });
+				if (id === threadId) Object.assign(openFlagOverride, { isStarred: next });
+			},
+			commit: () => starThread({ mailboxId: mb, threadId: id, starred: next }),
+			rollback: (prev) => {
+				patchItem(id, { isStarred: prev });
+				if (id === threadId) Object.assign(openFlagOverride, { isStarred: prev });
+			}
+		});
 	}
 
 	// Which message the docked composer replies to. null = default (latest
