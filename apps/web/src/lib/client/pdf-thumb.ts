@@ -5,11 +5,16 @@
 // rendering was never an option. Results cached per attachment for the session.
 
 const cache = new Map<string, Promise<string | null>>();
+// Thumbnails are full-page PNG data URLs (tens of KB); cap so browsing many
+// PDF-heavy threads in one session can't grow the cache unbounded (R6). FIFO —
+// an evicted thumb just re-renders on next view.
+const MAX = 64;
 
 export function pdfThumb(attachmentId: string): Promise<string | null> {
 	let p = cache.get(attachmentId);
 	if (!p) {
 		p = render(attachmentId).catch(() => null);
+		if (cache.size >= MAX) cache.delete(cache.keys().next().value!);
 		cache.set(attachmentId, p);
 	}
 	return p;

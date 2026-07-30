@@ -24,6 +24,7 @@
 	import { swipeX } from '$lib/utils/swipe';
 	import { pullToRefresh } from '$lib/utils/pull-refresh';
 	import { pushRecentThread } from '$lib/client/recent-threads';
+	import { optimistic } from '$lib/client/optimistic';
 	import { relTime } from '$lib/utils/reltime';
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
@@ -331,7 +332,11 @@
 			// The user may have switched folders/mailboxes while this was in flight —
 			// drop the late page rather than paint the wrong folder's mail.
 			if (forMailbox !== mailboxId || forPlacement !== placement) return;
-			items = reset ? page : [...items, ...page];
+			// Append pages in place (R3) so a new page invalidates only the new rows,
+			// not every row already on screen. Reset takes a fresh copy — never alias
+			// the query cache array, which a later push would then mutate.
+			if (reset) items = [...page];
+			else items.push(...page);
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
 		} finally {
@@ -399,10 +404,17 @@
 		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
-		// Optimistic: rows leave immediately (exit transition reads rowFx); a
-		// loading toast tracks the write, flipping to Undo on success (same flow as
-		// swipe triage), or to an error + list reload on failure.
-		items = items.filter((t) => !threadSel.has(t.threadId));
+		// Optimistic: rows leave immediately (exit transition reads rowFx); a loading
+		// toast tracks the write, flipping to Undo on success. Snapshot each removed
+		// row with its index so failure restores them exactly in place — not a
+		// whole-list refetch (which drops scroll + other pending edits).
+		// Backward splice so indices hold; `removed` ends up descending by index.
+		const removed: { idx: number; row: ThreadSummary }[] = [];
+		for (let i = items.length - 1; i >= 0; i--)
+			if (threadSel.has(items[i].threadId)) {
+				removed.push({ idx: i, row: items[i] });
+				items.splice(i, 1);
+			}
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
@@ -410,7 +422,9 @@
 		try {
 			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (id) => toastUndoMove(prevs, pl, id) });
 			if (ok) void refreshUnread();
-			else void loadThreads(true);
+			// Re-insert ascending (reverse the descending capture) so each row lands
+			// back at its original index.
+			else for (const r of removed.reverse()) items.splice(Math.min(r.idx, items.length), 0, r.row);
 		} finally {
 			setTimeout(() => {
 				for (const id of ids) rowFx.delete(id);
@@ -425,7 +439,9 @@
 		for (const id of ids) rowFx.set(id, 'pulse');
 		try {
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
-			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
+			// Flip unread on the selected rows in place (R2) — one signal per changed
+			// row, not a whole-array re-map.
+			for (const t of items) if (threadSel.has(t.threadId)) t.unread = !read;
 			threadSel.clear();
 			void refreshUnread();
 		} finally {
@@ -552,9 +568,16 @@
 		});
 	});
 
-	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
+	/** Patch one loaded row in place — targeted invalidation, no full-list rebuild
+	 * (R2: assign to the row, don't spread + re-map the whole array). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
-		items = items.map((t) => (t.threadId === id ? { ...t, ...patch } : t));
+		const row = items.find((t) => t.threadId === id);
+		if (row) Object.assign(row, patch);
+	}
+	/** Drop one loaded row in place — splice, not a filter-rebuild (R3). */
+	function removeItem(id: string) {
+		const i = items.findIndex((t) => t.threadId === id);
+		if (i >= 0) items.splice(i, 1);
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: ONE
@@ -619,13 +642,17 @@
 		else if (quickFilter === 'starred') out = out.filter((r) => r.isStarred);
 		return out;
 	}
+	// Compute the filtered list ONCE per render (R4) — the template needs it in
+	// four places (count, each, select-all, list-end), and filtering the whole
+	// array four times per render is pure waste.
+	const visibleThreads = $derived(applyListFilters(items));
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
 		// Header + list flip instantly via the overlay; the thread refetch is only
 		// to pull the "assigned to X" system-event into the timeline (a real
 		// server-side effect, unlike star), not to sync the badge.
-		openFlagOverride = { ...openFlagOverride, assigneeUserId: userId };
+		Object.assign(openFlagOverride, { assigneeUserId: userId });
 		patchItem(id, { assigneeUserId: userId });
 		await assignThread({ mailboxId, threadId: id, assigneeUserId: userId });
 		await threadQ?.refresh();
@@ -767,21 +794,30 @@
 		if (!mailboxId) return;
 		const mb = mailboxId;
 		const prev = rowPrev(id);
+		const idx = items.findIndex((t) => t.threadId === id);
+		const row = items[idx];
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
-		items = items.filter((t) => t.threadId !== id);
-		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
-		if (threadId === id) nav({ thread: null });
 		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
-		try {
-			await moveThread({ mailboxId: mb, threadId: id, placement: target });
+		const ok = await optimistic({
+			snapshot: () => ({ idx, row }),
+			apply: () => {
+				removeItem(id);
+				swipeProg.delete(id); // stale progress would re-render the reveal if the row returns
+				if (threadId === id) nav({ thread: null });
+			},
+			commit: () => moveThread({ mailboxId: mb, threadId: id, placement: target }),
+			// Precise restore — re-insert the row where it was, NOT a whole-list
+			// refetch (which would lose scroll position and other pending edits).
+			rollback: (s) => {
+				if (s.row) items.splice(Math.min(s.idx, items.length), 0, s.row);
+			},
+			onError: () => toast.error('Action failed — restoring the row.', { id: tid })
+		});
+		if (ok) {
 			toastUndoMove([{ threadId: id, prev }], target, tid);
 			void refreshUnread();
-		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
-			void loadThreads(true);
-		} finally {
-			setTimeout(() => rowFx.delete(id), 350);
 		}
+		setTimeout(() => rowFx.delete(id), 350);
 	}
 
 	// Live swipe progress per row (-1..1) — drives the action reveal underneath.
@@ -814,16 +850,23 @@
 		const mb = mailboxId;
 		const id = threadId;
 		const prev = rowPrev(id);
+		const idx = items.findIndex((t) => t.threadId === id);
+		const row = items[idx];
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
 		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
-		try {
-			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
+		const ok = await optimistic({
+			snapshot: () => ({ idx, row }),
+			apply: () => removeItem(id),
+			commit: () => moveThread({ mailboxId: mb, threadId: id, placement: placement as never }),
+			// Precise restore, not a full refetch (keeps scroll + other pending edits).
+			rollback: (s) => {
+				if (s.row) items.splice(Math.min(s.idx, items.length), 0, s.row);
+			},
+			onError: () => toast.error('Action failed — restoring the row.', { id: tid })
+		});
+		if (ok) {
 			toastUndoMove([{ threadId: id, prev }], placement, tid);
 			void refreshUnread();
-		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
-			void loadThreads(true);
 		}
 	}
 	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
@@ -838,7 +881,7 @@
 			return;
 		}
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		void refreshUnread();
 	}
 	// Same, from a list-row snooze. Also close the detail if that row's thread
@@ -848,7 +891,7 @@
 			void loadThreads(true);
 			return;
 		}
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		if (id === threadId) nav({ thread: null });
 		void refreshUnread();
 	}
@@ -859,33 +902,43 @@
 	async function toggleStar(current: boolean) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
+		const mb = mailboxId;
 		const next = !current;
 		if (next) starPop++; // pop only when starring on, not off
-		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
-		// failure (star carries no server-side side effects to re-pull).
-		openFlagOverride = { ...openFlagOverride, isStarred: next };
-		patchItem(id, { isStarred: next });
-		try {
-			await starThread({ mailboxId, threadId: id, starred: next });
-		} catch {
-			openFlagOverride = { ...openFlagOverride, isStarred: current };
-			patchItem(id, { isStarred: current });
-		}
+		// Coherent: flip both surfaces. Star is fully client-predictable, so success
+		// does nothing (no refetch); rollback restores the boolean on both surfaces.
+		await optimistic({
+			snapshot: () => current,
+			apply: () => {
+				Object.assign(openFlagOverride, { isStarred: next });
+				patchItem(id, { isStarred: next });
+			},
+			commit: () => starThread({ mailboxId: mb, threadId: id, starred: next }),
+			rollback: (prev) => {
+				Object.assign(openFlagOverride, { isStarred: prev });
+				patchItem(id, { isStarred: prev });
+			}
+		});
 	}
 	// Star straight from a list row (id may differ from the open thread). Keeps the
 	// open-thread override coherent when they happen to match.
 	async function starRow(id: string, current: boolean) {
 		if (!mailboxId) return;
+		const mb = mailboxId;
 		const next = !current;
 		if (next && id === threadId) starPop++;
-		patchItem(id, { isStarred: next });
-		if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: next };
-		try {
-			await starThread({ mailboxId, threadId: id, starred: next });
-		} catch {
-			patchItem(id, { isStarred: current });
-			if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: current };
-		}
+		await optimistic({
+			snapshot: () => current,
+			apply: () => {
+				patchItem(id, { isStarred: next });
+				if (id === threadId) Object.assign(openFlagOverride, { isStarred: next });
+			},
+			commit: () => starThread({ mailboxId: mb, threadId: id, starred: next }),
+			rollback: (prev) => {
+				patchItem(id, { isStarred: prev });
+				if (id === threadId) Object.assign(openFlagOverride, { isStarred: prev });
+			}
+		});
 	}
 
 	// Which message the docked composer replies to. null = default (latest
@@ -1108,6 +1161,18 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
+	// Per-thread reader state — all keyed by message/event id, which die with the
+	// thread. Clear on thread change (R6) so these don't accumulate every message
+	// ever opened across a whole session. untrack: don't re-fire on set mutation.
+	$effect(() => {
+		void threadId;
+		untrack(() => {
+			loadedImages.clear();
+			showOriginal.clear();
+			inviteRsvp.clear();
+			msgToggles.clear();
+		});
+	});
 	// Thread attachments panel — every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
@@ -1616,7 +1681,7 @@
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
 				? (myDrafts().current ?? []).map((d) => d.id)
-				: applyListFilters(items).map((t) => t.threadId)}
+				: visibleThreads.map((t) => t.threadId)}
 			{@const sel = inDrafts ? draftSel : threadSel}
 			{@const n = sel.size}
 			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
@@ -1840,17 +1905,23 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{#if applyListFilters(items).length}
-						{#each applyListFilters(items) as t (t.threadId)}
+					{#if visibleThreads.length}
+						{#each visibleThreads as t (t.threadId)}
 							{@const selected = (navCursor ?? threadId) === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
 							{@const fx = rowFx.get(t.threadId)}
 							{@const prog = swipeProg.get(t.threadId) ?? 0}
 							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
+							<!-- Native render-virtualisation (R6): the browser skips layout/paint
+							     for off-screen rows without unmounting them, so exit/flip
+							     transitions, swipe, and the scroll handlers all keep working —
+							     unlike a JS virtualiser that owns the scroll container. The
+							     intrinsic size keeps scrollHeight stable for infinite scroll. -->
 							<div
 								data-row={t.threadId}
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
+								style="content-visibility:auto;contain-intrinsic-size:auto 76px"
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
 								<!-- Swipe action reveal — rendered only mid-gesture, never idle. -->
@@ -1946,7 +2017,7 @@
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
-						{:else if reachedEnd && applyListFilters(items).length}
+						{:else if reachedEnd && visibleThreads.length}
 							<ListEndCat name={folder.name} />
 						{/if}
 					{:else if loadingList}

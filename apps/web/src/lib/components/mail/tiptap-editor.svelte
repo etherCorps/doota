@@ -55,7 +55,10 @@
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
-	let editor = $state<Editor>();
+	// $state.raw: nothing reads `editor` reactively (the toolbar depends on `tick`),
+	// and we only ever assign it once. raw keeps Svelte from tracking anything
+	// inside the instance — TipTap owns its own mutability.
+	let editor = $state.raw<Editor>();
 	let imageInput = $state<HTMLInputElement>();
 	let tick = $state(0);
 
@@ -68,10 +71,29 @@
 	// underlined word opens a suggestion menu — pick one to apply + flash green.
 	let harperStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let harperCount = $state(0);
-	let activeLint = $state<ActiveLint | null>(null);
+	// raw: always replaced wholesale, never mutated in place — no reason to deep-proxy
+	// the nested lint + suggestions array.
+	let activeLint = $state.raw<ActiveLint | null>(null);
 	// Only surface the grammar pill once there's text — a spinner on an empty
 	// composer is meaningless.
 	let hasContent = $state(false);
+
+	// getHTML() serialises the whole document, so it must not run per keystroke —
+	// on a reply with quoted history that's a full walk of a large doc every char.
+	// Debounce it, and flush on the paths that leave the editor (send / blur /
+	// destroy) so the parent never misses the final edit.
+	let htmlTimer: ReturnType<typeof setTimeout> | null = null;
+	function flushHtml() {
+		if (htmlTimer) {
+			clearTimeout(htmlTimer);
+			htmlTimer = null;
+		}
+		if (editor) oninput?.(editor.getHTML());
+	}
+	function scheduleHtml() {
+		if (htmlTimer) clearTimeout(htmlTimer);
+		htmlTimer = setTimeout(flushHtml, 250);
+	}
 
 	function pickSuggestion(s: HarperSuggestion) {
 		if (editor && activeLint) applyHarperFix(editor.view, activeLint.lint, s);
@@ -200,6 +222,7 @@
 				handleKeyDown: (_view, event) => {
 					const mod = event.metaKey || event.ctrlKey;
 					if (mod && event.key === 'Enter') {
+						flushHtml(); // don't send a draft that's one debounce behind
 						onsend?.();
 						return true;
 					}
@@ -222,14 +245,27 @@
 				}
 			},
 			onUpdate: ({ editor }) => {
-				oninput?.(editor.getHTML());
-				hasContent = editor.getText().trim().length > 0;
+				scheduleHtml();
+				// isEmpty is a cheap doc comparison; getText() built and threw away the
+				// entire plaintext body on every keystroke. It's also more correct — an
+				// image-only body counts as content.
+				hasContent = !editor.isEmpty;
 			},
-			onTransaction: () => (tick += 1)
+			onBlur: () => flushHtml(),
+			// Only invalidate the toolbar when something it displays can actually have
+			// changed. Harper dispatches setMeta transactions (lints, flash add/clear)
+			// that touch neither the doc nor the selection — those used to repaint all
+			// ten Toggles, and each active() call walks the extension manager.
+			onTransaction: ({ transaction }) => {
+				if (transaction.docChanged || transaction.selectionSet || transaction.storedMarksSet) tick += 1;
+			}
 		});
-		hasContent = editor.getText().trim().length > 0; // seed (a reply prefills quoted text)
+		hasContent = !editor.isEmpty; // seed (a reply prefills quoted text)
 	});
-	onDestroy(() => editor?.destroy());
+	onDestroy(() => {
+		flushHtml(); // last edit wins even if the composer closes without blurring
+		editor?.destroy();
+	});
 </script>
 
 <div class="focus-within:ring-ring/40 flex h-full flex-col rounded-lg border focus-within:ring-2 {fill ? 'min-h-0' : 'min-h-[180px]'}">
