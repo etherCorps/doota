@@ -634,6 +634,10 @@
 		else if (quickFilter === 'starred') out = out.filter((r) => r.isStarred);
 		return out;
 	}
+	// Compute the filtered list ONCE per render (R4) — the template needs it in
+	// four places (count, each, select-all, list-end), and filtering the whole
+	// array four times per render is pure waste.
+	const visibleThreads = $derived(applyListFilters(items));
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
@@ -1123,6 +1127,18 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
+	// Per-thread reader state — all keyed by message/event id, which die with the
+	// thread. Clear on thread change (R6) so these don't accumulate every message
+	// ever opened across a whole session. untrack: don't re-fire on set mutation.
+	$effect(() => {
+		void threadId;
+		untrack(() => {
+			loadedImages.clear();
+			showOriginal.clear();
+			inviteRsvp.clear();
+			msgToggles.clear();
+		});
+	});
 	// Thread attachments panel — every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
@@ -1631,7 +1647,7 @@
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
 				? (myDrafts().current ?? []).map((d) => d.id)
-				: applyListFilters(items).map((t) => t.threadId)}
+				: visibleThreads.map((t) => t.threadId)}
 			{@const sel = inDrafts ? draftSel : threadSel}
 			{@const n = sel.size}
 			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
@@ -1855,17 +1871,23 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{#if applyListFilters(items).length}
-						{#each applyListFilters(items) as t (t.threadId)}
+					{#if visibleThreads.length}
+						{#each visibleThreads as t (t.threadId)}
 							{@const selected = (navCursor ?? threadId) === t.threadId}
 							{@const checked = threadSel.has(t.threadId)}
 							{@const fx = rowFx.get(t.threadId)}
 							{@const prog = swipeProg.get(t.threadId) ?? 0}
 							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
+							<!-- Native render-virtualisation (R6): the browser skips layout/paint
+							     for off-screen rows without unmounting them, so exit/flip
+							     transitions, swipe, and the scroll handlers all keep working —
+							     unlike a JS virtualiser that owns the scroll container. The
+							     intrinsic size keeps scrollHeight stable for infinite scroll. -->
 							<div
 								data-row={t.threadId}
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
+								style="content-visibility:auto;contain-intrinsic-size:auto 76px"
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
 								<!-- Swipe action reveal — rendered only mid-gesture, never idle. -->
@@ -1961,7 +1983,7 @@
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
-						{:else if reachedEnd && applyListFilters(items).length}
+						{:else if reachedEnd && visibleThreads.length}
 							<ListEndCat name={folder.name} />
 						{/if}
 					{:else if loadingList}
