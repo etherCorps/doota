@@ -331,7 +331,11 @@
 			// The user may have switched folders/mailboxes while this was in flight —
 			// drop the late page rather than paint the wrong folder's mail.
 			if (forMailbox !== mailboxId || forPlacement !== placement) return;
-			items = reset ? page : [...items, ...page];
+			// Append pages in place (R3) so a new page invalidates only the new rows,
+			// not every row already on screen. Reset takes a fresh copy — never alias
+			// the query cache array, which a later push would then mutate.
+			if (reset) items = [...page];
+			else items.push(...page);
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
 		} finally {
@@ -402,7 +406,9 @@
 		// Optimistic: rows leave immediately (exit transition reads rowFx); a
 		// loading toast tracks the write, flipping to Undo on success (same flow as
 		// swipe triage), or to an error + list reload on failure.
-		items = items.filter((t) => !threadSel.has(t.threadId));
+		// Remove selected rows in place (R3) — backward splice so indices hold.
+		for (let i = items.length - 1; i >= 0; i--)
+			if (threadSel.has(items[i].threadId)) items.splice(i, 1);
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
@@ -425,7 +431,9 @@
 		for (const id of ids) rowFx.set(id, 'pulse');
 		try {
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
-			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
+			// Flip unread on the selected rows in place (R2) — one signal per changed
+			// row, not a whole-array re-map.
+			for (const t of items) if (threadSel.has(t.threadId)) t.unread = !read;
 			threadSel.clear();
 			void refreshUnread();
 		} finally {
@@ -552,9 +560,16 @@
 		});
 	});
 
-	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
+	/** Patch one loaded row in place — targeted invalidation, no full-list rebuild
+	 * (R2: assign to the row, don't spread + re-map the whole array). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
-		items = items.map((t) => (t.threadId === id ? { ...t, ...patch } : t));
+		const row = items.find((t) => t.threadId === id);
+		if (row) Object.assign(row, patch);
+	}
+	/** Drop one loaded row in place — splice, not a filter-rebuild (R3). */
+	function removeItem(id: string) {
+		const i = items.findIndex((t) => t.threadId === id);
+		if (i >= 0) items.splice(i, 1);
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: ONE
@@ -625,7 +640,7 @@
 		// Header + list flip instantly via the overlay; the thread refetch is only
 		// to pull the "assigned to X" system-event into the timeline (a real
 		// server-side effect, unlike star), not to sync the badge.
-		openFlagOverride = { ...openFlagOverride, assigneeUserId: userId };
+		Object.assign(openFlagOverride, { assigneeUserId: userId });
 		patchItem(id, { assigneeUserId: userId });
 		await assignThread({ mailboxId, threadId: id, assigneeUserId: userId });
 		await threadQ?.refresh();
@@ -768,7 +783,7 @@
 		const mb = mailboxId;
 		const prev = rowPrev(id);
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
 		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
@@ -815,7 +830,7 @@
 		const id = threadId;
 		const prev = rowPrev(id);
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
@@ -838,7 +853,7 @@
 			return;
 		}
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		void refreshUnread();
 	}
 	// Same, from a list-row snooze. Also close the detail if that row's thread
@@ -848,7 +863,7 @@
 			void loadThreads(true);
 			return;
 		}
-		items = items.filter((t) => t.threadId !== id);
+		removeItem(id);
 		if (id === threadId) nav({ thread: null });
 		void refreshUnread();
 	}
@@ -863,12 +878,12 @@
 		if (next) starPop++; // pop only when starring on, not off
 		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
 		// failure (star carries no server-side side effects to re-pull).
-		openFlagOverride = { ...openFlagOverride, isStarred: next };
+		Object.assign(openFlagOverride, { isStarred: next });
 		patchItem(id, { isStarred: next });
 		try {
 			await starThread({ mailboxId, threadId: id, starred: next });
 		} catch {
-			openFlagOverride = { ...openFlagOverride, isStarred: current };
+			Object.assign(openFlagOverride, { isStarred: current });
 			patchItem(id, { isStarred: current });
 		}
 	}
