@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Connect Instance — Desktop Mail</title>
+
+        <!-- Tauri v2 iOS Safe Area & Fullscreen Metadata -->
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+            name="apple-mobile-web-app-status-bar-style"
+            content="black-translucent"
+        />
+
+        <style>
+            /* ==========================================================================
+               1. DESIGN TOKENS & THEMING
+               ========================================================================== */
+            :root {
+                --background: oklch(0.976 0.005 90); /* Warm off-white paper */
+                --foreground: oklch(0.23 0.012 285);
+                --card: oklch(0.993 0.003 85);
+                --card-foreground: oklch(0.23 0.012 285);
+                --primary: oklch(0.26 0.014 285); /* Graphite button */
+                --primary-foreground: #ffffff;
+                --muted-foreground: oklch(0.52 0.018 285);
+                --border: oklch(0.912 0.007 285);
+                --input: oklch(0.905 0.008 285);
+                --ring: #0e7ae6; /* Brand blue focus ring */
+                --destructive: #e5484d;
+                --radius: 1rem;
+
+                --font-sans:
+                    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    Roboto, sans-serif;
+                --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+                --dur-base: 180ms;
+
+                --shadow-md:
+                    0 1px 2px -1px oklch(0.2 0.02 285 / 0.08),
+                    0 4px 10px -2px oklch(0.2 0.02 285 / 0.1);
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --background: oklch(0.185 0.012 285);
+                    --foreground: oklch(0.94 0.006 285);
+                    --card: oklch(0.228 0.014 285);
+                    --card-foreground: oklch(0.94 0.006 285);
+                    --primary: oklch(0.94 0.006 285);
+                    --primary-foreground: oklch(0.185 0.012 285);
+                    --muted-foreground: oklch(0.71 0.016 285);
+                    --border: oklch(1 0 0 / 10%);
+                    --input: oklch(1 0 0 / 12%);
+                    --ring: #3d9bf0;
+                    --destructive: #ff6369;
+                }
+            }
+
+            /* ==========================================================================
+               2. BASE LAYOUT & SAFE AREA
+               ========================================================================== */
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                min-height: 100vh;
+                min-height: 100dvh;
+                background-color: var(--background);
+                color: var(--foreground);
+                font-family: var(--font-sans);
+                overflow-x: hidden;
+                overscroll-behavior: none;
+            }
+
+            .setup-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                min-height: 100dvh;
+                padding-top: max(24px, env(safe-area-inset-top));
+                padding-bottom: max(24px, env(safe-area-inset-bottom));
+                padding-left: max(16px, env(safe-area-inset-left));
+                padding-right: max(16px, env(safe-area-inset-right));
+            }
+
+            .card {
+                background-color: var(--card);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 2rem 1.75rem;
+                max-width: 26rem;
+                width: 100%;
+                box-shadow: var(--shadow-md);
+                text-align: center;
+            }
+
+            .app-icon {
+                width: 3.5rem;
+                height: 3.5rem;
+                background-color: var(--ring);
+                border-radius: 1rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 1.25rem auto;
+                color: #ffffff;
+            }
+
+            /* Placeholder slot for custom logo/image */
+            .app-icon img {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                border-radius: inherit;
+            }
+
+            h1 {
+                margin: 0 0 0.5rem 0;
+                font-size: 1.35rem;
+                font-weight: 600;
+                letter-spacing: -0.011em;
+            }
+
+            p {
+                margin: 0 0 1.5rem 0;
+                font-size: 0.875rem;
+                color: var(--muted-foreground);
+                line-height: 1.4;
+            }
+
+            .form-group {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                text-align: left;
+            }
+
+            label {
+                font-size: 0.8125rem;
+                font-weight: 500;
+                color: var(--foreground);
+                display: flex;
+                flex-direction: column;
+                gap: 0.375rem;
+            }
+
+            /* ==========================================================================
+               3. PILL INPUT & BUTTON STYLES
+               ========================================================================== */
+            .hallmark-input {
+                display: flex;
+                width: 100%;
+                min-width: 0;
+                height: 2.5rem;
+                padding: 0.25rem 0.875rem;
+                border-radius: 9999px;
+                font-family: inherit;
+                font-size: 0.875rem;
+                color: var(--foreground);
+                background-color: color-mix(
+                    in oklch,
+                    var(--input) 50%,
+                    transparent
+                );
+                border: 1px solid transparent;
+                outline: none;
+                transition:
+                    color var(--dur-base) var(--ease-out),
+                    background-color var(--dur-base) var(--ease-out),
+                    border-color var(--dur-base) var(--ease-out),
+                    box-shadow var(--dur-base) var(--ease-out);
+            }
+
+            .hallmark-input::placeholder {
+                color: var(--muted-foreground);
+                opacity: 0.8;
+            }
+
+            .hallmark-input:focus,
+            .hallmark-input:focus-visible {
+                border-color: var(--ring);
+                background-color: var(--card);
+                box-shadow: 0 0 0 3px
+                    color-mix(in oklch, var(--ring) 25%, transparent);
+            }
+
+            .hallmark-input[aria-invalid="true"] {
+                border-color: var(--destructive);
+                box-shadow: 0 0 0 3px
+                    color-mix(in oklch, var(--destructive) 20%, transparent);
+            }
+
+            .error-text {
+                font-size: 0.75rem;
+                color: var(--destructive);
+                margin-top: 0.25rem;
+                display: none;
+            }
+
+            .btn-primary {
+                height: 2.5rem;
+                width: 100%;
+                border-radius: 9999px;
+                border: none;
+                background-color: var(--primary);
+                color: var(--primary-foreground);
+                font-size: 0.875rem;
+                font-weight: 500;
+                cursor: pointer;
+                transition:
+                    opacity var(--dur-base) var(--ease-out),
+                    transform var(--dur-base) var(--ease-out);
+            }
+
+            .btn-primary:hover {
+                opacity: 0.9;
+            }
+
+            .btn-primary:active {
+                transform: scale(0.98);
+            }
+
+            .btn-primary:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            /* ==========================================================================
+               4. LOADING SPINNER STATE
+               ========================================================================== */
+            .loading-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.875rem;
+                padding: 1rem 0;
+            }
+
+            .spinner {
+                width: 1.75rem;
+                height: 1.75rem;
+                border: 2px solid var(--border);
+                border-top-color: var(--foreground);
+                border-radius: 50%;
+                animation: spin 0.75s linear infinite;
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .hidden {
+                display: none !important;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="setup-container">
+            <!-- Loading View -->
+            <div id="loading" class="loading-container">
+                <div class="spinner"></div>
+                <span id="loading-text">Connecting to instance...</span>
+            </div>
+
+            <!-- Main Setup UI -->
+            <main id="setup-ui" class="card hidden">
+                <!-- App Icon Header -->
+                <div class="app-icon" id="app-logo-slot">
+                    <svg
+                        width="96"
+                        height="96"
+                        viewBox="0 0 96 96"
+                        xmlns="http://www.w3.org/2000/svg"
+                        role="img"
+                        aria-label="Doota"
+                    >
+                        <!-- Full-bleed accent (square corners): apple-touch + PWA "any" icons must have
+                           no transparent corners — iOS/Android apply their own rounding. -->
+                        <!--<rect width="96" height="96" fill="#0E7AE6"/>-->
+                        <g transform="rotate(-9 48 33)">
+                            <rect
+                                x="28"
+                                y="16"
+                                width="40"
+                                height="39"
+                                rx="6"
+                                fill="#A9C8E8"
+                            />
+                            <rect
+                                x="28"
+                                y="10"
+                                width="40"
+                                height="39"
+                                rx="6"
+                                fill="#FFFFFF"
+                            />
+                            <rect
+                                x="35"
+                                y="17"
+                                width="6"
+                                height="18"
+                                rx="3"
+                                fill="#0E7AE6"
+                            />
+                            <rect
+                                x="47"
+                                y="18"
+                                width="14"
+                                height="5"
+                                rx="2.5"
+                                fill="#B8C4D2"
+                            />
+                            <rect
+                                x="47"
+                                y="27"
+                                width="10"
+                                height="5"
+                                rx="2.5"
+                                fill="#B8C4D2"
+                            />
+                        </g>
+                        <g transform="rotate(4 48 68)">
+                            <rect
+                                x="12"
+                                y="56"
+                                width="72"
+                                height="31"
+                                rx="10"
+                                fill="#083E75"
+                            />
+                            <rect
+                                x="12"
+                                y="50"
+                                width="72"
+                                height="31"
+                                rx="10"
+                                fill="#0B5FB4"
+                            />
+                            <path d="M17 50l31 19 31-19z" fill="#1877D6" />
+                        </g>
+                    </svg>
+                </div>
+
+                <h1>Connect Your Instance</h1>
+                <p>
+                    Enter the web address of your deployed doota mail server to
+                    continue.
+                </p>
+
+                <form class="form-group" onsubmit="handleConnect(event)">
+                    <label>
+                        Server URL
+                        <input
+                            id="server-input"
+                            type="url"
+                            class="hallmark-input"
+                            placeholder="https://mail.yourdomain.com"
+                            required
+                            autocomplete="url"
+                            autocorrect="off"
+                            autocapitalize="off"
+                        />
+                        <span id="error-msg" class="error-text"></span>
+                    </label>
+
+                    <button type="submit" id="submit-btn" class="btn-primary">
+                        Connect & Continue
+                    </button>
+                </form>
+            </main>
+        </div>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const savedUrl = localStorage.getItem("custom_instance_url");
+                if (savedUrl && isValidUrl(savedUrl)) {
+                    verifyAndRedirect(savedUrl, false);
+                } else {
+                    showSetupUI();
+                }
+            });
+
+            function showSetupUI() {
+                document.getElementById("loading").classList.add("hidden");
+                document.getElementById("setup-ui").classList.remove("hidden");
+            }
+
+            function showLoadingUI(message) {
+                document.getElementById("setup-ui").classList.add("hidden");
+                document.getElementById("loading-text").textContent = message;
+                document.getElementById("loading").classList.remove("hidden");
+            }
+
+            function showError(msg) {
+                const input = document.getElementById("server-input");
+                const errorMsg = document.getElementById("error-msg");
+                const submitBtn = document.getElementById("submit-btn");
+
+                input.setAttribute("aria-invalid", "true");
+                errorMsg.textContent = msg;
+                errorMsg.style.display = "block";
+
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Connect & Continue";
+            }
+
+            function clearError() {
+                const input = document.getElementById("server-input");
+                const errorMsg = document.getElementById("error-msg");
+
+                input.removeAttribute("aria-invalid");
+                errorMsg.style.display = "none";
+                errorMsg.textContent = "";
+            }
+
+            function isValidUrl(string) {
+                try {
+                    const parsed = new URL(string);
+                    const isLocal =
+                        parsed.hostname === "localhost" ||
+                        parsed.hostname === "127.0.0.1";
+
+                    if (
+                        parsed.protocol !== "https:" &&
+                        !(isLocal && parsed.protocol === "http:")
+                    ) {
+                        return false;
+                    }
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            }
+
+            async function handleConnect(event) {
+                event.preventDefault();
+                clearError();
+
+                const input = document.getElementById("server-input");
+                let rawUrl = input.value.trim();
+
+                // Normalize scheme
+                if (!/^https?:\/\//i.test(rawUrl)) {
+                    rawUrl = "https://" + rawUrl;
+                    input.value = rawUrl;
+                }
+
+                if (!isValidUrl(rawUrl)) {
+                    return showError(
+                        "Please enter a valid URL starting with https://",
+                    );
+                }
+
+                const targetOrigin = new URL(rawUrl).origin;
+
+                showLoadingUI("Verifying instance...");
+                await verifyAndRedirect(targetOrigin, true);
+            }
+
+            function verifyAndRedirect(targetUrl, ingore) {
+                // Directly persist and navigate without network probing
+                localStorage.setItem("custom_instance_url", targetUrl);
+                window.location.replace(`${targetUrl}/login`);
+            }
+        </script>
+    </body>
+</html>
