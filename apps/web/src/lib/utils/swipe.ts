@@ -15,6 +15,16 @@ type SwipeOpts = {
 	enabled?: () => boolean;
 };
 
+/** Direction-locked swipe math (pure, unit-tested). Once a gesture commits to
+ * `dir` (+1 right / -1 left) at activation, travel past zero into the other
+ * direction is ignored — `eff` is the effective offset and `fire` whether
+ * release should trigger the callback. Without this, a folder that handles only
+ * one side (e.g. trash: no left) still animates + slides off in the other. */
+export function swipeCommit(dx: number, dir: number, threshold: number) {
+	const eff = Math.sign(dx) === dir ? dx : 0;
+	return { eff, fire: eff !== 0 && Math.abs(eff) >= threshold };
+}
+
 export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 	const threshold = opts.threshold ?? 72;
 	// Screen edges belong to navigation, not rows: left edge is the sidebar
@@ -25,6 +35,7 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 	let startY = 0;
 	let dx = 0;
 	let active = false; // horizontal intent locked in
+	let dir = 0; // committed swipe direction (+1 right / -1 left); locked at activation
 	let tracking = false;
 
 	node.style.touchAction = 'pan-y';
@@ -46,6 +57,7 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 		startY = t.clientY;
 		dx = 0;
 		active = false;
+		dir = 0;
 		tracking = true;
 	}
 
@@ -66,26 +78,31 @@ export function swipeX(node: HTMLElement, opts: SwipeOpts) {
 				return;
 			}
 			active = true;
+			dir = Math.sign(dx); // commit to this direction for the rest of the gesture
 		}
 		// Horizontal intent locked: claim the gesture so pan-y can't keep
 		// vertically drifting the page under the finger (needs passive:false).
 		if (e.cancelable) e.preventDefault();
+		// Clamp to the committed direction (see swipeCommit): dragging back past
+		// zero into the other side does nothing.
+		const { eff } = swipeCommit(dx, dir, threshold);
 		// Resist past the threshold so it feels physical, not slippy.
-		const capped = Math.sign(dx) * Math.min(Math.abs(dx), threshold * 1.6);
+		const capped = Math.sign(eff) * Math.min(Math.abs(eff), threshold * 1.6);
 		setX(capped, false);
-		opts.onProgress?.(Math.max(-1, Math.min(1, dx / threshold)));
+		opts.onProgress?.(Math.max(-1, Math.min(1, eff / threshold)));
 	}
 
 	function onEnd() {
 		if (!tracking) return;
 		tracking = false;
 		if (!active) return;
-		const fire = Math.abs(dx) >= threshold;
+		// Only the committed direction can fire — a drag reversed past zero springs back.
+		const { fire } = swipeCommit(dx, dir, threshold);
 		if (fire) {
 			// Slide off in the swipe direction; the row's exit transition (list
 			// refresh) takes over from there.
-			setX(Math.sign(dx) * node.offsetWidth, true);
-			const cb = dx > 0 ? opts.onRight : opts.onLeft;
+			setX(dir * node.offsetWidth, true);
+			const cb = dir > 0 ? opts.onRight : opts.onLeft;
 			setTimeout(() => cb?.(), reduce() ? 0 : 140);
 		} else {
 			setX(0, true);
