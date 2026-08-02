@@ -106,6 +106,7 @@
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import InfoIcon from '@lucide/svelte/icons/info';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import Rows3Icon from '@lucide/svelte/icons/rows-3';
@@ -1389,7 +1390,7 @@
 	{@const provider = senderProvider(m.from)}
 	{@const origin = isInternal(m.from) ? null : provider || domainOf(m.from)}
 	{#if m.senderVerified || origin}
-		<div class="text-faint mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-none">
+		<div class="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-none">
 			{#if m.senderVerified}
 				<span class="text-ok inline-flex items-center gap-0.5 font-medium" title="Sender passed DMARC authentication">
 					<ShieldCheckIcon class="size-3" /> Verified
@@ -1398,6 +1399,29 @@
 			{#if origin}<span class={provider ? 'font-medium' : 'font-mono'}>{origin}</span>{/if}
 		</div>
 	{/if}
+{/snippet}
+<!-- Message details toggle: an info glyph (not a chevron — a chevron reads as
+     "expand replies") with a hover tooltip. Reveals the envelope via MessageDetails. -->
+{#snippet detailsToggle(m: MessageDTO)}
+	<Tooltip.Provider delayDuration={400}>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<button
+						{...props}
+						type="button"
+						aria-label="Message details"
+						aria-expanded={detailsOpen.has(m.id)}
+						onclick={() => toggleDetails(m.id)}
+						class="focus-visible:ring-ring/50 pointer-coarse:size-10 grid size-8 shrink-0 place-items-center rounded-lg outline-none transition-colors focus-visible:ring-2 {detailsOpen.has(m.id) ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+					>
+						<InfoIcon class="size-4" />
+					</button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>Message details</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
 {/snippet}
 
 
@@ -1534,12 +1558,12 @@
 		{:else}
 			<!-- Hidden ancestor chain (added-on-Cc): oldest first, immediate parent last. -->
 			{#each rc.ancestors ?? [] as a (a.sentAt ?? a.text)}
-				<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
+				<div class="border-border text-muted-foreground mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
 					<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(a.from)}</div>
 					<div class="whitespace-pre-wrap opacity-70">{a.text}</div>
 				</div>
 			{/each}
-			<div class="border-border text-faint mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
+			<div class="border-border text-muted-foreground mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
 				<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(rc.from)}</div>
 				<div class="whitespace-pre-wrap opacity-70">{rc.text}</div>
 			</div>
@@ -1950,10 +1974,11 @@
 							     (always shown) over the hover-reveal actions, so the row's right edge
 							     reads as one clean column instead of floating icons. -->
 							<div class="flex shrink-0 flex-col items-end gap-0.5 self-center pr-1">
-								<!-- Row 1: participants + time -->
-								<div class="text-faint flex items-center gap-1.5">
+								<!-- Row 1: participants + time. pr-2 aligns the time's right edge with
+								     the action glyphs below (which are centered in size-8 boxes). -->
+								<div class="text-faint flex items-center gap-1.5 pr-2">
 									<AvatarRow participants={t.participants} total={t.participantCount} />
-									<span class="text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
+									<span class="text-muted-foreground text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
 								</div>
 								<!-- Row 2: snooze + star + archive -->
 								<div class="flex items-center gap-0.5">
@@ -1963,15 +1988,16 @@
 											threadId={t.threadId}
 											snoozed={placement === 'snoozed'}
 											onchange={(info) => afterRowSnooze(t.threadId, info)}
-											triggerClass="grid size-7 place-items-center rounded-md text-faint transition duration-150 ease-out outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:translate-x-0 pointer-fine:data-[state=open]:opacity-100"
+											triggerClass="grid size-8 pointer-coarse:size-10 place-items-center rounded-md text-faint transition duration-150 ease-out outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:opacity-100"
 										/>
 									{/if}
 									{#if placement !== 'archived' && placement !== 'trash'}
 										<button
 											type="button"
 											title="Archive"
+											aria-label="Archive"
 											onclick={() => moveRow(t.threadId, 'archived')}
-											class="focus-visible:ring-ring/50 text-faint hover:text-ok grid size-7 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100"
+											class="focus-visible:ring-ring/50 text-faint hover:text-ok grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100"
 										>
 											<ArchiveIcon class="size-4" />
 										</button>
@@ -1979,11 +2005,12 @@
 									<button
 										type="button"
 										title={t.isStarred ? 'Unstar' : 'Star'}
+										aria-label={t.isStarred ? 'Unstar' : 'Star'}
 										aria-pressed={t.isStarred}
 										onclick={() => starRow(t.threadId, t.isStarred)}
-										class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {t.isStarred
+										class="focus-visible:ring-ring/50 grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {t.isStarred
 											? 'text-p3'
-											: 'text-faint hover:text-p3 pointer-fine:translate-x-1 pointer-fine:opacity-0 pointer-fine:group-hover/row:translate-x-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:translate-x-0 pointer-fine:focus-visible:opacity-100'}"
+											: 'text-faint hover:text-p3 pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100'}"
 									>
 										<StarIcon class="size-4 {t.isStarred ? 'fill-current' : ''}" />
 									</button>
@@ -2146,30 +2173,9 @@
 							</Popover.Root>
 						{/if}
 
-						<!-- Interact: find-in-thread + star + forward (step back on phones — star also lives on list rows) -->
-						{#if msgs.length}
-							<Tooltip.Provider delayDuration={600}>
-								<Tooltip.Root>
-									<Tooltip.Trigger>
-										{#snippet child({ props })}
-											<Button {...props} variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" aria-pressed={findOpen} onclick={() => (findOpen ? closeFind() : (findOpen = true))}>
-												<SearchIcon class="size-4" />
-												<span class="sr-only">Find in conversation</span>
-											</Button>
-										{/snippet}
-									</Tooltip.Trigger>
-									<Tooltip.Content class="flex items-center gap-1.5">Find in conversation <Kbd>/</Kbd></Tooltip.Content>
-								</Tooltip.Root>
-							</Tooltip.Provider>
-						{/if}
-						<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title={openStarred ? 'Unstar' : 'Star'} onclick={() => toggleStar(openStarred)}>
-							{#key starPop}<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
-						</Button>
-						{#if msgs.length}
-							<Button variant="ghost" size="icon" class="text-muted-foreground hidden size-8 sm:inline-flex" title="Forward" onclick={() => forwardThread(msgs, thread.subject)}>
-								<ForwardIcon class="size-4" />
-							</Button>
-						{/if}
+						<!-- Interact actions (find / star / forward) live in the ⋯ menu at all
+						     sizes — keeps the reading toolbar to the core triage cluster
+						     (Hick's law: fewer always-on choices in the header). -->
 						{#if attTotal > 0}
 							<button
 								type="button"
@@ -2185,10 +2191,10 @@
 
 						<!-- View toggle: chat flow vs mail card stack -->
 						<div class="bg-muted/60 flex items-center gap-0.5 rounded-xl p-0.5">
-							<button type="button" title="Chat view" aria-pressed={threadView.current === 'chat'} onclick={() => (threadView.current = 'chat')} class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'chat' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
+							<button type="button" title="Chat view" aria-label="Chat view" aria-pressed={threadView.current === 'chat'} onclick={() => (threadView.current = 'chat')} class="focus-visible:ring-ring/50 grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'chat' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
 								<MessageCircleIcon class="size-4" />
 							</button>
-							<button type="button" title="Mail view" aria-pressed={threadView.current === 'mail'} onclick={() => (threadView.current = 'mail')} class="focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'mail' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
+							<button type="button" title="Mail view" aria-label="Mail view" aria-pressed={threadView.current === 'mail'} onclick={() => (threadView.current = 'mail')} class="focus-visible:ring-ring/50 grid size-8 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 {threadView.current === 'mail' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}">
 								<Rows3Icon class="size-4" />
 							</button>
 						</div>
@@ -2198,7 +2204,7 @@
 						     kebab menu — the bar was overflowing and star fell off entirely. -->
 						<div class="bg-muted/60 hidden items-center gap-0.5 rounded-xl p-0.5 sm:flex">
 							{#if placement !== 'inbox'}
-								<button type="button" title="Move to inbox" onclick={() => move('inbox')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg shadow-none transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+								<button type="button" title="Move to inbox" aria-label="Move to inbox" onclick={() => move('inbox')} class="text-muted-foreground hover:text-brand hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg shadow-none transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 									<InboxDownIcon class="size-4" />
 								</button>
 							{/if}
@@ -2210,7 +2216,7 @@
 									<Tooltip.Root>
 										<Tooltip.Trigger>
 											{#snippet child({ props })}
-												<button {...props} type="button" onclick={() => move('archived')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+												<button {...props} type="button" onclick={() => move('archived')} class="text-muted-foreground hover:text-ok hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 													<ArchiveIcon class="size-4" />
 													<span class="sr-only">Archive</span>
 												</button>
@@ -2221,55 +2227,62 @@
 								</Tooltip.Provider>
 							{/if}
 							{#if placement !== 'spam'}
-								<button type="button" title="Mark spam" onclick={() => move('spam')} class="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+								<button type="button" title="Mark spam" aria-label="Mark spam" onclick={() => move('spam')} class="text-muted-foreground hover:text-warn hover:bg-card focus-visible:ring-ring/50 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 									<ShieldAlertIcon class="size-4" />
 								</button>
 							{/if}
 							{#if placement !== 'trash'}
-								<button type="button" title="Trash" onclick={() => move('trash')} class="text-muted-foreground hover:text-destructive hover:bg-card focus-visible:ring-destructive/40 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
+								<button type="button" title="Trash" aria-label="Trash" onclick={() => move('trash')} class="text-muted-foreground hover:text-destructive hover:bg-card focus-visible:ring-destructive/40 grid size-7 place-items-center rounded-lg transition-colors outline-none hover:shadow-xs focus-visible:ring-2">
 									<Trash2Icon class="size-4" />
 								</button>
 							{/if}
 						</div>
 
-						<!-- Phone overflow menu: everything the narrow bar can't fit —
-						     star, forward, and the triage actions. -->
+						<!-- Star + overflow: trailing single-icon actions, after the two
+						     segmented pills (mode / triage) so nothing floats between them. -->
+						<button type="button" title={openStarred ? 'Unstar' : 'Star'} aria-label={openStarred ? 'Unstar' : 'Star'} aria-pressed={openStarred} onclick={() => toggleStar(openStarred)} class="hover:bg-muted focus-visible:ring-ring/50 pointer-coarse:size-10 grid size-8 place-items-center rounded-lg outline-none transition-colors focus-visible:ring-2 {openStarred ? 'text-p3' : 'text-muted-foreground hover:text-p3'}">
+							{#key starPop}<StarIcon class="size-4 {openStarred ? 'fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
+						</button>
+
+						<!-- Overflow menu (all sizes): the interact actions (star/forward/find)
+						     always live here. The triage moves also appear here on phones,
+						     where the sm:flex cluster above is hidden (sm:hidden guards keep
+						     them from duplicating the cluster on ≥sm). -->
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button variant="ghost" size="icon" class="text-muted-foreground size-8 sm:hidden" title="More actions" {...props}>
+									<Button variant="ghost" size="icon" class="text-muted-foreground size-8" title="More actions" aria-label="More actions" {...props}>
 										<EllipsisVerticalIcon class="size-4" />
 									</Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content class="w-48" align="end">
-								<DropdownMenu.Item onSelect={() => toggleStar(openStarred)}>
-									{#key starPop}<StarIcon class="size-4 {openStarred ? 'text-p3 fill-current' : ''} {starPop > 0 ? 'animate-pop' : ''}" />{/key}
-									{openStarred ? 'Unstar' : 'Star'}
-								</DropdownMenu.Item>
 								{#if msgs.length}
 									<DropdownMenu.Item onSelect={() => forwardThread(msgs, thread.subject)}>
 										<ForwardIcon class="size-4" /> Forward
 									</DropdownMenu.Item>
+									<DropdownMenu.Item onSelect={() => (findOpen ? closeFind() : (findOpen = true))}>
+										<SearchIcon class="size-4" /> Find
+									</DropdownMenu.Item>
 								{/if}
-								<DropdownMenu.Separator />
+								<DropdownMenu.Separator class="sm:hidden" />
 								{#if placement !== 'inbox'}
-									<DropdownMenu.Item onSelect={() => move('inbox')}>
+									<DropdownMenu.Item class="sm:hidden" onSelect={() => move('inbox')}>
 										<InboxDownIcon class="size-4" /> Move to inbox
 									</DropdownMenu.Item>
 								{/if}
 								{#if placement !== 'archived'}
-									<DropdownMenu.Item onSelect={() => move('archived')}>
+									<DropdownMenu.Item class="sm:hidden" onSelect={() => move('archived')}>
 										<ArchiveIcon class="size-4" /> Archive
 									</DropdownMenu.Item>
 								{/if}
 								{#if placement !== 'spam'}
-									<DropdownMenu.Item onSelect={() => move('spam')}>
+									<DropdownMenu.Item class="sm:hidden" onSelect={() => move('spam')}>
 										<ShieldAlertIcon class="size-4" /> Mark spam
 									</DropdownMenu.Item>
 								{/if}
 								{#if placement !== 'trash'}
-									<DropdownMenu.Item variant="destructive" onSelect={() => move('trash')}>
+									<DropdownMenu.Item class="sm:hidden" variant="destructive" onSelect={() => move('trash')}>
 										<Trash2Icon class="size-4" /> Trash
 									</DropdownMenu.Item>
 								{/if}
@@ -2306,13 +2319,13 @@
 							<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
 								{findQ.trim() ? (findMatches.length ? `${findIdx + 1}/${findMatches.length}` : '0/0') : ''}
 							</span>
-							<button type="button" title="Previous (Shift+Enter)" disabled={!findMatches.length} onclick={() => findStep(-1)} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors disabled:opacity-40">
+							<button type="button" title="Previous (Shift+Enter)" aria-label="Previous match" disabled={!findMatches.length} onclick={() => findStep(-1)} class="text-muted-foreground hover:text-foreground grid size-8 place-items-center rounded transition-colors disabled:opacity-40">
 								<ChevronUpIcon class="size-4" />
 							</button>
-							<button type="button" title="Next (Enter)" disabled={!findMatches.length} onclick={() => findStep(1)} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors disabled:opacity-40">
+							<button type="button" title="Next (Enter)" aria-label="Next match" disabled={!findMatches.length} onclick={() => findStep(1)} class="text-muted-foreground hover:text-foreground grid size-8 place-items-center rounded transition-colors disabled:opacity-40">
 								<ChevronDownIcon class="size-4" />
 							</button>
-							<button type="button" title="Close (Esc)" onclick={closeFind} class="text-muted-foreground hover:text-foreground grid size-6 place-items-center rounded transition-colors">
+							<button type="button" title="Close (Esc)" aria-label="Close find" onclick={closeFind} class="text-muted-foreground hover:text-foreground grid size-8 place-items-center rounded transition-colors">
 								<XIcon class="size-4" />
 							</button>
 						</div>
@@ -2360,15 +2373,7 @@
 													</div>
 													{@render senderMeta(m)}
 												</div>
-												<button
-													type="button"
-													title="Details"
-													aria-expanded={detailsOpen.has(m.id)}
-													onclick={() => toggleDetails(m.id)}
-													class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-6 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
-												>
-													<ChevronDownIcon class="size-3.5 transition-transform {detailsOpen.has(m.id) ? 'rotate-180' : ''}" />
-												</button>
+												{@render detailsToggle(m)}
 											</div>
 											{#if detailsOpen.has(m.id)}<MessageDetails {m} />{/if}
 										{/if}
@@ -2443,7 +2448,7 @@
 														</div>
 													{/if}
 												{/if}
-												<div class="mt-1 flex items-center justify-end gap-1 text-[11px] {outbound ? 'text-background/70' : 'text-faint'}">
+												<div class="mt-1 flex items-center justify-end gap-1 text-[11px] {outbound ? 'text-background/70' : 'text-muted-foreground'}">
 													{#if m.viaAlias}<span class="font-mono">via {m.viaAlias}</span>{/if}
 													<span>{fmtTime(m.sentAt)}</span>
 													{#if outbound && m.submission}
@@ -2504,15 +2509,7 @@
 											</div>
 										</button>
 										{#if open}
-											<button
-												type="button"
-												title="Details"
-												aria-expanded={detailsOpen.has(m.id)}
-												onclick={() => toggleDetails(m.id)}
-												class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
-											>
-												<ChevronDownIcon class="size-4 transition-transform {detailsOpen.has(m.id) ? 'rotate-180' : ''}" />
-											</button>
+											<div class="mt-0.5">{@render detailsToggle(m)}</div>
 										{/if}
 									</div>
 									{#if m.submission?.tick === 'warning'}
