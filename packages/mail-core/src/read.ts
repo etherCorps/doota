@@ -742,6 +742,7 @@ export async function getThread(
       htmlKind: (m.htmlKind as "rich" | "plain" | null) ?? null,
       hasRemoteImages: m.hasRemoteImages,
       senderTrusted: !!m.fromAddr && trustedFrom.has(m.fromAddr.toLowerCase()),
+      senderVerified: m.dmarcPass,
       keywords: safeJsonArray(d?.keywords),
       isRead,
       outbound: sentFromHere.has(m.id),

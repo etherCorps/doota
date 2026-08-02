@@ -1,0 +1,1 @@
+ALTER TABLE `message` ADD `dmarc_pass` integer DEFAULT false NOT NULL;

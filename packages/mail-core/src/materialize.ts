@@ -45,6 +45,9 @@ export type ParsedMessage = {
   text: string | null;
   html: string | null;
   r2RawKey: string | null;
+  /** Aligned DMARC pass at ingest (CF Authentication-Results). Drives the
+   * verified-sender shield; absent ⇒ unverified (fail-closed). */
+  dmarcPass?: boolean;
   attachments: {
     partId: string | null;
     filename: string | null;
@@ -248,6 +251,7 @@ export async function materializeMessage(
       contentKind,
       htmlKind,
       hasRemoteImages,
+      dmarcPass: parsed.dmarcPass ?? false,
       subjectEnc,
       bodyStrippedEnc: strippedEnc,
       bodyFullEnc: fullEnc,

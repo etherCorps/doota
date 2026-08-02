@@ -107,6 +107,8 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
     text: parsed.text ?? null,
     html: parsed.html ?? null,
     r2RawKey: job.r2RawKey,
+    dmarcPass: job.dmarcPass ?? false, // ?? false: jobs queued before this field
+
     // r2Key is filled by stageInboundAttachments before materialize — a null
     // key means an empty/unreadable part, and stays undownloadable. Only REAL
     // attachments (not body-alternative parts like a bare text/calendar) — see

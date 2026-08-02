@@ -42,7 +42,16 @@ export type InboundJob = {
   subaddressTag: string | null;
   envelopeFrom: string;
   messageIdHeader: string | null;
+  /** Sender passed aligned DMARC (from CF's Authentication-Results) — the
+   * "verified sender" signal, captured here where the header is authoritative. */
+  dmarcPass: boolean;
 };
+
+/** True when Cloudflare's Authentication-Results shows an aligned DMARC pass.
+ * Conservative: anything but an explicit `dmarc=pass` reads as unverified. */
+export function isDmarcPass(authResults: string | null): boolean {
+  return !!authResults && /\bdmarc=pass\b/i.test(authResults);
+}
 
 // Minimal shape of Cloudflare's ForwardableEmailMessage we depend on.
 type EmailMessage = {
@@ -81,6 +90,9 @@ export async function handleEmail(
   // stable for idempotent R2 writes.
   const rawBuf = await new Response(message.raw).arrayBuffer();
   const messageIdHeader = message.headers.get("message-id");
+  // CF stamps Authentication-Results on the forwarded message — authoritative
+  // here (before it's buried in the stored raw). Captured now, stored downstream.
+  const dmarcPass = isDmarcPass(message.headers.get("authentication-results"));
   const keyId = messageIdHeader ? safeKey(messageIdHeader) : await sha256Hex(rawBuf);
   const r2RawKey = `raw/${resolved.orgId}/${keyId}`;
 
@@ -100,6 +112,7 @@ export async function handleEmail(
     subaddressTag: resolved.subaddressTag,
     envelopeFrom: message.from,
     messageIdHeader,
+    dmarcPass,
   };
   await env.MAIL_QUEUE.send(job);
 }

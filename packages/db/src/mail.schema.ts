@@ -213,6 +213,11 @@ export const message = sqliteTable(
     // on render). html_kind: rich → sandboxed card, plain → text bubble.
     htmlKind: text("html_kind"), // rich | plain | null (no html)
     hasRemoteImages: integer("has_remote_images", { mode: "boolean" }).default(false).notNull(),
+    // Sender authentication verdict captured at ingest from Cloudflare's
+    // Authentication-Results header (dmarc=pass ⇒ aligned DKIM/SPF). Drives the
+    // "verified sender" shield. false = fail/none/unknown — fail-closed: we never
+    // badge mail we didn't confirm, including historical rows.
+    dmarcPass: integer("dmarc_pass", { mode: "boolean" }).default(false).notNull(),
     subjectEnc: text("subject_enc"),
     // Small text twins stay in D1 for the hot list/search/quote paths. The large
     // HTML body does NOT — see body/+server.ts (derives it from R2 raw).
