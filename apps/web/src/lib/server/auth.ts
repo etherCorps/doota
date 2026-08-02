@@ -8,7 +8,7 @@ import {
   twoFactor,
   organization,
   multiSession,
-  openAPI
+  openAPI,
 } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
@@ -19,7 +19,12 @@ import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { sendMailBackground } from "./mailer";
-import { isServedDomain, invalidateDomainCache, senderAddress, domainOf } from "@doota/db/org-domains";
+import {
+  isServedDomain,
+  invalidateDomainCache,
+  senderAddress,
+  domainOf,
+} from "@doota/db/org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGIN, ORIGINS } from "$app/env/public";
 import { renderEmail } from "./email";
@@ -66,6 +71,11 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
     // and fall back to D1, and consume/revoke are enforced on D1. Absent (CLI
     // schema-gen has no binding) → plain database-only mode.
     secondaryStorage: kv ? kvSecondaryStorage(kv) : undefined,
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+      },
+    },
     user: {
       modelName: "user",
       additionalFields: {
@@ -114,10 +124,12 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       autoSignInAfterVerification: false,
     },
     appName: `Doota`,
-    baseURL: ORIGINS?.length ? {
-      allowedHosts: ORIGINS,
-      fallback: ORIGIN
-    } : ORIGIN,
+    baseURL: ORIGINS?.length
+      ? {
+          allowedHosts: ORIGINS,
+          fallback: ORIGIN,
+        }
+      : ORIGIN,
     secret: BETTER_AUTH_SECRET,
     database: drizzleAdapter(db!, { provider: "sqlite", schema }),
     emailAndPassword: {
@@ -143,7 +155,9 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
           // deferred action, available after a domain has a working sending
           // path). Until then recovery is the email-free CLI (reset-admin) —
           // never an unverified, possibly-undeliverable address.
-          const emailVerified = (user as typeof user & { emailVerified?: boolean }).emailVerified;
+          const emailVerified = (
+            user as typeof user & { emailVerified?: boolean }
+          ).emailVerified;
           if (emailVerified) to = user.email;
         } else {
           const { recoveryEmail, recoveryEmailVerified } = user as typeof user &
@@ -157,7 +171,8 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
 
         // Brand from the user's own org domain (members) when it's active;
         // superadmin/system mail falls back to any active org domain.
-        const fromDomain = role === "superadmin" ? undefined : domainOf(user.email);
+        const fromDomain =
+          role === "superadmin" ? undefined : domainOf(user.email);
         const from = db ? await senderAddress(db, fromDomain) : undefined;
 
         const mail = renderEmail("reset-link", { from, resetLink: url });
@@ -292,7 +307,9 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
             const domain = String((org as { domain?: string }).domain ?? "")
               .trim()
               .toLowerCase();
-            if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$/.test(domain)) {
+            if (
+              !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$/.test(domain)
+            ) {
               throw new APIError("BAD_REQUEST", {
                 message: "A valid organization domain is required.",
               });
@@ -328,7 +345,10 @@ export type Auth = ReturnType<typeof buildAuth>;
 
 let auth: Auth | undefined;
 
-export function createAuth(db: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
+export function createAuth(
+  db: DrizzleD1Database<typeof schema>,
+  kv?: KVNamespace,
+) {
   return (auth ??= buildAuth(db, kv));
 }
 
