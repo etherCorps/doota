@@ -12,6 +12,14 @@ export function fmtTime(ms: number | null): string {
 	return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// Full, locale-aware date+time for the message details panel: month NAME (not a
+// number), day, year, and time in the reader's locale — e.g. "2 Aug 2026, 10:11"
+// or "Aug 2, 2026, 10:11 AM" depending on locale.
+export function fmtDateTime(ms: number | null): string {
+	if (!ms) return '';
+	return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 // Sender identity for list rows + message monograms. `from` is a raw header
 // ("Name <addr>" or a bare address); pull a human name.
 export function senderName(from: string | null): string {

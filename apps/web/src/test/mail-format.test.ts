@@ -5,6 +5,7 @@ import {
 	senderName,
 	senderAddr,
 	senderLabel,
+	fmtDateTime,
 	domainOf,
 	senderProvider,
 	fmtSize,
@@ -45,6 +46,20 @@ describe('sender formatting', () => {
 		expect(senderProvider('x@GOOGLEMAIL.COM')).toBe('Gmail');
 		expect(senderProvider('x@hotmail.com')).toBe('Outlook');
 		expect(senderProvider('x@acme.com')).toBeNull(); // custom domain → needs MX, not guessed
+	});
+});
+
+describe('fmtDateTime (details panel)', () => {
+	it('uses a month name (not a number) + year, and includes a time', () => {
+		// Noon UTC won't cross a day boundary in any real runner TZ, so Aug holds.
+		const s = fmtDateTime(Date.UTC(2026, 7, 2, 12, 0));
+		expect(s).toMatch(/Aug/); // month NAME, not "8"
+		expect(s).toContain('2026');
+		expect(s).toMatch(/\d:\d/); // a time component
+		expect(s).not.toMatch(/\b8\/2\/2026\b/); // not the numeric M/D/Y form
+	});
+	it('empty for null', () => {
+		expect(fmtDateTime(null)).toBe('');
 	});
 });
 

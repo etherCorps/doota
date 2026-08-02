@@ -18,6 +18,7 @@
 	import SnoozeMenu from '$lib/components/mail/snooze-menu.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
 	import ContactHoverCard from '$lib/components/mail/contact-hovercard.svelte';
+	import MessageDetails from '$lib/components/mail/message-details.svelte';
 	import { AvatarGroup } from '$lib/components/ui/avatar/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Kbd } from '$lib/components/ui/kbd/index.js';
@@ -1373,47 +1374,32 @@
 	<SenderAvatar {from} class={cls} shape={shape ?? 'circle'} />
 {/snippet}
 
-<!-- Sender-origin line under the name: internal/external + best-effort provider.
-     ponytail: verified/BIMI badge slot is deferred to the backend phase (needs
-     Authentication-Results at ingest + VMC verification) — render it here once the
-     DTO carries a verdict. -->
+<!-- Colleague chip — sits after the name. Only the EXCEPTION is badged (a sender
+     on your own org domain); external is the norm, so it gets no pill (avoids
+     badge-on-everything noise / alarm fatigue). -->
+{#snippet colleagueChip(m: MessageDTO)}
+	{#if isInternal(m.from)}
+		<span class="bg-brand/10 text-brand shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none font-medium" title="Sender is on your organization’s domain">Colleague</span>
+	{/if}
+{/snippet}
+<!-- Under-name meta: the Verified trust chip + a quiet "where from" (provider or
+     domain) for external senders. Renders nothing when there's nothing to say.
+     ponytail: BIMI logo slot deferred (needs VMC verification at ingest). -->
 {#snippet senderMeta(m: MessageDTO)}
-	{@const internal = isInternal(m.from)}
 	{@const provider = senderProvider(m.from)}
-	<div class="text-faint mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-none">
-		{#if m.senderVerified}
-			<span class="text-ok inline-flex items-center gap-0.5 font-medium" title="Sender passed DMARC authentication">
-				<ShieldCheckIcon class="size-3" /> Verified
-			</span>
-		{/if}
-		<span class="inline-flex items-center rounded-full px-1.5 py-0.5 font-medium {internal ? 'bg-brand/10 text-brand' : 'bg-muted text-muted-foreground'}">
-			{internal ? 'Internal' : 'External'}
-		</span>
-		{#if !internal}
-			{#if provider}<span class="font-medium">{provider}</span>{:else if domainOf(m.from)}<span class="font-mono">{domainOf(m.from)}</span>{/if}
-		{/if}
-	</div>
+	{@const origin = isInternal(m.from) ? null : provider || domainOf(m.from)}
+	{#if m.senderVerified || origin}
+		<div class="text-faint mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-none">
+			{#if m.senderVerified}
+				<span class="text-ok inline-flex items-center gap-0.5 font-medium" title="Sender passed DMARC authentication">
+					<ShieldCheckIcon class="size-3" /> Verified
+				</span>
+			{/if}
+			{#if origin}<span class={provider ? 'font-medium' : 'font-mono'}>{origin}</span>{/if}
+		</div>
+	{/if}
 {/snippet}
 
-{#snippet detailRow(label: string, value: string)}
-	<div class="flex gap-2">
-		<dt class="text-faint w-16 shrink-0">{label}</dt>
-		<dd class="text-muted-foreground min-w-0 flex-1 font-mono break-words">{value}</dd>
-	</div>
-{/snippet}
-<!-- Gmail "show details" envelope, from the DTO we already carry. mailed-by
-     (return-path) + signed-by (DKIM d=) are deferred (need extra ingest). -->
-{#snippet msgDetails(m: MessageDTO)}
-	<dl class="bg-muted/40 mb-3 space-y-1 rounded-lg border px-3 py-2 text-[11px]">
-		{#if m.from}{@render detailRow('From', m.from)}{/if}
-		{#if m.to.length}{@render detailRow('To', m.to.join(', '))}{/if}
-		{#if m.cc.length}{@render detailRow('Cc', m.cc.join(', '))}{/if}
-		{#if m.replyTo}{@render detailRow('Reply-To', m.replyTo)}{/if}
-		{#if m.sentAt}{@render detailRow('Date', new Date(m.sentAt).toLocaleString())}{/if}
-		{#if m.viaAlias}{@render detailRow('Via', m.viaAlias)}{/if}
-		{@render detailRow('Security', m.senderVerified ? 'DMARC passed' : 'Not verified')}
-	</dl>
-{/snippet}
 
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
      selected and shows a checkbox affordance on fine-pointer hover — the row's
@@ -2357,26 +2343,34 @@
 										<div class="flex min-w-0 max-w-[85%] flex-col {outbound ? 'items-end' : 'items-start'}">
 											{#if !outbound}
 											<!-- Top section: avatar left, name + origin/provider stacked right. The
-											     avatar left the gutter so the bubble below spans the full column. -->
+											     avatar left the gutter so the bubble below spans the full column.
+											     One hover card (avatar) — the name is plain to avoid a second card. -->
 											<div class="mb-1 flex items-center gap-2 px-1">
 												{#if m.from}
 													<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="shrink-0">
-														{#snippet children()}{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}{/snippet}
+														{#snippet children()}{@render monogram(m.from, 'size-7 shrink-0 text-[10px]', 'square')}{/snippet}
 													</ContactHoverCard>
 												{:else}
-													{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}
+													{@render monogram(m.from, 'size-7 shrink-0 text-[10px]', 'square')}
 												{/if}
-												<div class="min-w-0">
-													{#if m.from}
-														<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="text-foreground block truncate text-[13px] font-medium">
-															{#snippet children()}{senderLabel(m)}{/snippet}
-														</ContactHoverCard>
-													{:else}
-														<span class="text-foreground block truncate text-[13px] font-medium">{senderLabel(m)}</span>
-													{/if}
+												<div class="min-w-0 flex-1">
+													<div class="flex items-center gap-1.5">
+														<span class="text-foreground min-w-0 truncate text-[13px] font-medium">{senderLabel(m)}</span>
+														{@render colleagueChip(m)}
+													</div>
 													{@render senderMeta(m)}
 												</div>
+												<button
+													type="button"
+													title="Details"
+													aria-expanded={detailsOpen.has(m.id)}
+													onclick={() => toggleDetails(m.id)}
+													class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 grid size-6 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+												>
+													<ChevronDownIcon class="size-3.5 transition-transform {detailsOpen.has(m.id) ? 'rotate-180' : ''}" />
+												</button>
 											</div>
+											{#if detailsOpen.has(m.id)}<MessageDetails {m} />{/if}
 										{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
@@ -2488,14 +2482,10 @@
 											class="hover:bg-muted/40 focus-visible:ring-ring/50 -my-1 flex min-w-0 flex-1 items-start gap-2 rounded-lg py-1 text-left transition-colors outline-none focus-visible:ring-2"
 										>
 											<div class="min-w-0 flex-1">
-												<div class="flex items-baseline gap-2">
-													{#if outbound || !m.from}
+												<div class="flex items-center gap-2">
+													<!-- Plain name — the avatar carries the single contact hover card. -->
 													<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderLabel(m)}</span>
-												{:else}
-													<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="truncate text-sm font-semibold">
-														{#snippet children()}{senderLabel(m)}{/snippet}
-													</ContactHoverCard>
-												{/if}
+													{#if !outbound}{@render colleagueChip(m)}{/if}
 													{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
 												</div>
 												{#if !outbound && m.from}{@render senderMeta(m)}{/if}
@@ -2532,7 +2522,7 @@
 									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
-											{#if detailsOpen.has(m.id)}{@render msgDetails(m)}{/if}
+											{#if detailsOpen.has(m.id)}<MessageDetails {m} />{/if}
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
 												{@const inviteOnly = !showOriginal.has(m.id)}
