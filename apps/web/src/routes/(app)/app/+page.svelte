@@ -1444,7 +1444,7 @@
 				<CheckIcon class="size-4" />
 			</span>
 		{:else}
-			<AvatarStack {participants} class="size-9 text-xs" />
+			<AvatarStack {participants} class="size-9 text-xs rounded-2xl" />
 			<!-- Fades/scales in on hover (opacity, not a display swap, so it can animate). -->
 			<span
 				class="bg-background/95 text-muted-foreground absolute inset-0 grid scale-95 place-items-center rounded-full border opacity-0 transition duration-150 ease-out motion-reduce:transition-none pointer-fine:group-hover/row:scale-100 pointer-fine:group-hover/row:opacity-100"

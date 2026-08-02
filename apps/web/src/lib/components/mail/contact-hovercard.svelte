@@ -91,7 +91,7 @@
 			<span {...props} onclick={onTriggerClick} class={cn('focus-visible:ring-ring/50 cursor-default rounded-sm outline-none focus-visible:ring-2', className)}>{@render children()}</span>
 		{/snippet}
 	</HoverCard.Trigger>
-	<HoverCard.Content class="w-80 p-0" sideOffset={8}>
+	<HoverCard.Content class="w-80 p-0" sideOffset={8} side="right">
 		<div class="flex items-start gap-3 p-3.5">
 			<SenderAvatar from={`${name} <${addr}>`} class="size-11 text-sm" />
 			<div class="min-w-0 flex-1">
