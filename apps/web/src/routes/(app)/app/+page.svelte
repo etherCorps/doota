@@ -74,7 +74,7 @@
 	import { replySubject, RETRYABLE_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import {
-		fmtTime, senderName, senderLabel, senderAddr,
+		fmtTime, senderName, senderLabel, senderAddr, domainOf, senderProvider,
 		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments, shownAttachments,
 		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock
 	} from '$lib/mail/format';
@@ -104,6 +104,7 @@
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import StickyNoteIcon from '@lucide/svelte/icons/sticky-note';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import Rows3Icon from '@lucide/svelte/icons/rows-3';
@@ -916,6 +917,18 @@
 	// helpers (msgPrivateTo / msgCanReplyAll / replyCtx) in $lib/mail/format.
 	const self = $derived(selfSet(identities));
 
+	// Sender-origin chip: internal = the sender's domain is one of ours (a mailbox
+	// or send-identity domain), else external. Client-only — no DTO/migration.
+	const myDomains = $derived(
+		new SvelteSet(
+			[...mailboxes.map((m) => domainOf(m.address)), ...identities.map((i) => domainOf(i.address))].filter(Boolean)
+		)
+	);
+	const isInternal = (from: string | null): boolean => {
+		const d = domainOf(from);
+		return !!d && myDomains.has(d);
+	};
+
 	// Address → best display name already in the loaded data (list rows + the open
 	// thread's messages). Providers sometimes omit the name on a given message, but
 	// we've usually captured a real one from that sender elsewhere — reuse it
@@ -1351,6 +1364,28 @@
 
 {#snippet monogram(from: string | null, cls: string)}
 	<SenderAvatar {from} class={cls} />
+{/snippet}
+
+<!-- Sender-origin line under the name: internal/external + best-effort provider.
+     ponytail: verified/BIMI badge slot is deferred to the backend phase (needs
+     Authentication-Results at ingest + VMC verification) — render it here once the
+     DTO carries a verdict. -->
+{#snippet senderMeta(m: MessageDTO)}
+	{@const internal = isInternal(m.from)}
+	{@const provider = senderProvider(m.from)}
+	<div class="text-faint mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-none">
+		{#if m.senderVerified}
+			<span class="text-ok inline-flex items-center gap-0.5 font-medium" title="Sender passed DMARC authentication">
+				<ShieldCheckIcon class="size-3" /> Verified
+			</span>
+		{/if}
+		<span class="inline-flex items-center rounded-full px-1.5 py-0.5 font-medium {internal ? 'bg-brand/10 text-brand' : 'bg-muted text-muted-foreground'}">
+			{internal ? 'Internal' : 'External'}
+		</span>
+		{#if !internal}
+			{#if provider}<span class="font-medium">{provider}</span>{:else if domainOf(m.from)}<span class="font-mono">{domainOf(m.from)}</span>{/if}
+		{/if}
+	</div>
 {/snippet}
 
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
@@ -2291,15 +2326,24 @@
 								{#if item.type === 'external_message' && threadView.current === 'chat'}
 									{@const m = item}
 									{@const outbound = m.outbound}
-									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex gap-2.5 {outbound ? 'flex-row-reverse' : ''}">
-										{#if !outbound}{@render monogram(m.from, 'mt-5 size-7 text-[10px]')}{/if}
-										<div class="flex min-w-0 max-w-[80%] flex-col {outbound ? 'items-end' : 'items-start'}">
-											{#if !outbound && m.from}
-											<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">
-												{#snippet children()}{senderLabel(m)}{/snippet}
-											</ContactHoverCard>
-										{:else if !outbound}
-											<span class="text-muted-foreground mb-1 px-1 text-[11px] font-medium">{senderLabel(m)}</span>
+									<div data-msg={m.id} data-newest={m.id === msgs.at(-1)?.id} class="flex {outbound ? 'justify-end' : ''}">
+										<div class="flex min-w-0 max-w-[85%] flex-col {outbound ? 'items-end' : 'items-start'}">
+											{#if !outbound}
+											<!-- Top section: avatar left, name + origin/provider stacked right. The
+											     avatar left the gutter so the bubble below spans the full column. -->
+											<div class="mb-1 flex items-center gap-2 px-1">
+												{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}
+												<div class="min-w-0">
+													{#if m.from}
+														<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="text-foreground block truncate text-[13px] font-medium">
+															{#snippet children()}{senderLabel(m)}{/snippet}
+														</ContactHoverCard>
+													{:else}
+														<span class="text-foreground block truncate text-[13px] font-medium">{senderLabel(m)}</span>
+													{/if}
+													{@render senderMeta(m)}
+												</div>
+											</div>
 										{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
@@ -2319,7 +2363,7 @@
 												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted || imagesAll}
-													<div class="w-[min(32rem,calc(80cqi-2.5rem))]">
+													<div class="w-[min(34rem,calc(85cqi-2rem))]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
 															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`}
@@ -2398,9 +2442,9 @@
 										type="button"
 										aria-expanded={open}
 										onclick={() => toggleMsg(m.id)}
-										class="hover:bg-muted/40 focus-visible:ring-ring/50 flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors outline-none focus-visible:ring-2"
+										class="hover:bg-muted/40 focus-visible:ring-ring/50 flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors outline-none focus-visible:ring-2"
 									>
-										{@render monogram(m.from, 'size-8 text-[11px]')}
+										{@render monogram(m.from, 'mt-0.5 size-8 text-[11px]')}
 										<div class="min-w-0 flex-1">
 											<div class="flex items-baseline gap-2">
 												{#if outbound || !m.from}
@@ -2412,6 +2456,7 @@
 											{/if}
 												{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
 											</div>
+											{#if !outbound && m.from}{@render senderMeta(m)}{/if}
 											{#if open}
 												<span class="text-muted-foreground block truncate font-mono text-[11px]">{m.from ?? ''}</span>
 											{:else}

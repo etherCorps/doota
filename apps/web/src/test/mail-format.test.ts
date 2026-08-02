@@ -5,12 +5,15 @@ import {
 	senderName,
 	senderAddr,
 	senderLabel,
+	domainOf,
+	senderProvider,
 	fmtSize,
 	fileExt,
 	selfSet,
 	msgCanReplyAll,
 	replyCtx
 } from '$lib/mail/format';
+import { isDmarcPass } from '@doota/mail-core/inbound-worker';
 
 // Minimal message factory — only the fields the audience helpers read.
 const msg = (p: Partial<MessageDTO>): MessageDTO =>
@@ -30,6 +33,28 @@ describe('sender formatting', () => {
 	it('senderLabel prefers fromName over the header parse', () => {
 		expect(senderLabel({ fromName: 'Provider Name', from: 'x@y.com' })).toBe('Provider Name');
 		expect(senderLabel({ fromName: null, from: 'Jane <j@x.com>' })).toBe('Jane');
+	});
+	it('domainOf lowercases and strips the local part', () => {
+		expect(domainOf('Jane <J@Example.COM>')).toBe('example.com');
+		expect(domainOf('bare@acme.io')).toBe('acme.io');
+		expect(domainOf(null)).toBe('');
+		expect(domainOf('no-at-sign')).toBe('');
+	});
+	it('senderProvider maps known consumer domains, null otherwise', () => {
+		expect(senderProvider('x@gmail.com')).toBe('Gmail');
+		expect(senderProvider('x@GOOGLEMAIL.COM')).toBe('Gmail');
+		expect(senderProvider('x@hotmail.com')).toBe('Outlook');
+		expect(senderProvider('x@acme.com')).toBeNull(); // custom domain → needs MX, not guessed
+	});
+});
+
+describe('isDmarcPass (sender-verified shield)', () => {
+	it('true only on an explicit dmarc=pass', () => {
+		expect(isDmarcPass('mx.cf.net; dkim=pass header.d=x.com; spf=pass; dmarc=pass header.from=x.com')).toBe(true);
+		expect(isDmarcPass('mx.cf.net; dkim=fail; spf=softfail; dmarc=fail header.from=x.com')).toBe(false);
+		expect(isDmarcPass('mx.cf.net; dmarc=none')).toBe(false);
+		expect(isDmarcPass(null)).toBe(false);
+		expect(isDmarcPass('')).toBe(false);
 	});
 });
 

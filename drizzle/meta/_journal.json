@@ -239,6 +239,13 @@
       "when": 1785314766790,
       "tag": "0033_fuzzy_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1785642188610,
+      "tag": "0034_sparkling_zaran",
+      "breakpoints": true
     }
   ]
 }

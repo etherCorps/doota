@@ -86,6 +86,9 @@ export type MessageDTO = {
   hasRemoteImages: boolean;
   /** Reader auto-loads remote images from this sender ("always load" trust). */
   senderTrusted?: boolean;
+  /** Sender passed aligned DMARC at ingest (CF Authentication-Results) — drives
+   * the "verified" shield. Absent/false = unverified (fail-closed). */
+  senderVerified?: boolean;
   keywords: string[];
   isRead: boolean;
   /** True when the VIEWING mailbox sent this message (it holds the `from`
