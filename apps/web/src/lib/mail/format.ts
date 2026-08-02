@@ -136,6 +136,17 @@ export function msgPrivateTo(m: MessageDTO, parts: Set<string>, self: Set<string
 	if (aud.size >= parts.size) return null; // reaches everyone on the thread
 	return [...aud].filter((addr) => !self.has(baseAddr(addr)));
 }
+// Messages safe to include when forwarding a conversation: those that reached the
+// whole thread, or that the forwarder (self) was directly a party to. A private
+// sub-reply the forwarder wasn't on — one they only saw via a shared mailbox — is
+// dropped, so forwarding never leaks a conversation that wasn't theirs.
+export function forwardableMessages(msgs: MessageDTO[], parts: Set<string>, self: Set<string>): MessageDTO[] {
+	return msgs.filter((m) => {
+		if (msgPrivateTo(m, parts, self) === null) return true; // reached everyone
+		const aud = [m.from, ...m.to, ...m.cc].filter((addr): addr is string => !!addr).map(baseAddr);
+		return aud.some((addr) => self.has(addr)); // forwarder was on this message
+	});
+}
 // Reply-all only means something when the message reaches ≥2 people besides you.
 export function msgCanReplyAll(m: MessageDTO, self: Set<string>): boolean {
 	const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map(baseAddr));
@@ -186,7 +197,6 @@ export function replyCtx(
 // --- Forward ----------------------------------------------------------------
 export const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export function fwdBlock(m: MessageDTO): string {
-	const orig = escHtml(m.bodyFull ?? m.bodyStripped ?? '').replace(/\r?\n/g, '<br>');
 	const header = [
 		`From: ${m.from ?? ''}`,
 		m.sentAt ? `Date: ${new Date(m.sentAt).toLocaleString()}` : '',
@@ -196,5 +206,24 @@ export function fwdBlock(m: MessageDTO): string {
 		.filter(Boolean)
 		.map((line) => `<p>${escHtml(line)}</p>`)
 		.join('');
-	return `${header}<blockquote>${orig}</blockquote>`;
+	const src = m.bodyFull ?? m.bodyStripped ?? '';
+	// A rich message's body IS HTML (a marketing template, tables, inline CSS) —
+	// embed it verbatim so the forward carries the real template, not its escaped
+	// source. Plain text is escaped + <br>'d and indented as a quote.
+	if (m.htmlKind === 'rich') return `${header}<div>${src}</div>`;
+	return `${header}<blockquote>${escHtml(src).replace(/\r?\n/g, '<br>')}</blockquote>`;
+}
+
+// Forwarded original HTML is kept OUT of the Tiptap editor (its schema flattens
+// tables/inline-CSS). It rides beside the user's note in the stored draft body,
+// separated by this invisible marker (an HTML comment — harmless if it ever
+// reaches a recipient). split on load, combine on save.
+export const FWD_SENTINEL = '<!--doota:fwd-->';
+export function combineForwardBody(note: string, forwardHtml: string): string {
+	return forwardHtml ? `${note}${FWD_SENTINEL}${forwardHtml}` : note;
+}
+export function splitForwardBody(body: string): { note: string; forward: string } {
+	const at = body.indexOf(FWD_SENTINEL);
+	if (at === -1) return { note: body, forward: '' };
+	return { note: body.slice(0, at), forward: body.slice(at + FWD_SENTINEL.length) };
 }

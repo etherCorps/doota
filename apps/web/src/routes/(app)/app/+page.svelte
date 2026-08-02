@@ -77,7 +77,7 @@
 	import {
 		fmtTime, senderName, senderLabel, senderAddr, domainOf, senderProvider,
 		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments, shownAttachments,
-		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock
+		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock, forwardableMessages
 	} from '$lib/mail/format';
 	import AttachmentGroups from '$lib/components/mail/attachment-groups.svelte';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -1221,7 +1221,8 @@
 				threadId: null,
 				inReplyToMessageId: null,
 				subject: replySubject(subject, 'forward'),
-				body: `<p></p><p>${header}</p>${blocks}`
+				// Empty note; the original (rich HTML preserved) rides beside it.
+				forwardHtml: `<p>${header}</p>${blocks}`
 			}
 		});
 	}
@@ -2258,7 +2259,7 @@
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content class="w-48" align="end">
 								{#if msgs.length}
-									<DropdownMenu.Item onSelect={() => forwardThread(msgs, thread.subject)}>
+									<DropdownMenu.Item onSelect={() => forwardThread(forwardableMessages(msgs, parts, self), thread.subject)}>
 										<ForwardIcon class="size-4" /> Forward
 									</DropdownMenu.Item>
 									<DropdownMenu.Item onSelect={() => (findOpen ? closeFind() : (findOpen = true))}>

@@ -12,7 +12,13 @@ import {
 	fileExt,
 	selfSet,
 	msgCanReplyAll,
-	replyCtx
+	replyCtx,
+	threadParticipants,
+	forwardableMessages,
+	fwdBlock,
+	combineForwardBody,
+	splitForwardBody,
+	FWD_SENTINEL
 } from '$lib/mail/format';
 import { isDmarcPass } from '@doota/mail-core/inbound-worker';
 
@@ -114,5 +120,60 @@ describe('reply audience', () => {
 		expect(ctx.target).toBe('a@x.com');
 		expect(ctx.scope).toBe('reply_all');
 		expect(ctx.autoOpen).toBe(true);
+	});
+});
+
+describe('forwardableMessages', () => {
+	const self = selfSet([{ address: 'me@x.com' }] as never);
+
+	it('keeps thread-wide messages and drops a private sub-reply the forwarder was not on', () => {
+		const msgs = [
+			// Public: reaches all four participants.
+			msg({ id: '1', from: 'a@x.com', to: ['me@x.com', 'b@x.com', 'c@x.com'] }),
+			// Private sub-reply between a and b only — forwarder (me) not on it.
+			msg({ id: '2', from: 'a@x.com', to: ['b@x.com'] })
+		];
+		const parts = threadParticipants(msgs);
+		const out = forwardableMessages(msgs, parts, self).map((m) => m.id);
+		expect(out).toEqual(['1']);
+	});
+
+	it('keeps a private sub-reply when the forwarder was a party to it', () => {
+		const msgs = [
+			msg({ id: '1', from: 'a@x.com', to: ['me@x.com', 'b@x.com', 'c@x.com'] }),
+			// Private between a and me — the forwarder was on it, so it's theirs to forward.
+			msg({ id: '2', from: 'a@x.com', to: ['me@x.com'] })
+		];
+		const parts = threadParticipants(msgs);
+		const out = forwardableMessages(msgs, parts, self).map((m) => m.id);
+		expect(out).toEqual(['1', '2']);
+	});
+});
+
+describe('fwdBlock', () => {
+	it('embeds rich HTML verbatim so a marketing template survives', () => {
+		const out = fwdBlock(
+			msg({ htmlKind: 'rich', bodyFull: '<table><tr><td>Buy now</td></tr></table>', from: 'a@x.com', to: ['b@x.com'] })
+		);
+		expect(out).toContain('<table><tr><td>Buy now</td></tr></table>');
+		expect(out).not.toContain('&lt;table'); // NOT escaped to source text
+	});
+	it('escapes and quotes a plain-text body', () => {
+		const out = fwdBlock(msg({ htmlKind: 'plain', bodyFull: 'a < b\nline2', from: 'a@x.com', to: ['b@x.com'] }));
+		expect(out).toContain('a &lt; b');
+		expect(out).toContain('<br>');
+		expect(out).toContain('<blockquote>');
+	});
+});
+
+describe('forward body sentinel', () => {
+	it('combine/split round-trips the note and the forwarded html', () => {
+		const combined = combineForwardBody('<p>note</p>', '<div>fwd</div>');
+		expect(combined).toBe(`<p>note</p>${FWD_SENTINEL}<div>fwd</div>`);
+		expect(splitForwardBody(combined)).toEqual({ note: '<p>note</p>', forward: '<div>fwd</div>' });
+	});
+	it('no forward → body is the note alone, split yields empty forward', () => {
+		expect(combineForwardBody('<p>hi</p>', '')).toBe('<p>hi</p>');
+		expect(splitForwardBody('<p>hi</p>')).toEqual({ note: '<p>hi</p>', forward: '' });
 	});
 });

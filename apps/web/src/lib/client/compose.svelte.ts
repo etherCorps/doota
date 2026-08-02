@@ -13,6 +13,9 @@ export type ComposePrefill = {
 	to?: string;
 	subject?: string;
 	body?: string;
+	/** Forwarded original HTML, kept out of the editor (Tiptap flattens rich HTML)
+	 * and appended to the sent body verbatim so a marketing template survives. */
+	forwardHtml?: string;
 };
 
 class ComposeStore {
