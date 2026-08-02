@@ -4,6 +4,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myApiKeys, revokeApiKeyById } from '$lib/rpc/api-keys.remote';
@@ -57,14 +58,41 @@
 							{#if k.revokedAt}
 								<Badge variant="outline">Revoked</Badge>
 							{:else}
-								<Button
-									size="sm"
-									variant="outline"
-									class="text-destructive hover:text-destructive"
-									onclick={() => revoke(k.id)}
-								>
-									Revoke
-								</Button>
+								<AlertDialog.Root>
+									<AlertDialog.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												size="sm"
+												variant="outline"
+												class="text-destructive hover:text-destructive"
+											>
+												Revoke
+											</Button>
+										{/snippet}
+									</AlertDialog.Trigger>
+									<AlertDialog.Content>
+										<AlertDialog.Header>
+											<AlertDialog.Title>Revoke {k.name || 'this key'}?</AlertDialog.Title>
+											<AlertDialog.Description>
+												Any client using <span class="font-mono">{k.prefix}…</span> will immediately
+												stop working. This can't be undone.
+											</AlertDialog.Description>
+										</AlertDialog.Header>
+										<AlertDialog.Footer>
+											<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+											<AlertDialog.Action
+												onclick={(e) => {
+													e.preventDefault();
+													revoke(k.id);
+												}}
+												class="bg-destructive text-white hover:bg-destructive/90"
+											>
+												Revoke
+											</AlertDialog.Action>
+										</AlertDialog.Footer>
+									</AlertDialog.Content>
+								</AlertDialog.Root>
 							{/if}
 						</li>
 					{/each}

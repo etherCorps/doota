@@ -15,6 +15,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import {
 		renameMailbox,
 		deactivateMailbox,
@@ -77,6 +78,8 @@
 			savingName = false;
 		}
 	}
+
+	let confirmDeactivate = $state(false);
 
 	async function toggleActive() {
 		togglingActive = true;
@@ -183,6 +186,8 @@
 			creatingKey = false;
 		}
 	}
+	let confirmRevokeKey = $state<{ id: string; name: string } | null>(null);
+
 	async function revokeKey(keyId: string) {
 		const req = revokeServiceKey({ keyId });
 		toast.promise(req, {
@@ -328,7 +333,12 @@
 								Inactive mailboxes stop receiving and can't be sent from.
 							</p>
 						</div>
-						<Switch checked={mb.isActive} disabled={togglingActive} onCheckedChange={toggleActive} aria-label="Active" />
+						<Switch
+							checked={mb.isActive}
+							disabled={togglingActive}
+							onCheckedChange={(v) => (v ? toggleActive() : (confirmDeactivate = true))}
+							aria-label="Active"
+						/>
 					</div>
 				</Card.CardContent>
 			</Card.Card>
@@ -390,7 +400,7 @@
 											{#if k.revokedAt}
 												<Badge variant="outline">Revoked</Badge>
 											{:else}
-												<Button size="sm" variant="outline" class="text-destructive hover:text-destructive" onclick={() => revokeKey(k.id)}>
+												<Button size="sm" variant="outline" class="text-destructive hover:text-destructive" onclick={() => (confirmRevokeKey = { id: k.id, name: k.name || 'Untitled key' })}>
 													Revoke
 												</Button>
 											{/if}
@@ -545,3 +555,55 @@
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root open={!!confirmRevokeKey} onOpenChange={(o) => !o && (confirmRevokeKey = null)}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Revoke {confirmRevokeKey?.name}?</AlertDialog.Title>
+			<AlertDialog.Description>
+				Any app still using this key will immediately stop being able to send. This can't be undone.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				onclick={(e) => {
+					e.preventDefault();
+					const id = confirmRevokeKey?.id;
+					confirmRevokeKey = null;
+					if (id) revokeKey(id);
+				}}
+				class="bg-destructive text-white hover:bg-destructive/90"
+			>
+				Revoke
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
+<AlertDialog.Root open={confirmDeactivate} onOpenChange={(o) => !o && (confirmDeactivate = false)}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Deactivate {mb.address}?</AlertDialog.Title>
+			<AlertDialog.Description>
+				While inactive this mailbox stops receiving mail and can't be sent from. You can reactivate
+				it later.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={togglingActive}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				disabled={togglingActive}
+				onclick={(e) => {
+					e.preventDefault();
+					confirmDeactivate = false;
+					toggleActive();
+				}}
+				class="bg-destructive text-white hover:bg-destructive/90"
+			>
+				{#if togglingActive}<Spinner class="mr-1" />{/if}
+				Deactivate
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

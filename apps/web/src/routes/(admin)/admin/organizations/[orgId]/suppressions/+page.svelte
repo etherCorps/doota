@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -91,15 +92,39 @@
 
 {#snippet actionsCell(r: Row)}
 	<div class="flex justify-end">
-		<Button
-			variant="outline"
-			size="sm"
-			disabled={removing[r.address]}
-			onclick={() => remove(r.address)}
-		>
-			{#if removing[r.address]}<Spinner class="mr-1" />{/if}
-			Remove
-		</Button>
+		<AlertDialog.Root>
+			<AlertDialog.Trigger>
+				{#snippet child({ props })}
+					<Button {...props} variant="outline" size="sm" disabled={removing[r.address]}>
+						{#if removing[r.address]}<Spinner class="mr-1" />{/if}
+						Remove
+					</Button>
+				{/snippet}
+			</AlertDialog.Trigger>
+			<AlertDialog.Content>
+				<AlertDialog.Header>
+					<AlertDialog.Title>Remove {r.address}?</AlertDialog.Title>
+					<AlertDialog.Description>
+						This re-enables sending to <code class="font-mono">{r.address}</code>, a previously
+						suppressed address. If it's still bad, future sends may bounce or draw spam complaints.
+					</AlertDialog.Description>
+				</AlertDialog.Header>
+				<AlertDialog.Footer>
+					<AlertDialog.Cancel disabled={removing[r.address]}>Cancel</AlertDialog.Cancel>
+					<AlertDialog.Action
+						disabled={removing[r.address]}
+						onclick={(e) => {
+							e.preventDefault();
+							remove(r.address);
+						}}
+						class="bg-destructive text-white hover:bg-destructive/90"
+					>
+						{#if removing[r.address]}<Spinner class="mr-1" />{/if}
+						Remove
+					</AlertDialog.Action>
+				</AlertDialog.Footer>
+			</AlertDialog.Content>
+		</AlertDialog.Root>
 	</div>
 {/snippet}
 

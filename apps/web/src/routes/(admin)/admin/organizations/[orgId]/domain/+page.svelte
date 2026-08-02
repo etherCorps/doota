@@ -13,6 +13,7 @@
 	import { toast } from 'svelte-sonner';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
@@ -286,9 +287,38 @@
 							{#each routing.subdomains as host (host)}
 								<li class="flex items-center justify-between gap-2 px-3 py-2">
 									<code class="font-mono text-sm break-all">{host}</code>
-									<Button variant="ghost" size="icon" class="text-muted-foreground hover:text-destructive size-8" disabled={removingSub === host} onclick={() => removeSubdomain(host)}>
-										{#if removingSub === host}<Spinner />{:else}<Trash2Icon class="size-4" />{/if}
-									</Button>
+									<AlertDialog.Root>
+										<AlertDialog.Trigger>
+											{#snippet child({ props })}
+												<Button {...props} variant="ghost" size="icon" class="text-muted-foreground hover:text-destructive size-8" disabled={removingSub === host}>
+													{#if removingSub === host}<Spinner />{:else}<Trash2Icon class="size-4" />{/if}
+												</Button>
+											{/snippet}
+										</AlertDialog.Trigger>
+										<AlertDialog.Content>
+											<AlertDialog.Header>
+												<AlertDialog.Title>Remove {host}?</AlertDialog.Title>
+												<AlertDialog.Description>
+													This drops the MX record for <code class="font-mono">{host}</code>. Mail delivery to
+													<code class="font-mono">*@{host}</code> will stop immediately.
+												</AlertDialog.Description>
+											</AlertDialog.Header>
+											<AlertDialog.Footer>
+												<AlertDialog.Cancel disabled={removingSub === host}>Cancel</AlertDialog.Cancel>
+												<AlertDialog.Action
+													disabled={removingSub === host}
+													onclick={(e) => {
+														e.preventDefault();
+														removeSubdomain(host);
+													}}
+													class="bg-destructive text-white hover:bg-destructive/90"
+												>
+													{#if removingSub === host}<Spinner class="mr-1" />{/if}
+													Remove
+												</AlertDialog.Action>
+											</AlertDialog.Footer>
+										</AlertDialog.Content>
+									</AlertDialog.Root>
 								</li>
 							{/each}
 						</ul>

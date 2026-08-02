@@ -92,10 +92,36 @@
 
 {#snippet actionsCell(m: Member)}
 	<ButtonGroup class="justify-end">
-		<Button variant="outline" size="sm" onclick={() => pause(m.id)}>
-			<PauseIcon class="size-3.5" />
-			{m.status === 'paused' ? 'Resume' : 'Pause'}
-		</Button>
+		{#if m.status === 'paused'}
+			<Button variant="outline" size="sm" onclick={() => pause(m.id)}>
+				<PauseIcon class="size-3.5" />
+				Resume
+			</Button>
+		{:else}
+			<AlertDialog.Root>
+				<AlertDialog.Trigger>
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" size="sm">
+							<PauseIcon class="size-3.5" />
+							Pause
+						</Button>
+					{/snippet}
+				</AlertDialog.Trigger>
+				<AlertDialog.Content>
+					<AlertDialog.Header>
+						<AlertDialog.Title>Pause {m.name}?</AlertDialog.Title>
+						<AlertDialog.Description>
+							They'll be signed out of all sessions and can't log in again until you resume their
+							access.
+						</AlertDialog.Description>
+					</AlertDialog.Header>
+					<AlertDialog.Footer>
+						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Action onclick={() => pause(m.id)}>Pause</AlertDialog.Action>
+					</AlertDialog.Footer>
+				</AlertDialog.Content>
+			</AlertDialog.Root>
+		{/if}
 		<Button
 			variant="outline"
 			size="sm"

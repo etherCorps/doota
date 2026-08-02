@@ -6,6 +6,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Switch } from '$lib/components/ui/switch/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
@@ -128,16 +129,43 @@
 												onCheckedChange={(v) => toggle(box.id, a.id, v)}
 												aria-label="Enabled"
 											/>
-											<Button
-												size="icon"
-												variant="ghost"
-												class="text-destructive hover:text-destructive size-7"
-												title="Delete"
-												disabled={busy === a.id}
-												onclick={() => remove(box.id, a.id)}
-											>
-												<Trash2Icon class="size-3.5" />
-											</Button>
+											<AlertDialog.Root>
+												<AlertDialog.Trigger>
+													{#snippet child({ props })}
+														<Button
+															{...props}
+															size="icon"
+															variant="ghost"
+															class="text-destructive hover:text-destructive size-7"
+															title="Delete"
+															disabled={busy === a.id}
+														>
+															<Trash2Icon class="size-3.5" />
+														</Button>
+													{/snippet}
+												</AlertDialog.Trigger>
+												<AlertDialog.Content>
+													<AlertDialog.Header>
+														<AlertDialog.Title>Delete this alias?</AlertDialog.Title>
+														<AlertDialog.Description>
+															<span class="font-mono">{a.address}</span> will stop forwarding and mail sent
+															to it will bounce. This can't be undone.
+														</AlertDialog.Description>
+													</AlertDialog.Header>
+													<AlertDialog.Footer>
+														<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+														<AlertDialog.Action
+															onclick={(e) => {
+																e.preventDefault();
+																remove(box.id, a.id);
+															}}
+															class="bg-destructive text-white hover:bg-destructive/90"
+														>
+															Delete
+														</AlertDialog.Action>
+													</AlertDialog.Footer>
+												</AlertDialog.Content>
+											</AlertDialog.Root>
 										</li>
 									{/each}
 								</ul>
