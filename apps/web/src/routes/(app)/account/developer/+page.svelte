@@ -24,7 +24,7 @@
 	];
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex max-w-2xl flex-col gap-6">
 	<ApiKeysCard />
 
 	<Card.Card>
@@ -42,10 +42,10 @@
 			<pre
 				class="bg-muted text-foreground min-w-0 overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed">{example}</pre>
 			<dl class="divide-y text-sm">
-				{#each fields as f (f.name)}
+				{#each fields as field (field.name)}
 					<div class="flex flex-col gap-0.5 py-2 sm:flex-row sm:justify-between sm:gap-4">
-						<dt class="font-mono text-xs font-medium">{f.name}</dt>
-						<dd class="text-muted-foreground text-xs sm:text-right">{f.note}</dd>
+						<dt class="font-mono text-xs font-medium">{field.name}</dt>
+						<dd class="text-muted-foreground text-xs sm:text-right">{field.note}</dd>
 					</div>
 				{/each}
 			</dl>

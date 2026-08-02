@@ -12,7 +12,7 @@
 	let changePasswordOpen = $state(false);
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex max-w-2xl flex-col gap-6">
 	<RecoveryEmailCard
 		recoveryEmail={data.user.recoveryEmail}
 		recoveryEmailVerified={data.user.recoveryEmailVerified}

@@ -27,7 +27,7 @@
 	const initials = $derived(
 		data.user.name
 			.split(' ')
-			.map((p) => p[0])
+			.map((part) => part[0])
 			.slice(0, 2)
 			.join('')
 			.toUpperCase()
@@ -42,7 +42,7 @@
 			{ slug: 'mail', label: 'Mail' },
 			// Developer (service-mailbox API keys) only when relevant to this user.
 			...(data.canDeveloper ? [{ slug: 'developer', label: 'Developer' }] : [])
-		].map((t) => ({ href: `${base}/${t.slug}`, label: t.label, active: current === t.slug }))
+		].map((tab) => ({ href: `${base}/${tab.slug}`, label: tab.label, active: current === tab.slug }))
 	);
 </script>
 
@@ -96,7 +96,9 @@
 		</div>
 	</header>
 
-	<div class="flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 md:p-8">
+	<!-- No max-width: content fills the region beside the sidebar (gutters only).
+	     Form-shaped pages self-cap at max-w-2xl; Mail spreads across the full width. -->
+	<div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	{#if needsSecondFactor}
 		<Card.Card class="border-destructive">
 			<Card.CardHeader>
@@ -113,7 +115,10 @@
 
 	<TabNav {tabs} />
 
-	<div class="min-w-0 max-w-2xl">
+	<!-- No width cap here — each page sets its own measure: form-shaped pages
+	     (profile/security/developer) stay narrow (max-w-2xl) for readable line
+	     length + reachable controls; Mail spreads to the full column on desktop. -->
+	<div class="min-w-0">
 		{@render children()}
 	</div>
 	</div>

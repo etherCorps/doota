@@ -30,7 +30,7 @@
 	const initials = $derived(
 		data.user.name
 			.split(' ')
-			.map((p) => p[0])
+			.map((part) => part[0])
 			.slice(0, 2)
 			.join('')
 			.toUpperCase()
@@ -55,7 +55,7 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex max-w-2xl flex-col gap-6">
 <Card.Card>
 	<Card.CardHeader>
 		<Card.CardTitle class="flex items-center gap-2">
