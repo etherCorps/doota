@@ -102,17 +102,19 @@
 		</div>
 	{/if}
 
-	<div class="rounded-lg border">
+	<div class="overflow-x-auto rounded-lg border">
 		<Table.Root>
 			<Table.Header>
 				{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
 					<Table.Row>
 						{#each headerGroup.headers as header (header.id)}
-							<Table.Head>
+							{@const sorted = header.column.getIsSorted()}
+							<Table.Head aria-sort={header.column.getCanSort() ? (sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none') : undefined}>
 								{#if !header.isPlaceholder}
 									{#if header.column.getCanSort()}
 										<button
 											type="button"
+											aria-label="Sort by this column"
 											class="hover:text-foreground -mx-1 flex items-center gap-1 rounded px-1"
 											onclick={header.column.getToggleSortingHandler()}
 										>

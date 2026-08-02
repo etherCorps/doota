@@ -40,7 +40,8 @@
 			{ slug: 'profile', label: 'Profile' },
 			{ slug: 'security', label: 'Security' },
 			{ slug: 'mail', label: 'Mail' },
-			{ slug: 'developer', label: 'Developer' }
+			// Developer (service-mailbox API keys) only when relevant to this user.
+			...(data.canDeveloper ? [{ slug: 'developer', label: 'Developer' }] : [])
 		].map((t) => ({ href: `${base}/${t.slug}`, label: t.label, active: current === t.slug }))
 	);
 </script>
