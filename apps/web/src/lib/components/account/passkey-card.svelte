@@ -17,15 +17,20 @@
 
 	async function addPasskey() {
 		passkeyLoading = true;
-		const res = await authClient.passkey.addPasskey({ name: passkeyName || undefined });
-		passkeyLoading = false;
-		if (res?.error) {
-			toast.error(res.error.message ?? 'Could not add passkey.');
-			return;
+		try {
+			const res = await authClient.passkey.addPasskey({ name: passkeyName || undefined });
+			if (res?.error) {
+				toast.error(res.error.message ?? 'Could not add passkey.');
+				return;
+			}
+			passkeyName = '';
+			toast.success('Passkey added.');
+			await invalidateAll();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not add passkey.');
+		} finally {
+			passkeyLoading = false;
 		}
-		passkeyName = '';
-		toast.success('Passkey added.');
-		await invalidateAll();
 	}
 </script>
 

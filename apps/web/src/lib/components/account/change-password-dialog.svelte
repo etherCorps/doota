@@ -111,9 +111,11 @@
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
-				{#if confirmPasswordReset.result && !confirmPasswordReset.result.success}
-					<p class="text-destructive text-sm">{confirmPasswordReset.result.message}</p>
-				{/if}
+				<div aria-live="polite">
+					{#if confirmPasswordReset.result && !confirmPasswordReset.result.success}
+						<p class="text-destructive text-sm">{confirmPasswordReset.result.message}</p>
+					{/if}
+				</div>
 				<div class="flex items-center justify-between">
 					<Button
 						type="button"
@@ -123,7 +125,9 @@
 					>
 						Resend code
 					</Button>
-					<Button type="submit">Update password</Button>
+					<Button type="submit" class="gap-1.5" disabled={confirmPasswordReset.pending > 0}>
+						{#if confirmPasswordReset.pending > 0}<Spinner class="mr-1" />Updating…{:else}Update password{/if}
+					</Button>
 				</div>
 			</form>
 		{/if}

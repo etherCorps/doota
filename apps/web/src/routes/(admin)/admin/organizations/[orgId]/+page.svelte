@@ -9,6 +9,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import { resolve } from '$app/paths';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -57,6 +58,10 @@
 	let mail = $state<{ rows: Awaited<ReturnType<typeof zoneAnalytics>>; usage: Awaited<ReturnType<typeof zoneUsage>> } | null>(null);
 	let reputation = $state<Awaited<ReturnType<typeof sendingReputation>>>(null);
 	let mailLoading = $state(false);
+	// Loaded-once flags: set even on error so a failed fetch shows an error line
+	// instead of an endless spinner (mirrors the Insights tab).
+	let mailLoaded = $state(false);
+	let repLoaded = $state(false);
 
 	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
 	// fetch rejects, hanging the tab).
@@ -65,18 +70,23 @@
 		mailLoading = true;
 		Promise.all([zoneAnalytics({ orgId: org.id, days: 7 }), zoneUsage(org.id)])
 			.then(([rows, usage]) => (mail = { rows, usage }))
-			.catch(() => {})
-			.finally(() => (mailLoading = false));
+			.catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load mail analytics.'))
+			.finally(() => {
+				mailLoaded = true;
+				mailLoading = false;
+			});
 		const hit = repCache.get(org.id);
 		if (hit && Date.now() - hit.at < REP_TTL_MS) {
 			reputation = hit.val as typeof reputation;
+			repLoaded = true;
 		} else {
 			sendingReputation(org.id)
 				.then((r) => {
 					reputation = r;
 					repCache.set(org.id, { at: Date.now(), val: r });
 				})
-				.catch(() => {});
+				.catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load sending reputation.'))
+				.finally(() => (repLoaded = true));
 		}
 	});
 
@@ -168,7 +178,9 @@
 					</Button>
 				</div>
 
-				{#if mailLoading && !mail}
+				{#if mailLoaded && !mail && !mailLoading}
+					<p class="text-destructive py-6 text-sm">Couldn't load mail analytics from Cloudflare.</p>
+				{:else if mailLoading && !mail}
 					<div class="text-muted-foreground flex items-center gap-2 py-6 text-sm">
 						<Spinner /> Loading…
 					</div>
@@ -202,10 +214,12 @@
 					<span class="text-sm font-medium">Sending reputation</span>
 					<span class="text-muted-foreground text-xs">{org.domain} · how mailbox providers see this domain</span>
 				</div>
-				{#if !reputation}
+				{#if !repLoaded}
 					<div class="text-muted-foreground flex items-center gap-2 py-4 text-sm">
 						<Spinner /> Loading…
 					</div>
+				{:else if !reputation}
+					<p class="text-destructive py-4 text-sm">Couldn't load sending reputation from Cloudflare.</p>
 				{:else}
 					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 						{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}

@@ -7,6 +7,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
 	// Refresh onboarding state as soon as the flag clears.
 	$effect(() => {
@@ -49,10 +50,14 @@
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</Field.Field>
-			<Button type="submit" class="self-start">Update password</Button>
-			{#if changeInitialPassword.result && !changeInitialPassword.result.success}
-				<p class="text-destructive text-sm">{changeInitialPassword.result.message}</p>
-			{/if}
+			<Button type="submit" class="gap-1.5 self-start" disabled={changeInitialPassword.pending > 0}>
+				{#if changeInitialPassword.pending > 0}<Spinner class="mr-1" />Updating…{:else}Update password{/if}
+			</Button>
+			<div aria-live="polite">
+				{#if changeInitialPassword.result && !changeInitialPassword.result.success}
+					<p class="text-destructive text-sm">{changeInitialPassword.result.message}</p>
+				{/if}
+			</div>
 		</form>
 	</Card.CardContent>
 </Card.Card>

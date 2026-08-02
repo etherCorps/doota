@@ -20,15 +20,20 @@
 	// it's the whole account). Lazy, once, best-effort.
 	let acct = $state<Awaited<ReturnType<typeof accountLimits>> | null>(null);
 	let acctLoading = $state(false);
-	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
-	// fetch rejects, hanging the tab).
-	onMount(() => {
-		if (!isSuperadmin) return;
+	let acctError = $state(false);
+	function loadAcct() {
+		acctError = false;
 		acctLoading = true;
 		accountLimits()
 			.then((r) => (acct = r))
-			.catch(() => {})
+			.catch(() => (acctError = true))
 			.finally(() => (acctLoading = false));
+	}
+	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
+	// fetch rejects, hanging the tab). Retry is manual, via the button below.
+	onMount(() => {
+		if (!isSuperadmin) return;
+		loadAcct();
 	});
 	const acctPct = $derived(
 		acct && acct.dailyLimit && acct.sent != null ? Math.min(100, Math.round((acct.sent / acct.dailyLimit) * 100)) : 0
@@ -53,7 +58,7 @@
 
 	// Overview stats — all real, scoped to the orgs the actor administers.
 	const stats = $derived([
-		{ label: 'Domains', value: data.orgs.length, icon: GlobeIcon },
+		{ label: 'Organizations', value: data.orgs.length, icon: GlobeIcon },
 		{ label: 'Users', value: data.userCount, icon: UsersIcon },
 		{ label: 'Mailboxes', value: data.mailboxCount, icon: MailIcon }
 	]);
@@ -125,6 +130,14 @@
 				{#if acctLoading && !acct}
 					<div class="text-muted-foreground flex items-center gap-2 py-4 text-sm">
 						<Spinner /> Loading…
+					</div>
+				{:else if acctError && !acct}
+					<div class="flex flex-wrap items-center gap-3 py-4 text-sm">
+						<span class="text-destructive">Couldn't load sending limits from Cloudflare.</span>
+						<Button variant="outline" size="sm" onclick={loadAcct} disabled={acctLoading}>
+							{#if acctLoading}<Spinner class="mr-1" />{/if}
+							Retry
+						</Button>
 					</div>
 				{:else if acct}
 					<div class="flex flex-col gap-4">

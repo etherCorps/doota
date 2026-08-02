@@ -7,6 +7,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
 	let {
 		recoveryEmail,
@@ -64,19 +65,22 @@
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
-				<Button type="submit" class="self-start">
+				<Button type="submit" class="self-start" disabled={setRecoveryEmail.pending > 0}>
+					{#if setRecoveryEmail.pending > 0}<Spinner class="mr-1" />{/if}
 					{recoveryEmail ? 'Resend verification' : 'Save & send verification'}
 				</Button>
 			</form>
 		{/if}
-		{#if setRecoveryEmail.result}
-			<p
-				class="text-sm {setRecoveryEmail.result.success
-					? 'text-muted-foreground'
-					: 'text-destructive'}"
-			>
-				{setRecoveryEmail.result.message}
-			</p>
-		{/if}
+		<div aria-live="polite">
+			{#if setRecoveryEmail.result}
+				<p
+					class="text-sm {setRecoveryEmail.result.success
+						? 'text-muted-foreground'
+						: 'text-destructive'}"
+				>
+					{setRecoveryEmail.result.message}
+				</p>
+			{/if}
+		</div>
 	</Card.CardContent>
 </Card.Card>
