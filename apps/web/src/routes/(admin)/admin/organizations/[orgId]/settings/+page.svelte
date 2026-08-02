@@ -76,8 +76,9 @@
 	onMount(async () => {
 		try {
 			bimi = await bimiStatus(org.id);
-			// Prefill: the published record wins; else the org's profile logo.
-			bimiLogo = bimi.logoUrl || untrack(() => logo);
+			// The BIMI logo is independent of the org branding logo (different asset:
+			// BIMI needs an SVG Tiny-PS + VMC). Prefill only from the published record.
+			bimiLogo = bimi.logoUrl;
 			vmc = bimi.vmcUrl;
 		} catch {
 			bimiDenied = true;
@@ -107,7 +108,7 @@
 <div class="flex flex-col gap-4">
 	<PageHeader
 		title="Settings"
-		description="Organization profile — the display name and logo. A verified logo improves mail branding (BIMI) in inboxes."
+		description="Organization profile — display name and branding logo. The verified inbox logo (BIMI) is configured separately below."
 	/>
 	<!-- Stacked on small screens; profile + BIMI sit side by side from xl up
 	     (each card is a self-contained form, so row order carries no meaning). -->
@@ -124,10 +125,11 @@
 			<Input bind:value={name} placeholder="Acme Inc" />
 		</Field.Field>
 		<Field.Field>
-			<Field.Label>Logo URL</Field.Label>
-			<Input bind:value={logo} placeholder="https://acme.com/logo.svg" type="url" />
+			<Field.Label>Branding logo URL</Field.Label>
+			<Input bind:value={logo} placeholder="https://acme.com/logo.png" type="url" />
 			<Field.Description>
-				Public HTTPS URL. BIMI requires a square SVG Tiny-PS for the verified-logo badge.
+				Public HTTPS URL — PNG, JPG or SVG. Used for app and email branding. The verified
+				inbox logo (BIMI) is a separate SVG asset, set in the BIMI card below.
 			</Field.Description>
 		</Field.Field>
 		<div class="flex justify-end">
