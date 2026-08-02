@@ -16,6 +16,7 @@ import {
   type InviteRsvpStatus,
 } from "./mail-thread-contract";
 import { trustedSenders } from "./sender-trust";
+import { log } from "./log";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -411,6 +412,12 @@ export async function getThread(
     assignedTo?: string | null;
   },
 ): Promise<ThreadDTO | null> {
+  // Phase timing (debug-only): openThread was reported slow; these marks say
+  // WHICH wave eats the time (dev proxy vs D1 vs assembly) instead of guessing.
+  const tStart = Date.now();
+  let tPreamble = 0;
+  let tMessages = 0;
+  let tBatch = 0;
   // Preamble: three independent reads in parallel (was three serial round-trips).
   //  - state gates the whole thing (thread must be in this mailbox);
   //  - readRow → the user's read cursor (per-message isRead derives from it);
@@ -438,6 +445,7 @@ export async function getThread(
       columns: { isPersonal: true },
     }),
   ]);
+  tPreamble = Date.now();
   if (!state) return null; // not delivered to this mailbox
   // Assigned-only grantee: not theirs → invisible (same 404 as "not in this
   // mailbox", so the restriction never leaks the thread's existence).
@@ -476,6 +484,7 @@ export async function getThread(
     });
   }
   const messageIds = messages.map((m) => m.id);
+  tMessages = Date.now();
 
   // Header index + the reply-parents this mailbox can't see (Cc-added case) —
   // computed now so the hidden-parent fetch joins the one parallel batch below.
@@ -550,6 +559,7 @@ export async function getThread(
             .where(inArray(schema.calendarEvent.messageId, messageIds))
         : Promise.resolve([]),
     ]);
+  tBatch = Date.now();
 
   const parseAttendees = (json: string): CalendarInviteDTO["attendees"] => {
     try {
@@ -798,6 +808,17 @@ export async function getThread(
     const atOf = (i: TimelineItem) => (i.type === "external_message" ? (i.sentAt ?? 0) : i.at);
     timeline.sort((a, b) => atOf(a) - atOf(b));
   }
+
+  const tEnd = Date.now();
+  log.debug("read.thread_timing", {
+    threadId: input.threadId,
+    msgs: messages.length,
+    preambleMs: tPreamble - tStart,
+    messagesMs: tMessages - tPreamble,
+    batchMs: tBatch - tMessages,
+    assembleMs: tEnd - tBatch,
+    totalMs: tEnd - tStart,
+  });
 
   return {
     id: input.threadId,

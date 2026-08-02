@@ -19,6 +19,7 @@ import { getAuthz } from "$lib/server/authz.js";
 import { renderETag, isNotModified, revalidateHeaders, RENDER_CACHE_VERSION } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
 import { signResourceToken } from "$lib/server/resource-token.js";
+import { log } from "@doota/mail-core/log";
 
 /**
  * Serve ONE message's HTML body, sanitized, as an isolated document for the
@@ -114,6 +115,9 @@ async function proxyRemoteResources(html: string, sign: (resource: string) => Pr
 }
 
 export const GET: RequestHandler = async ({ params, url, request, locals, platform }) => {
+  // Phase timing (debug-only): body renders were reported at ~1.6s each in dev —
+  // these marks split auth/D1 vs the R2 fetch+parse (remote in dev!) vs sanitize.
+  const tStart = Date.now();
   const user = locals.user;
   if (!user) error(401, "Not authenticated");
   const dek = platform?.env?.MAIL_DEK;
@@ -144,6 +148,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     );
   }
   if (!allowed) error(403, "You can't access this message.");
+  const tAccess = Date.now();
 
   const requestedImages = url.searchParams.get("images") === "1";
   const fullView = url.searchParams.get("full") === "1";
@@ -208,6 +213,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
       else await put;
     }
   }
+  const tDerive = Date.now();
   // fullView ("View entire message", Gmail's clipped-message pattern): raised
   // caps, still sanitized and sandboxed — only reachable from the clipped notice.
 
@@ -301,6 +307,14 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const doc = buildFramedDocument(inner, {
     csp: metaCsp,
     bodyExtra: `<script>${INJECTED_SCRIPT}</script>`,
+  });
+
+  log.debug("render.body_timing", {
+    messageId: msg.id,
+    accessMs: tAccess - tStart,
+    deriveMs: tDerive - tAccess, // cache/R2 fetch + MIME parse — remote R2 in dev
+    sanitizeMs: Date.now() - tDerive,
+    totalMs: Date.now() - tStart,
   });
 
   return new Response(doc, {

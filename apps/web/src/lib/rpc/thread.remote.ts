@@ -14,7 +14,7 @@ import {
 } from "@doota/mail-core/mailbox";
 import { importKey } from "@doota/mail-core/crypto";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
-import { tryLog } from "@doota/mail-core/log";
+import { tryLog, log } from "@doota/mail-core/log";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import {
@@ -182,7 +182,9 @@ export const recentUnreadMail = query(async () => {
 export const openThread = query(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
+    const tStart = Date.now();
     const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const tAuthz = Date.now();
     const { locals } = getRequestEvent();
     const ck = await contentKey();
     // Notes/events are included ONLY for grant holders (not org-admin readers).
@@ -193,6 +195,14 @@ export const openThread = query(
       includeCollab: hasGrant,
       userId: locals.user!.id,
       assignedTo,
+    });
+    // Debug-only: splits the reported openThread latency into authz vs read
+    // (read.thread_timing then splits the read into its waves).
+    log.debug("rpc.open_thread_timing", {
+      threadId,
+      authzMs: tAuthz - tStart,
+      readMs: Date.now() - tAuthz,
+      totalMs: Date.now() - tStart,
     });
     if (!dto) error(404, "Thread not found in this mailbox");
     return dto;
