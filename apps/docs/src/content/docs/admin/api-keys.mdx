@@ -188,10 +188,12 @@ test** to your own inbox to check it end-to-end before going live.
   bigger screen" notice. You can still preview and send tests from a computer.
 </Aside>
 
-Under the hood the builder is Svelte-native and open-source: blocks compile to
-[MJML](https://mjml.io) via MRML (WebAssembly) into cross-client HTML, and merge
-tags render with un-jinja at send. Editing a template creates a new **version**;
-each send pins the version it used, so the log reproduces exactly what went out.
+Under the hood the builder is Svelte-native and open-source: your blocks compile
+to [MJML](https://mjml.io) (an email layout language that works across mail apps)
+via MRML — a fast WebAssembly compiler — and at send time the `{{ variables }}`
+are filled in by a lightweight template engine (un-jinja). Editing a template
+creates a new **version**; each send pins the version it used, so the log
+reproduces exactly what went out.
 
 ### Variables
 

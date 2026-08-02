@@ -1,44 +1,98 @@
 ---
 title: Architecture diagrams
-description: Rendered Mermaid diagrams — the D1 data model, the component/deployment view, the mail pipeline sequences, and the mail-core module map.
+description: How Doota fits together — a logo'd system-at-a-glance, then the data model, the deployment view, the mail pipeline, and the shared code map.
 sidebar:
   order: 2
 ---
 
-Two views of the whole system, generated from the code (D1 schemas in
-`packages/db/src/*.schema.ts` and the worker `wrangler.jsonc` bindings).
+Doota is one app that runs entirely on **your own Cloudflare account**. This page
+starts with a picture anyone can follow, then goes deeper for engineers.
 
-- **ER diagram** — the D1 relational model (auth + mail).
-- **UML / component + deployment** — services, bindings, queues, the Durable
-  Object hub, storage, and the mail pipeline flow.
-
-All diagrams are [Mermaid](https://mermaid.js.org) and render to SVG in your
-browser.
+If you just want the gist: mail arrives at Cloudflare, three small programs
+("Workers") receive it, store it safely, and show it to you as a chat — and the
+reverse when you send. The diagrams below are all [Mermaid](https://mermaid.js.org)
+and render to SVG in your browser (click the ⤢ on any diagram to enlarge).
 
 ---
 
-## 1. ER diagram — data model (Cloudflare D1)
+## System at a glance
 
-Two namespaces share one D1 database:
-- **auth.\*** — Better Auth owned (user, session, org, member, 2FA, passkey…).
-- **mail.\*** — app owned (mailbox, message, delivery, thread, draft, submission…).
+The whole system, with logos for the pieces Cloudflare provides and the Doota app
+itself. Everything inside the **Cloudflare** box runs on your account — there is no
+Doota server in the middle.
 
-The load-bearing split: `message` is one immutable row per unique email;
-`delivery` is the per-mailbox receipt; `thread_state` is per-mailbox triage;
-`submission` is send state. Content columns (`*_enc`) are encrypted; routing +
-threading metadata stays cleartext.
+```mermaid
+architecture-beta
+    group cloud(logos:cloudflare-icon)[Cloudflare]
+
+    service you(ph:user)[You]
+    service routing(ph:envelope)[Routing] in cloud
+    service inbox(logos:cloudflare-workers-icon)[Inbound] in cloud
+    service r2(ph:hard-drives)[R2] in cloud
+    service web(doota:mail)[Doota] in cloud
+    service jobs(logos:cloudflare-workers-icon)[Outbound] in cloud
+    service sending(ph:paper-plane-tilt)[Sending] in cloud
+    service cache(ph:lightning)[Cache] in cloud
+    service db(ph:database)[D1] in cloud
+    service hub(ph:broadcast)[Live] in cloud
+
+    you:R --> L:routing
+    routing:R --> L:inbox
+    inbox:R --> L:r2
+    r2:R --> L:web
+    web:R --> L:jobs
+    jobs:R --> L:sending
+    web:T --> B:cache
+    web:B --> T:db
+    jobs:T --> B:hub
+```
+
+**In plain terms:**
+
+- **You** open the Doota web app (or the desktop/mobile app, which wraps the same
+  web app) in your browser.
+- **Email routing** is Cloudflare's inbound mail; it hands each new message to the
+  **inbound worker**, which files the original safely in **R2 storage**.
+- The **Doota web app** reads and writes the **D1 database** (the index of your
+  mail) and, when you send, hands the job to the **outbound worker**, which posts
+  it through **email sending**.
+- The **edge cache** keeps rendered messages and proxied images close by, so
+  re-opening a message is instant — and images in an email load *through* Doota,
+  so the sender never sees you.
+- The **realtime hub** pushes live updates (a message arrived, a send delivered)
+  back to your screen without refreshing.
+
+**A few terms, once:** a **Worker** is a small program that runs on Cloudflare's
+edge; **D1** is Cloudflare's SQL database; **R2** is its file storage. You don't
+manage servers — Cloudflare runs all of this for you.
+
+---
+
+## 1. Data model (the D1 database)
+
+Two groups of tables share one database:
+
+- **auth.\*** — sign-in and identity (people, sessions, organisation, two-factor,
+  passkeys), managed by the Better Auth library.
+- **mail.\*** — the app's own tables (mailboxes, messages, threads, templates,
+  send log…).
+
+The load-bearing idea: `message` is **one row per unique email** (the same email to
+five people is one row); `delivery` records who received it; `thread_state` is each
+mailbox's own triage (inbox / snoozed / archived…); `submission` tracks a send.
+Anything ending `_enc` (and the log's `dataCipher`) is **encrypted**; routing and
+threading fields stay readable so the app is fast.
 
 ```mermaid
 erDiagram
-    %% ---------- AUTH namespace (Better Auth) ----------
     user {
         text id PK
         text email UK
         text role "member|admin|superadmin"
         bool twoFactorEnabled
         text recoveryEmail
+        bool mustChangePassword
         int  onboardedAt
-        text invitedByUserId FK "→ user (invite chain)"
         bool banned
     }
     session {
@@ -50,12 +104,7 @@ erDiagram
     account {
         text id PK
         text userId FK
-        text providerId
         text password
-    }
-    verification {
-        text id PK
-        text identifier
     }
     organization {
         text id PK
@@ -70,13 +119,6 @@ erDiagram
         text userId FK
         text role
     }
-    invitation {
-        text id PK
-        text organizationId FK
-        text inviterId FK "→ user"
-        text email
-        text status
-    }
     twoFactor {
         text id PK
         text userId FK
@@ -87,17 +129,12 @@ erDiagram
         text userId FK
         text credentialID
     }
-    rateLimit {
-        text id PK
-        text key UK
-    }
 
-    %% ---------- MAIL namespace (app owned) ----------
     orgMailSettings {
         text orgId PK "FK → organization"
         bool subaddressingEnabled
-        text routingSubdomains "JSON hosts"
-        text returnPathDomain
+        text remoteContentMode "block|allow"
+        bool remoteContentLocked
     }
     mailbox {
         text id PK
@@ -112,6 +149,13 @@ erDiagram
         text mailboxId FK
         bool canManage
         bool canSend
+        bool assignedOnly
+    }
+    mailboxSignature {
+        text id PK
+        text userId FK
+        text mailboxId FK
+        text bodyHtml
     }
     alias {
         text id PK
@@ -131,40 +175,35 @@ erDiagram
         text threadId FK
         text messageIdHeader "org+msgid UK"
         text fromAddr
-        text toAddrs "JSON"
-        text ccAddrs "JSON"
-        text r2RawKey "→ R2 blob"
+        text r2RawKey "→ R2 raw (HTML derived on render)"
         text subjectEnc
+        text bodyStrippedEnc
         text bodyFullEnc
-        text bodyHtmlEnc
         text itemType "external_message|note|event"
     }
     delivery {
         text id PK
-        text orgId FK
         text messageId FK
         text mailboxId FK
-        text viaAliasId FK "→ alias"
+        text viaAliasId FK
         text role "to|cc|bcc|from"
         bool isRead
-        text keywords "JMAP flags"
     }
     threadState {
         text id PK
-        text orgId FK
         text threadId FK
         text mailboxId FK
-        text assigneeUserId FK "→ user"
+        text assigneeUserId FK
         text placement "inbox|archived|spam|trash|sent"
         bool isStarred
+        int  snoozedUntil
         int  hiddenAt
     }
     threadRead {
         text id PK
         text userId FK
         text threadId FK
-        text mailboxId FK
-        int  lastReadAt "per-user cursor"
+        int  lastReadAt
     }
     label {
         text id PK
@@ -174,62 +213,57 @@ erDiagram
     threadLabel {
         text id PK
         text threadId FK
-        text mailboxId FK
         text labelId FK
     }
     attachment {
         text id PK
         text messageId FK
         text r2Key "→ R2 blob"
-        text filename
+        bool inline
+    }
+    calendarEvent {
+        text id PK
+        text messageId FK "UK"
+        text uid
+        text method "REQUEST|REPLY|CANCEL"
+        text status
+    }
+    calendarRsvp {
+        text id PK
+        text userId FK
+        text uid
+        text status
     }
     internalNote {
         text id PK
-        text orgId FK
         text threadId FK
-        text mailboxId FK
-        text authorUserId FK "→ user"
+        text authorUserId FK
         text bodyEnc
-        int  deletedAt "soft delete"
-    }
-    systemEvent {
-        text id PK
-        text orgId FK
-        text threadId FK
-        text mailboxId FK
-        text actorUserId FK "→ user"
-        text eventType
+        int  deletedAt
     }
     draft {
         text id PK
-        text orgId FK
         text mailboxId FK
-        text createdByUserId FK "→ user"
+        text createdByUserId FK
         text threadId FK
-        text fromAliasId FK "→ alias"
         text kind "new|reply|reply_all|forward"
         text status "editing|sending|sent"
-        text submissionId "→ submission (tombstone)"
-        int  clientRevision
     }
     submission {
         text id PK
-        text orgId FK
         text messageId FK
         text mailboxId FK
-        text fromAliasId FK "→ alias"
-        text createdByUserId FK "→ user"
+        text apiKeyId FK "→ apiKey (nullable)"
+        text createdByUserId FK
         text idempotencyKey UK
         text status "queued|sending|sent|delivered|bounced…"
         int  sendAt
         int  undoUntil
-        int  lastAttemptAt
     }
     submissionRecipient {
         text id PK
         text submissionId FK
         text address "sub+addr UK"
-        text role "to|cc|bcc"
         text status
         text bounceType
     }
@@ -237,35 +271,77 @@ erDiagram
         text id PK
         text orgId FK
         text address "hard bounce|complaint"
-        text reason
-    }
-    sendCounter {
-        text id PK
-        text scope "mailbox|instance"
-        text scopeKey
-        int  windowStart
     }
     apiKey {
         text id PK
         text orgId FK
-        text userId FK "acts-as user"
-        text mailboxId FK "service scope"
+        text mailboxId FK "service send scope"
+        text name
         text keyHash UK
         bool isService
+        int  revokedAt
+    }
+    sendEvent {
+        text id PK
+        text orgId FK
+        text mailboxId FK
+        text apiKeyId FK
+        text submissionId FK
+        text templateId
+        int  templateVersion
+        text subject
+        blob dataCipher "encrypted, TTL"
+        int  dataExpiresAt
+    }
+    template {
+        text id PK
+        text orgId FK
+        text slug "org+slug UK"
+        text currentVersionId
+        int  archivedAt
+    }
+    templateVersion {
+        text id PK
+        text templateId FK
+        int  version "tmpl+version UK"
+        text subjectTemplate
+        text compiledHtml
+        text editorJson "JSON"
+    }
+    notification {
+        text id PK
+        text userId FK
+        text orgId FK
+        text type "new_mail|send_failed|assigned|note|mention"
+        text threadId
+        text actorUserId FK
+        int  readAt
+        int  seenAt
+    }
+    pushSubscription {
+        text id PK
+        text userId FK
+        text endpoint UK
+        text p256dh
+        text auth
+    }
+    correspondent {
+        text id PK
+        text mailboxId FK
+        text address "mbx+addr UK"
+        int  lastSeenAt
     }
 
-    %% ---------- auth relationships ----------
     user ||--o{ session : has
     user ||--o{ account : has
     user ||--o{ member : "belongs via"
     user ||--o{ twoFactor : has
     user ||--o{ passkey : has
-    user ||--o{ invitation : sends
-    user |o--o{ user : invited
+    user ||--o{ notification : receives
+    user ||--o{ pushSubscription : subscribes
+    user ||--o{ mailboxSignature : "signs with"
     organization ||--o{ member : has
-    organization ||--o{ invitation : has
 
-    %% ---------- org → mail ----------
     organization ||--|| orgMailSettings : configures
     organization ||--o{ mailbox : owns
     organization ||--o{ alias : owns
@@ -274,109 +350,115 @@ erDiagram
     organization ||--o{ label : owns
     organization ||--o{ suppression : owns
     organization ||--o{ apiKey : owns
+    organization ||--o{ template : owns
+    organization ||--o{ sendEvent : logs
 
-    %% ---------- mailbox graph ----------
     mailbox ||--o{ mailboxAccess : "granted to users"
-    user    ||--o{ mailboxAccess : "granted"
+    user    ||--o{ mailboxAccess : granted
     mailbox ||--o{ alias : "forwards from"
     mailbox ||--o{ delivery : receives
     mailbox ||--o{ threadState : triages
     mailbox ||--o{ draft : "composed in"
     mailbox ||--o{ submission : "sends from"
     mailbox ||--o{ apiKey : "sends as"
+    mailbox ||--o{ correspondent : "recent people"
 
-    %% ---------- thread / message graph ----------
     thread  ||--o{ message : contains
     thread  ||--o{ threadState : "has per mailbox"
     thread  ||--o{ threadRead : "read cursors"
     thread  ||--o{ threadLabel : tagged
-    thread  ||--o{ internalNote : "notes"
-    thread  ||--o{ systemEvent : "events"
+    thread  ||--o{ internalNote : notes
     message ||--o{ delivery : "fans out to"
     message ||--o{ attachment : has
-    alias   ||--o{ delivery : "received via"
+    message ||--o| calendarEvent : "iMIP"
     label   ||--o{ threadLabel : applied
 
-    %% ---------- outbound graph ----------
     message ||--o{ submission : "sent as"
     submission ||--o{ submissionRecipient : "fans out to"
-    user ||--o{ draft : owns
-    user ||--o{ submission : sent
+    apiKey ||--o{ submission : originated
+    apiKey ||--o{ sendEvent : "logged from"
+    template ||--o{ templateVersion : versions
+    submission ||--o| sendEvent : "audited by"
 ```
 
 ---
 
-## 2. Component & deployment — services, bindings, pipeline
+## 2. Component & deployment — what runs where
 
-Five deployed Workers, two shared packages, one D1 / R2 / KV / Durable-Object
-backbone. A queue binds to exactly **one** consumer Worker, so the app only
-*produces*; the async handlers live in the two mail Workers.
+Five deployed Workers (plus the Tauri desktop/mobile app, which is a client, not a
+Worker), two core shared code packages, and one storage backbone (D1 · R2 · KV · an
+edge cache · a Durable Object). A queue feeds exactly **one** Worker, so the web app
+only *adds* jobs; the background work happens in the two mail Workers.
 
 ```mermaid
 flowchart TB
     subgraph client["Client"]
-        browser["Browser · SvelteKit UI<br/>(mail, admin, onboarding)"]
-        extapp["External app / agent<br/>(Bearer API key)"]
+        browser["Browser · Doota UI"]
+        native["Desktop + mobile app<br/>(Tauri · apps/native)"]
+        extapp["External app / agent<br/>(API key)"]
     end
 
-    subgraph cf["Cloudflare Edge"]
-        routing["Email Routing<br/>(inbound MX)"]
-        sending["Email Sending<br/>(EMAIL_SENDER binding)"]
+    subgraph cf["Cloudflare"]
+        routing["Email Routing<br/>(inbound)"]
+        sending["Email Sending<br/>(outbound)"]
     end
 
     subgraph workers["Workers (deployed)"]
-        web["doota · apps/web<br/>SvelteKit + Better Auth<br/>remote fns (*.remote.ts)<br/>PRODUCES to queues"]
-        mailin["doota-mail-inbound · apps/mail-in<br/>email() handler + inbound consumer"]
-        mailjobs["doota-mail-jobs · apps/mail-jobs<br/>outbound consumer · events consumer · cron"]
+        web["doota · apps/web<br/>the app · adds jobs to queues"]
+        mailin["doota-mail-inbound · apps/mail-in<br/>receives mail"]
+        mailjobs["doota-mail-jobs · apps/mail-jobs<br/>sends mail · events · cron"]
         landing["doota-landing"]
-        docs["docs"]
+        docs["doota-docs"]
     end
 
-    subgraph pkgs["Shared packages"]
-        db["@doota/db<br/>drizzle schema (auth+mail)"]
-        core["@doota/mail-core<br/>inbound · outbound · threading<br/>crypto · events · drafts · search"]
+    subgraph pkgs["Shared code"]
+        db["@doota/db<br/>database schema"]
+        core["@doota/mail-core<br/>mail logic · crypto · search · notify"]
     end
 
     subgraph storage["Storage & state"]
-        d1[("D1 · DB<br/>relational model")]
-        r2[("R2 · MAIL_RAW<br/>raw RFC5322 + attachments + drafts")]
-        kv[("KV · AUTH_KV<br/>session read-cache")]
-        hub{{"Durable Object<br/>MailEventHub (MAIL_EVENTS)<br/>live send-state ticks"}}
+        d1[("D1 · database<br/>+ blind-token search index")]
+        r2[("R2 · MAIL_RAW<br/>originals + attachments · encrypted")]
+        kv[("KV · AUTH_KV<br/>session cache")]
+        cache[("Edge cache · caches.default<br/>rendered mail + proxied images")]
+        hub{{"Durable Object · MailEventHub<br/>live updates + push"}}
     end
 
-    subgraph queues["Cloudflare Queues"]
-        qin[["doota-mail-inbound"]]
-        qout[["doota-mail-outbound"]]
-        qev[["doota-mail-events"]]
+    subgraph queues["Queues"]
+        qin[["mail-inbound"]]
+        qout[["mail-outbound"]]
+        qev[["mail-events"]]
     end
 
     browser -->|HTTPS / WS| web
-    extapp -->|POST send · Bearer| web
+    native -->|HTTPS / WS| web
+    extapp -->|POST /api/send · Bearer| web
 
-    routing -->|"email()"| mailin
+    routing -->|new mail| mailin
     mailin -->|enqueue raw| qin
     qin -->|consume| mailin
-    mailin -->|store raw| r2
-    mailin -->|dedupe msg · fan-out deliveries · thread| d1
-    mailin -->|notify| hub
+    mailin -->|store original| r2
+    mailin -->|file message · deliveries · notifications| d1
+    mailin -->|notify + push| hub
 
     web -->|enqueue send| qout
     qout -->|consume| mailjobs
     mailjobs -->|send| sending
-    mailjobs -->|status rollup| d1
+    mailjobs -->|status + send log| d1
     mailjobs -->|copy outbound blob| r2
-    mailjobs -->|retry re-enqueue| qout
-    mailjobs -->|live tick| hub
+    mailjobs -->|live tick + push| hub
 
-    sending -->|delivery/bounce events| qev
+    sending -->|delivery / bounce events| qev
     qev -->|consume| mailjobs
-    mailjobs -.->|"cron 5-min: due scheduled sends · stale-draft GC"| qout
+    mailjobs -.->|"cron 5-min: scheduled sends · un-snooze · cleanup"| qout
 
-    hub -->|WebSocket ticks| web
-    web -.->|read/write| d1
+    hub -->|live updates| web
+    web -.->|read/write · search| d1
     web -.->|blobs| r2
     web -.->|auth cache| kv
-    web -->|send transactional mail| sending
+    web -.->|"body render + image proxy · served from cache"| cache
+    cache -.->|"on miss → fetch + sanitize"| r2
+    web -->|send app mail| sending
 
     web --- core
     mailin --- core
@@ -385,79 +467,82 @@ flowchart TB
     web --- db
 ```
 
-### Binding matrix
+### Which Worker holds which binding
 
-| Worker | D1 `DB` | R2 `MAIL_RAW` | KV `AUTH_KV` | DO `MAIL_EVENTS` | `EMAIL_SENDER` | Queues |
-| --- | :-: | :-: | :-: | :-: | :-: | --- |
-| **doota** (web) | ✓ | ✓ | ✓ | ✓ | ✓ | produces `inbound`, `outbound` |
-| **doota-mail-inbound** | ✓ | ✓ | — | ✓ | — | produces+consumes `inbound` |
-| **doota-mail-jobs** | ✓ | ✓ | — | ✓ | ✓ | consumes `outbound`+`events`, produces `outbound`; cron |
-| **doota-landing** | — | — | — | — | — | — |
-| **docs** | — | — | — | — | — | — |
+| Worker | D1 | R2 | KV | Event hub | Email sending | Queues | Cron |
+| --- | :-: | :-: | :-: | :-: | :-: | --- | :-: |
+| **doota** (web) | ✓ | ✓ | ✓ | ✓ | ✓ | adds to `inbound`, `outbound` | — |
+| **doota-mail-inbound** | ✓ | ✓ | ✓ | ✓ | — | receives `inbound` | — |
+| **doota-mail-jobs** | ✓ | ✓ | — | ✓ (owner) | ✓ | receives `outbound` + `events` | `*/5` |
+| **doota-landing** | — | — | — | — | — | — | — |
+| **doota-docs** | — | — | — | — | — | — | — |
+
+The event hub (`MailEventHub`) is **defined in `doota-mail-jobs`** and shared with
+the other two, so deploy order is **`doota-mail-jobs` → `doota-mail-inbound` →
+`doota` (web)**.
 
 ---
 
-## 3. Mail pipeline — sequence
+## 3. Mail pipeline — step by step
 
-### Inbound (receive)
+### Receiving
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CF as CF Email Routing
-    participant IN as doota-mail-inbound
-    participant Q as doota-mail-inbound queue
-    participant R2 as R2 MAIL_RAW
-    participant D1 as D1 DB
-    participant HUB as MailEventHub (DO)
-    participant WEB as doota (web)
+    participant CF as Email Routing
+    participant IN as Inbound worker
+    participant Q as Inbound queue
+    participant R2 as R2 storage
+    participant D1 as Database
+    participant HUB as Event hub
+    participant WEB as Web app
 
-    CF->>IN: email() — raw RFC5322
-    IN->>R2: put raw blob
-    IN->>Q: enqueue {r2Key, meta}
-    Q->>IN: consume
-    IN->>IN: postal-mime parse · resolve org/mailbox<br/>DSN? → bounce path
-    IN->>D1: upsert message (dedupe org+msgid)
-    IN->>D1: thread match/create · fan-out delivery rows
-    IN->>D1: encrypt subject/body (*_enc)
-    IN->>HUB: notify new mail
-    HUB-->>WEB: live tick (WebSocket)
+    CF->>IN: new email
+    IN->>R2: store the original (encrypted)
+    IN->>Q: enqueue the job
+    Q->>IN: process
+    IN->>IN: parse · find mailbox<br/>(a bounce? handle separately)
+    IN->>D1: file the message (one row per unique email)
+    IN->>D1: thread it · deliveries · notification rows
+    IN->>HUB: notify + Web Push
+    HUB-->>WEB: live update on your screen
 ```
 
-### Outbound (send + undo + events)
+### Sending (with undo + delivery events)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant WEB as doota (web)
-    participant D1 as D1 DB
-    participant Q as doota-mail-outbound queue
-    participant JOBS as doota-mail-jobs
-    participant SEND as CF Email Sending
-    participant EV as doota-mail-events queue
-    participant HUB as MailEventHub (DO)
+    participant WEB as Web app
+    participant D1 as Database
+    participant Q as Outbound queue
+    participant JOBS as Outbound worker
+    participant SEND as Email Sending
+    participant EV as Events queue
+    participant HUB as Event hub
 
-    WEB->>D1: build message + submission(status=queued, idempotencyKey)
-    WEB->>Q: enqueue send (AFTER row written)
-    Note over WEB,Q: undo window — submission.undoUntil is source of truth
-    Q->>JOBS: consume (after undo delay)
-    JOBS->>D1: claim CAS (queued→sending, stamp lastAttemptAt)
-    JOBS->>D1: check suppression · charge send_counter
-    JOBS->>SEND: transmit (chunk ≤50 recipients)
-    JOBS->>D1: rollup submission + recipient status
-    JOBS->>HUB: live send-state tick
-    SEND-->>EV: delivery / bounce / complaint events
-    EV->>JOBS: consume
-    JOBS->>D1: update recipient status · suppress hard bounces
+    WEB->>D1: record the message + a "queued" send
+    WEB->>Q: enqueue (after the row is written)
+    Note over WEB,Q: undo window — the database row is the source of truth
+    Q->>JOBS: process (after the undo delay)
+    JOBS->>D1: claim it (queued → sending)
+    JOBS->>D1: skip suppressed addresses · rate-limit
+    JOBS->>SEND: transmit
+    JOBS->>D1: update status · write the send log
+    JOBS->>HUB: live tick (+ alert on failure)
+    SEND-->>EV: delivered / bounced / complaint
+    EV->>JOBS: process
+    JOBS->>D1: update per-recipient status · suppress hard bounces
     JOBS->>HUB: tick (delivered / failed)
-    HUB-->>WEB: live status to composer/thread
+    HUB-->>WEB: live status in the thread
 ```
 
 ---
 
-## 4. `@doota/mail-core` — module map
+## 4. `@doota/mail-core` — the shared logic
 
-The domain logic shared by web + both mail Workers (no framework, drizzle only).
+The mail logic used by the web app **and** both mail Workers (framework-free).
 
 ```mermaid
 flowchart LR
@@ -466,44 +551,43 @@ flowchart LR
         qc --> resolver
         qc --> materialize
         qc --> bounce
+        qc --> notify
         materialize --> crypto
-        materialize --> inline-images
     end
     subgraph outbound
         ob[outbound] --> oc[outbound-consumer]
         oc --> provider
         oc --> send-rate-limit
-        oc --> bounce
+        oc --> notify
+        oc --> send-log
         drafts --> ob
     end
-    subgraph read_layer["read / threading"]
+    subgraph read_layer["reading & threading"]
         read --> mail-thread-contract
-        mailbox --> mailbox-detail
         search
-        contacts
-        notes
-        collab
+        notes --> notify
+        collab --> notify
+        snooze
     end
     subgraph realtime
         events-hub[events-hub · DO] --> events-consumer
+        notify --> web-push
     end
     subgraph shared
         crypto
-        identities
-        org-domains["@doota/db org-domains"]
-        mirror
+        unsubscribe
         cron
     end
 
     oc --> events-hub
     qc --> events-hub
-    resolver --> org-domains
-    ob --> identities
-    drafts --> crypto
+    cron --> snooze
+    cron --> send-log
 ```
 
 ---
 
-_Regenerate after schema/binding changes: the ER model tracks
-`packages/db/src/{auth,mail}.schema.ts`; the component view tracks each worker's
-`wrangler.jsonc`._
+_Keep these current after schema or binding changes: the data model tracks
+`packages/db/src/{auth,mail}.schema.ts`; the component view tracks each Worker's
+`wrangler.jsonc`. A deeper, engineering-focused version of these diagrams lives in
+the repo at `docs/architecture-diagrams.md`._

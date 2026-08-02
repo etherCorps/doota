@@ -1,374 +1,262 @@
-# Service Accounts — API sending, templates & send log
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Service accounts — API sending, templates, send log & SDK
 
-Status: **implemented (all 5 phases)**. Last updated: 2026-07-29.
+Status: **shipped.** Written from a code walkthrough 2026-08-02; file:line
+references point at `apps/web/src/` and `packages/` unless noted.
 
-## Implementation status
+A **service account** is not a new entity — it is the existing **service mailbox**
+(`mailbox.isService = true`, `packages/db/src/mail.schema.ts`) plus a Developer
+surface. A non-human sending identity owned by an org (`notifications@`,
+`billing@`) that external systems send *as*, over `POST /api/send` with a bearer
+key (`dk_…`), through the **same** `can(send)` authorization and the **same**
+outbound pipeline as an interactive session. It owns four things:
 
-All phases landed. Tests: 22 new (send-log 4, templates 7, mjml/MRML 6, sdk 5),
-full web suite green, mail-core + sdk `tsc` clean.
+1. **Identity + access** — address, display name, existing `mailbox_access` grants
+   (`canManage` / `canSend`). Reused as-is.
+2. **Keys** — `dk_…` bearer keys (mint / hash / verify / revoke).
+3. **Templates** — hosted, versioned mail templates with merge variables + a
+   WYSIWYG builder.
+4. **Send log** — per-send audit (who · when · which key · which template · what
+   data · status), two-tier with an encrypted short-TTL payload.
 
-- **Phase 0** — no code change needed; `(app)/mailboxes/[mailboxId]` + the
-  "Manage mailbox" link already give managers the keys UI.
-- **Phase 1** — `submission.apiKeyId` + `send_event` table (migration `0032`);
-  `@doota/mail-core/send-log` (log/list/read/purge, AES-GCM payload on a 30-day
-  TTL, redaction); logged from `/api/send`; **Send log** tab; cron purge sweep.
-- **Phase 2** — `template` + `template_version` (migration `0033`);
-  `server/templates.ts` (CRUD + un-jinja render); `rpc/template.remote.ts`;
-  templated `/api/send` path.
-- **Phase 3** — `lib/mjml/blocks.ts` (pure, client-safe block schema → MJML
-  serializer + variable extraction); the builder compiles **in the browser** via
-  `mrml/web` (dynamic-imported + Vite `?url`, SSR-safe); the RPC just stores the
-  client-supplied `compiledHtml` + `editorJson` + `variablesSchema`.
-  `template-builder.svelte` (svelte-dnd-action) + `(app)/templates` routes +
-  sidebar entry.
-- **Phase 4** — `packages/sdk` (`@doota/sdk`, Resend-shaped; publishable —
-  `publishConfig` ships built `dist`, `pnpm build` via `prepublishOnly`); docs
-  guide + changelog; `admin/api-keys.mdx` refreshed.
+Plus a Resend-shaped client **SDK** (`@doota/sdk`).
 
-### Notes & follow-ups
-
-- **Compile is client-side** (browser WASM, `mrml/web`), per the plan — the
-  builder route carries the WASM; the Worker and hot send path stay WASM-free
-  (un-jinja renders the stored HTML at send). No MRML-on-Workers concern.
-  ⚠ Verify in a browser that the `?url` wasm loads under Vite (the one bit that
-  can't be headless-tested); MRML compile itself is proven in the mjml test via
-  the node build.
-- **Template access**: org admins **and** service-mailbox managers (a `canManage`
-  grant on an `isService` box) — `serviceMailboxManagerOrgIds` + widened guard.
-  Non-admin managers reach `/templates` via a link in the account's keys tab.
-- **SDK name**: `@doota/sdk` (scoped — the bare `doota` is the app package).
-- **Local D1**: apply migrations `0032` + `0033` with `pnpm db:migrate:local`
-  (tests run them in-memory automatically).
-- **Builder MVP**: 8 core blocks, no nested columns yet.
-
-
-
-This is the technical design for turning today's bare "service mailbox + API key"
-into a full **service account**: an API-based sending identity that owns
-**keys**, **hosted templates** (with a visual builder), and a **send log**
-recording every message it sent. It also covers a Resend-style **client SDK**.
-
-Audience: developers/operators. The user-facing guide lives in `apps/docs`.
+Audience: developers/operators. The user-facing guide lives in
+`apps/docs/.../admin/api-keys.mdx`.
 
 ---
 
-## 1. What a service account is
+## 1. Access model
 
-A **service account** is not a new entity — it is the existing **service
-mailbox** (`mailbox.isService = true`, `packages/db/src/mail.schema.ts`) plus a
-Developer surface. It is a non-human sending identity owned by an org
-(`notifications@`, `billing@`) that external systems send *as*, over
-`POST /api/send` with a bearer key (`dk_…`).
+Reuse the grant model — no new permission tier.
 
-It owns four things:
-
-1. **Identity + access** — address, display name, and the existing
-   `mailbox_access` grants (`canManage` / `canSend`). Reused as-is.
-2. **Keys** — `dk_…` bearer keys. Already built (mint/hash/verify/revoke).
-3. **Templates** — hosted, versioned mail templates with variables. **New.**
-4. **Send log** — per-send audit: when · to whom · which key · which template ·
-   what data · status. **New.**
-
-Framing: **a service account = a shared mailbox + a Developer tab (Keys ·
-Templates · Logs).** No new permission system, no new owner model — grants and
-the send pipeline already exist.
-
----
-
-## 2. Access model — who sees and manages
-
-Reuse the existing grant model. No new permission tier (unless we later want
-`canSend`-read; see Open questions).
-
-| Operation                     | Who                                                |
-| ----------------------------- | -------------------------------------------------- |
-| Create a service account      | Org admin / superadmin (`assertManageOrg`)         |
-| Mint / list / revoke keys     | `canManage` grant on the mailbox, or org admin     |
-| Create / edit templates       | `canManage`                                        |
-| View send log                 | `canManage` (see Open questions re `canSend`-read) |
-| Send via API                  | Any holder of a valid key (the key *is* the authz) |
-| "Share" a service account     | Grant a teammate `canManage` / `canSend` (Access tab) |
+| Operation | Who | Guard (`apps/web/src/lib/rpc/mailbox.remote.ts`) |
+| --- | --- | --- |
+| Mint / list / revoke keys | `canManage` on the mailbox, or org admin | `assertManageMailbox` |
+| View send log | `canManage` **or** `canSend` | `assertManageOrSendMailbox` |
+| Create / edit templates | org admin, or `canManage` on a service box | `assertCanManageTemplates` (`template.remote.ts`) |
+| Send via API | any holder of a valid key | the key *is* the authz |
+| "Share" the account | grant a teammate `canManage` / `canSend` | Access tab |
 
 **Sharing = granting access, never re-showing a secret.** Keys are shown once at
-mint (SHA-256 hashed, `api-key.ts`). A teammate who needs API access is added as
-a manager and mints *their own* key. We never store or re-display a secret.
+mint (SHA-256 hashed, `apps/web/src/lib/server/auth/api-key.ts`). A teammate who
+needs API access is added as a manager and mints *their own* key.
 
-### Access already works (Phase 0 mostly a no-op)
+**Key minting is a management act** — `canManage` only. A `canSend` grantee gets
+read access to the send log but can't mint keys. Whoever provisions a key **must
+name it** (`createServiceKey` requires `z.string().trim().min(1).max(80)`); the
+name is what identifies it in the list later (`CI deploy`, `billing worker`).
 
-Earlier this design assumed keys were org-admin-only. **That was wrong.** An
-in-app manager route already exists: `(app)/mailboxes/[mailboxId]`
-(`+page.server.ts`) allows superadmin OR org-admin OR `isMailboxManager`
-(a `canManage` grant) and renders `mailbox-manager.svelte` with the API-keys tab
-for service mailboxes. The mail app already links to it — a **"Manage mailbox"**
-affordance shows for the active mailbox when `canManageActive`
-(`(app)/app/+page.svelte`). So a delegated manager can already mint/list/revoke
-keys without `/admin`. Phase 0 is therefore just: confirm this path, and (later,
-optional) a central "service accounts" list for users who manage several. No
-route/guard change needed.
+Reachability was the original bug this fixed: the keys UI lives under the in-app
+mailbox-manager route (`(app)/mailboxes/[mailboxId]`), reachable by any
+`canManage` grantee via the "Manage mailbox" link — **not** gated behind
+`/admin`. A delegated manager can mint/list/revoke without an admin role.
+
+### Key storage — `api-key.ts`
+
+- `createServiceApiKey(db, { orgId, mailboxId, createdByUserId, name })` — mints a
+  32-byte random secret prefixed `dk_`, stores **only** its SHA-256 hash, returns
+  the plaintext once + a 12-char display prefix.
+- `verifyApiKey(db, presented)` — hash lookup, must be non-revoked; returns an
+  `ApiKeyActor { keyId, userId, orgId, mailboxId, isService }`, bumps
+  `lastUsedAt`. Service keys have `userId = null`, `isService = true`,
+  `mailboxId` set → send as the mailbox directly.
+- `revokeApiKey(db, keyId)` — soft revoke (`revokedAt`), keeps the audit row.
+- `bearerFromHeaders(headers)` — parses `Authorization: Bearer dk_…`.
+
+The `apiKey` table carries `name`, `mailboxId` (send scope), `createdByUserId`
+(audit), `isService`, `keyHash` (unique), `prefix`, `lastUsedAt`, `revokedAt`.
 
 ---
 
-## 3. Architecture
+## 2. Send path — `POST /api/send` (`apps/web/src/routes/api/send/+server.ts`)
 
-### 3.1 Templating engine — `@ethercorps/un-jinja` (reuse)
+Bearer `dk_…` → `verifyApiKey` → `can(actor, "send")` (no parallel auth path). If
+the key is mailbox-bound, `body.mailboxId` must match it (else 403); an unbound
+key requires `body.mailboxId`.
 
-Already a dependency and already the renderer for system email
-(`apps/web/src/lib/server/email/index.ts`): `render(templateString, ctx)`,
-Jinja2-like, **auto-escaping on**. This is the send-time merge engine for
-service-account templates too. No new engine.
+**Request body:** `to` / `cc` / `bcc` (≥1 recipient), and either raw
+(`subject`, `text`, `html`) **or** templated (`templateId` + `data`), plus
+`fromAliasId`, `parentMessageId` (reply threading), `sendAt` (epoch-ms scheduled
+send), `idempotencyKey`, `attachments`.
+
+- **Raw path** — subject/text/html sent as written.
+- **Templated path** — load the current `template_version`, render
+  `subjectTemplate` + `compiledHtml` with `data` via **un-jinja**
+  (`@ethercorps/un-jinja`, auto-escape on). **Built-in variables win over
+  caller `data`**: `recipient`, `sender_name`, `sender_email`, `year`, `date`,
+  `unsubscribe_url`. Text part is null (provider derives it from HTML).
+- **Unsubscribe** — `unsubscribeUrlFor(url.origin, primary, env.UNSUBSCRIBE_URL)`.
+  Host comes from the **request origin** (one Worker can serve many domains — never
+  bake the host into env); `UNSUBSCRIBE_URL` overrides the path only (default
+  `/unsubscribe`), `{email}` token substituted, absolute URLs pass through
+  (`packages/mail-core/src/unsubscribe.ts`).
+- **Then enqueue** through `enqueueSend` — the exact same materialize + queue seam
+  as interactive send. For a **service** key the call is logged best-effort
+  (never fails the send) via `logSendEvent`.
+
+**Responses:** `202 { submissionId, deduped }` on success.
+Errors: `400` (bad JSON / missing mailboxId / no recipients / bad attachment) ·
+`401` (missing/invalid key) · `403` (mailbox-scope mismatch) · `404` (unknown
+`templateId`) · `413` (attachment too big) · `500` (outbound not configured) ·
+`502` (attachment URL fetch failed) · `504` (attachment fetch timeout).
+
+Reusing an `idempotencyKey` returns the original submission with `deduped: true`.
+
+---
+
+## 3. Attachments — `apps/web/src/lib/server/api-attachments.ts`
+
+`resolveApiAttachments(env, orgId, inputs)` → `{ r2Key, filename, contentType,
+size }[]`, passed straight into `enqueueSend` (which creates attachment rows;
+the provider decrypts + MIMEs at send). Each input has a `filename` and **exactly
+one** of:
+
+- **`content`** — base64 bytes (tolerates a `data:…,` prefix + whitespace);
+  invalid base64 → 400.
+- **`url`** — fetched server-side, **SSRF-guarded** (reuses
+  `lib/server/ssrf.ts isBlockedHost`, mirrors img-proxy): http/https only,
+  `redirect: 'manual'` re-validated per hop (≤3), 10 s timeout. Blocked host →
+  400, bad redirect / fetch fail → 502, timeout → 504. Content-type inferred from
+  the response.
+
+Every blob is **encrypted at rest** (`putEncryptedBlob`, shared DEK) before it
+touches R2 — same envelope as the message body. Limits reused from
+`@doota/mail-core/drafts`: **20 files**, **25 MB each**, **40 MB total**
+(413 on breach). Attachment bytes are **never** written to the send log.
+
+Both Resend tiers (inline content + remote url) ship together on the shared store
+path. Tier 3 (a pre-upload endpoint for files above the cap) is deferred.
+
+---
+
+## 4. Templates + builder
+
+### Data model (`mail.schema.ts`)
+
+- `template` — `id, orgId, name, slug, currentVersionId, createdByUserId,
+  archivedAt, …`. Org-scoped **library**, unique `(orgId, slug)`, reusable by any
+  service box.
+- `template_version` — immutable snapshot: `templateId, version,
+  subjectTemplate, compiledHtml, editorJson, variablesSchema`. A send **pins the
+  version** it used, so the log reproduces exactly what went out even after edits.
+
+### CRUD — `apps/web/src/lib/rpc/template.remote.ts`
+
+`listOrgTemplates` / `getOrgTemplate` / `createOrgTemplate` / `updateOrgTemplate`
+/ `archiveOrgTemplate`, all gated by `assertCanManageTemplates` (org admin **or**
+`serviceMailboxManagerOrgIds` — a `canManage` grant on any `isService` box).
+Content limits: `subjectTemplate` ≤500, `compiledHtml` ≤500k, `editorJson` ≤2M
+(Tiptap doc), `variablesSchema` ≤50k (custom-var names + `sensitive` flags).
+
+### The builder (Resend-style Tiptap WYSIWYG)
+
+Type directly on the email canvas; `/` command menu; a grouped insert rail
+(**Text · Media · Layout · Variables**); a right-hand config panel; a **Theme**
+panel (per-type typography defaults); **Preview** (desktop/mobile) with **test
+send**. Files:
+
+| file (`apps/web/src/lib/`) | role |
+| --- | --- |
+| `components/templates/email-editor.svelte` | vanilla `@tiptap/core` mounted in Svelte; serializes to MJML on save; **mobile-gated** (`IsMobile` 768 — shows a "bigger screen" notice, skips editor init). |
+| `mjml/tiptap-nodes.ts` | custom email nodes — button, image, columns (2–4), hero, social, footer, html — with shared container-style attrs. |
+| `mjml/tiptap-mjml.ts` | pure serializer: Tiptap/ProseMirror doc → MJML, preserving `{{ }}` merge tags. **Groups** consecutive flow blocks into one `mj-section > mj-column` (idiomatic MJML rhythm); structural (columns/hero/social) or self-styled blocks break out. |
+| `mjml/variables.ts` | the 6 built-in vars + `sensitive` schema, shared by builder + send path. |
+| `mjml/compile.client.ts` | MJML→HTML via **MRML** (Rust→WASM), **client-side only** (dynamic import; `mrml` excluded from Vite `optimizeDeps` so wasm resolves in dev). SSR + the hot send path stay WASM-free. |
+
+**Where the weight lands:** MJML→HTML compile runs **once at save, in the
+browser**. The RPC stores the client-supplied `compiledHtml` + `editorJson` +
+`variablesSchema`. The send path runs only the tiny un-jinja `render(html, data)`
+— no MJML, no WASM. Preview compiles MJML then merges via un-jinja **client-side**
+(browser-safe, 0 deps) in a sandboxed `srcdoc` iframe; test-send **reuses the
+`sendMessage` remote** (no new endpoint).
+
+### Merge variables
+
+Two kinds, both `{{ name }}`: **provided** (the 6 built-ins Doota fills; they
+override same-named `data`) and **yours** (any other tag; supply via API `data`,
+missing renders empty). A var flagged `sensitive` in `variablesSchema` is dropped
+before the send log stores `data`.
+
+---
+
+## 5. Send log — `packages/mail-core/src/send-log.ts` (two-tier)
+
+Privacy-first: a permanent plaintext archive of "everything you've emailed + the
+data" contradicts the encrypted-at-rest posture. So:
+
+**Durable metadata tier** (kept) — `send_event` row: `orgId, mailboxId, apiKeyId,
+submissionId, templateId, templateVersion, toAddresses, subject, status,
+redactedKeys, createdAt`.
+
+**Encrypted payload tier** (short TTL) — `dataCipher` (the `data` merge payload,
+AES-GCM via the shared DEK) + `dataExpiresAt` (default **30 days**). Variables
+flagged `sensitive` are stripped *before* encryption (`redactedKeys` records what
+was dropped). Rendered HTML is **never** stored — reconstruct from
+`version + data` while data is in TTL.
+
+- `logSendEvent(db, input)` — redact → encrypt → insert.
+- `listSendEvents(mailboxId, limit=100)` — metadata only, no decryption; each
+  summary carries `dataAvailable` (has the payload expired?) + `redactedKeys`.
+  Exposed as `listSendLog` (`mailbox.remote.ts`), readable by manage **or** send.
+- `readSendEventData(id, dek)` — decrypt for a detail view; `null` past TTL.
+- `purgeExpiredSendData()` — the daily cron nulls `dataCipher` where
+  `dataExpiresAt <= now`; the metadata row stays.
+
+`submission.apiKeyId` (nullable, migration `0032`) is the join between the log and
+the outbound pipeline — every submission records which key (if any) originated it.
+
+---
+
+## 6. Client SDK — `packages/sdk` (`@doota/sdk`, published public)
+
+Resend-shaped thin wrapper over `POST /api/send`:
 
 ```ts
-import { render } from "@ethercorps/un-jinja";
-const html    = render(version.compiledHtml, data);   // {{ user.name }} → value
-const subject = render(template.subjectTemplate, data);
-```
-
-### 3.2 Builder — Svelte-native, own the editor, borrow only rendering
-
-> **Shipped as (2026-07-29):** the builder landed as a **Resend-style Tiptap
-> WYSIWYG** (vanilla `@tiptap/core` mounted in Svelte + custom email nodes),
-> **not** the block-palette + `svelte-dnd-action` drag model described below. The
-> core principle held — own the editor, borrow only MJML→HTML compilation (MRML /
-> WASM, client-side) — only the interaction model changed: type on the canvas, a
-> `/` command menu, a grouped insert rail, a right-hand config panel, a **Theme**
-> panel (per-type typography), and a **Preview** (desktop/mobile) with **test
-> send**. `svelte-dnd-action` was dropped. See `email-editor.svelte`,
-> `tiptap-nodes.ts`, `tiptap-mjml.ts`.
-
-We build the drag-and-drop builder **in Svelte** rather than embed a
-ready-made editor. Every off-the-shelf option brings its own runtime or a
-license string: GrapesJS ships its own view stack, `@templatical/editor` is
-Vue + **FSL-1.1** (non-compete), Easy Email / EmailBuilder.js are React,
-Unlayer is proprietary + phones home. Doota is Svelte + Cloudflare Workers +
-Apache-2.0 — so we keep the app light and fully open by owning the editor and
-borrowing only the two genuinely-hard, commodity pieces (cross-client HTML
-compilation and drag physics).
-
-Own vs borrow:
-
-| Layer                                   | Own / borrow                        |
-| --------------------------------------- | ----------------------------------- |
-| Editor UI — canvas, block palette, per-block settings, responsive preview | **Own (Svelte)** |
-| Block schema (JSON) — source of truth   | **Own**                             |
-| Block JSON → MJML serializer            | **Own** (this is the GrapesJS lesson: `grapesjs-mjml` is just a JSON↔MJML mapping) |
-| MJML → HTML compile                     | **Borrow: MRML (Rust→WASM, MIT)**   |
-| Drag mechanics                          | **Borrow: `svelte-dnd-action` (MIT)** |
-| Merge tags → render                     | **Own seam + un-jinja**             |
-
-**Compile engine = MRML, not `mjml`.** The standard `mjml` npm compiler is a
-heavy Node lib (Node built-ins, juice/html-minifier) and does not run on
-Cloudflare Workers. **MRML** (`mrml` npm, Rust→WASM, MIT — the engine behind
-Jolimail) is Workers-compatible and fast. It handles the expensive part:
-Outlook `<table>` compat, CSS inlining, responsive breakpoints.
-
-**Where the weight lands (stays light):** MJML→HTML compile runs **once at
-template save, client-side in the builder** (MRML-WASM loads only on that
-route). The hot **send** path runs only the tiny un-jinja `render(html, data)` —
-no MJML, no WASM. The mail-reading app and `/api/send` never load the editor or
-MRML.
-
-Flow:
-
-```
-Svelte editor (block JSON, source of truth)
-   │  serialize (own)
-   ▼
-MJML string  ── {{ jinja }} merge tags baked into text/attrs
-   │  compile once at save: MRML (WASM)
-   ▼
-compiledHtml (responsive, cross-client, {{ }} preserved)
-   │  at send: render(compiledHtml, data)  (un-jinja)
-   ▼
-final HTML → sanitize → enqueue → mail-out
-```
-
-We store **both** the block JSON (to re-open/edit) and the compiled Jinja-HTML
-(to render at send) per template *version*.
-
-**MVP block set** — MJML core only, ~8 blocks: text, heading, image, button,
-divider, spacer, section/columns, raw-HTML. Not all 19 MJML components. Borrow
-DnD + compile so we build *only* the block UI + serializer, not email-client
-compat or drag physics.
-
-Rejected: `@templatical/editor` (FSL-1.1 non-compete + Vue), GrapesJS (ships its
-own stack, MJML preset but heavy for a Svelte app), Unlayer (proprietary, phones
-home), Swapy (GPL-v3 copyleft + swap-only model, wrong for palette-driven
-building).
-
-### 3.3 Send path
-
-`POST /api/send` (`apps/web/src/routes/api/send/+server.ts`) gains a templated
-mode alongside the existing raw mode:
-
-```jsonc
-// raw (today)
-{ "mailboxId": "...", "to": "...", "subject": "...", "html": "..." }
-
-// templated (new)
-{ "mailboxId": "...", "to": "...", "templateId": "...", "data": { "name": "Ana", "order_id": 42 } }
-```
-
-Templated path: load current template version → `render(subjectTemplate, data)`
-+ `render(compiledHtml, data)` → sanitize (`@doota/mail-core`) → enqueue. Then
-write a **send_event** (§4.3). Raw sends are logged too, with `templateId = null`.
-
-### 3.4 Client SDK — Resend-shaped
-
-A public client package (`packages/sdk`, publish name TBD) mirroring Resend's
-ergonomics:
-
-```ts
-import { Doota } from "@doota/sdk";        // public name TBD
-const doota = new Doota("dk_live_…");
+import { Doota } from "@doota/sdk";
+const doota = new Doota("dk_…", { baseUrl: "https://mail.acme.com" });
 
 await doota.emails.send({
-  from: "billing@mail.acme.com",
   to: "ana@example.com",
-  templateId: "tmpl_invoice_paid",
-  data: { name: "Ana", amount: "$40.00" },
+  templateId: "tmpl_welcome",
+  data: { name: "Ana", code: "1234" },
+  idempotencyKey: "welcome-user-9012",
 });
 ```
 
-Thin typed wrapper over `POST /api/send` (bearer auth, idempotency key, typed
-errors). No secrets stored client-side beyond the key the caller supplies.
+- `new Doota(apiKey, { baseUrl, fetch? })`; `doota.emails.send(params)` →
+  `{ submissionId, deduped }`; throws `DootaError` (carries HTTP `status` +
+  server message) on non-2xx.
+- `SendParams`: `to`/`cc`/`bcc`, `subject`, `text`, `html`, `templateId`, `data`,
+  `mailboxId`, `fromAliasId`, `parentMessageId`, `sendAt`, `idempotencyKey`,
+  `attachments`.
+- `attachments`: `{ filename, content }` (a `Buffer`/`Uint8Array` — base64-encoded
+  for you — or a base64 string) **or** `{ filename, url }`. Undefined fields are
+  stripped before the wire call.
+- Publishable: `publishConfig.access = "public"`, ships built `dist`, bare `doota`
+  is the app package (scoped `@doota/sdk` is the SDK).
 
----
-
-## 4. Data model (new)
-
-All Drizzle, `packages/db/src/mail.schema.ts`. No raw SQL.
-
-### 4.1 `template`
-
-| col               | type      | notes                                            |
-| ----------------- | --------- | ------------------------------------------------ |
-| id                | text pk   | `tmpl_…`                                          |
-| orgId             | text fk   | org-scoped **library**, reusable by any service box |
-| name              | text      | human label                                      |
-| slug              | text      | stable id used by the API (`tmpl_invoice_paid`)  |
-| subjectTemplate   | text      | Jinja subject line                               |
-| variablesSchema   | json      | derived from merge tags: `{ name: {required, sensitive} }` |
-| currentVersionId  | text fk   | points at the live version                       |
-| createdByUserId   | text fk   |                                                  |
-| createdAt / updatedAt / archivedAt | ts |                                     |
-
-Unique `(orgId, slug)`.
-
-### 4.2 `template_version` (immutable snapshots)
-
-| col          | type    | notes                                       |
-| ------------ | ------- | ------------------------------------------- |
-| id           | text pk |                                             |
-| templateId   | text fk |                                             |
-| version      | int     | monotonically increasing per template       |
-| editorJson   | json    | the `@templatical/editor` document (edit)   |
-| compiledHtml | text    | MJML→HTML with `{{ jinja }}` (render)       |
-| createdByUserId | text fk |                                          |
-| createdAt    | ts      |                                             |
-
-Sends pin `templateVersion` so the log reproduces exactly what went out even
-after the template is edited.
-
-### 4.3 `send_event` — the log (two-tier)
-
-**Durable metadata tier** (retain long — 90d default or until purge):
-
-| col            | type    | notes                                    |
-| -------------- | ------- | ---------------------------------------- |
-| id             | text pk |                                          |
-| orgId          | text fk |                                          |
-| mailboxId      | text fk | the service account                      |
-| apiKeyId       | text fk | **which key** sent it                    |
-| templateId     | text fk nullable | null for raw sends              |
-| templateVersion| int nullable |                                     |
-| toAddresses    | json    | recipients                               |
-| subject        | text    | rendered subject                         |
-| status         | text    | queued / sent / bounced / failed         |
-| submissionId   | text fk | link into the outbound pipeline          |
-| createdAt      | ts      |                                          |
-
-**Sensitive data tier** (short TTL, encrypted):
-
-| col           | type    | notes                                             |
-| ------------- | ------- | ------------------------------------------------- |
-| dataCipher    | blob    | the `data` merge payload, **encrypted at rest** (mail-core `crypto`) |
-| dataExpiresAt | ts      | TTL, default now + 30d (org-configurable)         |
-| redactedKeys  | json    | variable names dropped before storage (sensitive) |
-
-Reconstruct the rendered body **on demand** from `compiledHtml + data` while
-data is in TTL — we do **not** store rendered HTML (avoids doubling PII). After
-`dataExpiresAt`, a cron sweep nulls `dataCipher`; the log row shows
-"data expired," metadata stays.
-
-### 4.4 `submission` — add `apiKeyId`
-
-Add a nullable `apiKeyId` column so every outbound submission carries which key
-(if any) originated it — the join between the send log and the mail pipeline.
-
----
-
-## 5. Privacy & retention
-
-Doota is privacy-first (encrypted R2 blobs). A permanent plaintext archive of
-"everything you've ever emailed and the data used" contradicts that. Rules:
-
-- **Metadata durable, payload ephemeral.** Keep who/what/when/which-template/
-  status long; keep the raw `data` blob only ~30 days (org-configurable).
-- **Encrypt the payload at rest** with the existing `@doota/mail-core/crypto`
-  envelope.
-- **Redaction.** A template variable can be flagged `sensitive`
-  (`password`, `token`, OTP) → never written to the log, even in TTL window.
-- **Never store rendered HTML** — reconstruct from `version + data` on demand.
-- **Purge sweep** rides the existing cron (`@doota/mail-core/cron`).
-
----
-
-## 6. Phases
-
-Each phase ships independently.
-
-**Phase 0 — Access.** In-app Developer surface for service accounts, reachable
-by `canManage` grantees (not just org admins). Reuse existing key
-mint/list/revoke RPCs. Fixes the reachability bug. *Smallest, highest-leverage.*
-
-**Phase 1 — Send log.** `apiKeyId` on `submission`; `send_event` two-tier table;
-capture on the existing raw `/api/send`; **Logs** tab UI. Delivers the audit log
-before templates exist.
-
-**Phase 2 — Hosted templates (data + render).** `template` + `template_version`
-tables; un-jinja render at send; `/api/send { templateId, data }`; template CRUD
-RPCs; template list UI. Log's template field becomes real.
-
-**Phase 3 — Builder.** Svelte-native drag-and-drop editor (`svelte-dnd-action`),
-block JSON as source of truth, JSON→MJML serializer, MRML-WASM compile at save,
-live preview, merge-tag insertion, test-send, versioning. MVP = ~8 core MJML
-blocks.
-
-**Phase 4 — SDK + docs.** `packages/sdk` Resend-shaped client; publish; user
-guide in `apps/docs` + changelog; update `apps/docs/.../admin/api-keys.mdx`
-(currently says users create keys at `/account/developer`, which is stale).
+An **OpenAPI 3.0.3** spec for the endpoint lives at
+`apps/web/static/openapi.yml` (servable at `/openapi.yml`).
 
 ---
 
 ## 7. Decisions locked
 
-- Service account **= service mailbox + Developer tab** (not a separate entity).
-- Sharing **= grant access**, never re-show a secret.
-- Render engine **= `@ethercorps/un-jinja`** (reuse), auto-escape on.
-- Builder **= Svelte-native, ours.** Own the editor UI + block JSON schema +
-  JSON→MJML serializer + merge-tag UX. Borrow only **MRML** (`mrml`, Rust→WASM,
-  MIT) for MJML→HTML compile and **`svelte-dnd-action`** (MIT) for drag. No
-  embedded editor, no second framework, no FSL/GPL.
-- Compile **client-side at save** (MRML-WASM on the builder route only); send
-  path runs only the light un-jinja render.
-- Templates **= org-scoped library**, reusable across the org's service boxes.
-- Log **= two-tier**: durable metadata + encrypted payload on a 30-day TTL.
-- SDK **= Resend-shaped** thin client over `/api/send`.
+- Service account **= service mailbox + Developer surface**, not a new entity.
+- Sharing **= grant access**, never re-show a secret; key mint is `canManage`.
+- Render engine **= un-jinja** (auto-escape on), reused from system email.
+- Builder **= ours** (Tiptap WYSIWYG), borrow only **MRML** for MJML→HTML compile,
+  client-side at save; send path stays un-jinja-only.
+- Templates **= org-scoped, versioned**; sends pin the version.
+- Send log **= two-tier**: durable metadata + encrypted 30-day-TTL payload;
+  `sensitive` vars redacted; rendered HTML never stored.
+- Attachments **= both tiers** (inline + SSRF-guarded url), encrypted at rest,
+  reuse the outbound pipeline.
 
-## 8. Open questions
+## 8. Deferred
 
-- **Provisioning:** self-serve service-account creation, or stays
-  admin-provisioned? (Leaning admin-provisioned initially.)
-- **Log visibility:** `canManage`-only, or `canSend` members get read-only?
-- **Naming in UI:** "Service account" (dev-friendly) vs "Service mailbox"
-  (model-consistent). Affects copy everywhere.
+- Tier-3 pre-upload endpoint for attachments above the 25 MB cap.
+- Send-only grantees minting their own keys (a separate self-serve surface).
+- Real Doota-hosted one-click `List-Unsubscribe` (today `unsubscribe_url` is a
+  template variable; the operator hosts the actual unsub + suppression).

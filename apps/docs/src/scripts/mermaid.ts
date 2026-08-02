@@ -1,6 +1,21 @@
 let diagrams: HTMLPreElement[] = [];
 const captured = new WeakSet<HTMLPreElement>();
 
+// Icon packs for `architecture-beta` diagrams: real provider logos
+// (Cloudflare via the iconify `logos` pack), neutral service glyphs (`ph`),
+// and the Doota mark (inline, from favicon.svg — no network). Registered once.
+let packsRegistered = false;
+const DOOTA_ICONS = {
+	prefix: "doota",
+	width: 96,
+	height: 96,
+	icons: {
+		mail: {
+			body: '<rect width="96" height="96" rx="22" fill="#0E7AE6"/><g transform="rotate(-9 48 33)"><rect x="28" y="16" width="40" height="39" rx="6" fill="#A9C8E8"/><rect x="28" y="10" width="40" height="39" rx="6" fill="#FFFFFF"/><rect x="35" y="17" width="8" height="18" rx="4" fill="#0E7AE6"/></g><g transform="rotate(4 48 68)"><rect x="12" y="56" width="72" height="31" rx="10" fill="#083E75"/><rect x="12" y="50" width="72" height="31" rx="10" fill="#0B5FB4"/><path d="M17 50l31 19 31-19z" fill="#1877D6"/></g>',
+		},
+	},
+};
+
 // Full-screen expand dialog (lazy — only created when needed)
 let dialog: HTMLDialogElement | null = null;
 
@@ -181,6 +196,21 @@ async function render() {
 		return;
 	}
 
+	// Register logo/icon packs once (loaders are lazy — the pack JSON is only
+	// fetched when a diagram actually references an icon from it).
+	if (!packsRegistered) {
+		try {
+			mermaid.registerIconPacks([
+				{ name: "logos", loader: () => import("@iconify-json/logos").then((m) => m.icons) },
+				{ name: "ph", loader: () => import("@iconify-json/ph").then((m) => m.icons) },
+				{ name: "doota", loader: async () => DOOTA_ICONS },
+			]);
+			packsRegistered = true;
+		} catch (e) {
+			console.error("Mermaid icon-pack registration failed:", e);
+		}
+	}
+
 	const isLight =
 		document.documentElement.getAttribute("data-mode") !== "dark";
 	const fontFamily = getFontFamily();
@@ -240,6 +270,15 @@ async function render() {
 				htmlLabels: true,
 				useMaxWidth: true,
 				curve: "linear",
+			},
+			// architecture-beta: default iconSize is 80px (logos render huge and
+			// collide with labels). Smaller icons + generous node separation keep
+			// the layout from overlapping; short labels avoid mid-word wrapping.
+			architecture: {
+				iconSize: 44,
+				fontSize: 13,
+				padding: 30,
+				nodeSeparation: 95,
 			},
 		});
 	} catch (e) {

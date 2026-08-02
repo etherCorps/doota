@@ -3,6 +3,9 @@
 How Doota decides whether to load remote content — images and `@font-face` fonts
 — in received mail, and who controls it. Written 2026-07-28.
 
+Written 2026-07-28, current as of 2026-08-02. See also the render pipeline in
+[`mail-flow.md`](mail-flow.md) § Rendering.
+
 Remote content is a privacy vector: a `<img src="https://tracker/…">` in an email
 tells the sender when, where, and how often you opened it. Doota's stance:
 **block by default, always proxy, never let the sender see the reader.**

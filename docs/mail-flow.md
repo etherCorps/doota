@@ -1,9 +1,12 @@
 # Mail pipeline: inbound, outbound, threading
 
 How a message becomes rows, how rows become threads, and how a reply becomes a
-wire email. Written from a code walkthrough on 2026-07-22; file:line references
-point at `packages/mail-core/src/` unless noted. Known issues are at the bottom,
-ranked.
+wire email. Written from a code walkthrough on 2026-07-22, current as of
+2026-08-02; file:line references point at `packages/mail-core/src/` unless noted.
+Known issues are at the bottom, ranked. Adjacent docs: live send-state ticks +
+the durable notification log live in [`notifications.md`](notifications.md); the
+API-send path + send log in [`service-accounts.md`](service-accounts.md);
+image/font loading policy in [`remote-content.md`](remote-content.md).
 
 ## Data model (the four core tables)
 
@@ -67,6 +70,10 @@ consumer). Idempotent; any error retries the whole job.
    inbound placement policy: new thread → `inbox`; reply to an `archived`
    thread → un-archive; `spam`/`trash` respected (a reply never resurrects what
    the user killed).
+6. `recordNewMail` (`notify.ts`, best-effort) writes a `notification` row per
+   recipient user (deduped per `(userId, threadId)`) and fires a Web Push, and
+   `correspondent` is upserted for recipient autocomplete. Both are off-path — a
+   failure never blocks materialization. See [`notifications.md`](notifications.md).
 
 ## Threading (`resolveThreadId`, `materialize.ts:50`)
 
@@ -144,6 +151,9 @@ status and acks without sending.
    (internal-only or fully suppressed) → still `sent` (a deliberate drop is not
    a failure); else `failed` (+ first recipient's bounce reason as lastError) →
    WhatsApp-style ticks (`tickForStatus`: clock/single/double/warning).
+   A `failed` rollup also fires `recordSendFailed` (a `send_failed` notification +
+   push to the sender). API-originated sends carry `submission.apiKeyId` and are
+   mirrored to the two-tier send log (see [`service-accounts.md`](service-accounts.md)).
 
 ## Post-send lifecycle + live updates (added 2026-07-23)
 

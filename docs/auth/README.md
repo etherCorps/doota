@@ -9,6 +9,12 @@ Doota is self-hosted: **one deployment = one company = one mail domain**
 So any recovery that emails the Doota address is circular and forbidden.
 Recovery goes to a **different, external** address.
 
+> Current as of 2026-08-02. This covers **human login/identity** (Better Auth
+> sessions, roles, org=domain). Machine sending uses a separate credential —
+> `dk_…` service-account API keys — documented in
+> [`../service-accounts.md`](../service-accounts.md), not here. The full
+> environment/secrets reference is in [`../pre-release.md`](../pre-release.md) §0.3.
+
 ## Stack
 
 SvelteKit · Cloudflare Workers · D1 · Drizzle · Better Auth (`emailAndPassword`,
