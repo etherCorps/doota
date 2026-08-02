@@ -141,7 +141,7 @@ export async function unpackBlob(ck: ContentKey, blob: Uint8Array): Promise<Uint
 
 // Centralized R2 read/write for content blobs, so every call site is a safe
 // one-liner (put→gzip+encrypt, get→decrypt+gunzip) and no site can forget half.
-type R2Like = {
+export type R2Like = {
   put(key: string, value: ArrayBuffer | ArrayBufferView | string, options?: unknown): Promise<unknown>;
   get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
 };

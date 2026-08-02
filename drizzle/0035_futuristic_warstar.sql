@@ -1,0 +1,1 @@
+ALTER TABLE `draft` ADD `forward_message_ids` text DEFAULT '[]' NOT NULL;

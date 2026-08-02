@@ -13,9 +13,9 @@ export type ComposePrefill = {
 	to?: string;
 	subject?: string;
 	body?: string;
-	/** Forwarded original HTML, kept out of the editor (Tiptap flattens rich HTML)
-	 * and appended to the sent body verbatim so a marketing template survives. */
-	forwardHtml?: string;
+	/** Source message ids to forward — the HTML is composed server-side at Send
+	 * (raw email HTML never reaches the client), so marketing templates survive. */
+	forwardMessageIds?: string[];
 };
 
 class ComposeStore {

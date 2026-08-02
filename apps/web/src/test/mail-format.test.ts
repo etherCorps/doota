@@ -14,11 +14,7 @@ import {
 	msgCanReplyAll,
 	replyCtx,
 	threadParticipants,
-	forwardableMessages,
-	fwdBlock,
-	combineForwardBody,
-	splitForwardBody,
-	FWD_SENTINEL
+	forwardableMessages
 } from '$lib/mail/format';
 import { isDmarcPass } from '@doota/mail-core/inbound-worker';
 
@@ -150,30 +146,3 @@ describe('forwardableMessages', () => {
 	});
 });
 
-describe('fwdBlock', () => {
-	it('embeds rich HTML verbatim so a marketing template survives', () => {
-		const out = fwdBlock(
-			msg({ htmlKind: 'rich', bodyFull: '<table><tr><td>Buy now</td></tr></table>', from: 'a@x.com', to: ['b@x.com'] })
-		);
-		expect(out).toContain('<table><tr><td>Buy now</td></tr></table>');
-		expect(out).not.toContain('&lt;table'); // NOT escaped to source text
-	});
-	it('escapes and quotes a plain-text body', () => {
-		const out = fwdBlock(msg({ htmlKind: 'plain', bodyFull: 'a < b\nline2', from: 'a@x.com', to: ['b@x.com'] }));
-		expect(out).toContain('a &lt; b');
-		expect(out).toContain('<br>');
-		expect(out).toContain('<blockquote>');
-	});
-});
-
-describe('forward body sentinel', () => {
-	it('combine/split round-trips the note and the forwarded html', () => {
-		const combined = combineForwardBody('<p>note</p>', '<div>fwd</div>');
-		expect(combined).toBe(`<p>note</p>${FWD_SENTINEL}<div>fwd</div>`);
-		expect(splitForwardBody(combined)).toEqual({ note: '<p>note</p>', forward: '<div>fwd</div>' });
-	});
-	it('no forward → body is the note alone, split yields empty forward', () => {
-		expect(combineForwardBody('<p>hi</p>', '')).toBe('<p>hi</p>');
-		expect(splitForwardBody('<p>hi</p>')).toEqual({ note: '<p>hi</p>', forward: '' });
-	});
-});

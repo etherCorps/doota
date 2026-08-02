@@ -5,6 +5,8 @@ import { error } from "@sveltejs/kit";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { decryptContent, encryptContent, putEncryptedBlob, type ContentKey } from "./crypto";
+import { sanitizeEmailHtml } from "./sanitize-email";
+import { messageRawHtml, type CacheLike } from "./mime";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
 import { notifySubmissionState } from "./events-hub";
@@ -91,6 +93,8 @@ export type DraftInput = {
   bcc?: string[];
   subject?: string | null;
   body?: string | null;
+  /** Source message ids to forward — the HTML is composed server-side at Send. */
+  forwardMessageIds?: string[];
 };
 
 export type DraftDTO = {
@@ -107,6 +111,7 @@ export type DraftDTO = {
   bcc: string[];
   subject: string | null;
   body: string | null;
+  forwardMessageIds: string[];
   attachments: AttachmentRef[];
   status: string;
   clientRevision: number;
@@ -160,6 +165,7 @@ async function toDTO(ck: ContentKey, row: typeof schema.draft.$inferSelect): Pro
     bcc: jsonArray<string>(row.bccAddrs),
     subject,
     body,
+    forwardMessageIds: jsonArray<string>(row.forwardMessageIds),
     attachments: jsonArray<AttachmentRef>(row.attachments),
     status: row.status,
     clientRevision: row.clientRevision,
@@ -199,6 +205,7 @@ export async function createDraft(
       bccAddrs: JSON.stringify(input.bcc ?? []),
       subjectEnc,
       bodyEnc,
+      forwardMessageIds: JSON.stringify(input.forwardMessageIds ?? []),
     })
     .returning();
   return toDTO(ck, inserted[0]);
@@ -623,12 +630,88 @@ async function copyToOutbound(env: OutboundEnv, ck: ContentKey, orgId: string, r
  * copies for a possible undo-restore). The draft is retained as a `sent`
  * tombstone linked to the submission until the undo window closes.
  */
+/**
+ * Compose the forwarded-message HTML + text at Send from the SOURCE messages'
+ * R2 raw. Raw email HTML never reaches the client (read.ts: "Raw HTML never
+ * leaves the server"), so a marketing template only forwards with full fidelity
+ * if assembled here. Each source is re-checked for the sender's access (a
+ * delivery to a mailbox they can see) — inaccessible/missing ids are skipped,
+ * never errored, so one stale id can't fail the whole send.
+ */
+async function buildForward(
+  db: Db,
+  env: OutboundEnv,
+  ck: ContentKey,
+  userId: string,
+  orgId: string,
+  messageIds: string[],
+  cache: CacheLike | null,
+): Promise<{ html: string; text: string }> {
+  if (!messageIds.length) return { html: "", text: "" };
+  const access = await db
+    .select({ mailboxId: mail.mailboxAccess.mailboxId })
+    .from(mail.mailboxAccess)
+    .where(eq(mail.mailboxAccess.userId, userId));
+  const boxes = access.map((a) => a.mailboxId);
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const htmlBlocks: string[] = [];
+  const textBlocks: string[] = [];
+  for (const id of messageIds) {
+    const m = await db.query.message.findFirst({
+      where: and(eq(mail.message.id, id), eq(mail.message.orgId, orgId)),
+      columns: { id: true, r2RawKey: true, fromAddr: true, fromName: true, sentAt: true, subjectEnc: true, toAddrs: true, bodyFullEnc: true },
+    });
+    if (!m) continue;
+    // Never trust the client's id list — re-check the sender can read this message.
+    const del = boxes.length
+      ? await db.query.delivery.findFirst({
+          where: and(eq(mail.delivery.messageId, id), inArray(mail.delivery.mailboxId, boxes)),
+          columns: { id: true },
+        })
+      : null;
+    if (!del) {
+      log.warn("forward.source_denied", { messageId: id, userId });
+      continue;
+    }
+    // Derive HTML the SAME way the render route does (postal-mime for inbound,
+    // JSON for our own outbound) via the shared helper — which also reuses the
+    // render route's edge cache (passed in from the platform context), so a
+    // message you just viewed isn't re-read from R2 or re-parsed to forward it.
+    const derived = await messageRawHtml(env.MAIL_RAW, ck, { id: m.id, r2RawKey: m.r2RawKey }, cache);
+    const rawHtml = derived.html;
+    let rawText = derived.text;
+    // Only fall back to the capped D1 twin when there's neither HTML nor full R2 text.
+    if (rawHtml == null && rawText == null) rawText = await decryptContent(ck, m.bodyFullEnc);
+    const subject = await decryptContent(ck, m.subjectEnc);
+    const to = jsonArray<string>(m.toAddrs);
+    const headerLines = [
+      `From: ${m.fromName ? `${m.fromName} <${m.fromAddr ?? ""}>` : m.fromAddr ?? ""}`,
+      m.sentAt ? `Date: ${new Date(m.sentAt).toUTCString()}` : "",
+      `Subject: ${subject ?? ""}`,
+      to.length ? `To: ${to.join(", ")}` : "",
+    ].filter(Boolean);
+    const sanitized = rawHtml ? sanitizeEmailHtml(rawHtml) : null;
+    const bodyHtml =
+      sanitized && sanitized.ok ? sanitized.html : `<div>${esc(rawText ?? "").replace(/\r?\n/g, "<br>")}</div>`;
+    htmlBlocks.push(`<div>${headerLines.map((l) => `<div>${esc(l)}</div>`).join("")}</div>${bodyHtml}`);
+    textBlocks.push(`${headerLines.join("\n")}\n\n${rawText ?? (rawHtml ? htmlToText(rawHtml) : "")}`);
+  }
+  if (!htmlBlocks.length) return { html: "", text: "" };
+  return {
+    html: `<br><div>---------- Forwarded message ----------</div>${htmlBlocks.join("<hr>")}`,
+    text: `\n\n---------- Forwarded message ----------\n\n${textBlocks.join("\n\n----\n\n")}`,
+  };
+}
+
 export async function sendDraft(
   db: Db,
   env: OutboundEnv,
   ck: ContentKey,
   userId: string,
   input: { draftId: string; sendAt?: number | null; undoSeconds?: number },
+  // The Workers edge cache, from the SvelteKit platform context — lets buildForward
+  // reuse the render route's parsed-HTML cache. Optional (absent in dev / tests).
+  cache: CacheLike | null = null,
 ): Promise<{ submissionId: string; threadId: string }> {
   const row = await ownDraftRow(db, input.draftId, userId);
   if (row.status !== "editing") error(409, "This draft has already been sent.");
@@ -659,7 +742,11 @@ export async function sendDraft(
 
     const staged = jsonArray<AttachmentRef>(row.attachments);
     const outboundAttachments = await Promise.all(staged.map((a) => copyToOutbound(env, ck, row.orgId, a)));
-    const { html, text } = toHtmlAndText(body);
+    const base = toHtmlAndText(body);
+    // Forward parts (rich HTML from the sources' R2) are appended below the note.
+    const fwd = await buildForward(db, env, ck, userId, row.orgId, jsonArray<string>(row.forwardMessageIds), cache);
+    const html = ((base.html ?? "") + fwd.html) || null;
+    const text = ((base.text ?? "") + fwd.text) || null;
 
     const res = await enqueueSend(db, env, {
       orgId: sender.orgId,

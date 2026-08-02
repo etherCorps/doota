@@ -195,35 +195,6 @@ export function replyCtx(
 }
 
 // --- Forward ----------------------------------------------------------------
-export const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-export function fwdBlock(m: MessageDTO): string {
-	const header = [
-		`From: ${m.from ?? ''}`,
-		m.sentAt ? `Date: ${new Date(m.sentAt).toLocaleString()}` : '',
-		`Subject: ${m.subject ?? ''}`,
-		m.to.length ? `To: ${m.to.join(', ')}` : ''
-	]
-		.filter(Boolean)
-		.map((line) => `<p>${escHtml(line)}</p>`)
-		.join('');
-	const src = m.bodyFull ?? m.bodyStripped ?? '';
-	// A rich message's body IS HTML (a marketing template, tables, inline CSS) —
-	// embed it verbatim so the forward carries the real template, not its escaped
-	// source. Plain text is escaped + <br>'d and indented as a quote.
-	if (m.htmlKind === 'rich') return `${header}<div>${src}</div>`;
-	return `${header}<blockquote>${escHtml(src).replace(/\r?\n/g, '<br>')}</blockquote>`;
-}
-
-// Forwarded original HTML is kept OUT of the Tiptap editor (its schema flattens
-// tables/inline-CSS). It rides beside the user's note in the stored draft body,
-// separated by this invisible marker (an HTML comment — harmless if it ever
-// reaches a recipient). split on load, combine on save.
-export const FWD_SENTINEL = '<!--doota:fwd-->';
-export function combineForwardBody(note: string, forwardHtml: string): string {
-	return forwardHtml ? `${note}${FWD_SENTINEL}${forwardHtml}` : note;
-}
-export function splitForwardBody(body: string): { note: string; forward: string } {
-	const at = body.indexOf(FWD_SENTINEL);
-	if (at === -1) return { note: body, forward: '' };
-	return { note: body.slice(0, at), forward: body.slice(at + FWD_SENTINEL.length) };
-}
+// Forwarding references the SOURCE messages by id (see forwardableMessages) and
+// composes the real HTML server-side at Send — raw email HTML never reaches the
+// client, so there's no client-side forward-body builder here anymore.

@@ -702,6 +702,10 @@ export const draft = sqliteTable(
     bccAddrs: text("bcc_addrs").default("[]").notNull(),
     subjectEnc: text("subject_enc"),
     bodyEnc: text("body_enc"),
+    // Forward: JSON array of source message ids. The forwarded HTML is NOT stored
+    // here — it's composed at Send from the sources' R2 raw (raw email HTML never
+    // reaches the client), so a marketing template forwards with full fidelity.
+    forwardMessageIds: text("forward_message_ids").default("[]").notNull(),
     // JSON array of { r2Key, filename, contentType, size }.
     attachments: text("attachments").default("[]").notNull(),
     status: text("status").default("editing").notNull(), // editing | sending (transient send claim) | sent

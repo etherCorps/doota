@@ -49,7 +49,7 @@
 	} from '$lib/rpc/draft.remote';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
 	import { withSignature, swapSignature } from '$lib/mail/signature';
-	import { combineForwardBody, splitForwardBody } from '$lib/mail/format';
+	import MailFrame from './mail-frame.svelte';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
@@ -63,7 +63,7 @@
 		to?: string;
 		subject?: string;
 		body?: string;
-		forwardHtml?: string;
+		forwardMessageIds?: string[];
 	};
 	let {
 		open = $bindable(false),
@@ -109,13 +109,10 @@
 	let body = $state('');
 	let attachments = $state<AttachmentRef[]>([]);
 	let editorKey = $state(0);
-	// Forwarded original HTML — kept OUT of the editor (Tiptap flattens rich
-	// tables/inline-CSS). Tiptap edits only the note; this is combined back into
-	// the body on save (with a sentinel) and split out again on load, so a
-	// marketing template survives round-trips and lands in the sent mail intact.
-	let forwardHtml = $state('');
-	// The body actually persisted/sent: the editor note + the forwarded original.
-	const wireBody = $derived(combineForwardBody(body, forwardHtml));
+	// Forwarded messages are referenced by id, not baked into the body — raw email
+	// HTML never reaches the client, so the server composes the real HTML at Send
+	// (full marketing-template fidelity). The composer shows a read-only preview.
+	let forwardMessageIds = $state<string[]>([]);
 	// Signature-per-mailbox, and the exact signature currently in the editor, so a
 	// From change can swap it out (see the $effect below). sigReady gates the swap
 	// off until the initial seed is in — the onMount identity pick must not trip it.
@@ -192,7 +189,7 @@
 			(local.subject ?? '').trim().length > 0 ||
 			(local.to?.length ?? 0) + (local.cc?.length ?? 0) + (local.bcc?.length ?? 0) > 0;
 		if (!meaningful) return;
-		if (local.body !== undefined) ({ note: body, forward: forwardHtml } = splitForwardBody(local.body));
+		if (local.body !== undefined) body = local.body;
 		if (local.subject !== undefined) subject = local.subject;
 		if (local.to) to = local.to;
 		if (local.cc) cc = local.cc;
@@ -219,7 +216,8 @@
 			cc = d.cc;
 			bcc = d.bcc;
 			subject = d.subject ?? '';
-			({ note: body, forward: forwardHtml } = splitForwardBody(d.body ?? ''));
+			body = d.body ?? '';
+			forwardMessageIds = d.forwardMessageIds ?? [];
 			attachments = d.attachments;
 			showCc = d.cc.length > 0;
 			showBcc = d.bcc.length > 0;
@@ -233,8 +231,7 @@
 			to = prefill.to ? [prefill.to.toLowerCase()] : [];
 			subject = prefill.subject ?? '';
 			body = prefill.body ?? '';
-			// Forwarded original — rich HTML kept beside the note, not in the editor.
-			forwardHtml = prefill.forwardHtml ?? '';
+			forwardMessageIds = prefill.forwardMessageIds ?? [];
 			// The editor only reads `initial` on mount — remount it so a forwarded
 			// body actually renders (resume path already does this above).
 			editorKey++;
@@ -342,12 +339,12 @@
 	// ponytail: key 'new' is shared by concurrent new composes across tabs —
 	// last writer wins; key by a session nonce if that ever bites.
 	const mirrorKey = $derived(resumeDraftId ?? 'new');
-	const snapshot = () => JSON.stringify([wireBody, subject, to, cc, bcc]);
+	const snapshot = () => JSON.stringify([body, subject, to, cc, bcc]);
 
 	function scheduleSave() {
 		if (phase !== 'editing') return;
 		saved = false;
-		mirrorDraft(mirrorKey, { body: wireBody, subject, to, cc, bcc });
+		mirrorDraft(mirrorKey, { body, subject, to, cc, bcc });
 		debouncedSave();
 	}
 
@@ -361,7 +358,7 @@
 			to.length + cc.length + bcc.length > 0 ||
 			attachments.length > 0 ||
 			body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0 ||
-			forwardHtml.trim().length > 0
+			forwardMessageIds.length > 0
 	);
 
 	// Single-flight: debounce flush, blur flush, visibilitychange flush, Send and
@@ -385,7 +382,8 @@
 			cc,
 			bcc,
 			subject,
-			body: wireBody,
+			body,
+			forwardMessageIds,
 			fromAliasId: aliasId ?? null
 		});
 		draftId = d.id;
@@ -427,7 +425,7 @@
 			cc,
 			bcc,
 			subject,
-			body: wireBody,
+			body,
 			fromAliasId: aliasId ?? null
 		});
 		if (res.ok) {
@@ -446,7 +444,7 @@
 				cc = d.cc;
 				bcc = d.bcc;
 				subject = d.subject ?? '';
-				({ note: body, forward: forwardHtml } = splitForwardBody(d.body ?? ''));
+				body = d.body ?? '';
 				editorKey++;
 				toast.warning('Draft updated in another tab — loaded the latest version.');
 			}
@@ -603,7 +601,7 @@
 		bcc = [];
 		subject = '';
 		body = '';
-		forwardHtml = '';
+		forwardMessageIds = [];
 		attachments = [];
 		showCc = false;
 		showBcc = false;
@@ -853,20 +851,20 @@
 						{/key}
 					</div>
 
-					{#if forwardHtml}
-						<!-- Forwarded original — rendered read-only in a fully-locked frame
-						     (sandbox="" = no scripts, no same-origin) so the marketing template
-						     shows exactly as it'll send, without going through the editor. -->
-						<div class="mt-1 shrink-0 overflow-hidden rounded-md border">
-							<div class="text-muted-foreground bg-muted/40 border-b px-2 py-1 text-xs">
-								Forwarded message · original formatting kept
+					{#if forwardMessageIds.length}
+						<!-- Forwarded messages — read-only preview via the SAME sandboxed
+						     renderer used to read mail, so the template shows exactly as it'll
+						     send. Composed for real (from R2) server-side at Send. -->
+						<div class="mt-1 max-h-64 shrink-0 overflow-y-auto rounded-md border">
+							<div class="text-muted-foreground bg-muted/40 sticky top-0 border-b px-2 py-1 text-xs">
+								Forwarding {forwardMessageIds.length}
+								{forwardMessageIds.length === 1 ? 'message' : 'messages'} · original formatting kept
 							</div>
-							<iframe
-								title="Forwarded message preview"
-								sandbox=""
-								srcdoc={forwardHtml}
-								class="h-56 w-full bg-white"
-							></iframe>
+							<div class="flex flex-col gap-2 p-2">
+								{#each forwardMessageIds as messageId (messageId)}
+									<MailFrame src={`/api/messages/${messageId}/body`} collapse fadeClass="from-background" />
+								{/each}
+							</div>
 						</div>
 					{/if}
 

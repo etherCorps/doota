@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { makeDb } from "./mail-db";
-import { importKey, decryptContent, getDecryptedBlob } from "@doota/mail-core/crypto";
+import { importKey, decryptContent, getDecryptedBlob, putEncryptedBlob } from "@doota/mail-core/crypto";
 import {
   createDraft,
   saveDraft,
@@ -227,6 +227,69 @@ describe("drafts — send integration & alias defaulting", () => {
     const dec = await getDecryptedBlob(r2 as never, message.r2RawKey, ck);
     const raw = JSON.parse(new TextDecoder().decode(dec!)) as { html: string };
     expect(raw.html).toBe("<p>hello <strong>world</strong></p>");
+  });
+
+  it("forward composes the source's real HTML server-side (marketing template survives)", async () => {
+    // A source message Alice received: rich marketing HTML staged in R2.
+    await db.insert(schema.thread).values({ id: "thF", orgId: ORG, lastMessageAt: new Date() });
+    const marketing = "<table><tr><td>50% OFF — Shop now</td></tr></table>";
+    // Real inbound shape: raw MIME under a raw/ key (postal-mime parses it), NOT
+    // our outbound {text,html} JSON — proves the derivation matches the render route.
+    const mime = [
+      "From: Shop <promo@shop.com>",
+      "To: alice@acme.com",
+      "Subject: Big Sale",
+      "MIME-Version: 1.0",
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      marketing,
+    ].join("\r\n");
+    await putEncryptedBlob(r2 as never, "raw/src1", ck, mime);
+    await db.insert(schema.message).values({
+      id: "src1", orgId: ORG, threadId: "thF", messageIdHeader: "<promo@ext.com>",
+      fromAddr: "promo@shop.com", fromName: "Shop", sentAt: new Date(),
+      toAddrs: JSON.stringify(["alice@acme.com"]), r2RawKey: "raw/src1",
+      subjectEnc: await encryptContent(ck, "Big Sale"), bodyStrippedEnc: await encryptContent(ck, "50% OFF"),
+    });
+    await db.insert(schema.delivery).values({ id: "dF", orgId: ORG, messageId: "src1", mailboxId: "mb_alice", role: "to" });
+
+    const d = await createDraft(db, ck, "u1", {
+      mailboxId: "mb_alice", kind: "forward", to: ["friend@ext.com"],
+      body: "<p>Check this out</p>", forwardMessageIds: ["src1"],
+    });
+    const { submissionId } = await sendDraft(db, env(), ck, "u1", { draftId: d.id });
+    const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
+    const message = await db.query.message.findFirst({ where: eq(schema.message.id, sub.messageId) });
+    const dec = await getDecryptedBlob(r2 as never, message.r2RawKey, ck);
+    const raw = JSON.parse(new TextDecoder().decode(dec!)) as { html: string; text: string };
+    expect(raw.html).toContain("Check this out"); // the note
+    expect(raw.html).toContain("50% OFF — Shop now"); // the forwarded template content survived server-side
+    expect(raw.html).toContain("Forwarded message"); // header
+    expect(raw.text).toContain("50% OFF"); // the plain-text twin carries it too
+  });
+
+  it("forward drops a source the sender can't access (no leak)", async () => {
+    // A message with NO delivery to any of u1's mailboxes.
+    await db.insert(schema.thread).values({ id: "thX", orgId: ORG, lastMessageAt: new Date() });
+    const mimeX = ["From: x@ext.com", "Content-Type: text/html", "", "<p>secret</p>"].join("\r\n");
+    await putEncryptedBlob(r2 as never, "raw/srcX", ck, mimeX);
+    await db.insert(schema.message).values({
+      id: "srcX", orgId: ORG, threadId: "thX", messageIdHeader: "<x@ext.com>",
+      fromAddr: "x@ext.com", sentAt: new Date(), toAddrs: JSON.stringify(["bob@acme.com"]),
+      r2RawKey: "raw/srcX", subjectEnc: await encryptContent(ck, "s"), bodyStrippedEnc: await encryptContent(ck, "secret"),
+    });
+    await db.insert(schema.delivery).values({ id: "dX", orgId: ORG, messageId: "srcX", mailboxId: "mb_bob", role: "to" });
+
+    const d = await createDraft(db, ck, "u1", {
+      mailboxId: "mb_alice", kind: "forward", to: ["friend@ext.com"], body: "<p>note</p>", forwardMessageIds: ["srcX"],
+    });
+    const { submissionId } = await sendDraft(db, env(), ck, "u1", { draftId: d.id });
+    const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
+    const message = await db.query.message.findFirst({ where: eq(schema.message.id, sub.messageId) });
+    const dec = await getDecryptedBlob(r2 as never, message.r2RawKey, ck);
+    const raw = JSON.parse(new TextDecoder().decode(dec!)) as { html: string };
+    expect(raw.html).not.toContain("secret"); // access denied → not forwarded
+    expect(raw.html).toContain("note"); // note still sent
   });
 
   it("keeps BCC out of message headers — bcc lives only as a submission recipient", async () => {

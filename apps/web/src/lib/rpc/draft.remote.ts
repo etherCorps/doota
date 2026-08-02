@@ -190,6 +190,7 @@ export const startDraft = command(
     bcc: AddrList,
     subject: z.string().nullish(),
     body: z.string().nullish(),
+    forwardMessageIds: z.array(z.string().min(1)).max(50).optional(),
   }),
   async (input) => {
     const user = requireUser();
@@ -262,12 +263,15 @@ export const sendDraftById = command(
   }),
   async ({ draftId, sendAt, undoSeconds }) => {
     const user = requireUser();
-    const { locals } = getRequestEvent();
-    const res = await sendDraft(locals.db, outboundEnv(), await contentKey(), user.id, {
-      draftId,
-      sendAt: sendAt ?? null,
-      undoSeconds: undoSeconds ?? undefined,
-    });
+    const { locals, platform } = getRequestEvent();
+    const res = await sendDraft(
+      locals.db,
+      outboundEnv(),
+      await contentKey(),
+      user.id,
+      { draftId, sendAt: sendAt ?? null, undoSeconds: undoSeconds ?? undefined },
+      platform?.caches?.default ?? null,
+    );
     // Bridge: drain in-process (queue consumer isn't running). Skip future sends.
     const undo = undoSeconds ?? 10;
     if (!sendAt || sendAt <= Date.now() + undo * 1000) {

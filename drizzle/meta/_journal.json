@@ -246,6 +246,13 @@
       "when": 1785642188610,
       "tag": "0034_sparkling_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1785678815823,
+      "tag": "0035_futuristic_warstar",
+      "breakpoints": true
     }
   ]
 }

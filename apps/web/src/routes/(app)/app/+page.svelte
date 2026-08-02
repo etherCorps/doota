@@ -77,7 +77,7 @@
 	import {
 		fmtTime, senderName, senderLabel, senderAddr, domainOf, senderProvider,
 		itemMs, isNewDay, fmtDay, msgSnippet, groupAttachments, shownAttachments,
-		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, fwdBlock, forwardableMessages
+		selfSet, threadParticipants, msgPrivateTo, msgCanReplyAll, replyCtx, forwardableMessages
 	} from '$lib/mail/format';
 	import AttachmentGroups from '$lib/components/mail/attachment-groups.svelte';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -1208,12 +1208,13 @@
 	});
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
-	// the single ComposePanel is mounted in the (app) layout. `fwdBlock` (HTML
-	// quote builder) lives in $lib/mail/format.
+	// the single ComposePanel is mounted in the (app) layout.
 	// A forward starts a NEW conversation (Gmail/Superhuman/Fastmail): no threadId,
 	// no In-Reply-To — otherwise it threads into the source conversation.
-	function startForward(subject: string | null, header: string, blocks: string) {
-		if (!mailboxId) return;
+	// Empty note; the forwarded messages are referenced by id and composed
+	// server-side at Send (raw HTML never leaves the server → full fidelity).
+	function startForward(subject: string | null, messageIds: string[]) {
+		if (!mailboxId || !messageIds.length) return;
 		compose.start({
 			prefill: {
 				kind: 'forward',
@@ -1221,18 +1222,16 @@
 				threadId: null,
 				inReplyToMessageId: null,
 				subject: replySubject(subject, 'forward'),
-				// Empty note; the original (rich HTML preserved) rides beside it.
-				forwardHtml: `<p>${header}</p>${blocks}`
+				forwardMessageIds: messageIds
 			}
 		});
 	}
 	function forward(parent: MessageDTO, subject: string | null) {
-		startForward(parent.subject ?? subject, '---------- Forwarded message ----------', fwdBlock(parent));
+		startForward(parent.subject ?? subject, [parent.id]);
 	}
-	// Whole-thread forward: every message stacked oldest→newest as quoted blocks.
+	// Whole-thread forward: every accessible message, oldest→newest.
 	function forwardThread(msgs: MessageDTO[], subject: string | null) {
-		const blocks = msgs.map((msg) => fwdBlock(msg)).join('<p></p>');
-		startForward(subject, '---------- Forwarded conversation ----------', blocks);
+		startForward(subject, msgs.map((msg) => msg.id));
 	}
 	function openDraft(id: string) {
 		compose.start({ resumeDraftId: id });

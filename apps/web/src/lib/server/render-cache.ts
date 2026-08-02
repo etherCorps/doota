@@ -14,12 +14,13 @@
 // No client redeploy, no waiting.
 
 /**
- * Bump on ANY change to how message bodies or attachments are sanitized,
- * framed, or served — a sanitizer/security fix, a CSP change, a content-type
- * rule. Baked into every render ETag, so a bump invalidates all cached copies
- * globally on their next revalidation.
+ * The single render-version constant lives in mail-core (mime.ts) so the forward
+ * composer and this route key the SHARED body-html cache identically. Bump it
+ * THERE on any change to how bodies are parsed/sanitized/framed/served — it's
+ * baked into every render ETag here, so a bump invalidates all cached copies.
  */
-export const RENDER_CACHE_VERSION = "14";
+import { RENDER_CACHE_VERSION } from "@doota/mail-core/mime";
+export { RENDER_CACHE_VERSION };
 
 /** Weak ETag over the version + a per-resource key. Weak (`W/`) because a
  * re-render isn't guaranteed byte-identical (sanitizer output can vary), only
