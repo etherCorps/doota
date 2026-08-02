@@ -9,6 +9,12 @@
 //    (a 20-message thread = 20 body fetches); changes via one admin toggle.
 //  - send identities        ids:v1:{userId}  — 5 D1 queries per composer open.
 //  - mailbox signatures     sig:v1:{userId}  — read per compose/reply open.
+//
+// Deliberately TTL-covered (no explicit invalidation): org-wide flips whose
+// fan-out would touch every org user — the subaddressing toggle and org
+// lifecycle (suspend/activate). Both only affect identity *availability* flags;
+// the send path re-validates via resolveSender server-side, so ≤5min of
+// stale display can't authorize anything.
 import { getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
@@ -32,9 +38,10 @@ export async function kvCached<T>(key: string, load: () => Promise<T>, valid: (v
   }
   const v = await load();
   if (kv) {
+    // waitUntil (invoked on ctx, per the CF pattern): the response never blocks
+    // on the cache write; absent ctx (dev) the put still runs fire-and-forget.
     const put = kv.put(key, JSON.stringify(v), { expirationTtl: TTL_S }).catch(() => {});
-    const waitUntil = platform?.ctx?.waitUntil?.bind(platform.ctx);
-    if (waitUntil) waitUntil(put);
+    platform?.ctx?.waitUntil(put);
   }
   return v;
 }

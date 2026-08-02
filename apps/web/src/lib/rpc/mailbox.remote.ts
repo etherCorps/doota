@@ -7,7 +7,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
 import { getAuthz, invalidateAuthz } from "$lib/server/authz.js";
-import { invalidateUserMailCache } from "$lib/server/mail-cache.js";
+import { invalidateUserMailCache, invalidateMailboxHolders } from "$lib/server/mail-cache.js";
 import {
   upsertMailbox,
   grantAccess,
@@ -225,6 +225,7 @@ export const deactivateMailbox = command(
       .update(mail.mailbox)
       .set({ isActive: active })
       .where(eq(mail.mailbox.id, mailboxId));
+    await invalidateMailboxHolders(mailboxId); // identity availability changed
     return { success: true as const };
   },
 );

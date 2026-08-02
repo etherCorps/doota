@@ -9,6 +9,7 @@ import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "@doota/db/can";
 import { provisionUser } from "$lib/server/provisioning.js";
 import { getAuthz, invalidateAuthz } from "$lib/server/authz.js";
+import { invalidateUserMailCache } from "$lib/server/mail-cache.js";
 import { purgeUserMemberships } from "$lib/server/auth/escape-hatches.js";
 
 const ADMIN_ROLES = ["admin", "superadmin"];
@@ -97,6 +98,8 @@ export const removeUser = command(z.string(), async (userId) => {
   // first, then remove the user.
   await purgeUserMemberships(userId);
   await locals.auth.api.removeUser({ body: { userId }, headers: request.headers });
-  await invalidateAuthz(userId); // drop the removed user's cached authz snapshot
+  // Deleted from D1 → deleted from KV: no cached snapshot may outlive the row.
+  await invalidateAuthz(userId);
+  await invalidateUserMailCache(userId);
   return { removed: true };
 });

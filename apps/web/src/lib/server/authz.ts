@@ -41,7 +41,6 @@ export function getAuthz(): Promise<Authz> {
   if (locals.authz) return locals.authz;
   const userId = locals.user.id;
   const kv = platform?.env?.AUTH_KV;
-  const waitUntil = platform?.ctx?.waitUntil?.bind(platform.ctx);
   locals.authz = (async (): Promise<Authz> => {
     if (kv) {
       try {
@@ -57,8 +56,10 @@ export function getAuthz(): Promise<Authz> {
     ]);
     const snapshot: Authz = { mailboxIds, orgAdminOf };
     if (kv) {
+      // waitUntil (invoked on ctx, per the CF pattern): the response never blocks
+      // on the cache write; absent ctx (dev) the put still runs fire-and-forget.
       const put = kv.put(kvKey(userId), JSON.stringify(snapshot), { expirationTtl: KV_TTL_S }).catch(() => {});
-      if (waitUntil) waitUntil(put);
+      platform?.ctx?.waitUntil(put);
     }
     return snapshot;
   })();
