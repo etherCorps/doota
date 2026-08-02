@@ -47,6 +47,9 @@ importers:
       '@astrojs/check':
         specifier: ^0.9.8
         version: 0.9.9(prettier@3.8.1)(typescript@5.9.3)
+      '@iconify-json/logos':
+        specifier: ^1.2.11
+        version: 1.2.11
       '@tailwindcss/vite':
         specifier: ^4.1.4
         version: 4.3.2(vite@8.1.4(@types/node@24.11.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -1992,6 +1995,9 @@ packages:
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
+
+  '@iconify-json/logos@1.2.11':
+    resolution: {integrity: sha512-fOo4pGEatuyuCFNL+cwquYMa2Im0oJHRHV7lt/Qqs5Ode/lPImHCQcfTtPzZj7qYMPb/h8YHN3TG54uEowrjNQ==}
 
   '@iconify-json/ph@1.2.2':
     resolution: {integrity: sha512-PgkEZNtqa8hBGjHXQa4pMwZa93hmfu8FUSjs/nv4oUU6yLsgv+gh9nu28Kqi8Fz9CCVu4hj1MZs9/60J57IzFw==}
@@ -8754,6 +8760,10 @@ snapshots:
   '@fontsource-variable/plus-jakarta-sans@5.3.0': {}
 
   '@hexagon/base64@1.1.28': {}
+
+  '@iconify-json/logos@1.2.11':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@iconify-json/ph@1.2.2':
     dependencies:
