@@ -55,7 +55,7 @@ function isBenignConflict(err: unknown): boolean {
   const e = err as { status?: number; errors?: Array<{ code?: number; message?: string }>; message?: string };
   if (e?.status === 409) return true;
   const blob =
-    (e?.errors?.map((x) => `${x.code} ${x.message}`).join(" ") ?? "") +
+    (e?.errors?.map((cfError) => `${cfError.code} ${cfError.message}`).join(" ") ?? "") +
     " " +
     (e?.message ?? "");
   return /already\s+(exists|enabled|active|been)|duplicate|is enabled/i.test(blob);
@@ -132,7 +132,7 @@ export async function findZone(domain: string): Promise<ZoneRef | undefined> {
  */
 export async function listZones(): Promise<ZoneRef[]> {
   const res = await cf().zones.list({ account: { id: APP_CLOUDFLARE_ACCOUNT_ID } });
-  return (res.result ?? []).map((z) => toZoneRef(z));
+  return (res.result ?? []).map((zone) => toZoneRef(zone));
 }
 
 export type ZoneDnsRecord = {
@@ -153,18 +153,18 @@ export async function listZoneDnsRecords(zoneId: string): Promise<ZoneDnsRecord[
   try {
     const page = await cf().dns.records.list({ zone_id: zoneId, per_page: 100 });
     // `priority`/`proxied` exist only on some record subtypes in the CF union.
-    const rows = (page.result ?? []).map((r) => {
-      const rec = r as { priority?: number; proxied?: boolean };
+    const rows = (page.result ?? []).map((record) => {
+      const rec = record as { priority?: number; proxied?: boolean };
       return {
-        type: r.type ?? "",
-        name: r.name ?? "",
-        content: r.content ?? "",
+        type: record.type ?? "",
+        name: record.name ?? "",
+        content: record.content ?? "",
         priority: rec.priority,
-        ttl: r.ttl,
+        ttl: record.ttl,
         proxied: rec.proxied,
       };
     });
-    rows.sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type));
+    rows.sort((first, second) => first.name.localeCompare(second.name) || first.type.localeCompare(second.type));
     return rows;
   } catch (e) {
     console.error("[cf:dns] zone records", e);
@@ -183,7 +183,7 @@ export async function upsertTxtRecord(
   content: string,
 ): Promise<void> {
   const page = await cf().dns.records.list({ zone_id: zoneId, per_page: 100, type: "TXT" });
-  const existing = (page.result ?? []).find((r) => r.name === name);
+  const existing = (page.result ?? []).find((record) => record.name === name);
   // ttl: 1 = "automatic" on Cloudflare.
   if (existing?.id) {
     await cf().dns.records.update(existing.id, { zone_id: zoneId, type: "TXT", name, content, ttl: 1 });
@@ -259,8 +259,8 @@ export async function inspectZoneMail(zoneId: string): Promise<{
   return {
     routingReady: !!routing?.enabled && routing?.status === "ready",
     catchAllToWorker: (worker: string) =>
-      actions.some((a) => a.type === "worker" && (a.value ?? []).includes(worker)),
-    sendingConfigured: (subs?.result ?? []).some((s) => s.enabled),
+      actions.some((action) => action.type === "worker" && (action.value ?? []).includes(worker)),
+    sendingConfigured: (subs?.result ?? []).some((sub) => sub.enabled),
   };
 }
 
@@ -285,7 +285,7 @@ export async function createRoutingRule(
     // the Worker exists. ponytail: deploy the worker, then re-run to route inbound.
     const err = e as { status?: number; errors?: Array<{ code?: number }> };
     const missingWorker =
-      err?.status === 404 || err?.errors?.some((x) => x.code === 2016);
+      err?.status === 404 || err?.errors?.some((cfError) => cfError.code === 2016);
     if (missingWorker) {
       console.warn(`[cf:catchall] Worker "${workerName}" not found — catch-all left unset.`);
       return;
@@ -421,7 +421,7 @@ async function cfGraphql<T>(query: string, variables: Record<string, unknown>): 
     const j = (await r.json()) as { data?: T; errors?: Array<{ message?: string }> };
     // GraphQL can return PARTIAL data alongside per-field errors — surface the
     // errors but keep whatever data came back (a bad field must not blank the view).
-    if (j.errors?.length) console.warn("[cf:graphql]", r.status, j.errors.map((e) => e.message).join("; "));
+    if (j.errors?.length) console.warn("[cf:graphql]", r.status, j.errors.map((gqlError) => gqlError.message).join("; "));
     if (!r.ok && !j.data) return null;
     return j.data ?? null;
   } catch (e) {
@@ -472,7 +472,7 @@ export async function zoneEmailAnalytics(zoneId: string, days = 7): Promise<Emai
       viewer: { zones: { emailSendingAdaptiveGroups: { count: number; dimensions: { date: string; status: string } }[] }[] };
     }>(ANALYTICS_Q, { zoneTag: zoneId, start: iso(new Date(Date.now() - d * 864e5)), end: iso(new Date()) });
     const rows = data?.viewer?.zones?.[0]?.emailSendingAdaptiveGroups ?? [];
-    return rows.map((r) => ({ date: r.dimensions.date, status: r.dimensions.status, count: r.count }));
+    return rows.map((row) => ({ date: row.dimensions.date, status: row.dimensions.status, count: row.count }));
   });
 }
 
@@ -507,10 +507,10 @@ function tallyReputation(rows: { count: number; dimensions: { status: string } }
   let delivered = 0,
     failed = 0,
     spam = 0;
-  for (const r of rows) {
-    if (r.dimensions.status === "delivered") delivered += r.count;
-    else if (r.dimensions.status === "spamRejection") spam += r.count;
-    else failed += r.count;
+  for (const row of rows) {
+    if (row.dimensions.status === "delivered") delivered += row.count;
+    else if (row.dimensions.status === "spamRejection") spam += row.count;
+    else failed += row.count;
   }
   const total = delivered + failed + spam;
   return { delivered, failed, spam, total, rate: total ? Math.round((delivered / total) * 1000) / 10 : null };
@@ -564,7 +564,7 @@ export async function zoneSendUsage(zoneId: string): Promise<{ today: number }> 
     const rows = await zoneEmailAnalytics(zoneId, MAX_DAYS);
     const today = new Date().toISOString().slice(0, 10);
     let day = 0;
-    for (const r of rows) if (r.date === today) day += r.count;
+    for (const row of rows) if (row.date === today) day += row.count;
     return { today: day };
   });
 }
@@ -646,16 +646,16 @@ export async function zoneEmailEvents(zoneId: string, days = 1): Promise<EmailEv
       { zoneTag: zoneId, start: new Date(Date.now() - d * 864e5).toISOString(), end: new Date().toISOString() },
     );
     const rows = data?.viewer?.zones?.[0]?.emailSendingAdaptive ?? [];
-    return rows.map((e) => ({
-      datetime: str(e.datetime),
-      to: str(e.to),
-      from: str(e.from),
-      subject: str(e.subject),
-      status: str(e.status),
-      errorCause: str(e.errorCause),
-      dkim: str(e.dkim),
-      dmarc: str(e.dmarc),
-      spf: str(e.spf),
+    return rows.map((event) => ({
+      datetime: str(event.datetime),
+      to: str(event.to),
+      from: str(event.from),
+      subject: str(event.subject),
+      status: str(event.status),
+      errorCause: str(event.errorCause),
+      dkim: str(event.dkim),
+      dmarc: str(event.dmarc),
+      spf: str(event.spf),
     }));
   });
 }
@@ -691,20 +691,20 @@ export async function zoneAuditLogs(zoneName: string, days = 30): Promise<AuditE
       );
       const j = (await r.json()) as { result?: Record<string, unknown>[]; errors?: Array<{ message?: string }> };
       if (!r.ok) {
-        console.warn("[cf:audit]", r.status, j.errors?.map((e) => e.message).join("; "));
+        console.warn("[cf:audit]", r.status, j.errors?.map((auditError) => auditError.message).join("; "));
         return [];
       }
-      return (j.result ?? []).map((e, i) => {
-        const action = e.action as Record<string, unknown> | undefined;
-        const actor = e.actor as Record<string, unknown> | undefined;
-        const resource = e.resource as Record<string, unknown> | undefined;
+      return (j.result ?? []).map((entry, i) => {
+        const action = entry.action as Record<string, unknown> | undefined;
+        const actor = entry.actor as Record<string, unknown> | undefined;
+        const resource = entry.resource as Record<string, unknown> | undefined;
         return {
-          id: str(e.id) ?? String(i),
-          when: str(e.when ?? e.created_at ?? e.timestamp),
-          action: str(action?.type ?? e.action),
+          id: str(entry.id) ?? String(i),
+          when: str(entry.when ?? entry.created_at ?? entry.timestamp),
+          action: str(action?.type ?? entry.action),
           ok: action?.result !== false,
-          actor: str(actor?.email ?? actor?.type ?? e.actor),
-          resource: str(resource?.type ?? resource?.id ?? e.resource),
+          actor: str(actor?.email ?? actor?.type ?? entry.actor),
+          resource: str(resource?.type ?? resource?.id ?? entry.resource),
         };
       });
     } catch (e) {

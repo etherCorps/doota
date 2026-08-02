@@ -413,7 +413,7 @@ export const bulkMarkRead = command(
             eq(schema.threadState.assigneeUserId, box.assignedTo),
           ),
         );
-      threadIds = mine.map((m) => m.threadId);
+      threadIds = mine.map((row) => row.threadId);
       if (!threadIds.length) return { ok: true as const };
     }
     if (read) {
@@ -531,10 +531,10 @@ export const mentionCandidates = query(
       .from(schema.mailboxAccess)
       .innerJoin(schema.user, eq(schema.user.id, schema.mailboxAccess.userId))
       .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
-    if (!rows.some((r) => r.userId === locals.user!.id)) return []; // caller lacks access
+    if (!rows.some((row) => row.userId === locals.user!.id)) return []; // caller lacks access
     return rows
-      .filter((r) => r.userId !== locals.user!.id)
-      .map((r) => ({ name: r.name, handle: r.email.split("@")[0] }));
+      .filter((row) => row.userId !== locals.user!.id)
+      .map((row) => ({ name: row.name, handle: row.email.split("@")[0] }));
   },
 );
 

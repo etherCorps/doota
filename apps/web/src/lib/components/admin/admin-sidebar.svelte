@@ -20,7 +20,7 @@
 	] as const;
 
 	const items = $derived(
-		nav.filter((n) => !('superadmin' in n && n.superadmin) || user.role === 'superadmin')
+		nav.filter((navItem) => !('superadmin' in navItem && navItem.superadmin) || user.role === 'superadmin')
 	);
 </script>
 

@@ -20,7 +20,7 @@
 	let subValue = $state('');
 	let nameservers = $state<{ domain: string; ns: string[] } | null>(null);
 
-	const available = $derived((zones ?? []).filter((z) => !z.onboarded));
+	const available = $derived((zones ?? []).filter((zone) => !zone.onboarded));
 
 	onMount(loadZones);
 
@@ -54,7 +54,7 @@
 				res.status === 'active'
 					? `${d} is active — mail is wired.`
 					: `${d} added. Delegate the nameservers, then Refresh in its DNS tab.`,
-			error: (e) => (e instanceof Error ? e.message : 'Onboarding failed.')
+			error: (err) => (err instanceof Error ? err.message : 'Onboarding failed.')
 		});
 		try {
 			const res = await req;
@@ -79,7 +79,7 @@
 		toast.promise(req, {
 			loading: `Linking ${domain}…`,
 			success: `${domain} linked — synced from Cloudflare.`,
-			error: (e) => (e instanceof Error ? e.message : 'Link failed.')
+			error: (err) => (err instanceof Error ? err.message : 'Link failed.')
 		});
 		try {
 			await req;
@@ -110,20 +110,20 @@
 				Every zone on the account is already onboarded. Add the domain to your Cloudflare account first, then reload.
 			</p>
 		{:else}
-			{#each available as z (z.id)}
+			{#each available as zone (zone.id)}
 				<div class="flex flex-col gap-2 rounded-lg border p-3">
 					<div class="flex items-center gap-3">
-						<span class="font-mono text-sm font-medium">{z.name}</span>
-						{#if z.configured}
+						<span class="font-mono text-sm font-medium">{zone.name}</span>
+						{#if zone.configured}
 							<StatusChip status="active" />
 							<span class="text-muted-foreground text-xs">Already set up on Cloudflare</span>
 						{:else}
-							<StatusChip status={z.active ? 'active' : 'pending'} />
+							<StatusChip status={zone.active ? 'active' : 'pending'} />
 						{/if}
 						<div class="ml-auto flex items-center gap-2">
-							{#if z.configured}
-								<Button size="sm" disabled={busy === z.name} onclick={() => link(z.name)}>
-									{#if busy === z.name}<Spinner class="mr-1" />{/if}
+							{#if zone.configured}
+								<Button size="sm" disabled={busy === zone.name} onclick={() => link(zone.name)}>
+									{#if busy === zone.name}<Spinner class="mr-1" />{/if}
 									Link
 								</Button>
 							{:else}
@@ -131,7 +131,7 @@
 									variant="ghost"
 									size="sm"
 									onclick={() => {
-										subFor = subFor === z.name ? null : z.name;
+										subFor = subFor === zone.name ? null : zone.name;
 										subValue = '';
 									}}
 								>
@@ -139,17 +139,17 @@
 								</Button>
 								<Button
 									size="sm"
-									disabled={busy === z.name}
-									onclick={() => onboard(z.name, subFor === z.name ? subValue || undefined : undefined)}
+									disabled={busy === zone.name}
+									onclick={() => onboard(zone.name, subFor === zone.name ? subValue || undefined : undefined)}
 								>
-									{#if busy === z.name}<Spinner class="mr-1" />{/if}
+									{#if busy === zone.name}<Spinner class="mr-1" />{/if}
 									Onboard
 								</Button>
 							{/if}
 						</div>
 					</div>
-					{#if subFor === z.name && !z.configured}
-						<Input class="font-mono" placeholder="send.{z.name} (optional outbound DKIM host)" bind:value={subValue} />
+					{#if subFor === zone.name && !zone.configured}
+						<Input class="font-mono" placeholder="send.{zone.name} (optional outbound DKIM host)" bind:value={subValue} />
 					{/if}
 				</div>
 			{/each}

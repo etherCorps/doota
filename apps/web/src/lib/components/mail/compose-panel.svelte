@@ -193,7 +193,7 @@
 		sweepMirrors();
 		const [ids, sigRows] = await Promise.all([sendIdentities(), myMailboxSignatures()]);
 		identities = ids;
-		const signatures = new Map(sigRows.map((r) => [r.mailboxId, r.bodyHtml]));
+		const signatures = new Map(sigRows.map((row) => [row.mailboxId, row.bodyHtml]));
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
 			draftId = d.id;
@@ -229,10 +229,10 @@
 		const chosen =
 			(prefill?.mailboxId &&
 				identities.find(
-					(i) => i.mailboxId === prefill.mailboxId && (i.aliasId ?? null) === (prefill.fromAliasId ?? null)
+					(identity) => identity.mailboxId === prefill.mailboxId && (identity.aliasId ?? null) === (prefill.fromAliasId ?? null)
 				)) ||
-			identities.find((i) => i.available && i.isPersonal) ||
-			identities.find((i) => i.available);
+			identities.find((identity) => identity.available && identity.isPersonal) ||
+			identities.find((identity) => identity.available);
 		if (chosen) {
 			mailboxId = chosen.mailboxId;
 			aliasId = chosen.aliasId;
@@ -576,12 +576,12 @@
 
 	// Click an attachment → images preview in a lightbox, everything else downloads.
 	let preview = $state<AttachmentRef | null>(null);
-	const ext = (a: AttachmentRef) => (a.filename.split('.').pop() ?? 'file').toUpperCase().slice(0, 4);
+	const ext = (attachment: AttachmentRef) => (attachment.filename.split('.').pop() ?? 'file').toUpperCase().slice(0, 4);
 
 	// Color-coded file-type tile (icon + tint) for non-image attachments.
-	function fileMeta(a: AttachmentRef): { icon: typeof FileIcon; bg: string; fg: string } {
-		const e = (a.filename.split('.').pop() ?? '').toLowerCase();
-		const t = a.contentType;
+	function fileMeta(attachment: AttachmentRef): { icon: typeof FileIcon; bg: string; fg: string } {
+		const e = (attachment.filename.split('.').pop() ?? '').toLowerCase();
+		const t = attachment.contentType;
 		if (t.includes('pdf') || e === 'pdf')
 			return { icon: FileTextIcon, bg: 'bg-destructive/10', fg: 'text-destructive' };
 		if (['zip', 'rar', '7z', 'gz', 'tar'].includes(e))
@@ -599,22 +599,22 @@
 		return { icon: FileIcon, bg: 'bg-muted', fg: 'text-muted-foreground' };
 	}
 	// Private, owner-only preview (streamed from R2 by the API) — never a public URL.
-	const previewUrl = (a: AttachmentRef) =>
-		draftId ? `/api/drafts/attachments?draftId=${draftId}&key=${encodeURIComponent(a.r2Key)}` : '';
-	function downloadAttachment(a: AttachmentRef) {
+	const previewUrl = (attachment: AttachmentRef) =>
+		draftId ? `/api/drafts/attachments?draftId=${draftId}&key=${encodeURIComponent(attachment.r2Key)}` : '';
+	function downloadAttachment(attachment: AttachmentRef) {
 		const link = document.createElement('a');
-		link.href = `${previewUrl(a)}&download=1`;
-		link.download = a.filename;
+		link.href = `${previewUrl(attachment)}&download=1`;
+		link.download = attachment.filename;
 		link.click();
 	}
-	function openAttachment(a: AttachmentRef) {
-		if (isImage(a)) preview = a;
-		else downloadAttachment(a);
+	function openAttachment(attachment: AttachmentRef) {
+		if (isImage(attachment)) preview = attachment;
+		else downloadAttachment(attachment);
 	}
 
 	// Compact recipient names for the minimized bar.
 	const recipientNames = $derived(
-		[...to, ...cc, ...bcc].map((a) => a.split('@')[0]).join(', ')
+		[...to, ...cc, ...bcc].map((addr) => addr.split('@')[0]).join(', ')
 	);
 </script>
 
@@ -656,31 +656,31 @@
 						</button>
 					{/if}
 					<div class="scrollbar-thin min-h-0 flex-1 space-y-2 overflow-y-auto p-2 {attachments.length ? '' : 'hidden'}">
-						{#each attachments as a (a.r2Key)}
+						{#each attachments as attachment (attachment.r2Key)}
 							<div class="group bg-background relative overflow-hidden rounded-lg border shadow-sm">
-								<button type="button" class="block w-full text-left" title={isImage(a) ? 'Preview' : 'Download'} onclick={() => openAttachment(a)}>
-									{#if isImage(a)}
+								<button type="button" class="block w-full text-left" title={isImage(attachment) ? 'Preview' : 'Download'} onclick={() => openAttachment(attachment)}>
+									{#if isImage(attachment)}
 										<div class="bg-muted aspect-[4/3] w-full">
-											<img src={previewUrl(a)} alt={a.filename} loading="lazy" class="size-full object-cover" />
+											<img src={previewUrl(attachment)} alt={attachment.filename} loading="lazy" class="size-full object-cover" />
 										</div>
 									{:else}
-										{@const m = fileMeta(a)}
+										{@const m = fileMeta(attachment)}
 										{@const Icon = m.icon}
 										<div class="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1 {m.bg}">
 											<Icon class="size-6 {m.fg}" />
-											<span class="text-[10px] font-semibold tracking-wide {m.fg}">{ext(a)}</span>
+											<span class="text-[10px] font-semibold tracking-wide {m.fg}">{ext(attachment)}</span>
 										</div>
 									{/if}
 									<div class="flex flex-col gap-0.5 p-2">
-										<span class="truncate text-xs font-medium">{a.filename}</span>
-										<span class="text-faint text-[10px] tabular-nums">{fmtSize(a.size)}</span>
+										<span class="truncate text-xs font-medium">{attachment.filename}</span>
+										<span class="text-faint text-[10px] tabular-nums">{fmtSize(attachment.size)}</span>
 									</div>
 								</button>
 								<button
 									type="button"
 									title="Download"
 									class="bg-background/85 text-muted-foreground hover:text-foreground pointer-coarse:opacity-100 absolute top-1.5 right-9 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
-									onclick={() => downloadAttachment(a)}
+									onclick={() => downloadAttachment(attachment)}
 								>
 									<DownloadIcon class="size-3.5" />
 								</button>
@@ -688,7 +688,7 @@
 									type="button"
 									title="Remove"
 									class="bg-background/85 text-muted-foreground hover:text-destructive pointer-coarse:opacity-100 absolute top-1.5 right-1.5 grid size-6 place-items-center rounded-full border opacity-0 transition-opacity group-hover:opacity-100"
-									onclick={() => removeAttachment(a.r2Key)}
+									onclick={() => removeAttachment(attachment.r2Key)}
 								>
 									<XIcon class="size-3.5" />
 								</button>
@@ -815,12 +815,12 @@
 						<!-- Mobile fallback: a rail won't fit at 94vw, so dock chips at the bottom. -->
 						<div class="max-h-24 shrink-0 overflow-y-auto pb-1 md:hidden">
 							<div class="flex flex-wrap gap-2">
-								{#each attachments as a (a.r2Key)}
+								{#each attachments as attachment (attachment.r2Key)}
 									<span class="bg-muted flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
 										<PaperclipIcon class="text-muted-foreground size-3" />
-										<span class="max-w-[14ch] truncate">{a.filename}</span>
-										<span class="text-faint">{fmtSize(a.size)}</span>
-										<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(a.r2Key)}>
+										<span class="max-w-[14ch] truncate">{attachment.filename}</span>
+										<span class="text-faint">{fmtSize(attachment.size)}</span>
+										<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(attachment.r2Key)}>
 											<XIcon class="size-3" />
 										</button>
 									</span>

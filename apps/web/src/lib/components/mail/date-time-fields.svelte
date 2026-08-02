@@ -27,14 +27,14 @@
 	const pad = (n: number) => String(n).padStart(2, '0');
 	const minDay = today(getLocalTimeZone());
 	const SLOTS = Array.from({ length: 48 }, (_, i) => `${pad(Math.floor(i / 2))}:${i % 2 ? '30' : '00'}`);
-	const fmtSlot = (s: string) =>
-		new Date(`2000-01-01T${s}:00`).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+	const fmtSlot = (slot: string) =>
+		new Date(`2000-01-01T${slot}:00`).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 	// No date picked yet → assume today, so past slots are disabled from the start
 	// (a future day re-enables them). Prevents selecting an already-passed time.
 	const isToday = $derived(!date || date.toString() === minDay.toString());
-	function slotPast(s: string): boolean {
+	function slotPast(slot: string): boolean {
 		if (!isToday) return false;
-		const [h, m] = s.split(':').map(Number);
+		const [h, m] = slot.split(':').map(Number);
 		const d = new Date();
 		d.setHours(h, m, 0, 0);
 		return d.getTime() <= Date.now();
@@ -69,18 +69,18 @@
 			bind:this={scroller}
 			class="scrollbar-thin h-40 space-y-0.5 overflow-y-auto p-2 md:h-56"
 		>
-			{#each SLOTS as s (s)}
-				{@const active = s === time}
+			{#each SLOTS as slot (slot)}
+				{@const active = slot === time}
 				<button
 					type="button"
 					data-active={active}
-					disabled={slotPast(s)}
-					onclick={() => onTime(s)}
+					disabled={slotPast(slot)}
+					onclick={() => onTime(slot)}
 					class="focus-visible:ring-ring/50 w-full rounded-md px-2 py-1.5 text-left text-sm tabular-nums transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 pointer-fine:text-xs {active
 						? 'bg-accent text-accent-foreground font-medium'
 						: 'hover:bg-muted'}"
 				>
-					{fmtSlot(s)}
+					{fmtSlot(slot)}
 				</button>
 			{/each}
 		</div>

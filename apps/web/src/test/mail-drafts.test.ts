@@ -48,7 +48,7 @@ function fakeR2() {
       store.delete(key);
     },
     async list({ prefix }: { prefix: string }) {
-      return { objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) };
+      return { objects: [...store.keys()].filter((storedKey) => storedKey.startsWith(prefix)).map((key) => ({ key })) };
     },
   };
 }
@@ -137,12 +137,12 @@ describe("drafts — autosave conflict", () => {
 describe("drafts — from-selector identities", () => {
   it("lists the mailbox + its enabled alias, marks subaddressable, hides others' mailboxes", async () => {
     const ids = await listSendIdentities(db, "u1");
-    const addrs = ids.map((i) => i.address).sort();
+    const addrs = ids.map((identity) => identity.address).sort();
     expect(addrs).toEqual(["alice@acme.com", "secretcat@acme.com"]);
-    expect(ids.every((i) => i.available)).toBe(true);
-    expect(ids.find((i) => i.kind === "mailbox")!.subaddressable).toBe(true);
-    expect(ids.find((i) => i.kind === "alias")!.subaddressable).toBe(false);
-    expect(ids.some((i) => i.address === "bob@acme.com")).toBe(false);
+    expect(ids.every((identity) => identity.available)).toBe(true);
+    expect(ids.find((identity) => identity.kind === "mailbox")!.subaddressable).toBe(true);
+    expect(ids.find((identity) => identity.kind === "alias")!.subaddressable).toBe(false);
+    expect(ids.some((identity) => identity.address === "bob@acme.com")).toBe(false);
   });
 });
 
@@ -183,7 +183,7 @@ describe("reply defaulting — thread DTO exposes the alias it arrived on", () =
     const recips = await db.query.submissionRecipient.findMany({
       where: eq(schema.submissionRecipient.submissionId, submissionId),
     });
-    const byAddr = new Map(recips.map((r: any) => [r.address, r.role]));
+    const byAddr = new Map(recips.map((recipient: any) => [recipient.address, recipient.role]));
     expect(byAddr.get("teammate@ext.com")).toBe("to");
     expect(byAddr.get("watcher@ext.com")).toBe("cc");
   });
@@ -237,7 +237,7 @@ describe("drafts — send integration & alias defaulting", () => {
     const recips = await db.query.submissionRecipient.findMany({
       where: eq(schema.submissionRecipient.submissionId, submissionId),
     });
-    const bcc = recips.find((r: any) => r.address === "hidden@ext.com");
+    const bcc = recips.find((recipient: any) => recipient.address === "hidden@ext.com");
     expect(bcc.role).toBe("bcc");
     // The shared message carries no bcc column/header; only envelope + recipient rows do.
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
@@ -255,7 +255,7 @@ describe("drafts — send claim (double-send race)", () => {
       sendDraft(db, env(), ck, "u1", { draftId: d.id }),
       sendDraft(db, env(), ck, "u1", { draftId: d.id }),
     ]);
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const subs = await db.query.submission.findMany({
       where: eq(schema.submission.createdByUserId, "u1"),
     });
@@ -344,8 +344,8 @@ describe("inbound HTML render", () => {
     expect(item.htmlKind).toBe("rich");
     expect(item.hasRemoteImages).toBe(true);
     // The cid-referenced image is inline (not a download); the pdf is not.
-    expect(item.attachments.find((a: any) => a.id === "ainl").inline).toBe(true);
-    expect(item.attachments.find((a: any) => a.id === "afile").inline).toBe(false);
+    expect(item.attachments.find((attachment: any) => attachment.id === "ainl").inline).toBe(true);
+    expect(item.attachments.find((attachment: any) => attachment.id === "afile").inline).toBe(false);
   });
 
   it("a reply that's 'rich' only because of its quoted history renders plain (quote stripped)", async () => {
@@ -449,11 +449,11 @@ describe("recipient autocomplete", () => {
     await db.insert(schema.delivery).values({ id: "dc", orgId: ORG, messageId: "mc", mailboxId: "mb_alice", role: "to" });
     await recordCorrespondents(db, [{ mailboxId: "mb_alice", address: "customer@ext.com", name: null, seenAt: Date.now() }]);
 
-    const all = (await suggestRecipients(db, "u1", "")).map((s) => s.address);
+    const all = (await suggestRecipients(db, "u1", "")).map((suggestion) => suggestion.address);
     expect(all).toContain("colleague@ext.com");
     expect(all).toContain("customer@ext.com");
     const filtered = await suggestRecipients(db, "u1", "custo");
-    expect(filtered.map((s) => s.address)).toEqual(["customer@ext.com"]);
+    expect(filtered.map((suggestion) => suggestion.address)).toEqual(["customer@ext.com"]);
   });
 });
 

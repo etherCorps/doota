@@ -69,9 +69,9 @@ export const searchMail = query(
 
     if (text.length >= 2) {
       // Free text → blind-token FTS per mailbox (as before).
-      for (const b of boxes) {
-        const ids = await searchMailbox(locals.db, { searchKeyB64, mailboxId: b, queryText: text });
-        for (const id of ids) if (!msgToBox.has(id)) msgToBox.set(id, b);
+      for (const boxId of boxes) {
+        const ids = await searchMailbox(locals.db, { searchKeyB64, mailboxId: boxId, queryText: text });
+        for (const id of ids) if (!msgToBox.has(id)) msgToBox.set(id, boxId);
       }
     } else if (from || to || after != null || before != null || hasAttachment) {
       // No free text: candidates come from the plaintext columns. from/to (LIKE,
@@ -99,7 +99,7 @@ export const searchMail = query(
         .where(and(inArray(schema.delivery.mailboxId, boxes), ...conds))
         .orderBy(desc(schema.message.sentAt))
         .limit(300);
-      for (const f of found) if (!msgToBox.has(f.id)) msgToBox.set(f.id, f.mailboxId);
+      for (const foundRow of found) if (!msgToBox.has(foundRow.id)) msgToBox.set(foundRow.id, foundRow.mailboxId);
     } else if (starred) {
       // Pure `is:starred`: start from thread_state, newest message per thread.
       const states = await locals.db.query.threadState.findMany({
@@ -110,7 +110,7 @@ export const searchMail = query(
         columns: { threadId: true, mailboxId: true },
         limit: 100,
       });
-      starredThreads = new Map(states.map((s) => [s.threadId, s.mailboxId]));
+      starredThreads = new Map(states.map((state) => [state.threadId, state.mailboxId]));
       if (!starredThreads.size) return [];
     } else {
       return [];
@@ -136,19 +136,19 @@ export const searchMail = query(
     });
     if (starredThreads) {
       const st = starredThreads;
-      for (const r of rows) msgToBox.set(r.id, st.get(r.threadId)!);
+      for (const row of rows) msgToBox.set(row.id, st.get(row.threadId)!);
     }
 
     // Structured filters that apply to candidates from ANY source (so free text
     // combines with them). from/to/date already ran in SQL for the routing-column
     // path but must still be applied to FTS candidates.
-    if (from) rows = rows.filter((r) => r.fromAddr?.toLowerCase().includes(from));
+    if (from) rows = rows.filter((row) => row.fromAddr?.toLowerCase().includes(from));
     if (to)
       rows = rows.filter(
-        (r) => r.toAddrs.toLowerCase().includes(to) || r.ccAddrs.toLowerCase().includes(to),
+        (row) => row.toAddrs.toLowerCase().includes(to) || row.ccAddrs.toLowerCase().includes(to),
       );
-    if (after != null) rows = rows.filter((r) => r.sentAt != null && r.sentAt.getTime() >= after);
-    if (before != null) rows = rows.filter((r) => r.sentAt != null && r.sentAt.getTime() <= before);
+    if (after != null) rows = rows.filter((row) => row.sentAt != null && row.sentAt.getTime() >= after);
+    if (before != null) rows = rows.filter((row) => row.sentAt != null && row.sentAt.getTime() <= before);
 
     // has:attachment — a real file attachment carries a filename; inline cid
     // images are identified by Content-ID and typically have none.
@@ -158,17 +158,17 @@ export const searchMail = query(
         .from(schema.attachment)
         .where(
           and(
-            inArray(schema.attachment.messageId, rows.map((r) => r.id)),
+            inArray(schema.attachment.messageId, rows.map((row) => row.id)),
             isNotNull(schema.attachment.filename),
           ),
         );
-      const set = new Set(withAtt.map((a) => a.mid));
-      rows = rows.filter((r) => set.has(r.id));
+      const set = new Set(withAtt.map((attachment) => attachment.mid));
+      rows = rows.filter((row) => set.has(row.id));
     }
 
     // Newest matched message per thread (rows already sorted newest-first).
     const byThread = new Map<string, (typeof rows)[number]>();
-    for (const r of rows) if (!byThread.has(r.threadId)) byThread.set(r.threadId, r);
+    for (const row of rows) if (!byThread.has(row.threadId)) byThread.set(row.threadId, row);
 
     let hits = [...byThread.values()];
     if (starred && !starredThreads) {
@@ -180,8 +180,8 @@ export const searchMail = query(
         ),
         columns: { threadId: true, mailboxId: true },
       });
-      const ok = new Set(states.map((s) => `${s.threadId}|${s.mailboxId}`));
-      hits = hits.filter((r) => ok.has(`${r.threadId}|${msgToBox.get(r.id)}`));
+      const ok = new Set(states.map((state) => `${state.threadId}|${state.mailboxId}`));
+      hits = hits.filter((hit) => ok.has(`${hit.threadId}|${msgToBox.get(hit.id)}`));
     }
 
     // is:unread / is:read — per (user, thread, mailbox): unread = no thread_read
@@ -190,14 +190,14 @@ export const searchMail = query(
       const reads = await locals.db.query.threadRead.findMany({
         where: and(
           eq(schema.threadRead.userId, locals.user.id),
-          inArray(schema.threadRead.threadId, hits.map((r) => r.threadId)),
+          inArray(schema.threadRead.threadId, hits.map((hit) => hit.threadId)),
         ),
         columns: { threadId: true, mailboxId: true, lastReadAt: true },
       });
-      const readAt = new Map(reads.map((r) => [`${r.threadId}|${r.mailboxId}`, r.lastReadAt?.getTime() ?? 0]));
-      hits = hits.filter((r) => {
-        const last = readAt.get(`${r.threadId}|${msgToBox.get(r.id)}`);
-        const isUnread = last == null || (r.sentAt != null && last < r.sentAt.getTime());
+      const readAt = new Map(reads.map((read) => [`${read.threadId}|${read.mailboxId}`, read.lastReadAt?.getTime() ?? 0]));
+      hits = hits.filter((hit) => {
+        const last = readAt.get(`${hit.threadId}|${msgToBox.get(hit.id)}`);
+        const isUnread = last == null || (hit.sentAt != null && last < hit.sentAt.getTime());
         return unread ? isUnread : !isUnread;
       });
     }
@@ -209,28 +209,28 @@ export const searchMail = query(
       const mine = await locals.db.query.threadState.findMany({
         where: and(
           inArray(schema.threadState.mailboxId, restricted),
-          inArray(schema.threadState.threadId, hits.map((r) => r.threadId)),
+          inArray(schema.threadState.threadId, hits.map((hit) => hit.threadId)),
           eq(schema.threadState.assigneeUserId, locals.user.id),
         ),
         columns: { threadId: true, mailboxId: true },
       });
-      const ok = new Set(mine.map((s) => `${s.threadId}|${s.mailboxId}`));
-      hits = hits.filter((r) => {
-        const box = msgToBox.get(r.id)!;
-        return !restricted.includes(box) || ok.has(`${r.threadId}|${box}`);
+      const ok = new Set(mine.map((state) => `${state.threadId}|${state.mailboxId}`));
+      hits = hits.filter((hit) => {
+        const box = msgToBox.get(hit.id)!;
+        return !restricted.includes(box) || ok.has(`${hit.threadId}|${box}`);
       });
     }
 
     const ck = await importKey(dek);
     const top = hits.slice(0, limit ?? 20);
     return Promise.all(
-      top.map(async (r) => ({
-        threadId: r.threadId,
-        mailboxId: msgToBox.get(r.id)!,
-        subject: await decryptContent(ck, r.subjectEnc),
-        snippet: snippetAround(await decryptContent(ck, r.bodyStrippedEnc), terms),
-        from: r.fromAddr,
-        at: r.sentAt ? r.sentAt.getTime() : null,
+      top.map(async (hit) => ({
+        threadId: hit.threadId,
+        mailboxId: msgToBox.get(hit.id)!,
+        subject: await decryptContent(ck, hit.subjectEnc),
+        snippet: snippetAround(await decryptContent(ck, hit.bodyStrippedEnc), terms),
+        from: hit.fromAddr,
+        at: hit.sentAt ? hit.sentAt.getTime() : null,
         terms,
       })),
     );

@@ -35,18 +35,18 @@
 
 	// Live-fetch the active view on first open (and on manual refresh). Cached
 	// server-side with a short TTL, so switching back and forth is cheap.
-	async function load(v: View, force = false) {
-		if (loading[v] || (!force && loaded[v])) return;
-		loading = { ...loading, [v]: true };
+	async function load(targetView: View, force = false) {
+		if (loading[targetView] || (!force && loaded[targetView])) return;
+		loading = { ...loading, [targetView]: true };
 		try {
-			if (v === 'analytics') analytics = await zoneAnalytics({ orgId: org.id, days });
-			else if (v === 'logs') logs = await zoneEmailLogs({ orgId: org.id, days });
+			if (targetView === 'analytics') analytics = await zoneAnalytics({ orgId: org.id, days });
+			else if (targetView === 'logs') logs = await zoneEmailLogs({ orgId: org.id, days });
 			else audit = await zoneAudit({ orgId: org.id, days });
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Could not load from Cloudflare.');
 		} finally {
-			loaded = { ...loaded, [v]: true };
-			loading = { ...loading, [v]: false };
+			loaded = { ...loaded, [targetView]: true };
+			loading = { ...loading, [targetView]: false };
 		}
 	}
 
@@ -57,11 +57,11 @@
 		load(view);
 	});
 
-	function setDays(d: Days) {
-		if (d === days) return;
+	function setDays(newDays: Days) {
+		if (newDays === days) return;
 		analytics = logs = audit = null; // stale for the old range — drop and refetch
 		loaded = { analytics: false, logs: false, audit: false };
-		days = d;
+		days = newDays;
 	}
 
 	const segments = [
@@ -76,16 +76,16 @@
 	];
 
 	// ---- Analytics rollup ----------------------------------------------------
-	const isFail = (s: string) => /fail|bounce|drop|reject/i.test(s);
+	const isFail = (status: string) => /fail|bounce|drop|reject/i.test(status);
 	const totals = $derived.by(() => {
 		const rows = analytics ?? [];
 		let delivered = 0,
 			failed = 0,
 			total = 0;
-		for (const r of rows) {
-			total += r.count;
-			if (r.status === 'delivered') delivered += r.count;
-			else if (isFail(r.status)) failed += r.count;
+		for (const row of rows) {
+			total += row.count;
+			if (row.status === 'delivered') delivered += row.count;
+			else if (isFail(row.status)) failed += row.count;
 		}
 		const rate = total ? Math.round((delivered / total) * 100) : null;
 		return { delivered, failed, total, rate };
@@ -93,25 +93,25 @@
 	// Per-day pivot: date → { delivered, failed, other }.
 	const byDay = $derived.by(() => {
 		const m = new Map<string, { delivered: number; failed: number; other: number }>();
-		for (const r of analytics ?? []) {
-			const d = m.get(r.date) ?? { delivered: 0, failed: 0, other: 0 };
-			if (r.status === 'delivered') d.delivered += r.count;
-			else if (isFail(r.status)) d.failed += r.count;
-			else d.other += r.count;
-			m.set(r.date, d);
+		for (const row of analytics ?? []) {
+			const d = m.get(row.date) ?? { delivered: 0, failed: 0, other: 0 };
+			if (row.status === 'delivered') d.delivered += row.count;
+			else if (isFail(row.status)) d.failed += row.count;
+			else d.other += row.count;
+			m.set(row.date, d);
 		}
-		return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([date, v]) => ({ date, ...v }));
+		return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([date, counts]) => ({ date, ...counts }));
 	});
 	// Oldest→newest for the chart (the table wants newest first).
 	const chartData = $derived([...byDay].reverse());
 
-	const fmtTime = (d: string | null) => {
-		if (!d) return '—';
-		const t = new Date(d);
-		return isNaN(+t) ? d : t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+	const fmtTime = (dateStr: string | null) => {
+		if (!dateStr) return '—';
+		const t = new Date(dateStr);
+		return isNaN(+t) ? dateStr : t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 	};
-	const statusVariant = (s: string | null): 'success' | 'destructive' | 'outline' =>
-		!s ? 'outline' : s === 'delivered' ? 'success' : isFail(s) ? 'destructive' : 'outline';
+	const statusVariant = (status: string | null): 'success' | 'destructive' | 'outline' =>
+		!status ? 'outline' : status === 'delivered' ? 'success' : isFail(status) ? 'destructive' : 'outline';
 
 	// ---- Email-log table -----------------------------------------------------
 	const logColumns: ColumnDef<Logs[number], unknown>[] = [
@@ -138,41 +138,41 @@
 	<span class="font-mono text-sm">{to ?? '—'}</span>
 {/snippet}
 
-{#snippet logStatusCell(e: Logs[number])}
+{#snippet logStatusCell(logEvent: Logs[number])}
 	<div class="flex flex-col gap-0.5">
-		<Badge variant={statusVariant(e.status)} class="w-fit text-[10px]">{e.status ?? 'unknown'}</Badge>
-		{#if e.errorCause}<span class="text-muted-foreground text-xs">{e.errorCause}</span>{/if}
+		<Badge variant={statusVariant(logEvent.status)} class="w-fit text-[10px]">{logEvent.status ?? 'unknown'}</Badge>
+		{#if logEvent.errorCause}<span class="text-muted-foreground text-xs">{logEvent.errorCause}</span>{/if}
 	</div>
 {/snippet}
 
-{#snippet authFlag(label: string, v: string | null)}
-	{#if v}
-		<span class="text-[10px] {v === 'pass' ? 'text-ok' : 'text-muted-foreground'}">
-			{label}:{v}
+{#snippet authFlag(label: string, value: string | null)}
+	{#if value}
+		<span class="text-[10px] {value === 'pass' ? 'text-ok' : 'text-muted-foreground'}">
+			{label}:{value}
 		</span>
 	{/if}
 {/snippet}
 
-{#snippet authCell(e: Logs[number])}
+{#snippet authCell(logEvent: Logs[number])}
 	<div class="flex flex-wrap gap-x-2">
-		{@render authFlag('spf', e.spf)}
-		{@render authFlag('dkim', e.dkim)}
-		{@render authFlag('dmarc', e.dmarc)}
+		{@render authFlag('spf', logEvent.spf)}
+		{@render authFlag('dkim', logEvent.dkim)}
+		{@render authFlag('dmarc', logEvent.dmarc)}
 	</div>
 {/snippet}
 
-{#snippet actionCell(a: Audit[number])}
+{#snippet actionCell(auditEntry: Audit[number])}
 	<div class="flex items-center gap-2">
-		<Badge variant={a.ok ? 'secondary' : 'destructive'} class="text-[10px]">{a.action ?? 'action'}</Badge>
+		<Badge variant={auditEntry.ok ? 'secondary' : 'destructive'} class="text-[10px]">{auditEntry.action ?? 'action'}</Badge>
 	</div>
 {/snippet}
 
-{#snippet actorCell(a: Audit[number])}
-	<span class="text-sm">{a.actor ?? '—'}</span>
+{#snippet actorCell(auditEntry: Audit[number])}
+	<span class="text-sm">{auditEntry.actor ?? '—'}</span>
 {/snippet}
 
-{#snippet resourceCell(a: Audit[number])}
-	<span class="text-muted-foreground font-mono text-xs">{a.resource ?? '—'}</span>
+{#snippet resourceCell(auditEntry: Audit[number])}
+	<span class="text-muted-foreground font-mono text-xs">{auditEntry.resource ?? '—'}</span>
 {/snippet}
 
 {#snippet loadingRow()}
@@ -197,11 +197,11 @@
 			variant="outline"
 			size="sm"
 			value={view}
-			onValueChange={(v) => v && (view = v as View)}
+			onValueChange={(value) => value && (view = value as View)}
 			class="justify-start"
 		>
-			{#each segments as s (s.key)}
-				<ToggleGroup.Item value={s.key}>{s.label}</ToggleGroup.Item>
+			{#each segments as segment (segment.key)}
+				<ToggleGroup.Item value={segment.key}>{segment.label}</ToggleGroup.Item>
 			{/each}
 		</ToggleGroup.Root>
 
@@ -210,11 +210,11 @@
 			variant="outline"
 			size="sm"
 			value={String(days)}
-			onValueChange={(v) => v && setDays(Number(v) as Days)}
+			onValueChange={(value) => value && setDays(Number(value) as Days)}
 			class="justify-start"
 		>
-			{#each ranges as r (r.key)}
-				<ToggleGroup.Item value={String(r.key)} class="tabular-nums">{r.label}</ToggleGroup.Item>
+			{#each ranges as range (range.key)}
+				<ToggleGroup.Item value={String(range.key)} class="tabular-nums">{range.label}</ToggleGroup.Item>
 			{/each}
 		</ToggleGroup.Root>
 	</div>
@@ -267,12 +267,12 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each byDay as d (d.date)}
+							{#each byDay as day (day.date)}
 								<tr class="border-t">
-									<td class="px-4 py-2">{d.date}</td>
-									<td class="px-4 py-2 text-right tabular-nums">{d.delivered.toLocaleString()}</td>
-									<td class="px-4 py-2 text-right tabular-nums">{d.failed.toLocaleString()}</td>
-									<td class="text-muted-foreground px-4 py-2 text-right tabular-nums">{d.other.toLocaleString()}</td>
+									<td class="px-4 py-2">{day.date}</td>
+									<td class="px-4 py-2 text-right tabular-nums">{day.delivered.toLocaleString()}</td>
+									<td class="px-4 py-2 text-right tabular-nums">{day.failed.toLocaleString()}</td>
+									<td class="text-muted-foreground px-4 py-2 text-right tabular-nums">{day.other.toLocaleString()}</td>
 								</tr>
 							{/each}
 						</tbody>

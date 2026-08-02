@@ -17,7 +17,7 @@ const MIG_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", 
  */
 export async function makeDb() {
   const client = createClient({ url: ":memory:" });
-  for (const file of readdirSync(MIG_DIR).filter((f) => f.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(MIG_DIR).filter((fileName) => fileName.endsWith(".sql")).sort()) {
     const sql = readFileSync(join(MIG_DIR, file), "utf8");
     for (const stmt of sql.split(/-->\s*statement-breakpoint/)) {
       const trimmed = stmt.trim();

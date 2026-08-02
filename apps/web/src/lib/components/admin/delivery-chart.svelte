@@ -21,7 +21,7 @@
 
 	const filled = $derived.by(() => {
 		if (!days) return data;
-		const by = new Map(data.map((r) => [r.date, r]));
+		const by = new Map(data.map((row) => [row.date, row]));
 		const out: Row[] = [];
 		for (let i = days - 1; i >= 0; i--) {
 			const d = new Date(Date.now() - i * 86_400_000);
@@ -43,10 +43,10 @@
 		x="date"
 		seriesLayout="stack"
 		series={[
-			{ key: 'delivered', label: 'Delivered', value: (d: Row) => d.delivered, color: 'var(--color-delivered)' },
-			{ key: 'failed', label: 'Failed', value: (d: Row) => d.failed, color: 'var(--color-failed)' }
+			{ key: 'delivered', label: 'Delivered', value: (row: Row) => row.delivered, color: 'var(--color-delivered)' },
+			{ key: 'failed', label: 'Failed', value: (row: Row) => row.failed, color: 'var(--color-failed)' }
 		]}
-		props={{ xAxis: { format: (d: string) => d.slice(5) } }}
+		props={{ xAxis: { format: (date: string) => date.slice(5) } }}
 	>
 		{#snippet tooltip()}
 			<Chart.Tooltip />

@@ -78,21 +78,21 @@ function extractText(doc: PMNode): { text: string; starts: number[]; ends: numbe
 	return { text, starts, ends };
 }
 
-function suggKind(k: number): HarperSuggestion['kind'] {
-	return k === 1 ? 'remove' : k === 2 ? 'insert' : 'replace'; // SuggestionKind: Replace=0, Remove=1, InsertAfter=2
+function suggKind(kind: number): HarperSuggestion['kind'] {
+	return kind === 1 ? 'remove' : kind === 2 ? 'insert' : 'replace'; // SuggestionKind: Replace=0, Remove=1, InsertAfter=2
 }
 
-function mapLint(l: Lint, starts: number[], ends: number[]): HarperLint | null {
-	const span = l.span();
+function mapLint(lint: Lint, starts: number[], ends: number[]): HarperLint | null {
+	const span = lint.span();
 	const from = starts[span.start];
 	const to = span.end > 0 ? ends[span.end - 1] : undefined;
 	if (from == null || from < 0 || to == null || to < 0 || to <= from) return null;
 	return {
 		from,
 		to,
-		message: l.message(),
-		kind: l.lint_kind(),
-		suggestions: l.suggestions().map((s) => ({ text: s.get_replacement_text(), kind: suggKind(s.kind()) }))
+		message: lint.message(),
+		kind: lint.lint_kind(),
+		suggestions: lint.suggestions().map((suggestion) => ({ text: suggestion.get_replacement_text(), kind: suggKind(suggestion.kind()) }))
 	};
 }
 
@@ -125,19 +125,19 @@ const harperKey = new PluginKey<HarperState>('harper');
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Apply a chosen suggestion, then flash the corrected span green. */
-export function applyHarperFix(view: EditorView, lint: HarperLint, s: HarperSuggestion): void {
+export function applyHarperFix(view: EditorView, lint: HarperLint, suggestion: HarperSuggestion): void {
 	const tr = view.state.tr;
 	let from = lint.from;
 	let to = lint.from;
-	if (s.kind === 'remove') {
+	if (suggestion.kind === 'remove') {
 		view.dispatch(tr.delete(lint.from, lint.to));
-	} else if (s.kind === 'insert') {
-		view.dispatch(tr.insertText(s.text, lint.to));
+	} else if (suggestion.kind === 'insert') {
+		view.dispatch(tr.insertText(suggestion.text, lint.to));
 		from = lint.to;
-		to = lint.to + s.text.length;
+		to = lint.to + suggestion.text.length;
 	} else {
-		view.dispatch(tr.insertText(s.text, lint.from, lint.to));
-		to = lint.from + s.text.length;
+		view.dispatch(tr.insertText(suggestion.text, lint.from, lint.to));
+		to = lint.from + suggestion.text.length;
 	}
 	view.focus();
 	if (to > from) {
@@ -186,20 +186,20 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 				},
 				props: {
 					decorations(state) {
-						const s = harperKey.getState(state);
-						if (!s) return undefined;
+						const harperState = harperKey.getState(state);
+						if (!harperState) return undefined;
 						// Merge underlines + green flash into one set for rendering.
-						return s.deco.add(state.doc, s.flash.find());
+						return harperState.deco.add(state.doc, harperState.flash.find());
 					},
 					handleClick(view, pos) {
 						const st = harperKey.getState(view.state);
-						const hit = st?.lints.find((l) => pos >= l.from && pos < l.to);
+						const hit = st?.lints.find((lint) => pos >= lint.from && pos < lint.to);
 						if (!hit || !hit.suggestions.length) {
 							options.onActiveLint?.(null);
 							return false;
 						}
-						const c = view.coordsAtPos(hit.from);
-						options.onActiveLint?.({ lint: hit, left: c.left, top: c.top, bottom: c.bottom });
+						const coords = view.coordsAtPos(hit.from);
+						options.onActiveLint?.({ lint: hit, left: coords.left, top: coords.top, bottom: coords.bottom });
 						return false;
 					}
 				},
@@ -222,8 +222,8 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 							if (token !== runToken) return; // a newer run superseded this one
 							const lints: HarperLint[] = [];
 							const decos: Decoration[] = [];
-							for (const l of raw) {
-								const ml = mapLint(l, starts, ends);
+							for (const rawLint of raw) {
+								const ml = mapLint(rawLint, starts, ends);
 								if (!ml) continue;
 								lints.push(ml);
 								decos.push(
@@ -236,9 +236,9 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 							const deco = DecorationSet.create(view.state.doc, decos);
 							view.dispatch(view.state.tr.setMeta(harperKey, { type: 'lints', deco, lints } satisfies HarperMeta));
 							options.onCount?.(lints.length);
-						} catch (e) {
+						} catch (err) {
 							options.onStatus?.('error');
-							console.error('[harper] lint failed', e);
+							console.error('[harper] lint failed', err);
 						}
 					};
 					const schedule = () => {
@@ -262,16 +262,16 @@ export const HarperGrammar = Extension.create<HarperOptions>({
 									options.onStatus?.('ready');
 								}
 							})
-							.catch((e) => {
+							.catch((err) => {
 								options.onStatus?.('error');
-								console.error('[harper] warm failed', e);
+								console.error('[harper] warm failed', err);
 							});
 					});
 					schedule(); // seed pass — a reply mounts with quoted text already present
 
 					return {
-						update(v, prev) {
-							if (!prev.doc.eq(v.state.doc)) schedule();
+						update(updatedView, prev) {
+							if (!prev.doc.eq(updatedView.state.doc)) schedule();
 						},
 						destroy() {
 							if (timer) clearTimeout(timer);

@@ -256,26 +256,26 @@ export const listCloudflareZones = command(async () => {
       .select({ domain: schema.organization.domain })
       .from(schema.organization),
   ]);
-  const onboarded = new Set(orgs.map((o) => o.domain));
+  const onboarded = new Set(orgs.map((org) => org.domain));
 
   // For zones not yet in our DB, check whether Email Routing is already set up on
   // Cloudflare — if so we offer "Link" (DB-only sync); otherwise "Onboard".
   return Promise.all(
-    zones.map(async (z) => {
-      const active = z.status === "active";
+    zones.map(async (zone) => {
+      const active = zone.status === "active";
       let configured = false;
-      if (active && !onboarded.has(z.name)) {
+      if (active && !onboarded.has(zone.name)) {
         try {
-          configured = (await inspectZoneMail(z.id)).routingReady;
+          configured = (await inspectZoneMail(zone.id)).routingReady;
         } catch {
           configured = false;
         }
       }
       return {
-        id: z.id,
-        name: z.name,
+        id: zone.id,
+        name: zone.name,
         active,
-        onboarded: onboarded.has(z.name),
+        onboarded: onboarded.has(zone.name),
         configured,
       };
     }),
@@ -374,15 +374,15 @@ const HTTPS_URL = z
   .string()
   .trim()
   .url()
-  .refine((u) => u.startsWith("https://"), "Must be an HTTPS URL.");
+  .refine((url) => url.startsWith("https://"), "Must be an HTTPS URL.");
 
 /** Published BIMI + DMARC state for the org's domain. Superadmin only. */
 export const bimiStatus = command(z.string(), async (orgId) => {
   const { zoneId, apex } = await orgZone(orgId);
   const records = await listZoneDnsRecords(zoneId);
   const host = `default._bimi.${apex}`;
-  const bimi = records.find((r) => r.type === "TXT" && r.name === host);
-  const dmarc = records.find((r) => r.type === "TXT" && r.name === `_dmarc.${apex}`);
+  const bimi = records.find((record) => record.type === "TXT" && record.name === host);
+  const dmarc = records.find((record) => record.type === "TXT" && record.name === `_dmarc.${apex}`);
   const dmarcPolicy = dmarc ? (/\bp\s*=\s*(\w+)/i.exec(dmarc.content)?.[1]?.toLowerCase() ?? null) : null;
   return {
     host,
@@ -490,7 +490,7 @@ export const removeMailSubdomain = command(
     await removeRoutingSubdomain(zoneId, host);
     // Write-through: drop it from the D1 mirror too.
     const { locals } = getRequestEvent();
-    const next = (await currentRoutingSubdomains(locals.db, orgId)).filter((h) => h !== host);
+    const next = (await currentRoutingSubdomains(locals.db, orgId)).filter((subdomain) => subdomain !== host);
     await mirrorRoutingSubdomains(locals.db, orgId, next);
     return { success: true as const };
   },

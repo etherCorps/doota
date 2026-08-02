@@ -38,46 +38,46 @@
 		tx = Math.min(0, Math.max(SIZE - img.width * scale, tx));
 		ty = Math.min(0, Math.max(SIZE - img.height * scale, ty));
 	}
-	function onFile(e: Event) {
-		const f = (e.target as HTMLInputElement).files?.[0];
-		if (!f) return;
-		const im = new Image();
-		im.onload = async () => {
-			img = im;
-			minScale = Math.max(SIZE / im.width, SIZE / im.height);
+	function onFile(event: Event) {
+		const file = (event.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		const loadedImage = new Image();
+		loadedImage.onload = async () => {
+			img = loadedImage;
+			minScale = Math.max(SIZE / loadedImage.width, SIZE / loadedImage.height);
 			scale = minScale;
-			tx = (SIZE - im.width * scale) / 2;
-			ty = (SIZE - im.height * scale) / 2;
+			tx = (SIZE - loadedImage.width * scale) / 2;
+			ty = (SIZE - loadedImage.height * scale) / 2;
 			hasImage = true;
 			// Canvas is behind {#if hasImage} — wait for it to mount before drawing.
 			await tick();
 			render();
 		};
-		im.src = URL.createObjectURL(f);
+		loadedImage.src = URL.createObjectURL(file);
 	}
-	function setScale(v: number) {
+	function setScale(value: number) {
 		if (!img) return;
 		// Zoom around the canvas center.
 		const cx = (SIZE / 2 - tx) / scale;
 		const cy = (SIZE / 2 - ty) / scale;
-		scale = v;
+		scale = value;
 		tx = SIZE / 2 - cx * scale;
 		ty = SIZE / 2 - cy * scale;
 		clamp();
 		render();
 	}
-	function onDown(e: PointerEvent) {
+	function onDown(event: PointerEvent) {
 		dragging = true;
-		lastX = e.clientX;
-		lastY = e.clientY;
-		canvas?.setPointerCapture(e.pointerId);
+		lastX = event.clientX;
+		lastY = event.clientY;
+		canvas?.setPointerCapture(event.pointerId);
 	}
-	function onMove(e: PointerEvent) {
+	function onMove(event: PointerEvent) {
 		if (!dragging) return;
-		tx += e.clientX - lastX;
-		ty += e.clientY - lastY;
-		lastX = e.clientX;
-		lastY = e.clientY;
+		tx += event.clientX - lastX;
+		ty += event.clientY - lastY;
+		lastX = event.clientX;
+		lastY = event.clientY;
 		clamp();
 		render();
 	}
@@ -135,7 +135,7 @@
 					step="0.01"
 					value={scale}
 					class="w-64"
-					oninput={(e) => setScale(Number((e.target as HTMLInputElement).value))}
+					oninput={(event) => setScale(Number((event.target as HTMLInputElement).value))}
 				/>
 				<button type="button" class="text-muted-foreground hover:text-foreground text-xs" onclick={() => fileInput?.click()}>
 					Choose a different image

@@ -16,7 +16,7 @@
 		{#each items as item (item.title)}
 			{@const Icon = item.icon}
 			<Collapsible.Root
-				open={!!item.isActive || item.subItems?.some((i) => !!i.isActive)}
+				open={!!item.isActive || item.subItems?.some((subItem) => !!subItem.isActive)}
 				class="group/collapsible"
 			>
 				{#snippet child({ props })}

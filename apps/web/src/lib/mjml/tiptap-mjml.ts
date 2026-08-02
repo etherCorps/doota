@@ -54,14 +54,14 @@ function attr(s: string): string {
 function inline(nodes: TiptapNode[] | undefined): string {
   if (!nodes) return "";
   return nodes
-    .map((n) => {
-      if (n.type === "hardBreak") return "<br />";
+    .map((node) => {
+      if (node.type === "hardBreak") return "<br />";
       // Inline variable pill → the raw Jinja merge tag (not escaped).
-      if (n.type === "variable") return `{{ ${String(n.attrs?.name ?? "")} }}`;
-      if (n.type !== "text" || n.text == null) return "";
-      let h = esc(n.text);
-      for (const m of n.marks ?? []) {
-        switch (m.type) {
+      if (node.type === "variable") return `{{ ${String(node.attrs?.name ?? "")} }}`;
+      if (node.type !== "text" || node.text == null) return "";
+      let h = esc(node.text);
+      for (const mark of node.marks ?? []) {
+        switch (mark.type) {
           case "bold":
             h = `<strong>${h}</strong>`;
             break;
@@ -75,12 +75,12 @@ function inline(nodes: TiptapNode[] | undefined): string {
             h = `<code>${h}</code>`;
             break;
           case "link":
-            h = `<a href="${attr(String(m.attrs?.href ?? "#"))}">${h}</a>`;
+            h = `<a href="${attr(String(mark.attrs?.href ?? "#"))}">${h}</a>`;
             break;
           case "textStyle": {
             const s: string[] = [];
-            if (m.attrs?.color) s.push(`color:${String(m.attrs.color)}`);
-            if (m.attrs?.fontSize) s.push(`font-size:${String(m.attrs.fontSize)}`);
+            if (mark.attrs?.color) s.push(`color:${String(mark.attrs.color)}`);
+            if (mark.attrs?.fontSize) s.push(`font-size:${String(mark.attrs.fontSize)}`);
             if (s.length) h = `<span style="${attr(s.join(";"))}">${h}</span>`;
             break;
           }
@@ -95,8 +95,8 @@ function inline(nodes: TiptapNode[] | undefined): string {
 function listItems(nodes: TiptapNode[] | undefined): string {
   if (!nodes) return "";
   return nodes
-    .filter((n) => n.type === "listItem")
-    .map((li) => `<li>${(li.content ?? []).map((p) => inline(p.content)).join(" ")}</li>`)
+    .filter((node) => node.type === "listItem")
+    .map((listItem) => `<li>${(listItem.content ?? []).map((paragraph) => inline(paragraph.content)).join(" ")}</li>`)
     .join("");
 }
 
@@ -181,14 +181,14 @@ function block(node: TiptapNode, theme: Theme = {}): string {
   const ss = sectionStyle(a);
   if (node.type === "columns") {
     const cols = (node.content ?? [])
-      .filter((c) => c.type === "column")
-      .map((c) => `<mj-column>${(c.content ?? []).map((n) => blockInner(n, theme)).join("")}</mj-column>`)
+      .filter((child) => child.type === "column")
+      .map((column) => `<mj-column>${(column.content ?? []).map((child) => blockInner(child, theme)).join("")}</mj-column>`)
       .join("");
     return `<mj-section${ss}>${cols}</mj-section>`;
   }
   if (node.type === "social") {
     const els = ((a.items as { network: string; href: string }[]) ?? [])
-      .map((s) => `<mj-social-element name="${attr(s.network)}" href="${attr(s.href)}" />`)
+      .map((social) => `<mj-social-element name="${attr(social.network)}" href="${attr(social.href)}" />`)
       .join("");
     return `<mj-section${ss}><mj-column><mj-social mode="horizontal">${els}</mj-social></mj-column></mj-section>`;
   }
@@ -226,16 +226,16 @@ export function tiptapToMjml(doc: TiptapDoc, settings: PageSettings = {}): strin
   let group: TiptapNode[] = [];
   const flush = () => {
     if (!group.length) return;
-    const inner = group.map((n) => blockInner(n, theme)).filter(Boolean).join("");
+    const inner = group.map((node) => blockInner(node, theme)).filter(Boolean).join("");
     if (inner) out.push(`<mj-section><mj-column>${inner}</mj-column></mj-section>`);
     group = [];
   };
-  for (const n of doc.content ?? []) {
-    if (isStructural(n.type) || hasSectionStyle(n.attrs ?? {})) {
+  for (const node of doc.content ?? []) {
+    if (isStructural(node.type) || hasSectionStyle(node.attrs ?? {})) {
       flush();
-      out.push(block(n, theme));
+      out.push(block(node, theme));
     } else {
-      group.push(n);
+      group.push(node);
     }
   }
   flush();
@@ -259,18 +259,18 @@ export function tiptapToMjml(doc: TiptapDoc, settings: PageSettings = {}): strin
 export function tiptapVariables(doc: TiptapDoc, subject = ""): string[] {
   const found = new Set<string>();
   const scan = (s: string) => {
-    for (const m of s.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)/g)) found.add(m[1].split(".")[0]);
+    for (const match of s.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)/g)) found.add(match[1].split(".")[0]);
   };
   const scanAttrs = (a: Record<string, unknown> | undefined) => {
-    for (const v of Object.values(a ?? {})) if (typeof v === "string") scan(v);
+    for (const value of Object.values(a ?? {})) if (typeof value === "string") scan(value);
   };
-  const walk = (n: TiptapNode) => {
+  const walk = (node: TiptapNode) => {
     // A variable pill stores its bare name (not `{{ … }}`) — collect it directly.
-    if (n.type === "variable" && typeof n.attrs?.name === "string") found.add(String(n.attrs.name).split(".")[0]);
-    if (n.text) scan(n.text);
-    for (const m of n.marks ?? []) scanAttrs(m.attrs);
-    scanAttrs(n.attrs);
-    (n.content ?? []).forEach(walk);
+    if (node.type === "variable" && typeof node.attrs?.name === "string") found.add(String(node.attrs.name).split(".")[0]);
+    if (node.text) scan(node.text);
+    for (const mark of node.marks ?? []) scanAttrs(mark.attrs);
+    scanAttrs(node.attrs);
+    (node.content ?? []).forEach(walk);
   };
   (doc.content ?? []).forEach(walk);
   scan(subject);

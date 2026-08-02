@@ -48,21 +48,21 @@ describe("secure-account step — both factors mandatory for elevated roles", ()
     await seedAdmin({ twoFactorEnabled: false });
     await addPasskey("a1");
     const status = await getOnboardingStatus(db, { id: "a1", role: "admin" });
-    expect(status.steps.find((s) => s.id === "secure-account")?.done).toBe(false);
+    expect(status.steps.find((step) => step.id === "secure-account")?.done).toBe(false);
     expect(status.complete).toBe(false);
   });
 
   it("TOTP WITHOUT a passkey does not satisfy the step either", async () => {
     await seedAdmin({ twoFactorEnabled: true });
     const status = await getOnboardingStatus(db, { id: "a1", role: "admin" });
-    expect(status.steps.find((s) => s.id === "secure-account")?.done).toBe(false);
+    expect(status.steps.find((step) => step.id === "secure-account")?.done).toBe(false);
   });
 
   it("TOTP + passkey completes the step", async () => {
     await seedAdmin({ twoFactorEnabled: true });
     await addPasskey("a1");
     const status = await getOnboardingStatus(db, { id: "a1", role: "admin" });
-    expect(status.steps.find((s) => s.id === "secure-account")?.done).toBe(true);
+    expect(status.steps.find((step) => step.id === "secure-account")?.done).toBe(true);
     expect(status.complete).toBe(true);
   });
 
@@ -79,6 +79,6 @@ describe("secure-account step — both factors mandatory for elevated roles", ()
     expect(hasSecurityDebt({ id: "m1", role: "member", twoFactorEnabled: false })).toBe(false);
     await seedAdmin({ id: "m1", email: "m@acme.com", role: "member" } as never);
     const status = await getOnboardingStatus(db, { id: "m1", role: "member" });
-    expect(status.steps.some((s) => s.id === "secure-account")).toBe(false);
+    expect(status.steps.some((step) => step.id === "secure-account")).toBe(false);
   });
 });

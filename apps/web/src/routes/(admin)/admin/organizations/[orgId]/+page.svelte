@@ -81,9 +81,9 @@
 			repLoaded = true;
 		} else {
 			sendingReputation(org.id)
-				.then((r) => {
-					reputation = r;
-					repCache.set(org.id, { at: Date.now(), val: r });
+				.then((rep) => {
+					reputation = rep;
+					repCache.set(org.id, { at: Date.now(), val: rep });
 				})
 				.catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load sending reputation.'))
 				.finally(() => (repLoaded = true));
@@ -95,25 +95,25 @@
 	const repTone = (rate: number | null) =>
 		rate === null ? 'text-muted-foreground' : rate >= 95 ? 'text-ok' : rate >= 80 ? 'text-warn' : 'text-destructive';
 
-	const isFail = (s: string) => /fail|bounce|drop|reject/i.test(s);
+	const isFail = (status: string) => /fail|bounce|drop|reject/i.test(status);
 	const mailStats = $derived.by(() => {
 		let delivered = 0,
 			total = 0;
-		for (const r of mail?.rows ?? []) {
-			total += r.count;
-			if (r.status === 'delivered') delivered += r.count;
+		for (const row of mail?.rows ?? []) {
+			total += row.count;
+			if (row.status === 'delivered') delivered += row.count;
 		}
 		return { delivered, rate: total ? Math.round((delivered / total) * 100) : null };
 	});
 	const mailChart = $derived.by(() => {
 		const m = new Map<string, { delivered: number; failed: number }>();
-		for (const r of mail?.rows ?? []) {
-			const d = m.get(r.date) ?? { delivered: 0, failed: 0 };
-			if (r.status === 'delivered') d.delivered += r.count;
-			else if (isFail(r.status)) d.failed += r.count;
-			m.set(r.date, d);
+		for (const row of mail?.rows ?? []) {
+			const d = m.get(row.date) ?? { delivered: 0, failed: 0 };
+			if (row.status === 'delivered') d.delivered += row.count;
+			else if (isFail(row.status)) d.failed += row.count;
+			m.set(row.date, d);
 		}
-		return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, ...v }));
+		return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, counts]) => ({ date, ...counts }));
 	});
 </script>
 
@@ -147,16 +147,16 @@
 
 	<!-- Counts -->
 	<div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-		{#each stats as s (s.label)}
-			<a href={s.href} class="group">
+		{#each stats as stat (stat.label)}
+			<a href={stat.href} class="group">
 				<Card.Card class="transition-all duration-150 group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-lg">
 					<Card.CardContent class="flex items-center gap-3 py-4">
 						<div class="bg-muted text-muted-foreground group-hover:text-foreground flex size-9 items-center justify-center rounded-md transition-colors">
-							<s.icon class="size-4" />
+							<stat.icon class="size-4" />
 						</div>
 						<div>
-							<p class="font-heading text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-							<p class="text-muted-foreground text-xs">{s.label}</p>
+							<p class="font-heading text-2xl font-semibold leading-none tabular-nums">{stat.value}</p>
+							<p class="text-muted-foreground text-xs">{stat.label}</p>
 						</div>
 					</Card.CardContent>
 				</Card.Card>
@@ -222,17 +222,17 @@
 					<p class="text-destructive py-4 text-sm">Couldn't load sending reputation from Cloudflare.</p>
 				{:else}
 					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as w (w.label)}
+						{#each [{ label: 'Last 24 hours', rep: reputation.h24 }, { label: 'Last 7 days', rep: reputation.d7 }] as repWindow (repWindow.label)}
 							<div class="rounded-lg border p-4">
-								<div class="text-muted-foreground text-xs">{w.label}</div>
-								<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(w.rep.rate)}">
-									{w.rep.rate === null ? '—' : `${w.rep.rate}%`}
+								<div class="text-muted-foreground text-xs">{repWindow.label}</div>
+								<div class="mt-1 text-2xl font-semibold tabular-nums {repTone(repWindow.rep.rate)}">
+									{repWindow.rep.rate === null ? '—' : `${repWindow.rep.rate}%`}
 								</div>
 								<div class="text-faint mt-0.5 text-[11px] tabular-nums">
-									{#if w.rep.total === 0}
+									{#if repWindow.rep.total === 0}
 										No sends in this window
 									{:else}
-										{w.rep.delivered.toLocaleString()} delivered · {w.rep.failed.toLocaleString()} failed · {w.rep.spam.toLocaleString()} spam-rejected
+										{repWindow.rep.delivered.toLocaleString()} delivered · {repWindow.rep.failed.toLocaleString()} failed · {repWindow.rep.spam.toLocaleString()} spam-rejected
 									{/if}
 								</div>
 							</div>

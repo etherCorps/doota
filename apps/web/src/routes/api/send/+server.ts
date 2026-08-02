@@ -57,8 +57,8 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
   }
   const createdByUserId = actor.isService ? null : actor.userId;
 
-  const asAddrs = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const asAddrs = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
   const to = asAddrs(body.to);
   const cc = asAddrs(body.cc);
   const bcc = asAddrs(body.bcc);

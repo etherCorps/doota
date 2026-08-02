@@ -51,7 +51,7 @@
 	let columnFilters = $state<ColumnFiltersState>([]);
 	let pagination = $state<PaginationState>({ pageIndex: 0, pageSize: untrack(() => pageSize) });
 
-	const set = <T,>(cur: T, u: Updater<T>): T => (typeof u === 'function' ? (u as (p: T) => T)(cur) : u);
+	const set = <T,>(cur: T, updater: Updater<T>): T => (typeof updater === 'function' ? (updater as (p: T) => T)(cur) : updater);
 
 	const table = createSvelteTable<TData>({
 		get data() {
@@ -71,9 +71,9 @@
 				return pagination;
 			}
 		},
-		onSortingChange: (u) => (sorting = set(sorting, u)),
-		onColumnFiltersChange: (u) => (columnFilters = set(columnFilters, u)),
-		onPaginationChange: (u) => (pagination = set(pagination, u)),
+		onSortingChange: (updater) => (sorting = set(sorting, updater)),
+		onColumnFiltersChange: (updater) => (columnFilters = set(columnFilters, updater)),
+		onPaginationChange: (updater) => (pagination = set(pagination, updater)),
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getFilteredRowModel: getFilteredRowModel(),

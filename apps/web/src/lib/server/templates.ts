@@ -35,7 +35,7 @@ export async function serviceMailboxManagerOrgIds(db: Db, userId: string): Promi
         eq(mail.mailbox.isService, true),
       ),
     );
-  return [...new Set(rows.map((r) => r.orgId))];
+  return [...new Set(rows.map((row) => row.orgId))];
 }
 
 /** name → url-safe slug, the stable id the API references. */
@@ -56,8 +56,8 @@ export function sensitiveKeysOf(variablesSchema: string | null): string[] {
   try {
     const schema = JSON.parse(variablesSchema) as VariablesSchema;
     return Object.entries(schema)
-      .filter(([, v]) => v?.sensitive)
-      .map(([k]) => k);
+      .filter(([, spec]) => spec?.sensitive)
+      .map(([key]) => key);
   } catch {
     return [];
   }
@@ -203,12 +203,12 @@ export async function listTemplates(db: Db, orgId: string): Promise<TemplateSumm
     .from(mail.template)
     .where(eq(mail.template.orgId, orgId))
     .orderBy(desc(mail.template.updatedAt));
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    slug: r.slug,
-    updatedAt: r.updatedAt.getTime(),
-    archived: r.archivedAt != null,
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    updatedAt: row.updatedAt.getTime(),
+    archived: row.archivedAt != null,
   }));
 }
 

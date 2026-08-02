@@ -25,7 +25,7 @@ function requireUser() {
  * signatures are per mailbox, so collapse to the mailbox set). */
 async function sendableMailboxIds(): Promise<string[]> {
   const { locals } = getRequestEvent();
-  const ids = (await listSendIdentities(locals.db, requireUser().id)).map((i) => i.mailboxId);
+  const ids = (await listSendIdentities(locals.db, requireUser().id)).map((identity) => identity.mailboxId);
   return [...new Set(ids)];
 }
 
@@ -48,12 +48,12 @@ export const myMailboxSignatures = query(async (): Promise<MailboxSignature[]> =
       columns: { id: true, address: true, displayName: true },
     }),
   ]);
-  const byMailbox = new Map(sigs.map((r) => [r.mailboxId, r.bodyHtml]));
-  return boxes.map((b) => ({
-    mailboxId: b.id,
-    address: b.address,
-    displayName: b.displayName,
-    bodyHtml: byMailbox.get(b.id) ?? "",
+  const byMailbox = new Map(sigs.map((sig) => [sig.mailboxId, sig.bodyHtml]));
+  return boxes.map((box) => ({
+    mailboxId: box.id,
+    address: box.address,
+    displayName: box.displayName,
+    bodyHtml: byMailbox.get(box.id) ?? "",
   }));
 });
 
@@ -70,9 +70,9 @@ export const setMailboxSignature = command(
     // composer and rides out with the mail. Empty stays empty (cleared).
     let clean = "";
     if (bodyHtml.trim()) {
-      const r = sanitizeEmailHtml(bodyHtml);
-      if (!r.ok) error(400, "Signature is too large.");
-      clean = r.html;
+      const sanitized = sanitizeEmailHtml(bodyHtml);
+      if (!sanitized.ok) error(400, "Signature is too large.");
+      clean = sanitized.html;
     }
     await locals.db
       .insert(mail.mailboxSignature)

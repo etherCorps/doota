@@ -22,8 +22,8 @@
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content align="end" class="max-h-64 overflow-y-auto">
 			<DropdownMenu.RadioGroup bind:value>
-				{#each hosts as h (h)}
-					<DropdownMenu.RadioItem value={h} class="font-mono">@{h}</DropdownMenu.RadioItem>
+				{#each hosts as host (host)}
+					<DropdownMenu.RadioItem value={host} class="font-mono">@{host}</DropdownMenu.RadioItem>
 				{/each}
 			</DropdownMenu.RadioGroup>
 		</DropdownMenu.Content>

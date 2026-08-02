@@ -96,10 +96,10 @@
 	// but you can edit down to empty and re-type — never a dead end.
 	const hasRecipient = $derived(toList.length > 0);
 
-	const lc = (a: string) => a.toLowerCase();
+	const lc = (addr: string) => addr.toLowerCase();
 	const uniqLc = (xs: string[]) => {
 		const seen = new Set<string>();
-		return xs.filter((a) => (seen.has(lc(a)) ? false : (seen.add(lc(a)), true)));
+		return xs.filter((addr) => (seen.has(lc(addr)) ? false : (seen.add(lc(addr)), true)));
 	};
 	// Switching mode repopulates the fields (like picking Gmail's Reply vs Reply
 	// all). Reply = just the target; Reply all = everyone + the thread's Cc.
@@ -207,7 +207,7 @@
 	// guarded by htmlHasContent — a concurrent restore or typing wins over it.
 	async function applySignature() {
 		const rows = await myMailboxSignatures();
-		const sig = rows.find((r) => r.mailboxId === sendMailboxId)?.bodyHtml;
+		const sig = rows.find((row) => row.mailboxId === sendMailboxId)?.bodyHtml;
 		if (sig && !htmlHasContent(body)) {
 			body = withSignature(body, sig);
 			editorKey++;
@@ -568,12 +568,12 @@
 				<!-- Cap the chip list so many files scroll instead of pushing the Send
 				     button off-screen. -->
 				<div class="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
-					{#each attachments as a (a.r2Key)}
+					{#each attachments as attachment (attachment.r2Key)}
 						<span class="bg-muted flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
 							<PaperclipIcon class="text-muted-foreground size-3" />
-							<span class="max-w-[14ch] truncate">{a.filename}</span>
-							<span class="text-faint">{fmtSize(a.size)}</span>
-							<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(a.r2Key)}>
+							<span class="max-w-[14ch] truncate">{attachment.filename}</span>
+							<span class="text-faint">{fmtSize(attachment.size)}</span>
+							<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => removeAttachment(attachment.r2Key)}>
 								<XIcon class="size-3" />
 							</button>
 						</span>

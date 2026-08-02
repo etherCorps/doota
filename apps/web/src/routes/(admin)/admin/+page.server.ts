@@ -24,20 +24,20 @@ export const load = async ({ locals }) => {
 
   // Real overview counts scoped to the orgs the actor administers (distinct
   // members + mailboxes), replacing the earlier mock stats.
-  const orgIds = orgs.map((o) => o.id);
+  const orgIds = orgs.map((org) => org.id);
   let userCount = 0;
   let mailboxCount = 0;
   if (orgIds.length) {
-    const [u] = await locals.db
+    const [userRow] = await locals.db
       .select({ n: sql<number>`count(distinct ${schema.member.userId})` })
       .from(schema.member)
       .where(inArray(schema.member.organizationId, orgIds));
-    userCount = Number(u?.n ?? 0);
-    const [m] = await locals.db
+    userCount = Number(userRow?.n ?? 0);
+    const [mailboxRow] = await locals.db
       .select({ n: sql<number>`count(*)` })
       .from(schema.mailbox)
       .where(inArray(schema.mailbox.orgId, orgIds));
-    mailboxCount = Number(m?.n ?? 0);
+    mailboxCount = Number(mailboxRow?.n ?? 0);
   }
 
   // Deferred super-admin email verify: only offer it to an unverified

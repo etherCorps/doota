@@ -76,9 +76,9 @@
 		open = false;
 		goto(`${resolve('/app')}?q=${encodeURIComponent(`from:${addr}`)}`);
 	}
-	function openThread(t: { mailboxId: string; threadId: string }) {
+	function openThread(thread: { mailboxId: string; threadId: string }) {
 		open = false;
-		const sp = new URLSearchParams({ mailbox: t.mailboxId, thread: t.threadId });
+		const sp = new URLSearchParams({ mailbox: thread.mailboxId, thread: thread.threadId });
 		goto(`${resolve('/app')}?${sp}`);
 	}
 </script>
@@ -146,19 +146,19 @@
 					{:else if recent.length === 0}
 						<p class="text-muted-foreground px-3.5 py-2 text-xs">No shared conversations yet.</p>
 					{:else}
-						{#each recent as t (t.threadId)}
+						{#each recent as thread (thread.threadId)}
 							<button
 								type="button"
-								onclick={() => openThread(t)}
+								onclick={() => openThread(thread)}
 								class="hover:bg-muted/60 focus-visible:ring-ring/50 flex w-full items-center gap-2 px-3.5 py-1.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset"
 							>
-								{#if t.inbound}
+								{#if thread.inbound}
 									<ArrowDownLeftIcon class="text-brand size-3.5 shrink-0" />
 								{:else}
 									<ArrowUpRightIcon class="text-muted-foreground size-3.5 shrink-0" />
 								{/if}
-								<span class="min-w-0 flex-1 truncate text-xs">{t.subject || '(no subject)'}</span>
-								{#if t.at}<span class="text-faint shrink-0 text-[10px]">{relTime(t.at)}</span>{/if}
+								<span class="min-w-0 flex-1 truncate text-xs">{thread.subject || '(no subject)'}</span>
+								{#if thread.at}<span class="text-faint shrink-0 text-[10px]">{relTime(thread.at)}</span>{/if}
 							</button>
 						{/each}
 					{/if}

@@ -20,15 +20,15 @@
 		aliasId: string | null | undefined;
 	} = $props();
 
-	const key = (i: { mailboxId: string; aliasId: string | null }) => `${i.mailboxId}:${i.aliasId ?? ''}`;
+	const key = (identity: { mailboxId: string; aliasId: string | null }) => `${identity.mailboxId}:${identity.aliasId ?? ''}`;
 	const selected = $derived(
-		identities.find((i) => i.mailboxId === mailboxId && (i.aliasId ?? null) === (aliasId ?? null))
+		identities.find((identity) => identity.mailboxId === mailboxId && (identity.aliasId ?? null) === (aliasId ?? null))
 	);
 
-	function pick(i: SendIdentity) {
-		if (!i.available) return;
-		mailboxId = i.mailboxId;
-		aliasId = i.aliasId;
+	function pick(identity: SendIdentity) {
+		if (!identity.available) return;
+		mailboxId = identity.mailboxId;
+		aliasId = identity.aliasId;
 	}
 </script>
 

@@ -37,17 +37,17 @@
 	function localMatches(q: string): RecipientSuggestion[] {
 		return candidates
 			.filter(
-				(s) =>
-					!value.includes(s.address) &&
-					(s.address.includes(q) || (s.name?.toLowerCase().includes(q) ?? false))
+				(suggestion) =>
+					!value.includes(suggestion.address) &&
+					(suggestion.address.includes(q) || (suggestion.name?.toLowerCase().includes(q) ?? false))
 			)
 			.slice(0, 8);
 	}
 
 	function commit(addr: string) {
-		const a = addr.trim().toLowerCase();
-		if (a && a.includes('@') && !value.includes(a)) {
-			value = [...value, a];
+		const recipient = addr.trim().toLowerCase();
+		if (recipient && recipient.includes('@') && !value.includes(recipient)) {
+			value = [...value, recipient];
 			onchange?.();
 		}
 		text = '';
@@ -55,8 +55,8 @@
 		open = false;
 		active = -1;
 	}
-	function remove(a: string) {
-		value = value.filter((x) => x !== a);
+	function remove(recipient: string) {
+		value = value.filter((addr) => addr !== recipient);
 		onchange?.();
 	}
 	function onInput() {
@@ -78,7 +78,7 @@
 		// the cached top-N). Debounced + seq-guarded so it can't clobber newer input.
 		if (local.length === 0) {
 			timer = setTimeout(async () => {
-				const res = (await recipientSuggestions(q)).filter((s) => !value.includes(s.address));
+				const res = (await recipientSuggestions(q)).filter((suggestion) => !value.includes(suggestion.address));
 				if (mySeq !== seq) return;
 				suggestions = res;
 				open = res.length > 0;
@@ -115,10 +115,10 @@
 	}
 
 	/** Display name fallback: prettified local part. */
-	function displayName(s: RecipientSuggestion): string {
-		if (s.name) return s.name;
-		const local = s.address.split('@')[0] ?? s.address;
-		return local.replace(/[._-]+/g, ' ').trim() || s.address;
+	function displayName(suggestion: RecipientSuggestion): string {
+		if (suggestion.name) return suggestion.name;
+		const local = suggestion.address.split('@')[0] ?? suggestion.address;
+		return local.replace(/[._-]+/g, ' ').trim() || suggestion.address;
 	}
 
 	// Deterministic avatar tint per address, drawn from the app's own hues
@@ -139,13 +139,13 @@
 
 <div class="relative">
 	<div class="focus-within:ring-ring/40 flex flex-wrap items-center gap-1 rounded-xl border bg-input/40 px-2 py-1.5 transition-colors focus-within:border-ring/60 focus-within:ring-2">
-		{#each value as a (a)}
+		{#each value as recipient (recipient)}
 			<span class="bg-muted flex items-center gap-1.5 rounded-full py-0.5 pr-1.5 pl-0.5 text-xs">
-				<span class="grid size-5 place-items-center rounded-full text-[10px] font-semibold uppercase {tint(a)}">
-					{a[0] ?? '?'}
+				<span class="grid size-5 place-items-center rounded-full text-[10px] font-semibold uppercase {tint(recipient)}">
+					{recipient[0] ?? '?'}
 				</span>
-				<span class="font-mono">{a}</span>
-				<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => remove(a)}>
+				<span class="font-mono">{recipient}</span>
+				<button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => remove(recipient)}>
 					<XIcon class="size-3" />
 				</button>
 			</span>
@@ -166,7 +166,7 @@
 	</div>
 	{#if open}
 		<ul id="{uid}-listbox" role="listbox" class="bg-popover absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-xl border p-1 shadow-lg">
-			{#each suggestions as s, i (s.address)}
+			{#each suggestions as suggestion, i (suggestion.address)}
 				<li id="{uid}-opt-{i}" role="option" aria-selected={active === i}>
 					<!-- pointerdown (not click): fires before the input's blur commits the
 					     raw text — same reason the old mousedown was there, but pointer
@@ -178,14 +178,14 @@
 						class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors {active === i ? 'bg-accent text-accent-foreground' : ''}"
 						onpointerdown={(e) => {
 							e.preventDefault();
-							commit(s.address);
+							commit(suggestion.address);
 						}}
 						onmouseenter={() => (active = i)}
 					>
-						<SenderAvatar from={s.address} class="size-7 text-[10px]" />
+						<SenderAvatar from={suggestion.address} class="size-7 text-[10px]" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-xs font-medium">{displayName(s)}</span>
-							<span class="text-muted-foreground block truncate font-mono text-[11px]">{s.address}</span>
+							<span class="block truncate text-xs font-medium">{displayName(suggestion)}</span>
+							<span class="text-muted-foreground block truncate font-mono text-[11px]">{suggestion.address}</span>
 						</span>
 					</button>
 				</li>

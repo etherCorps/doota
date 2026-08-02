@@ -27,10 +27,10 @@
 	type Mailbox = (typeof data.mailboxes)[number];
 
 	// Mailbox categories (a mailbox is exactly one).
-	const kindOf = (m: Mailbox) => (m.isService ? 'service' : m.isPersonal ? 'individual' : 'shared');
-	const sharedMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'shared'));
-	const serviceMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'service'));
-	const personalMailboxes = $derived(data.mailboxes.filter((m) => kindOf(m) === 'individual'));
+	const kindOf = (mailbox: Mailbox) => (mailbox.isService ? 'service' : mailbox.isPersonal ? 'individual' : 'shared');
+	const sharedMailboxes = $derived(data.mailboxes.filter((mailbox) => kindOf(mailbox) === 'shared'));
+	const serviceMailboxes = $derived(data.mailboxes.filter((mailbox) => kindOf(mailbox) === 'service'));
+	const personalMailboxes = $derived(data.mailboxes.filter((mailbox) => kindOf(mailbox) === 'individual'));
 
 	// Segmented filter over a single table.
 	type Filter = 'all' | 'shared' | 'service' | 'individual';
@@ -42,7 +42,7 @@
 		{ key: 'individual' as const, label: 'Individual', n: personalMailboxes.length }
 	]);
 	const filtered = $derived(
-		filter === 'all' ? data.mailboxes : data.mailboxes.filter((m) => kindOf(m) === filter)
+		filter === 'all' ? data.mailboxes : data.mailboxes.filter((mailbox) => kindOf(mailbox) === filter)
 	);
 
 	let addOpen = $state(false);
@@ -61,10 +61,10 @@
 	// mailboxId → number of members with any grant (drives the access count column).
 	const accessCountByMailbox = $derived.by(() => {
 		const map = new Map<string, Set<string>>();
-		for (const g of data.grants) {
-			const set = map.get(g.mailboxId) ?? new Set<string>();
-			set.add(g.userId);
-			map.set(g.mailboxId, set);
+		for (const grant of data.grants) {
+			const set = map.get(grant.mailboxId) ?? new Set<string>();
+			set.add(grant.userId);
+			map.set(grant.mailboxId, set);
 		}
 		return map;
 	});
@@ -151,13 +151,13 @@
 		variant="outline"
 		size="sm"
 		value={filter}
-		onValueChange={(v) => v && (filter = v as Filter)}
+		onValueChange={(value) => value && (filter = value as Filter)}
 		class="justify-start"
 	>
-		{#each segments as s (s.key)}
-			<ToggleGroup.Item value={s.key} class="gap-1.5">
-				{s.label}
-				<span class="text-muted-foreground text-xs tabular-nums">{s.n}</span>
+		{#each segments as segment (segment.key)}
+			<ToggleGroup.Item value={segment.key} class="gap-1.5">
+				{segment.label}
+				<span class="text-muted-foreground text-xs tabular-nums">{segment.n}</span>
 			</ToggleGroup.Item>
 		{/each}
 	</ToggleGroup.Root>
@@ -196,7 +196,7 @@
 				<Input bind:value={displayName} placeholder="Support" autocomplete="off" />
 			</Field.Field>
 			<label class="flex items-start gap-3 rounded-md border p-3">
-				<Switch checked={isService} onCheckedChange={(v) => (isService = v)} aria-label="Service mailbox" />
+				<Switch checked={isService} onCheckedChange={(checked) => (isService = checked)} aria-label="Service mailbox" />
 				<span class="flex flex-col gap-0.5">
 					<span class="text-sm font-medium">Service mailbox</span>
 					<span class="text-muted-foreground text-xs">

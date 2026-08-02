@@ -30,18 +30,18 @@ beforeEach(async () => {
   await grantAccess(db, { userId: "agent", mailboxId: "mb_support", canSend: true, assignedOnly: true });
 
   // Two inbox threads, plus one message each so the list has something to show.
-  for (const n of [1, 2]) {
-    await db.insert(schema.thread).values({ id: `th${n}`, orgId: ORG, lastMessageAt: new Date(n * 1000) });
+  for (const threadNum of [1, 2]) {
+    await db.insert(schema.thread).values({ id: `th${threadNum}`, orgId: ORG, lastMessageAt: new Date(threadNum * 1000) });
     await db.insert(schema.threadState).values({
-      id: `ts${n}`, orgId: ORG, threadId: `th${n}`, mailboxId: "mb_support",
-      placement: "inbox", lastActivityAt: new Date(n * 1000), lastInboundAt: new Date(n * 1000),
+      id: `ts${threadNum}`, orgId: ORG, threadId: `th${threadNum}`, mailboxId: "mb_support",
+      placement: "inbox", lastActivityAt: new Date(threadNum * 1000), lastInboundAt: new Date(threadNum * 1000),
     });
     await db.insert(schema.message).values({
-      id: `m${n}`, orgId: ORG, threadId: `th${n}`, messageIdHeader: `<${n}@x>`,
+      id: `m${threadNum}`, orgId: ORG, threadId: `th${threadNum}`, messageIdHeader: `<${threadNum}@x>`,
       fromAddr: "out@ext.com", toAddrs: "support@acme.com", ccAddrs: "",
-      sentAt: new Date(n * 1000), direction: "inbound",
+      sentAt: new Date(threadNum * 1000), direction: "inbound",
     });
-    await db.insert(schema.delivery).values({ id: `d${n}`, orgId: ORG, messageId: `m${n}`, mailboxId: "mb_support", role: "to" });
+    await db.insert(schema.delivery).values({ id: `d${threadNum}`, orgId: ORG, messageId: `m${threadNum}`, mailboxId: "mb_support", role: "to" });
   }
 });
 
@@ -65,7 +65,7 @@ describe("shared mailbox — assigned-only access", () => {
     await assignThread(db, { orgId: ORG, threadId: "th1", mailboxId: "mb_support", assigneeUserId: "agent", actorUserId: "mgr" });
 
     const rows = await list("agent", filter);
-    expect(rows.map((r) => r.threadId)).toEqual(["th1"]); // th2 still invisible
+    expect(rows.map((thread) => thread.threadId)).toEqual(["th1"]); // th2 still invisible
     expect(await getThread(db, { threadId: "th1", mailboxId: "mb_support", ck, userId: "agent", assignedTo: filter })).not.toBeNull();
     expect(await getThread(db, { threadId: "th2", mailboxId: "mb_support", ck, userId: "agent", assignedTo: filter })).toBeNull();
     expect(await countUnread(db, { mailboxId: "mb_support", userId: "agent", assignedTo: filter })).toBe(1);
@@ -74,7 +74,7 @@ describe("shared mailbox — assigned-only access", () => {
   it("a manager sees the whole mailbox, assigned or not", async () => {
     await assignThread(db, { orgId: ORG, threadId: "th1", mailboxId: "mb_support", assigneeUserId: "agent", actorUserId: "mgr" });
     const rows = await list("mgr", await assignedOnlyFor(db, "mgr", "mb_support"));
-    expect(rows.map((r) => r.threadId).sort()).toEqual(["th1", "th2"]);
+    expect(rows.map((thread) => thread.threadId).sort()).toEqual(["th1", "th2"]);
     expect(await countUnread(db, { mailboxId: "mb_support", userId: "mgr" })).toBe(2);
   });
 

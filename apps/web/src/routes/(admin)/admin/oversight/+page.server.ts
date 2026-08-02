@@ -28,23 +28,23 @@ export const load = async ({ locals, platform }) => {
 
   if (!messages.length) return { rows: [] };
 
-  const orgIds = [...new Set(messages.map((m) => m.orgId))];
+  const orgIds = [...new Set(messages.map((message) => message.orgId))];
   const orgs = await locals.db
     .select({ id: schema.organization.id, domain: schema.organization.domain })
     .from(schema.organization)
     .where(inArray(schema.organization.id, orgIds));
-  const domainOf = new Map(orgs.map((o) => [o.id, o.domain]));
+  const domainOf = new Map(orgs.map((org) => [org.id, org.domain]));
 
   const dek = platform?.env?.MAIL_DEK;
   const ck = dek ? await importKey(dek) : null;
 
   const rows = await Promise.all(
-    messages.map(async (m) => ({
-      id: m.id,
-      domain: domainOf.get(m.orgId) ?? "—",
-      from: m.fromAddr,
-      subject: ck ? await decryptContent(ck, m.subjectEnc) : null,
-      at: m.sentAt ? m.sentAt.getTime() : null,
+    messages.map(async (message) => ({
+      id: message.id,
+      domain: domainOf.get(message.orgId) ?? "—",
+      from: message.fromAddr,
+      subject: ck ? await decryptContent(ck, message.subjectEnc) : null,
+      at: message.sentAt ? message.sentAt.getTime() : null,
     })),
   );
 

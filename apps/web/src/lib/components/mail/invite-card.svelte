@@ -61,10 +61,10 @@
 	const tzLabel = (tz?: string) =>
 		new Intl.DateTimeFormat(undefined, { timeZone: tz ?? viewerTz, timeZoneName: 'short' })
 			.formatToParts(new Date(invite.startMs))
-			.find((p) => p.type === 'timeZoneName')?.value ?? '';
+			.find((tzPart) => tzPart.type === 'timeZoneName')?.value ?? '';
 	const timeRange = (tz?: string) => {
-		const t = (ms: number) => part(ms, { hour: 'numeric', minute: '2-digit' }, tz);
-		return invite.endMs ? `${t(invite.startMs)} – ${t(invite.endMs)} ${tzLabel(tz)}` : `${t(invite.startMs)} ${tzLabel(tz)}`;
+		const fmt = (ms: number) => part(ms, { hour: 'numeric', minute: '2-digit' }, tz);
+		return invite.endMs ? `${fmt(invite.startMs)} – ${fmt(invite.endMs)} ${tzLabel(tz)}` : `${fmt(invite.startMs)} ${tzLabel(tz)}`;
 	};
 	const timeLine = $derived(invite.allDay ? 'All day' : timeRange(undefined));
 	// The organizer's original timezone rendering — for the tap-popover, only when
@@ -105,7 +105,7 @@
 		webex: '#00BCEB'
 	};
 
-	const going = $derived(invite.attendees.filter((a) => a.partstat === 'ACCEPTED').length);
+	const going = $derived(invite.attendees.filter((attendee) => attendee.partstat === 'ACCEPTED').length);
 	const invited = $derived(invite.attendees.length);
 
 	// Full guest list for the popover: attendees, plus the organizer prepended
@@ -114,15 +114,15 @@
 	const roster = $derived.by<Guest[]>(() => {
 		const list: Guest[] = [...invite.attendees];
 		const org = invite.organizer.email;
-		if (org && !list.some((a) => a.email.toLowerCase() === org.toLowerCase())) {
+		if (org && !list.some((guest) => guest.email.toLowerCase() === org.toLowerCase())) {
 			list.unshift({ email: org, name: invite.organizer.name, partstat: 'ACCEPTED' });
 		}
 		return list;
 	});
 	const isOrganizer = (email: string) =>
 		!!invite.organizer.email && email.toLowerCase() === invite.organizer.email.toLowerCase();
-	function initials(g: Guest): string {
-		const n = (g.name || g.email || '?').trim();
+	function initials(guest: Guest): string {
+		const n = (guest.name || guest.email || '?').trim();
 		const parts = n.split(/\s+/).filter(Boolean);
 		return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : n.slice(0, 2)).toUpperCase();
 	}
@@ -131,8 +131,8 @@
 		DECLINED: { label: 'Declined', cls: 'text-destructive' },
 		TENTATIVE: { label: 'Maybe', cls: 'text-warn' }
 	};
-	const statusMeta = (p: string | null) =>
-		STATUS[(p ?? '').toUpperCase()] ?? { label: 'No response', cls: 'text-muted-foreground' };
+	const statusMeta = (partstat: string | null) =>
+		STATUS[(partstat ?? '').toUpperCase()] ?? { label: 'No response', cls: 'text-muted-foreground' };
 
 	// RSVP is optimistic: the parent patches invite.myRsvp so the pressed state
 	// updates instantly; a failed persist reverts (handled by the parent's toast).
@@ -171,13 +171,13 @@
 		const RE = /([^\n|<>]*)<(https?:\/\/[^>\s]+)>/g;
 		const out: Seg[] = [];
 		let last = 0;
-		for (const m of desc.matchAll(RE)) {
+		for (const match of desc.matchAll(RE)) {
 			// Inter-match text (newlines/pipes/plain runs) → shared linkify.
-			const before = desc.slice(last, m.index);
+			const before = desc.slice(last, match.index);
 			if (before) out.push(...(linkifySegments(before) as Seg[]));
-			const label = m[1].trim();
-			out.push({ type: 'link', value: label || m[2], href: m[2] });
-			last = m.index + m[0].length;
+			const label = match[1].trim();
+			out.push({ type: 'link', value: label || match[2], href: match[2] });
+			last = match.index + match[0].length;
 		}
 		if (last < desc.length) out.push(...(linkifySegments(desc.slice(last)) as Seg[]));
 		return out.length ? out : (linkifySegments(desc) as Seg[]);
@@ -196,15 +196,15 @@
 		const raw = invite.description;
 		if (!raw) return { text: null as string | null, details: null as string | null };
 		const lines = raw.split('\n');
-		const at = lines.findIndex((l) => {
-			const t = l.trim();
+		const at = lines.findIndex((line) => {
+			const t = line.trim();
 			return FENCE.test(t) || BOILERPLATE.test(t);
 		});
 		if (at === -1) return { text: raw.trim() || null, details: null };
 		const text = lines.slice(0, at).join('\n').trim();
 		const details = lines
 			.slice(at)
-			.filter((l) => !FENCE.test(l.trim()) && !/please do not edit/i.test(l))
+			.filter((line) => !FENCE.test(line.trim()) && !/please do not edit/i.test(line))
 			.join('\n')
 			.trim();
 		return { text: text || null, details: details || null };
@@ -223,12 +223,12 @@
 	function icsHref(): string {
 		const dt = (ms: number, allDay: boolean) => {
 			const d = new Date(ms);
-			const p = (n: number) => String(n).padStart(2, '0');
+			const pad = (n: number) => String(n).padStart(2, '0');
 			return allDay
-				? `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
-				: `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+				? `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`
+				: `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 		};
-		const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+		const esc = (str: string) => str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
 		const lines = [
 			'BEGIN:VCALENDAR',
 			'VERSION:2.0',
@@ -324,8 +324,8 @@
 				<Popover.Root>
 					<Popover.Trigger class="hover:bg-muted/50 focus-visible:ring-ring -mx-1 flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors outline-none focus-visible:ring-2">
 						<span class="flex shrink-0 -space-x-2">
-							{#each roster.slice(0, 5) as g (g.email)}
-								<span class="border-card bg-muted text-muted-foreground grid size-6 place-items-center rounded-full border-2 text-[9px] font-semibold">{initials(g)}</span>
+							{#each roster.slice(0, 5) as guest (guest.email)}
+								<span class="border-card bg-muted text-muted-foreground grid size-6 place-items-center rounded-full border-2 text-[9px] font-semibold">{initials(guest)}</span>
 							{/each}
 							{#if roster.length > 5}
 								<span class="border-card bg-muted text-muted-foreground grid size-6 place-items-center rounded-full border-2 text-[9px] font-semibold">+{roster.length - 5}</span>
@@ -339,15 +339,15 @@
 					<Popover.Content align="start" class="w-64 p-0">
 						<div class="text-muted-foreground border-b px-3 py-2 text-[11px] font-semibold tracking-wide uppercase">Guests · {invited}</div>
 						<div class="max-h-64 overflow-y-auto py-1">
-							{#each roster as g (g.email)}
-								{@const s = statusMeta(g.partstat)}
+							{#each roster as guest (guest.email)}
+								{@const status = statusMeta(guest.partstat)}
 								<div class="flex items-center gap-2.5 px-3 py-1.5">
-									<span class="bg-muted text-muted-foreground grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold">{initials(g)}</span>
+									<span class="bg-muted text-muted-foreground grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold">{initials(guest)}</span>
 									<span class="min-w-0 flex-1">
-										<span class="text-foreground block truncate text-xs font-medium">{g.name || g.email}</span>
-										{#if g.name}<span class="text-faint block truncate text-[11px]">{g.email}</span>{/if}
+										<span class="text-foreground block truncate text-xs font-medium">{guest.name || guest.email}</span>
+										{#if guest.name}<span class="text-faint block truncate text-[11px]">{guest.email}</span>{/if}
 									</span>
-									<span class="shrink-0 text-[11px] font-medium {isOrganizer(g.email) ? 'text-muted-foreground' : s.cls}">{isOrganizer(g.email) ? 'Organizer' : s.label}</span>
+									<span class="shrink-0 text-[11px] font-medium {isOrganizer(guest.email) ? 'text-muted-foreground' : status.cls}">{isOrganizer(guest.email) ? 'Organizer' : status.label}</span>
 								</div>
 							{/each}
 						</div>
@@ -453,7 +453,7 @@
 </div>
 
 
-{#snippet descText(t: string)}{#each descSegments(t) as seg, i (i)}{#if seg.type === 'link'}<a
+{#snippet descText(text: string)}{#each descSegments(text) as seg, i (i)}{#if seg.type === 'link'}<a
 			href={seg.href}
 			target="_blank"
 			rel="noopener noreferrer"

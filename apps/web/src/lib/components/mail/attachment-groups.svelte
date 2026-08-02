@@ -26,8 +26,8 @@
 	} = $props();
 
 	// Type-tinted icon tile for non-image files (PDF reads red, archives amber, …).
-	function fileTile(a: { contentType: string | null }) {
-		const t = a.contentType ?? '';
+	function fileTile(att: { contentType: string | null }) {
+		const t = att.contentType ?? '';
 		if (t === 'application/pdf') return { icon: FileTextIcon, cls: 'bg-destructive/10 text-destructive' };
 		if (t.includes('zip') || t.includes('compressed') || t.includes('tar')) return { icon: ArchiveIcon, cls: 'bg-warn/10 text-warn' };
 		if (t.startsWith('audio/')) return { icon: PaperclipIcon, cls: 'bg-p1/10 text-p1' };
@@ -40,10 +40,10 @@
 {#if groups.length === 0}
 	<p class="text-muted-foreground py-6 text-center text-sm">No attachments in this thread.</p>
 {/if}
-{#each groups as g (g.day)}
-	<p class="text-faint px-1 pt-2 pb-1.5 text-[11px] font-medium first:pt-0">{g.day}</p>
+{#each groups as group (group.day)}
+	<p class="text-faint px-1 pt-2 pb-1.5 text-[11px] font-medium first:pt-0">{group.day}</p>
 	<div class="space-y-2">
-		{#each g.entries as { msg, atts } (msg.id)}
+		{#each group.entries as { msg, atts } (msg.id)}
 			<div class="bg-background/60 rounded-xl border p-2">
 				<!-- Sender header (once per message) → jump to the message -->
 				<button

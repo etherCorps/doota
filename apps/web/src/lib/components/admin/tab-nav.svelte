@@ -10,17 +10,17 @@
 
 <nav class="border-b">
 	<div class="-mb-px flex gap-1 overflow-x-auto">
-		{#each tabs as t (t.href)}
+		{#each tabs as tab (tab.href)}
 			<a
-				href={t.href}
+				href={tab.href}
 				class={cn(
 					'shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-					t.active
+					tab.active
 						? 'border-brand text-brand'
 						: 'text-muted-foreground hover:text-foreground border-transparent'
 				)}
 			>
-				{t.label}
+				{tab.label}
 			</a>
 		{/each}
 	</div>

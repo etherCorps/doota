@@ -145,7 +145,7 @@
 	// so folder nav / a fresh load never auto-switches the mailbox.
 	const mailboxId = $derived(
 		params.get('mailbox') ??
-			mailboxes.find((m) => m.id === lastMailbox.current)?.id ??
+			mailboxes.find((mailbox) => mailbox.id === lastMailbox.current)?.id ??
 			mailboxes[0]?.id ??
 			null
 	);
@@ -166,10 +166,10 @@
 		});
 	});
 	const isVirtual = $derived(placement === 'drafts' || placement === 'scheduled');
-	const activeMailbox = $derived(mailboxes.find((m) => m.id === mailboxId));
+	const activeMailbox = $derived(mailboxes.find((mailbox) => mailbox.id === mailboxId));
 	const managedIdsQ = myManagedMailboxIds();
 	const canManageActive = $derived(!!mailboxId && (managedIdsQ.current ?? []).includes(mailboxId));
-	const folder = $derived(FOLDERS.find((f) => f.id === placement) ?? FOLDERS[0]);
+	const folder = $derived(FOLDERS.find((folderOption) => folderOption.id === placement) ?? FOLDERS[0]);
 
 	// Folder-specific empty states — a Compose button only where starting a new
 	// message is the natural next step; trash/spam/archive just explain themselves.
@@ -405,7 +405,7 @@
 		// Optimistic: rows leave immediately (exit transition reads rowFx); a
 		// loading toast tracks the write, flipping to Undo on success (same flow as
 		// swipe triage), or to an error + list reload on failure.
-		items = items.filter((t) => !threadSel.has(t.threadId));
+		items = items.filter((thread) => !threadSel.has(thread.threadId));
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
@@ -428,7 +428,7 @@
 		for (const id of ids) rowFx.set(id, 'pulse');
 		try {
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
-			items = items.map((t) => (threadSel.has(t.threadId) ? { ...t, unread: !read } : t));
+			items = items.map((thread) => (threadSel.has(thread.threadId) ? { ...thread, unread: !read } : thread));
 			threadSel.clear();
 			void refreshUnread();
 		} finally {
@@ -512,19 +512,19 @@
 			if (isVirtual) {
 				const q = placement === 'drafts' ? myDrafts() : scheduledSends();
 				const before = new Set(
-					(q.current ?? []).map((r) => ('id' in r ? r.id : r.submissionId))
+					(q.current ?? []).map((row) => ('id' in row ? row.id : row.submissionId))
 				);
 				await q.refresh();
-				const after = (q.current ?? []).map((r) => ('id' in r ? r.id : r.submissionId));
+				const after = (q.current ?? []).map((row) => ('id' in row ? row.id : row.submissionId));
 				const changed = after.length !== before.size || after.some((id) => !before.has(id));
 				toast.success(changed ? 'List updated.' : calm());
 			} else {
-				const before = new Map(items.map((t) => [t.threadId, t.lastMessageAt ?? 0]));
+				const before = new Map(items.map((thread) => [thread.threadId, thread.lastMessageAt ?? 0]));
 				await loadThreads(true);
 				void refreshUnread();
-				const fresh = items.filter((t) => {
-					const prev = before.get(t.threadId);
-					return prev === undefined || (t.lastMessageAt ?? 0) > prev;
+				const fresh = items.filter((thread) => {
+					const prev = before.get(thread.threadId);
+					return prev === undefined || (thread.lastMessageAt ?? 0) > prev;
 				}).length;
 				toast.success(
 					fresh > 0 ? `${fresh} ${fresh === 1 ? 'conversation' : 'conversations'} updated.` : calm()
@@ -557,14 +557,14 @@
 
 	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
-		items = items.map((t) => (t.threadId === id ? { ...t, ...patch } : t));
+		items = items.map((thread) => (thread.threadId === id ? { ...thread, ...patch } : thread));
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: ONE
 	// source, patched in place — never a full thread refetch to flip a boolean.
 	// Priority: optimistic override → the list row (when the open thread is
 	// loaded) → the thread DTO (direct-URL case). Override resets per thread.
-	const openThreadItem = $derived(items.find((t) => t.threadId === threadId));
+	const openThreadItem = $derived(items.find((thread) => thread.threadId === threadId));
 	let openFlagOverride = $state<{ isStarred?: boolean; assigneeUserId?: string | null }>({});
 	$effect(() => {
 		void threadId;
@@ -616,10 +616,10 @@
 		T extends { assigneeUserId: string | null; unread: boolean; isStarred: boolean }
 	>(rows: T[]): T[] {
 		let out = rows;
-		if (assignFilter === 'mine') out = out.filter((r) => r.assigneeUserId === currentUserId);
-		else if (assignFilter === 'unassigned') out = out.filter((r) => !r.assigneeUserId);
-		if (quickFilter === 'unread') out = out.filter((r) => r.unread);
-		else if (quickFilter === 'starred') out = out.filter((r) => r.isStarred);
+		if (assignFilter === 'mine') out = out.filter((row) => row.assigneeUserId === currentUserId);
+		else if (assignFilter === 'unassigned') out = out.filter((row) => !row.assigneeUserId);
+		if (quickFilter === 'unread') out = out.filter((row) => row.unread);
+		else if (quickFilter === 'starred') out = out.filter((row) => row.isStarred);
 		return out;
 	}
 	async function assign(userId: string | null) {
@@ -645,7 +645,7 @@
 		}
 	}
 	const short = (id: string, members: { userId: string; name: string }[]) =>
-		members.find((m) => m.userId === id)?.name ?? 'someone';
+		members.find((member) => member.userId === id)?.name ?? 'someone';
 
 	// Open a thread and mark it read (clears the unread dot + badge). Skip the
 	// write when we already know the row is read — reopening an already-read
@@ -664,7 +664,7 @@
 	function moveCursor(dir: 1 | -1) {
 		if (!items.length) return;
 		const base = navCursor ?? threadId;
-		const idx = items.findIndex((x) => x.threadId === base);
+		const idx = items.findIndex((thread) => thread.threadId === base);
 		const next = idx === -1 ? 0 : Math.min(Math.max(idx + dir, 0), items.length - 1);
 		const target = items[next];
 		if (!target) return;
@@ -686,10 +686,10 @@
 		lastOpenedRead = id; // this path owns the read-mark; the load-effect stands down
 		if (!mailboxId) return;
 		{
-			const row = items.find((t) => t.threadId === id);
+			const row = items.find((thread) => thread.threadId === id);
 			pushRecentThread({ threadId: id, mailboxId, subject: row?.subject ?? null, from: row?.from ?? null });
 		}
-		const item = items.find((t) => t.threadId === id);
+		const item = items.find((thread) => thread.threadId === id);
 		if (item && !item.unread) return;
 		await markThreadRead({ mailboxId, threadId: id });
 		patchItem(id, { unread: false });
@@ -744,9 +744,9 @@
 			action: {
 				label: 'Undo',
 				onClick: async () => {
-					for (const e of entries) {
+					for (const entry of entries) {
 						try {
-							await moveThread({ mailboxId: mb, threadId: e.threadId, placement: e.prev as never });
+							await moveThread({ mailboxId: mb, threadId: entry.threadId, placement: entry.prev as never });
 						} catch {
 							// row may have moved again meanwhile — restore the rest
 						}
@@ -760,7 +760,7 @@
 	/** A row's current placement (for undo): the row's own placement (Sent view
 	 * rows differ), else the open folder. */
 	const rowPrev = (id: string) =>
-		items.find((t) => t.threadId === id)?.placement ?? (placement === 'sent' ? 'inbox' : placement);
+		items.find((thread) => thread.threadId === id)?.placement ?? (placement === 'sent' ? 'inbox' : placement);
 
 	// Move one LIST ROW (swipe path — no open-thread nav involved). Optimistic:
 	// the row leaves the instant the swipe commits (no red-reveal stall while the
@@ -771,7 +771,7 @@
 		const mb = mailboxId;
 		const prev = rowPrev(id);
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
-		items = items.filter((t) => t.threadId !== id);
+		items = items.filter((thread) => thread.threadId !== id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
 		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
@@ -818,7 +818,7 @@
 		const id = threadId;
 		const prev = rowPrev(id);
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
+		items = items.filter((thread) => thread.threadId !== id);
 		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
@@ -841,7 +841,7 @@
 			return;
 		}
 		nav({ thread: null });
-		items = items.filter((t) => t.threadId !== id);
+		items = items.filter((thread) => thread.threadId !== id);
 		void refreshUnread();
 	}
 	// Same, from a list-row snooze. Also close the detail if that row's thread
@@ -851,7 +851,7 @@
 			void loadThreads(true);
 			return;
 		}
-		items = items.filter((t) => t.threadId !== id);
+		items = items.filter((thread) => thread.threadId !== id);
 		if (id === threadId) nav({ thread: null });
 		void refreshUnread();
 	}
@@ -923,7 +923,7 @@
 	// or send-identity domain), else external. Client-only — no DTO/migration.
 	const myDomains = $derived(
 		new SvelteSet(
-			[...mailboxes.map((m) => domainOf(m.address)), ...identities.map((i) => domainOf(i.address))].filter(Boolean)
+			[...mailboxes.map((mailbox) => domainOf(mailbox.address)), ...identities.map((identity) => domainOf(identity.address))].filter(Boolean)
 		)
 	);
 	const isInternal = (from: string | null): boolean => {
@@ -943,7 +943,7 @@
 			const addr = senderAddr(from).toLowerCase();
 			if (addr && !m.has(addr)) m.set(addr, name.trim());
 		};
-		for (const t of items) add(t.from, t.fromName);
+		for (const thread of items) add(thread.from, thread.fromName);
 		for (const it of openDto?.items ?? []) if (it.type === 'external_message') add(it.from, it.fromName);
 		return m;
 	});
@@ -984,10 +984,10 @@
 	// The original .ics attachment (organiser's exact copy) — powers "Download
 	// invite" over the card's re-serialised fallback.
 	function inviteIcsHref(m: MessageDTO): string | null {
-		const a = m.attachments.find(
-			(x) => x.contentType?.includes('calendar') || x.filename?.toLowerCase().endsWith('.ics')
+		const attachment = m.attachments.find(
+			(candidate) => candidate.contentType?.includes('calendar') || candidate.filename?.toLowerCase().endsWith('.ics')
 		);
-		return a ? `/api/attachments/${a.id}` : null;
+		return attachment ? `/api/attachments/${attachment.id}` : null;
 	}
 	// Invite messages hide the providers' boilerplate mail body by default (the
 	// card IS the content); "Show original message" reveals it per message.
@@ -1071,9 +1071,9 @@
 	// their own message (with them in `from`) lands in the thread.
 	function participants(msgs: MessageDTO[]): { address: string; name: string; mine: boolean }[] {
 		const mine = new Set(
-			[activeMailbox?.address, ...msgs.map((m) => m.viaAlias)]
-				.filter((a): a is string => !!a)
-				.map((a) => a.toLowerCase())
+			[activeMailbox?.address, ...msgs.map((msg) => msg.viaAlias)]
+				.filter((addr): addr is string => !!addr)
+				.map((addr) => addr.toLowerCase())
 		);
 		const seen = new Map<string, { address: string; name: string; mine: boolean }>();
 		const add = (raw: string | null) => {
@@ -1082,10 +1082,10 @@
 			if (!address.includes('@') || seen.has(address)) return;
 			seen.set(address, { address, name: senderName(raw), mine: mine.has(address) });
 		};
-		for (const m of msgs) {
-			add(m.from);
-			for (const a of m.to) add(a);
-			for (const a of m.cc) add(a);
+		for (const msg of msgs) {
+			add(msg.from);
+			for (const addr of msg.to) add(addr);
+			for (const addr of msg.cc) add(addr);
 		}
 		return [...seen.values()];
 	}
@@ -1166,17 +1166,17 @@
 	let findQ = $state('');
 	let findIdx = $state(0);
 	const threadMsgs = $derived(
-		(openDto?.items ?? []).filter((i): i is MessageDTO => i.type === 'external_message')
+		(openDto?.items ?? []).filter((item): item is MessageDTO => item.type === 'external_message')
 	);
 	const lastMsgId = $derived(threadMsgs.at(-1)?.id);
 	const findMatches = $derived.by(() => {
 		const term = findQ.trim().toLowerCase();
 		if (!term) return [] as string[];
 		return threadMsgs
-			.filter((m) =>
-				[m.subject, m.bodyStripped, m.bodyFull, m.from].some((s) => s?.toLowerCase().includes(term))
+			.filter((msg) =>
+				[msg.subject, msg.bodyStripped, msg.bodyFull, msg.from].some((field) => field?.toLowerCase().includes(term))
 			)
-			.map((m) => m.id);
+			.map((msg) => msg.id);
 	});
 	// Single jump driver: whenever the match set or cursor changes (typing, or
 	// prev/next), clamp and jump to the current match. findStep only moves the
@@ -1230,7 +1230,7 @@
 	}
 	// Whole-thread forward: every message stacked oldest→newest as quoted blocks.
 	function forwardThread(msgs: MessageDTO[], subject: string | null) {
-		const blocks = msgs.map((m) => fwdBlock(m)).join('<p></p>');
+		const blocks = msgs.map((msg) => fwdBlock(msg)).join('<p></p>');
 		startForward(subject, '---------- Forwarded conversation ----------', blocks);
 	}
 	function openDraft(id: string) {
@@ -1249,14 +1249,14 @@
 		try {
 			await undoDraftById({ submissionId });
 		} catch {
-			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			hiddenScheduled = hiddenScheduled.filter((id) => id !== submissionId);
 			toast.error('Could not cancel — it may have already sent.');
 			return;
 		}
 		await scheduledSends().refresh();
 		// Row is gone from the source now — drop the optimistic-hide entry so the
 		// set can't grow unbounded across a session.
-		hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+		hiddenScheduled = hiddenScheduled.filter((id) => id !== submissionId);
 	}
 	async function editScheduled(submissionId: string, sendAt: number) {
 		hiddenScheduled = [...hiddenScheduled, submissionId];
@@ -1264,7 +1264,7 @@
 		try {
 			res = await undoDraftById({ submissionId });
 		} catch {
-			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			hiddenScheduled = hiddenScheduled.filter((id) => id !== submissionId);
 			toast.error('Could not edit — it may have already sent.');
 			return;
 		}
@@ -1272,9 +1272,9 @@
 			// Reopen the restored draft with its original send time preserved.
 			compose.start({ resumeDraftId: res.draft.id, scheduleAt: sendAt });
 			await scheduledSends().refresh();
-			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			hiddenScheduled = hiddenScheduled.filter((id) => id !== submissionId);
 		} else {
-			hiddenScheduled = hiddenScheduled.filter((x) => x !== submissionId);
+			hiddenScheduled = hiddenScheduled.filter((id) => id !== submissionId);
 			toast.error('This send already went out.');
 		}
 	}
@@ -1324,14 +1324,14 @@
 			return;
 		}
 		if (e.key === 'r' || e.key === 'a' || e.key === 'f') {
-			const msgs = (openDto?.items ?? []).filter((i) => i.type === 'external_message') as MessageDTO[];
+			const msgs = (openDto?.items ?? []).filter((item) => item.type === 'external_message') as MessageDTO[];
 			if (!msgs.length) return;
 			e.preventDefault();
 			if (e.key === 'f') {
 				forward(msgs.at(-1)!, openDto?.subject ?? null);
 			} else {
 				// Same default audience as the docked composer: latest inbound, else newest.
-				const base = [...msgs].reverse().find((m) => !m.outbound) ?? msgs.at(-1)!;
+				const base = [...msgs].reverse().find((msg) => !msg.outbound) ?? msgs.at(-1)!;
 				void replyTo(base, e.key === 'a' ? 'reply_all' : 'reply');
 			}
 		}
@@ -1433,8 +1433,8 @@
 		type="button"
 		aria-pressed={checked}
 		aria-label={label}
-		onclick={(e) => {
-			e.stopPropagation();
+		onclick={(event) => {
+			event.stopPropagation();
 			toggle();
 		}}
 		class="focus-visible:ring-ring/50 relative mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-2"
@@ -1459,16 +1459,16 @@
      the recipients that didn't make it. Rendered under bubbles and card headers
      so a failure is readable without hunting for a 3px icon. -->
 {#snippet sendFailure(sub: NonNullable<MessageDTO['submission']>)}
-	{@const bad = sub.perRecipient.filter((r) => ['failed', 'bounced', 'dropped', 'complained'].includes(r.status))}
+	{@const bad = sub.perRecipient.filter((recipient) => ['failed', 'bounced', 'dropped', 'complained'].includes(recipient.status))}
 	<div class="border-destructive/30 bg-destructive/10 text-destructive mt-1.5 w-full rounded-lg border px-2.5 py-1.5 text-left text-[11px]">
 		<div class="flex items-center gap-1 font-semibold">
 			<TriangleAlertIcon class="size-3 shrink-0" />
 			{sub.status === 'canceled' ? 'Send canceled' : 'Not delivered'}
 		</div>
 		{#if sub.lastError}<p class="mt-0.5 opacity-90">{sub.lastError}</p>{/if}
-		{#each bad as r (r.address)}
+		{#each bad as recipient (recipient.address)}
 			<p class="mt-0.5 truncate font-mono opacity-90">
-				{r.address} — {r.status}{r.bounceType ? ` (${r.bounceType} bounce)` : ''}
+				{recipient.address} — {recipient.status}{recipient.bounceType ? ` (${recipient.bounceType} bounce)` : ''}
 			</p>
 		{/each}
 		{#if sub.mine && (RETRYABLE_SEND_STATUSES as readonly string[]).includes(sub.status)}
@@ -1527,7 +1527,7 @@
 			title="Not everyone on this thread can see this message"
 		>
 			<LockIcon class="size-2.5 shrink-0" />
-			Only you{priv.length ? ` & ${priv.map((a) => nameFor(a)).join(', ')}` : ''} can see this
+			Only you{priv.length ? ` & ${priv.map((addr) => nameFor(addr)).join(', ')}` : ''} can see this
 		</span>
 	{/if}
 {/snippet}
@@ -1536,7 +1536,7 @@
      {@html}, so linkification can never introduce markup. Kept on single lines:
      the container is whitespace-pre-wrap and template newlines would show. -->
 {#snippet linkedText(text: string)}
-	{#each linkifySegments(text) as s, i (i)}{#if s.type === 'link'}<a href={s.href} target="_blank" rel="noopener noreferrer" class="underline underline-offset-2 break-all">{s.value}</a>{:else if s.type === 'email'}<button type="button" class="underline underline-offset-2 break-all" onclick={() => openMailto(s.address)}>{s.value}</button>{:else}{s.value}{/if}{/each}
+	{#each linkifySegments(text) as segment, i (i)}{#if segment.type === 'link'}<a href={segment.href} target="_blank" rel="noopener noreferrer" class="underline underline-offset-2 break-all">{segment.value}</a>{:else if segment.type === 'email'}<button type="button" class="underline underline-offset-2 break-all" onclick={() => openMailto(segment.address)}>{segment.value}</button>{:else}{segment.value}{/if}{/each}
 {/snippet}
 
 <!-- Reply context above a reply. parentId set → the parent is in this thread: a
@@ -1557,10 +1557,10 @@
 			</button>
 		{:else}
 			<!-- Hidden ancestor chain (added-on-Cc): oldest first, immediate parent last. -->
-			{#each rc.ancestors ?? [] as a (a.sentAt ?? a.text)}
+			{#each rc.ancestors ?? [] as ancestor (ancestor.sentAt ?? ancestor.text)}
 				<div class="border-border text-muted-foreground mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
-					<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(a.from)}</div>
-					<div class="whitespace-pre-wrap opacity-70">{a.text}</div>
+					<div class="text-muted-foreground mb-0.5">↳ Earlier from {nameFor(ancestor.from)}</div>
+					<div class="whitespace-pre-wrap opacity-70">{ancestor.text}</div>
 				</div>
 			{/each}
 			<div class="border-border text-muted-foreground mb-1.5 rounded border-l-2 py-1 pr-1 pl-2 text-[11px] leading-snug">
@@ -1687,8 +1687,8 @@
 		{#if (!isVirtual && !searchQ) || placement === 'drafts'}
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
-				? (myDrafts().current ?? []).map((d) => d.id)
-				: applyListFilters(items).map((t) => t.threadId)}
+				? (myDrafts().current ?? []).map((draft) => draft.id)
+				: applyListFilters(items).map((thread) => thread.threadId)}
 			{@const sel = inDrafts ? draftSel : threadSel}
 			{@const n = sel.size}
 			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
@@ -1764,8 +1764,8 @@
 			use:pullToRefresh={{
 				enabled: coarsePointer,
 				onRefresh: refreshCurrentList,
-				onProgress: (r) => (pullProg = r),
-				onBusy: (b) => (pullBusy = b)
+				onProgress: (ratio) => (pullProg = ratio),
+				onBusy: (busy) => (pullBusy = busy)
 			}}
 		>
 			<!-- Pull-to-refresh indicator: floats over the list top, travels with the
@@ -1838,36 +1838,36 @@
 				{:else}
 					{@const drafts = draftsQ.current}
 					{#if drafts.length}
-						{#each drafts as d (d.id)}
-							{@const dfx = rowFx.get(d.id)}
-							{@const deleting = pendingDelete.has(d.id)}
+						{#each drafts as draft (draft.id)}
+							{@const dfx = rowFx.get(draft.id)}
+							{@const deleting = pendingDelete.has(draft.id)}
 							<div
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: dfx }}
 								aria-busy={deleting}
-								class="group/row flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 select-none {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(d.id) ? 'bg-accent' : 'hover:bg-muted/50'}"
+								class="group/row flex items-start border-b py-2.5 pl-3 transition-[opacity,background-color] duration-150 select-none {deleting ? 'pointer-events-none opacity-45' : ''} {draftSel.has(draft.id) ? 'bg-accent' : 'hover:bg-muted/50'}"
 							>
 								{@render selectAvatar(
-									d.to,
-									draftSel.has(d.id),
-									() => (draftSel.has(d.id) ? draftSel.delete(d.id) : draftSel.add(d.id)),
+									draft.to,
+									draftSel.has(draft.id),
+									() => (draftSel.has(draft.id) ? draftSel.delete(draft.id) : draftSel.add(draft.id)),
 									'Select draft'
 								)}
-								<button type="button" onclick={() => openDraft(d.id)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
+								<button type="button" onclick={() => openDraft(draft.id)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 									<div class="min-w-0 flex-1">
 										<div class="flex items-baseline gap-2">
-											<span class="flex-1 truncate text-sm font-medium">{d.to.length ? d.to.map(senderName).join(', ') : 'No recipients'}</span>
-											<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(d.updatedAt)}</span>
+											<span class="flex-1 truncate text-sm font-medium">{draft.to.length ? draft.to.map(senderName).join(', ') : 'No recipients'}</span>
+											<span class="text-faint shrink-0 text-[11px] tabular-nums">{relTime(draft.updatedAt)}</span>
 										</div>
-										<span class="block truncate text-[13px] text-muted-foreground">{d.subject || '(no subject)'}</span>
-										<span class="text-muted-foreground line-clamp-1 text-xs">{d.snippet ?? ''}</span>
+										<span class="block truncate text-[13px] text-muted-foreground">{draft.subject || '(no subject)'}</span>
+										<span class="text-muted-foreground line-clamp-1 text-xs">{draft.snippet ?? ''}</span>
 									</div>
 								</button>
 								<button
 									type="button"
 									title="Delete draft"
 									disabled={deleting}
-									onclick={() => deleteDrafts([d.id])}
+									onclick={() => deleteDrafts([draft.id])}
 									class="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 mr-1 grid size-8 shrink-0 place-items-center self-center rounded-md outline-none transition-[color,opacity] focus-visible:ring-2 pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 {deleting ? 'opacity-100 pointer-fine:opacity-100' : ''}"
 								>
 									{#if deleting}<Spinner class="size-4" />{:else}<Trash2Icon class="size-4" />{/if}
@@ -1887,19 +1887,19 @@
 			{:else if placement === 'scheduled'}
 				{@const schedQ = scheduledSends()}
 				{#if schedQ.current}
-					{@const items = schedQ.current.filter((s) => !hiddenScheduled.includes(s.submissionId))}
+					{@const items = schedQ.current.filter((submission) => !hiddenScheduled.includes(submission.submissionId))}
 					{#if items.length}
-						{#each items as s (s.submissionId)}
+						{#each items as submission (submission.submissionId)}
 							<div class="flex gap-3 border-b px-3 py-2.5 select-none">
-								{@render monogram(s.to ?? null, 'mt-0.5 size-9 text-xs')}
+								{@render monogram(submission.to ?? null, 'mt-0.5 size-9 text-xs')}
 								<div class="min-w-0 flex-1">
-									<span class="block truncate text-sm font-medium">{s.to ? senderName(s.to) : '—'}</span>
-									<span class="block truncate text-[13px] text-muted-foreground">{s.subject || '(no subject)'}</span>
+									<span class="block truncate text-sm font-medium">{submission.to ? senderName(submission.to) : '—'}</span>
+									<span class="block truncate text-[13px] text-muted-foreground">{submission.subject || '(no subject)'}</span>
 									<div class="mt-1 flex items-center justify-between">
-										<span class="text-brand inline-flex items-center gap-1 text-xs font-medium"><ClockIcon class="size-3" /> Sends {fmtTime(s.sendAt)}</span>
+										<span class="text-brand inline-flex items-center gap-1 text-xs font-medium"><ClockIcon class="size-3" /> Sends {fmtTime(submission.sendAt)}</span>
 										<div class="flex items-center gap-3">
-												<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => editScheduled(s.submissionId, s.sendAt)}>Edit</button>
-												<button type="button" class="text-muted-foreground hover:text-destructive text-xs underline" onclick={() => cancelScheduled(s.submissionId)}>Cancel</button>
+												<button type="button" class="text-muted-foreground hover:text-foreground text-xs underline" onclick={() => editScheduled(submission.submissionId, submission.sendAt)}>Edit</button>
+												<button type="button" class="text-muted-foreground hover:text-destructive text-xs underline" onclick={() => cancelScheduled(submission.submissionId)}>Cancel</button>
 											</div>
 									</div>
 								</div>
@@ -1913,14 +1913,14 @@
 				{/if}
 			{:else if mailboxId && !isVirtual}
 					{#if applyListFilters(items).length}
-						{#each applyListFilters(items) as t (t.threadId)}
-							{@const selected = (navCursor ?? threadId) === t.threadId}
-							{@const checked = threadSel.has(t.threadId)}
-							{@const fx = rowFx.get(t.threadId)}
-							{@const prog = swipeProg.get(t.threadId) ?? 0}
+						{#each applyListFilters(items) as thread (thread.threadId)}
+							{@const selected = (navCursor ?? threadId) === thread.threadId}
+							{@const checked = threadSel.has(thread.threadId)}
+							{@const fx = rowFx.get(thread.threadId)}
+							{@const prog = swipeProg.get(thread.threadId) ?? 0}
 							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
 							<div
-								data-row={t.threadId}
+								data-row={thread.threadId}
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
@@ -1938,36 +1938,36 @@
 								<div
 									use:swipeX={{
 										enabled: () => coarsePointer() && !threadSel.size,
-										onRight: () => moveRow(t.threadId, rightTarget),
-										onLeft: placement === 'trash' ? undefined : () => moveRow(t.threadId, 'trash'),
-										onProgress: (r) => {
-											if (r === 0) swipeProg.delete(t.threadId);
-											else swipeProg.set(t.threadId, r);
+										onRight: () => moveRow(thread.threadId, rightTarget),
+										onLeft: placement === 'trash' ? undefined : () => moveRow(thread.threadId, 'trash'),
+										onProgress: (progress) => {
+											if (progress === 0) swipeProg.delete(thread.threadId);
+											else swipeProg.set(thread.threadId, progress);
 										}
 									}}
 									class="group/row bg-background relative flex items-start py-2.5 pl-3 transition-colors select-none active:bg-accent/70 {selected ? 'bg-accent' : checked ? 'bg-accent' : 'hover:bg-muted/50'}"
 								>
 								{#if selected}<span class="bg-brand absolute inset-y-1.5 left-0 w-[3px] rounded-r-full"></span>{/if}
 								{@render selectAvatar(
-									t.participants,
+									thread.participants,
 									checked,
-									() => (checked ? threadSel.delete(t.threadId) : threadSel.add(t.threadId)),
+									() => (checked ? threadSel.delete(thread.threadId) : threadSel.add(thread.threadId)),
 									'Select conversation'
 								)}
-							<button type="button" onclick={() => selectThread(t.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
+							<button type="button" onclick={() => selectThread(thread.threadId)} class="focus-visible:ring-ring/50 flex min-w-0 flex-1 gap-3 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset">
 								<div class="min-w-0 flex-1">
-									<span class="block truncate text-sm {t.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(t.from, t.fromName)}</span>
+									<span class="block truncate text-sm {thread.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(thread.from, thread.fromName)}</span>
 									<div class="flex items-center gap-1.5">
-										{#if t.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
+										{#if thread.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
 										<!-- Sent is a cross-cut view — flag rows that also live in the Inbox. -->
-										{#if placement === 'sent' && t.placement === 'inbox'}
+										{#if placement === 'sent' && thread.placement === 'inbox'}
 											<span class="bg-brand/10 text-brand shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">Inbox</span>
 										{/if}
-										<span class="min-w-0 flex-1 truncate text-[13px] {t.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{t.subject ?? '(no subject)'}</span>
-										{#if t.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
-										{#if t.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
+										<span class="min-w-0 flex-1 truncate text-[13px] {thread.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{thread.subject ?? '(no subject)'}</span>
+										{#if thread.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
+										{#if thread.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
 									</div>
-									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{t.snippet ?? ''}</span>
+									<span class="text-muted-foreground mt-0.5 line-clamp-1 text-xs">{thread.snippet ?? ''}</span>
 								</div>
 							</button>
 							<!-- Right rail, three stacked rows aligned to the text lines: metadata
@@ -1977,17 +1977,17 @@
 								<!-- Row 1: participants + time. pr-2 aligns the time's right edge with
 								     the action glyphs below (which are centered in size-8 boxes). -->
 								<div class="text-faint flex items-center gap-1.5 pr-2">
-									<AvatarRow participants={t.participants} total={t.participantCount} />
-									<span class="text-muted-foreground text-[11px] tabular-nums">{relTime(t.lastMessageAt)}</span>
+									<AvatarRow participants={thread.participants} total={thread.participantCount} />
+									<span class="text-muted-foreground text-[11px] tabular-nums">{relTime(thread.lastMessageAt)}</span>
 								</div>
 								<!-- Row 2: snooze + star + archive -->
 								<div class="flex items-center gap-0.5">
 									{#if mailboxId && (placement === 'inbox' || placement === 'snoozed')}
 										<SnoozeMenu
 											{mailboxId}
-											threadId={t.threadId}
+											threadId={thread.threadId}
 											snoozed={placement === 'snoozed'}
-											onchange={(info) => afterRowSnooze(t.threadId, info)}
+											onchange={(info) => afterRowSnooze(thread.threadId, info)}
 											triggerClass="grid size-8 pointer-coarse:size-10 place-items-center rounded-md text-faint transition duration-150 ease-out outline-none hover:text-warn focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-[state=open]:opacity-100"
 										/>
 									{/if}
@@ -1996,7 +1996,7 @@
 											type="button"
 											title="Archive"
 											aria-label="Archive"
-											onclick={() => moveRow(t.threadId, 'archived')}
+											onclick={() => moveRow(thread.threadId, 'archived')}
 											class="focus-visible:ring-ring/50 text-faint hover:text-ok grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100"
 										>
 											<ArchiveIcon class="size-4" />
@@ -2004,15 +2004,15 @@
 									{/if}
 									<button
 										type="button"
-										title={t.isStarred ? 'Unstar' : 'Star'}
-										aria-label={t.isStarred ? 'Unstar' : 'Star'}
-										aria-pressed={t.isStarred}
-										onclick={() => starRow(t.threadId, t.isStarred)}
-										class="focus-visible:ring-ring/50 grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {t.isStarred
+										title={thread.isStarred ? 'Unstar' : 'Star'}
+										aria-label={thread.isStarred ? 'Unstar' : 'Star'}
+										aria-pressed={thread.isStarred}
+										onclick={() => starRow(thread.threadId, thread.isStarred)}
+										class="focus-visible:ring-ring/50 grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {thread.isStarred
 											? 'text-p3'
 											: 'text-faint hover:text-p3 pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100'}"
 									>
-										<StarIcon class="size-4 {t.isStarred ? 'fill-current' : ''}" />
+										<StarIcon class="size-4 {thread.isStarred ? 'fill-current' : ''}" />
 									</button>
 								</div>
 							</div>
@@ -2076,10 +2076,10 @@
 		{#if threadId && threadQ}
 			{#if openDto}
 				{@const thread = openDto}
-					{@const msgs = thread.items.filter((i): i is MessageDTO => i.type === 'external_message')}
+					{@const msgs = thread.items.filter((item): item is MessageDTO => item.type === 'external_message')}
 					{@const parts = threadParticipants(msgs)}
 					{@const ctx = replyCtx(msgs, replyTarget, self)}
-					{@const attTotal = msgs.reduce((n, m) => n + shownAttachments(m).length, 0)}
+					{@const attTotal = msgs.reduce((sum, msg) => sum + shownAttachments(msg).length, 0)}
 					{@const ppl = participants(msgs)}
 					<div class="bg-card/40 flex h-14 items-center gap-2 border-b px-3 md:px-4">
 						<Button variant="ghost" size="icon" class="text-muted-foreground @4xl:hidden" onclick={() => nav({ thread: null })}>
@@ -2093,10 +2093,10 @@
 						</div>
 						<!-- Who's on the thread, at a glance (group threads read instantly). -->
 						{#if ppl.length > 1}
-							<div class="hidden items-center gap-1.5 md:flex" title={ppl.map((pp) => pp.name).join(', ')}>
+							<div class="hidden items-center gap-1.5 md:flex" title={ppl.map((person) => person.name).join(', ')}>
 								<AvatarGroup>
-									{#each ppl.slice(0, 4) as pp (pp.address)}
-										<SenderAvatar from={pp.address} class="ring-background size-6 rounded-full text-[9px] ring-2" />
+									{#each ppl.slice(0, 4) as person (person.address)}
+										<SenderAvatar from={person.address} class="ring-background size-6 rounded-full text-[9px] ring-2" />
 									{/each}
 								</AvatarGroup>
 								{#if ppl.length > 4}<span class="text-faint text-[10px] tabular-nums">+{ppl.length - 4}</span>{/if}
@@ -2120,10 +2120,10 @@
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content class="w-56" align="end">
 									<DropdownMenu.Label class="text-muted-foreground text-xs">Assign to</DropdownMenu.Label>
-									{#each members as mem (mem.userId)}
-										<DropdownMenu.Item onSelect={() => assign(mem.userId)}>
-											<span class="flex-1 truncate">{mem.name}</span>
-											{#if openAssignee === mem.userId}<CheckIcon class="size-4" />{/if}
+									{#each members as member (member.userId)}
+										<DropdownMenu.Item onSelect={() => assign(member.userId)}>
+											<span class="flex-1 truncate">{member.name}</span>
+											{#if openAssignee === member.userId}<CheckIcon class="size-4" />{/if}
 										</DropdownMenu.Item>
 									{/each}
 									{#if openAssignee}
@@ -2156,14 +2156,14 @@
 								<Popover.Content class="w-72 p-2" align="end">
 									<p class="text-muted-foreground px-2 pt-1 pb-1.5 text-xs font-medium">In this conversation</p>
 									<div class="flex max-h-64 flex-col gap-0.5 overflow-y-auto overscroll-contain">
-										{#each ppl as p (p.address)}
+										{#each ppl as person (person.address)}
 											<div class="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
-												{@render monogram(p.address, 'size-7 text-[10px]')}
+												{@render monogram(person.address, 'size-7 text-[10px]')}
 												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm leading-tight">{p.name}</p>
-													<p class="text-muted-foreground truncate font-mono text-[11px] leading-tight">{p.address}</p>
+													<p class="truncate text-sm leading-tight">{person.name}</p>
+													<p class="text-muted-foreground truncate font-mono text-[11px] leading-tight">{person.address}</p>
 												</div>
-												{#if p.mine}
+												{#if person.mine}
 													<span class="bg-brand/10 text-brand shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium">You</span>
 												{/if}
 											</div>
@@ -2305,12 +2305,12 @@
 								bind:value={findQ}
 								aria-label="Find in conversation"
 								placeholder="Find in conversation…"
-								onkeydown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										findStep(e.shiftKey ? -1 : 1);
-									} else if (e.key === 'Escape') {
-										e.preventDefault();
+								onkeydown={(event) => {
+									if (event.key === 'Enter') {
+										event.preventDefault();
+										findStep(event.shiftKey ? -1 : 1);
+									} else if (event.key === 'Escape') {
+										event.preventDefault();
 										closeFind();
 									}
 								}}
@@ -2382,7 +2382,7 @@
 												{#if m.calendarInvite}
 													<!-- flat: the bubble is the single card — no nested border/radius. -->
 													<div class="-mx-3.5 mb-2 border-y">
-														<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
+														<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(status) => rsvp(m, status)} />
 													</div>
 													<button
 														type="button"
@@ -2430,20 +2430,20 @@
 													     documents as compact rows. Parts the HTML references by cid already
 													     render inline — skip their tiles to avoid doubles. -->
 													{@const shown = shownAttachments(m)}
-													{@const media = shown.filter((a) => /^(image|video)\//.test(a.contentType ?? '') || a.contentType === 'application/pdf')}
-													{@const docsOnly = shown.filter((a) => !media.includes(a))}
+													{@const media = shown.filter((attachment) => /^(image|video)\//.test(attachment.contentType ?? '') || attachment.contentType === 'application/pdf')}
+													{@const docsOnly = shown.filter((attachment) => !media.includes(attachment))}
 													{#if media.length}
 														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
 														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-[min(15rem,calc(80cqi-2.5rem))] grid-cols-1' : 'max-w-[min(20rem,calc(80cqi-2.5rem))] grid-cols-2'}">
-															{#each media as a (a.id)}
-																<AttachmentTile att={a} variant="grid" onpreview={openLightbox} />
+															{#each media as attachment (attachment.id)}
+																<AttachmentTile att={attachment} variant="grid" onpreview={openLightbox} />
 															{/each}
 														</div>
 													{/if}
 													{#if docsOnly.length}
 														<div class="mt-2 space-y-1.5">
-															{#each docsOnly as a (a.id)}
-																<AttachmentTile att={a} variant="row" tone={outbound ? 'inverse' : 'default'} />
+															{#each docsOnly as attachment (attachment.id)}
+																<AttachmentTile att={attachment} variant="row" tone={outbound ? 'inverse' : 'default'} />
 															{/each}
 														</div>
 													{/if}
@@ -2535,7 +2535,7 @@
 												     the body padding) -> one card + one radius, not a nested box. Flush to
 												     the bottom only when it's the last block (original hidden). -->
 												<div class="-mx-3.5 border-t {inviteOnly ? '-mb-3.5' : 'mb-3'}">
-													<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(s) => rsvp(m, s)} />
+													<InviteCard flat invite={inviteFor(m)} originalHref={inviteIcsHref(m)} onRsvp={(status) => rsvp(m, status)} />
 												</div>
 											{/if}
 											{#if !m.calendarInvite || showOriginal.has(m.id)}
@@ -2572,8 +2572,8 @@
 												{@const shown = shownAttachments(m)}
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
-														{#each shown as a (a.id)}
-															<AttachmentTile att={a} variant="strip" onpreview={openLightbox} />
+														{#each shown as attachment (attachment.id)}
+															<AttachmentTile att={attachment} variant="strip" onpreview={openLightbox} />
 														{/each}
 													</div>
 												{/if}
@@ -2652,7 +2652,7 @@
 
 					<!-- Attachments in a single-pane region — bottom drawer over the conversation. -->
 					{#if narrow}
-						<Drawer.Root open={attachmentsOpen} onOpenChange={(o) => (attachmentsOpen = o)}>
+						<Drawer.Root open={attachmentsOpen} onOpenChange={(open) => (attachmentsOpen = open)}>
 							<Drawer.Content class="max-h-[80svh]">
 								<Drawer.Header class="pb-2">
 									<Drawer.Title class="flex items-center gap-2 text-sm">
@@ -2724,7 +2724,7 @@
 <!-- Image-attachment lightbox — shallow-routed; Esc/backdrop (Dialog) or Back closes. -->
 {#if page.state.lightbox}
 	{@const img = page.state.lightbox}
-	<Dialog.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+	<Dialog.Root open={true} onOpenChange={(open) => { if (!open) history.back(); }}>
 		<Dialog.Content class="w-auto max-w-[94vw] border-0 bg-transparent p-0 shadow-none" showCloseButton={false}>
 			<Dialog.Header class="sr-only"><Dialog.Title>{img.name}</Dialog.Title></Dialog.Header>
 			<img
@@ -2749,7 +2749,7 @@
 {#if page.state.fullMessage}
 	{@const fm = page.state.fullMessage}
 	{#if isMobile.current}
-		<Drawer.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+		<Drawer.Root open={true} onOpenChange={(open) => { if (!open) history.back(); }}>
 			<Drawer.Content>
 				<Drawer.Header class="pb-0"><Drawer.Title>Full message</Drawer.Title></Drawer.Header>
 				<div class="max-h-[80vh] overflow-y-auto p-4">
@@ -2758,7 +2758,7 @@
 			</Drawer.Content>
 		</Drawer.Root>
 	{:else}
-		<Dialog.Root open={true} onOpenChange={(o) => { if (!o) history.back(); }}>
+		<Dialog.Root open={true} onOpenChange={(open) => { if (!open) history.back(); }}>
 			<Dialog.Content class="max-h-[85vh] w-[min(92vw,56rem)] max-w-none overflow-y-auto">
 				<Dialog.Header><Dialog.Title>Full message</Dialog.Title></Dialog.Header>
 				<MailFrame src={`/api/messages/${fm.id}/body?images=${fm.images ? 1 : 0}&full=1`} collapse={false} onmailto={openMailto} />

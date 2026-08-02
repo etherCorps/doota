@@ -24,7 +24,7 @@ function fakeR2() {
       return { async arrayBuffer() { return typeof v === "string" ? new TextEncoder().encode(v).buffer : v; }, async text() { return typeof v === "string" ? v : new TextDecoder().decode(v); } };
     },
     async delete(k: string) { store.delete(k); },
-    async list({ prefix }: { prefix: string }) { return { objects: [...store.keys()].filter((x) => x.startsWith(prefix)).map((key) => ({ key })) }; },
+    async list({ prefix }: { prefix: string }) { return { objects: [...store.keys()].filter((storedKey) => storedKey.startsWith(prefix)).map((key) => ({ key })) }; },
   };
 }
 function fakeQueue() { const sent: unknown[] = []; return { sent, async send(b: unknown) { sent.push(b); } }; }
@@ -79,9 +79,9 @@ describe("SAFETY — a note can never reach the outbound path", () => {
     expect(await decryptContent(ck, msg.bodyStrippedEnc)).toBe("public reply");
     // No message/submission row anywhere carries the note text.
     const msgs = await db.query.message.findMany();
-    for (const m of msgs) {
-      expect(await decryptContent(ck, m.bodyStrippedEnc)).not.toContain("SECRET INTERNAL");
-      expect(await decryptContent(ck, m.bodyFullEnc)).not.toContain("SECRET INTERNAL");
+    for (const message of msgs) {
+      expect(await decryptContent(ck, message.bodyStrippedEnc)).not.toContain("SECRET INTERNAL");
+      expect(await decryptContent(ck, message.bodyFullEnc)).not.toContain("SECRET INTERNAL");
     }
     // The note lives only in internal_note; nothing points a submission at it.
     const note = await db.query.internalNote.findFirst();
@@ -94,15 +94,15 @@ describe("notes — visibility follows mailbox_access", () => {
   it("getThread omits notes when includeCollab is false (org-admin read, no grant)", async () => {
     await createNote(db, ck, KEY_B64, { orgId: ORG, threadId: "th1", mailboxId: "mb_alice", authorUserId: "u1", body: "note" });
     const withoutGrant = await getThread(db, { threadId: "th1", mailboxId: "mb_alice", ck, includeCollab: false });
-    expect(withoutGrant!.items.some((i) => i.type === "internal_note")).toBe(false);
+    expect(withoutGrant!.items.some((item) => item.type === "internal_note")).toBe(false);
     const withGrant = await getThread(db, { threadId: "th1", mailboxId: "mb_alice", ck, includeCollab: true });
-    expect(withGrant!.items.some((i) => i.type === "internal_note")).toBe(true);
+    expect(withGrant!.items.some((item) => item.type === "internal_note")).toBe(true);
   });
 
   it("a note in one mailbox is invisible in another for the same thread", async () => {
     await createNote(db, ck, KEY_B64, { orgId: ORG, threadId: "th1", mailboxId: "mb_alice", authorUserId: "u1", body: "alice-only" });
     const support = await getThread(db, { threadId: "th1", mailboxId: "mb_support", ck, includeCollab: true });
-    expect(support!.items.some((i) => i.type === "internal_note")).toBe(false);
+    expect(support!.items.some((item) => item.type === "internal_note")).toBe(false);
   });
 });
 
@@ -188,7 +188,7 @@ describe("timeline ordering across mixed kinds", () => {
     await db.insert(schema.systemEvent).values({ id: "e1", orgId: ORG, threadId: "th1", mailboxId: "mb_support", actorUserId: "u1", eventType: "assigned", data: "{}", createdAt: new Date(base + 2000) });
 
     const dto = await getThread(db, { threadId: "th1", mailboxId: "mb_support", ck, includeCollab: true });
-    const kinds = dto!.items.map((i) => i.type);
+    const kinds = dto!.items.map((item) => item.type);
     expect(kinds).toEqual(["external_message", "internal_note", "system_event"]);
   });
 });

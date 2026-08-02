@@ -46,16 +46,16 @@
 			{@const keys = keysQ.current}
 			{#if keys.length}
 				<ul class="flex flex-col divide-y">
-					{#each keys as k (k.id)}
+					{#each keys as apiKey (apiKey.id)}
 						<li class="flex items-center gap-3 py-2.5">
 							<div class="flex min-w-0 flex-1 flex-col">
-								<span class="truncate text-sm font-medium">{k.name || 'Untitled key'}</span>
+								<span class="truncate text-sm font-medium">{apiKey.name || 'Untitled key'}</span>
 								<span class="text-muted-foreground truncate font-mono text-xs">
-									{k.prefix}…{#if k.mailboxId} · scoped{/if} · created {fmt(k.createdAt)}
-									{#if k.lastUsedAt} · used {fmt(k.lastUsedAt)}{/if}
+									{apiKey.prefix}…{#if apiKey.mailboxId} · scoped{/if} · created {fmt(apiKey.createdAt)}
+									{#if apiKey.lastUsedAt} · used {fmt(apiKey.lastUsedAt)}{/if}
 								</span>
 							</div>
-							{#if k.revokedAt}
+							{#if apiKey.revokedAt}
 								<Badge variant="outline">Revoked</Badge>
 							{:else}
 								<AlertDialog.Root>
@@ -73,18 +73,18 @@
 									</AlertDialog.Trigger>
 									<AlertDialog.Content>
 										<AlertDialog.Header>
-											<AlertDialog.Title>Revoke {k.name || 'this key'}?</AlertDialog.Title>
+											<AlertDialog.Title>Revoke {apiKey.name || 'this key'}?</AlertDialog.Title>
 											<AlertDialog.Description>
-												Any client using <span class="font-mono">{k.prefix}…</span> will immediately
+												Any client using <span class="font-mono">{apiKey.prefix}…</span> will immediately
 												stop working. This can't be undone.
 											</AlertDialog.Description>
 										</AlertDialog.Header>
 										<AlertDialog.Footer>
 											<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
 											<AlertDialog.Action
-												onclick={(e) => {
-													e.preventDefault();
-													revoke(k.id);
+												onclick={(event) => {
+													event.preventDefault();
+													revoke(apiKey.id);
 												}}
 												class="bg-destructive text-white hover:bg-destructive/90"
 											>

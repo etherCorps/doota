@@ -51,24 +51,24 @@
 	async function refreshMenu() {
 		if (!ta) return;
 		const caret = ta.selectionStart ?? body.length;
-		const t = activeToken(body, caret);
-		if (!t) {
+		const token = activeToken(body, caret);
+		if (!token) {
 			menu = null;
 			return;
 		}
 		await ensureMembers();
 		const items = members
-			.filter((m) => !t.q || m.handle.toLowerCase().includes(t.q) || m.name.toLowerCase().includes(t.q))
+			.filter((candidate) => !token.q || candidate.handle.toLowerCase().includes(token.q) || candidate.name.toLowerCase().includes(token.q))
 			.slice(0, 6);
-		menu = items.length ? { start: t.start, items, active: 0 } : null;
+		menu = items.length ? { start: token.start, items, active: 0 } : null;
 	}
 
-	function pick(m: Cand) {
+	function pick(candidate: Cand) {
 		if (!ta || !menu) return;
 		const caret = ta.selectionStart ?? body.length;
 		const before = body.slice(0, menu.start);
 		const after = body.slice(caret);
-		const insert = `@${m.handle} `;
+		const insert = `@${candidate.handle} `;
 		body = before + insert + after;
 		const pos = before.length + insert.length;
 		menu = null;
@@ -143,7 +143,7 @@
 				class="bg-popover absolute top-full right-0 left-0 z-20 mt-1 max-h-48 overflow-auto rounded-md border py-1 shadow-md"
 				role="listbox"
 			>
-				{#each menu.items as m, i (m.handle)}
+				{#each menu.items as candidate, i (candidate.handle)}
 					<li>
 						<button
 							type="button"
@@ -154,13 +154,13 @@
 								: ''}"
 							onmousedown={(e) => {
 								e.preventDefault();
-								pick(m);
+								pick(candidate);
 							}}
 							onmouseenter={() => menu && (menu.active = i)}
 						>
 							<AtSignIcon class="text-muted-foreground size-3.5 shrink-0" />
-							<span class="truncate font-medium">{m.name}</span>
-							<span class="text-muted-foreground truncate text-xs">@{m.handle}</span>
+							<span class="truncate font-medium">{candidate.name}</span>
+							<span class="text-muted-foreground truncate text-xs">@{candidate.handle}</span>
 						</button>
 					</li>
 				{/each}

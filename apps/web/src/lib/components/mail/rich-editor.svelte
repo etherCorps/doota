@@ -98,18 +98,18 @@
 	}
 	function onLinkOpen(open: boolean) {
 		if (!open) return;
-		const a = anchorInSaved();
-		editingLink = !!a;
-		linkUrl = a?.getAttribute('href') ?? '';
+		const anchor = anchorInSaved();
+		editingLink = !!anchor;
+		linkUrl = anchor?.getAttribute('href') ?? '';
 	}
-	function normalize(u: string): string {
-		const t = u.trim();
-		if (!t) return '';
-		if (/^(https?:|mailto:|tel:)/i.test(t)) return t;
-		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return `mailto:${t}`;
-		return `https://${t}`;
+	function normalize(input: string): string {
+		const trimmed = input.trim();
+		if (!trimmed) return '';
+		if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return trimmed;
+		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `mailto:${trimmed}`;
+		return `https://${trimmed}`;
 	}
-	const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+	const esc = (str: string) => str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 	function applyLink() {
 		const url = normalize(linkUrl);
 		if (!url) return;

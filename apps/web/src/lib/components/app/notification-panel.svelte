@@ -41,13 +41,14 @@
 	// Optimistic read: de-bold the row instantly; the badge follows the server
 	// count refetch. Cleared implicitly when a refetch brings back readAt.
 	const readOverride = new SvelteSet<string>();
-	const isUnread = (n: (typeof notifs)[number]) => !n.readAt && !readOverride.has(n.id);
+	const isUnread = (notification: (typeof notifs)[number]) =>
+		!notification.readAt && !readOverride.has(notification.id);
 	const unread = $derived(unreadQ.current ?? 0);
 	const badge = $derived(unread > 9 ? '9+' : String(unread));
 
-	function onOpenChange(v: boolean) {
-		open = v;
-		if (!v) return;
+	function onOpenChange(isOpen: boolean) {
+		open = isOpen;
+		if (!isOpen) return;
 		// Fresh feed on open (the only place the full list is fetched); count too, in
 		// case reads happened on another device.
 		void notifsQ.refresh();
@@ -63,7 +64,7 @@
 	}
 
 	function markAll() {
-		for (const n of notifs) readOverride.add(n.id);
+		for (const notification of notifs) readOverride.add(notification.id);
 		void markAllNotificationsRead().then(() => {
 			void unreadQ.refresh();
 			if (open) void notifsQ.refresh();
@@ -86,9 +87,10 @@
 	const when = (ms: number) =>
 		new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-	function hrefFor(n: (typeof notifs)[number]): string {
-		if (n.mailboxId && n.threadId) return `${resolve('/app')}?mailbox=${n.mailboxId}&thread=${n.threadId}`;
-		if (n.threadId) return `${resolve('/app')}?thread=${n.threadId}`;
+	function hrefFor(notification: (typeof notifs)[number]): string {
+		if (notification.mailboxId && notification.threadId)
+			return `${resolve('/app')}?mailbox=${notification.mailboxId}&thread=${notification.threadId}`;
+		if (notification.threadId) return `${resolve('/app')}?thread=${notification.threadId}`;
 		return `${resolve('/app')}?folder=sent`;
 	}
 </script>
@@ -127,38 +129,38 @@
 					<p class="text-sm">You're all caught up.</p>
 				</div>
 			{/if}
-			{#each notifs as n (n.id)}
-				{@const uread = isUnread(n)}
+			{#each notifs as notification (notification.id)}
+				{@const uread = isUnread(notification)}
 				<a
-					href={hrefFor(n)}
+					href={hrefFor(notification)}
 					class="hover:bg-muted/60 flex items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0 {uread ? 'bg-brand/[0.04]' : ''}"
-					onclick={() => onItemClick(n.id, !uread)}
+					onclick={() => onItemClick(notification.id, !uread)}
 				>
 					<!-- Unread indicator: brand dot (transparent when read → no layout shift). -->
 					<span class="mt-1.5 size-2 shrink-0 rounded-full {uread ? 'bg-brand' : 'bg-transparent'}"></span>
-					{#if n.type === 'new_mail'}
+					{#if notification.type === 'new_mail'}
 						<MailIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">{senderLabel({ from: n.from, fromName: n.fromName })}</span>
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">{senderLabel({ from: notification.from, fromName: notification.fromName })}</span>
 							<span class="text-muted-foreground block truncate text-xs">New message</span>
 						</span>
-					{:else if n.type === 'assigned'}
+					{:else if notification.type === 'assigned'}
 						<UserRoundIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Assigned to you</span>
-							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} assigned this thread` : 'A thread was assigned to you'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} assigned this thread` : 'A thread was assigned to you'}</span>
 						</span>
-					{:else if n.type === 'note'}
+					{:else if notification.type === 'note'}
 						<StickyNoteIcon class="text-warn mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">New note</span>
-							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} left a note` : 'A teammate left a note'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} left a note` : 'A teammate left a note'}</span>
 						</span>
-					{:else if n.type === 'mention'}
+					{:else if notification.type === 'mention'}
 						<AtSignIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">You were mentioned</span>
-							<span class="text-muted-foreground block truncate text-xs">{n.actorName ? `${n.actorName} mentioned you in a note` : 'A teammate mentioned you'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} mentioned you in a note` : 'A teammate mentioned you'}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />
@@ -167,13 +169,13 @@
 							<span class="text-muted-foreground block truncate text-xs">Tap to view the thread</span>
 						</span>
 					{/if}
-					<span class="text-faint shrink-0 text-[11px]" title={when(n.createdAt)}>{relTime(n.createdAt)}</span>
+					<span class="text-faint shrink-0 text-[11px]" title={when(notification.createdAt)}>{relTime(notification.createdAt)}</span>
 				</a>
 			{/each}
 			{#if scheduled.length}
 				<p class="text-faint bg-muted/30 px-3 pt-2 pb-1 text-[11px] font-medium">Scheduled</p>
 			{/if}
-			{#each scheduled as s (s.submissionId)}
+			{#each scheduled as scheduledSend (scheduledSend.submissionId)}
 				<a
 					href={`${resolve('/app')}?folder=scheduled`}
 					class="hover:bg-muted/60 flex items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0"
@@ -182,8 +184,8 @@
 					<span class="mt-1.5 size-2 shrink-0"></span>
 					<ClockIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
 					<span class="min-w-0 flex-1">
-						<span class="block truncate text-sm">Scheduled: {s.subject?.trim() || (s.to ? `to ${s.to}` : 'message')}</span>
-						<span class="text-faint block text-xs">sends {when(s.sendAt)}</span>
+						<span class="block truncate text-sm">Scheduled: {scheduledSend.subject?.trim() || (scheduledSend.to ? `to ${scheduledSend.to}` : 'message')}</span>
+						<span class="text-faint block text-xs">sends {when(scheduledSend.sendAt)}</span>
 					</span>
 				</a>
 			{/each}

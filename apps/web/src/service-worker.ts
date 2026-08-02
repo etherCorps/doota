@@ -20,7 +20,7 @@ sw.addEventListener('install', (event) => {
 	event.waitUntil(
 		caches
 			.open(CACHE)
-			.then((c) => c.addAll([...build, ...files]))
+			.then((cache) => cache.addAll([...build, ...files]))
 			.then(() => sw.skipWaiting()),
 	);
 });
@@ -43,7 +43,7 @@ sw.addEventListener('fetch', (event) => {
 	const url = new URL(event.request.url);
 	if (url.origin !== location.origin || !PRECACHE.has(url.pathname)) return;
 	event.respondWith(
-		caches.open(CACHE).then(async (c) => (await c.match(event.request)) ?? fetch(event.request)),
+		caches.open(CACHE).then(async (cache) => (await cache.match(event.request)) ?? fetch(event.request)),
 	);
 });
 
@@ -63,7 +63,7 @@ async function onPush(event: PushEvent): Promise<void> {
 	// Open-tab dedupe: a focused window already shows the in-app badge/chirp, so
 	// firing an OS notification too would double up. Push covers closed/background.
 	const windows = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
-	if (windows.some((c) => (c as WindowClient).focused)) return;
+	if (windows.some((client) => (client as WindowClient).focused)) return;
 
 	await sw.registration.showNotification(data.title ?? 'Doota', {
 		body: data.body,
@@ -82,8 +82,8 @@ sw.addEventListener('notificationclick', (event) => {
 
 async function focusOrOpen(url: string): Promise<void> {
 	const windows = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
-	for (const c of windows) {
-		const win = c as WindowClient;
+	for (const client of windows) {
+		const win = client as WindowClient;
 		// Reuse an existing tab — navigate it to the target, then focus.
 		await win.navigate?.(url).catch(() => {});
 		await win.focus();

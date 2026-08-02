@@ -22,10 +22,10 @@
 </script>
 
 <dl class="bg-muted/40 mb-3 space-y-1 rounded-lg border px-3 py-2 text-[11px]">
-	{#each rows as r (r.label)}
+	{#each rows as row (row.label)}
 		<div class="flex gap-2">
-			<dt class="text-faint w-16 shrink-0">{r.label}</dt>
-			<dd class="text-muted-foreground min-w-0 flex-1 font-mono break-words">{r.value}</dd>
+			<dt class="text-faint w-16 shrink-0">{row.label}</dt>
+			<dd class="text-muted-foreground min-w-0 flex-1 font-mono break-words">{row.value}</dd>
 		</div>
 	{/each}
 	<div class="flex gap-2">

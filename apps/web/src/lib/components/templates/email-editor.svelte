@@ -167,22 +167,22 @@
 
 	// `/` slash-command items — convert the current block or insert a new one.
 	const SLASH_ITEMS: SlashItem[] = [
-		{ title: 'Text', action: (e, r) => e.chain().focus().deleteRange(r).setParagraph().run() },
-		{ title: 'Heading 1', action: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 1 }).run() },
-		{ title: 'Heading 2', action: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
-		{ title: 'Heading 3', action: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
-		{ title: 'Bullet list', action: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
-		{ title: 'Numbered list', action: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
-		{ title: 'Image', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'emImage' }).run() },
-		{ title: 'Button', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'button' }).run() },
-		{ title: '2 columns', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
-		{ title: '3 columns', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
-		{ title: 'Hero', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'hero' }).run() },
-		{ title: 'Social', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'social' }).run() },
-		{ title: 'Spacer', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'spacer' }).run() },
-		{ title: 'Divider', action: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
-		{ title: 'Footer', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'footer' }).run() },
-		{ title: 'HTML', action: (e, r) => e.chain().focus().deleteRange(r).insertContent({ type: 'htmlBlock' }).run() }
+		{ title: 'Text', action: (e, range) => e.chain().focus().deleteRange(range).setParagraph().run() },
+		{ title: 'Heading 1', action: (e, range) => e.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run() },
+		{ title: 'Heading 2', action: (e, range) => e.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run() },
+		{ title: 'Heading 3', action: (e, range) => e.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run() },
+		{ title: 'Bullet list', action: (e, range) => e.chain().focus().deleteRange(range).toggleBulletList().run() },
+		{ title: 'Numbered list', action: (e, range) => e.chain().focus().deleteRange(range).toggleOrderedList().run() },
+		{ title: 'Image', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'emImage' }).run() },
+		{ title: 'Button', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'button' }).run() },
+		{ title: '2 columns', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
+		{ title: '3 columns', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'columns', content: [{ type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }, { type: 'column', content: [{ type: 'paragraph' }] }] }).run() },
+		{ title: 'Hero', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'hero' }).run() },
+		{ title: 'Social', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'social' }).run() },
+		{ title: 'Spacer', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'spacer' }).run() },
+		{ title: 'Divider', action: (e, range) => e.chain().focus().deleteRange(range).setHorizontalRule().run() },
+		{ title: 'Footer', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'footer' }).run() },
+		{ title: 'HTML', action: (e, range) => e.chain().focus().deleteRange(range).insertContent({ type: 'htmlBlock' }).run() }
 	];
 
 	function refreshSel() {
@@ -297,7 +297,7 @@
 		openMenu = null;
 	}
 	const customVars = $derived(
-		editor ? tiptapVariables(editor.getJSON() as TiptapDoc, subject).filter((v) => !BUILTIN_VARIABLES.some((b) => b.name === v)) : []
+		editor ? tiptapVariables(editor.getJSON() as TiptapDoc, subject).filter((variable) => !BUILTIN_VARIABLES.some((builtin) => builtin.name === variable)) : []
 	);
 
 	// ---- contextual config ----------------------------------------------------
@@ -326,14 +326,14 @@
 		return Array.isArray(sel?.attrs.items) ? (sel!.attrs.items as SocialItem[]) : [];
 	}
 	function updateSocial(i: number, key: keyof SocialItem, value: string) {
-		const items = socialItems().map((it, j) => (j === i ? { ...it, [key]: value } : it));
+		const items = socialItems().map((item, index) => (index === i ? { ...item, [key]: value } : item));
 		setAttr('items', items);
 	}
 	function addSocial() {
 		setAttr('items', [...socialItems(), { network: 'github', href: 'https://' }]);
 	}
 	function removeSocial(i: number) {
-		setAttr('items', socialItems().filter((_, j) => j !== i));
+		setAttr('items', socialItems().filter((_, index) => index !== i));
 	}
 	function deleteSelected() {
 		editor?.chain().focus().deleteSelection().run();
@@ -349,9 +349,9 @@
 			const fd = new FormData();
 			fd.append('orgId', orgId);
 			fd.append('file', file);
-			const req = fetch('/api/template-assets', { method: 'POST', body: fd }).then(async (r) => {
-				if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? 'Upload failed.');
-				return (await r.json()) as { url: string };
+			const req = fetch('/api/template-assets', { method: 'POST', body: fd }).then(async (response) => {
+				if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { message?: string }).message ?? 'Upload failed.');
+				return (await response.json()) as { url: string };
 			});
 			toast.promise(req, { loading: 'Uploading…', success: 'Uploaded.', error: (e) => (e instanceof Error ? e.message : 'Upload failed.') });
 			try {
@@ -468,7 +468,7 @@
 	function openPreview() {
 		const vars = tiptapVariables(currentDoc(), subject);
 		const next: Record<string, string> = {};
-		for (const v of vars) next[v] = sampleData[v] ?? SAMPLE_BUILTINS[v] ?? '';
+		for (const variable of vars) next[variable] = sampleData[variable] ?? SAMPLE_BUILTINS[variable] ?? '';
 		// unsubscribe_url is host-derived at send — mirror that in the preview using
 		// this page's origin so the sample link is realistic.
 		if (vars.includes('unsubscribe_url') && !next.unsubscribe_url) {
@@ -490,12 +490,12 @@
 	async function loadMailboxes() {
 		if (mailboxesLoaded) return;
 		try {
-			const list = ((await myMailboxes()) as Mbx[]).filter((m) => m.isActive);
+			const list = ((await myMailboxes()) as Mbx[]).filter((mailbox) => mailbox.isActive);
 			mailboxes = list;
 			// Default: send FROM a service mailbox if any (the template's real sender),
 			// TO the user's own personal mailbox (round-trips into their inbox).
-			fromId = (list.find((m) => m.isService) ?? list[0])?.id ?? '';
-			testTo = list.find((m) => m.isPersonal)?.address ?? '';
+			fromId = (list.find((mailbox) => mailbox.isService) ?? list[0])?.id ?? '';
+			testTo = list.find((mailbox) => mailbox.isPersonal)?.address ?? '';
 			mailboxesLoaded = true;
 		} catch {
 			// Picker stays empty; the user can still type a recipient.
@@ -583,19 +583,19 @@
 		<div class="relative flex min-h-0 flex-1">
 			<!-- Insert pill — floats over the canvas left edge (no reserved lane) -->
 			<div class="absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-full bg-neutral-900 p-1 shadow-lg ring-1 ring-white/10">
-					{#each GROUPS as g (g.key)}
-						{@const GIcon = g.icon}
+					{#each GROUPS as group (group.key)}
+						{@const GIcon = group.icon}
 						<div class="relative">
-							<button type="button" onclick={() => (openMenu = openMenu === g.key ? null : g.key)} title={g.label} class="grid size-9 place-items-center rounded-full transition-colors {openMenu === g.key ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-700 hover:text-white'}">
+							<button type="button" onclick={() => (openMenu = openMenu === group.key ? null : group.key)} title={group.label} class="grid size-9 place-items-center rounded-full transition-colors {openMenu === group.key ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-700 hover:text-white'}">
 								<GIcon class="size-4" />
 							</button>
-							{#if openMenu === g.key}
+							{#if openMenu === group.key}
 								<div class="absolute left-12 top-0 z-30 min-w-48 rounded-xl bg-neutral-900 p-1.5 shadow-xl ring-1 ring-white/10">
-									{#each g.items as it (it.label)}
-										{@const IIcon = it.icon}
-										<button type="button" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-700" onclick={() => pick(it.run)}>
+									{#each group.items as item (item.label)}
+										{@const IIcon = item.icon}
+										<button type="button" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-700" onclick={() => pick(item.run)}>
 											<IIcon class="size-4 text-neutral-400" />
-											{it.label}
+											{item.label}
 										</button>
 									{/each}
 								</div>
@@ -610,13 +610,13 @@
 						{#if openMenu === 'vars'}
 							<div class="absolute left-12 top-0 z-30 min-w-52 rounded-xl bg-neutral-900 p-1.5 shadow-xl ring-1 ring-white/10">
 								<p class="px-2 py-1 text-[11px] font-semibold uppercase text-neutral-500">Provided</p>
-								{#each BUILTIN_VARIABLES as v (v.name)}
-									<button type="button" class="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left font-mono text-xs text-neutral-200 hover:bg-neutral-700" onclick={() => insVar(v.name)}>{`{{ ${v.name} }}`}</button>
+								{#each BUILTIN_VARIABLES as variable (variable.name)}
+									<button type="button" class="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left font-mono text-xs text-neutral-200 hover:bg-neutral-700" onclick={() => insVar(variable.name)}>{`{{ ${variable.name} }}`}</button>
 								{/each}
 								{#if customVars.length}
 									<p class="mt-1 px-2 py-1 text-[11px] font-semibold uppercase text-neutral-500">Yours</p>
-									{#each customVars as v (v)}
-										<button type="button" class="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left font-mono text-xs text-neutral-200 hover:bg-neutral-700" onclick={() => insVar(v)}>{`{{ ${v} }}`}</button>
+									{#each customVars as variable (variable)}
+										<button type="button" class="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left font-mono text-xs text-neutral-200 hover:bg-neutral-700" onclick={() => insVar(variable)}>{`{{ ${variable} }}`}</button>
 									{/each}
 								{/if}
 							</div>
@@ -649,7 +649,7 @@
 							<span class="mx-1 h-4 w-px bg-neutral-200"></span>
 							<select onchange={(e) => editor?.chain().focus().setMark('textStyle', { fontSize: e.currentTarget.value }).run()} class="h-7 rounded border-neutral-200 bg-transparent px-1 text-xs text-neutral-600" aria-label="Font size" title="Font size">
 								<option value="">Size</option>
-								{#each ['12px', '14px', '16px', '18px', '20px', '24px', '30px'] as s (s)}<option value={s}>{s.replace('px', '')}</option>{/each}
+								{#each ['12px', '14px', '16px', '18px', '20px', '24px', '30px'] as size (size)}<option value={size}>{size.replace('px', '')}</option>{/each}
 							</select>
 							<label class="grid size-7 cursor-pointer place-items-center rounded hover:bg-neutral-100" title="Text color">
 								<span class="text-[11px] font-bold text-neutral-600">A</span>
@@ -710,12 +710,12 @@
 								</select>
 							</div>
 						{:else if sel.type === 'social'}
-							{#each socialItems() as it, i (i)}
+							{#each socialItems() as item, i (i)}
 								<div class="flex items-center gap-1.5">
-									<select value={it.network} onchange={(e) => updateSocial(i, 'network', e.currentTarget.value)} class="border-input bg-background h-8 shrink-0 rounded-md border px-1.5 text-xs capitalize" aria-label="Network">
-										{#each SOCIAL_NETWORKS as n (n)}<option value={n}>{n}</option>{/each}
+									<select value={item.network} onchange={(e) => updateSocial(i, 'network', e.currentTarget.value)} class="border-input bg-background h-8 shrink-0 rounded-md border px-1.5 text-xs capitalize" aria-label="Network">
+										{#each SOCIAL_NETWORKS as network (network)}<option value={network}>{network}</option>{/each}
 									</select>
-									<Input value={it.href} oninput={(e) => updateSocial(i, 'href', e.currentTarget.value)} placeholder="https://…" class="h-8 min-w-0 flex-1" />
+									<Input value={item.href} oninput={(e) => updateSocial(i, 'href', e.currentTarget.value)} placeholder="https://…" class="h-8 min-w-0 flex-1" />
 									<button type="button" class="text-muted-foreground hover:text-destructive shrink-0" onclick={() => removeSocial(i)} aria-label="Remove network">✕</button>
 								</div>
 							{/each}
@@ -793,18 +793,18 @@
 						<p class="mb-1 text-xs font-semibold tracking-wide uppercase">Theme</p>
 						<p class="text-muted-foreground mb-2 text-[11px]">Default typography per text type.</p>
 						<div class="space-y-2.5">
-							{#each THEME_ROLES as r (r.key)}
-								{@const t = theme[r.key] ?? {}}
+							{#each THEME_ROLES as role (role.key)}
+								{@const t = theme[role.key] ?? {}}
 								<div class="space-y-1">
-									<p class="text-muted-foreground text-[11px] font-medium">{r.label}</p>
+									<p class="text-muted-foreground text-[11px] font-medium">{role.label}</p>
 									<div class="flex items-center gap-1.5">
-										<input type="color" value={t.color ?? '#111827'} oninput={(e) => setTheme(r.key, 'color', e.currentTarget.value)} class="border-input size-7 shrink-0 cursor-pointer rounded border p-0.5" aria-label="{r.label} color" />
-										<input type="number" value={t.size ?? ''} oninput={(e) => setTheme(r.key, 'size', Number(e.currentTarget.value) || undefined)} placeholder="size" class="border-input bg-background h-7 w-14 rounded-md border px-1.5 text-xs" aria-label="{r.label} size" />
-										<select value={String(t.weight ?? '')} onchange={(e) => setTheme(r.key, 'weight', Number(e.currentTarget.value) || undefined)} class="border-input bg-background h-7 flex-1 rounded-md border px-1 text-xs" aria-label="{r.label} weight">
+										<input type="color" value={t.color ?? '#111827'} oninput={(e) => setTheme(role.key, 'color', e.currentTarget.value)} class="border-input size-7 shrink-0 cursor-pointer rounded border p-0.5" aria-label="{role.label} color" />
+										<input type="number" value={t.size ?? ''} oninput={(e) => setTheme(role.key, 'size', Number(e.currentTarget.value) || undefined)} placeholder="size" class="border-input bg-background h-7 w-14 rounded-md border px-1.5 text-xs" aria-label="{role.label} size" />
+										<select value={String(t.weight ?? '')} onchange={(e) => setTheme(role.key, 'weight', Number(e.currentTarget.value) || undefined)} class="border-input bg-background h-7 flex-1 rounded-md border px-1 text-xs" aria-label="{role.label} weight">
 											<option value="">weight</option>
 											<option value="400">400</option><option value="500">500</option><option value="600">600</option><option value="700">700</option>
 										</select>
-										<input type="number" step="0.1" value={t.lineHeight ?? ''} oninput={(e) => setTheme(r.key, 'lineHeight', Number(e.currentTarget.value) || undefined)} placeholder="lh" class="border-input bg-background h-7 w-12 rounded-md border px-1.5 text-xs" aria-label="{r.label} line height" />
+										<input type="number" step="0.1" value={t.lineHeight ?? ''} oninput={(e) => setTheme(role.key, 'lineHeight', Number(e.currentTarget.value) || undefined)} placeholder="lh" class="border-input bg-background h-7 w-12 rounded-md border px-1.5 text-xs" aria-label="{role.label} line height" />
 									</div>
 								</div>
 							{/each}
@@ -831,10 +831,10 @@
 			<aside class="w-64 shrink-0 space-y-3 overflow-y-auto border-r p-4">
 				<p class="text-sm font-semibold">Sample data</p>
 				<p class="text-muted-foreground text-xs">Fill in values to preview how the merged email looks.</p>
-				{#each previewVars as v (v)}
+				{#each previewVars as variable (variable)}
 					<label class="block space-y-1">
-						<span class="text-muted-foreground font-mono text-[11px]">{`{{ ${v} }}`}</span>
-						<Input value={sampleData[v]} oninput={(e) => { sampleData[v] = e.currentTarget.value; schedulePreview(); }} class="h-8" />
+						<span class="text-muted-foreground font-mono text-[11px]">{`{{ ${variable} }}`}</span>
+						<Input value={sampleData[variable]} oninput={(e) => { sampleData[variable] = e.currentTarget.value; schedulePreview(); }} class="h-8" />
 					</label>
 				{/each}
 				{#if !previewVars.length}
@@ -845,7 +845,7 @@
 					<label class="block space-y-1">
 						<span class="text-muted-foreground text-[11px]">From</span>
 						<select bind:value={fromId} class="border-input bg-background h-8 w-full rounded-md border px-2 text-xs" aria-label="Send from mailbox">
-							{#each mailboxes as m (m.id)}<option value={m.id}>{m.displayName || m.address}</option>{/each}
+							{#each mailboxes as mailbox (mailbox.id)}<option value={mailbox.id}>{mailbox.displayName || mailbox.address}</option>{/each}
 						</select>
 					</label>
 					<label class="block space-y-1">

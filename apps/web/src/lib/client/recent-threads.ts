@@ -24,7 +24,7 @@ export function recentThreads(): RecentThread[] {
 
 export function pushRecentThread(t: Omit<RecentThread, 'at'>): void {
 	try {
-		const list = [{ ...t, at: Date.now() }, ...recentThreads().filter((r) => r.threadId !== t.threadId)];
+		const list = [{ ...t, at: Date.now() }, ...recentThreads().filter((thread) => thread.threadId !== t.threadId)];
 		localStorage.setItem(KEY, JSON.stringify(list.slice(0, CAP)));
 	} catch {
 		// storage unavailable — feature silently absent

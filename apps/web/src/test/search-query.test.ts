@@ -53,13 +53,13 @@ describe("snippetAround", () => {
 describe("highlightSegments", () => {
   it("splits matches into hit segments, case-insensitive", () => {
     const segs = highlightSegments("Invoice INVOICE done", ["invoice"]);
-    expect(segs.filter((s) => s.hit).map((s) => s.text)).toEqual(["Invoice", "INVOICE"]);
-    expect(segs.map((s) => s.text).join("")).toBe("Invoice INVOICE done");
+    expect(segs.filter((segment) => segment.hit).map((segment) => segment.text)).toEqual(["Invoice", "INVOICE"]);
+    expect(segs.map((segment) => segment.text).join("")).toBe("Invoice INVOICE done");
   });
 
   it("does not treat term text as regex (no injection)", () => {
     // A term with regex metachars must match literally, not blow up.
     const segs = highlightSegments("a.b a+b", ["a.b"]);
-    expect(segs.some((s) => s.hit && s.text === "a.b")).toBe(true);
+    expect(segs.some((segment) => segment.hit && segment.text === "a.b")).toBe(true);
   });
 });

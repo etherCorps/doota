@@ -2,17 +2,17 @@
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 
-function statusOf(u: {
+function statusOf(member: {
   banned?: boolean | null;
   onboardedAt?: number | null;
   emailVerified?: boolean | null;
   recoveryEmailVerified?: boolean | null;
 }): string {
-  if (u.banned) return "paused";
+  if (member.banned) return "paused";
   // "pending" = invite not yet accepted. Confirming the invite (verifying the
   // recovery address, or primary email for external accounts) or finishing
   // onboarding all flip the account to active.
-  if (u.onboardedAt || u.recoveryEmailVerified || u.emailVerified) return "active";
+  if (member.onboardedAt || member.recoveryEmailVerified || member.emailVerified) return "active";
   return "pending";
 }
 
@@ -33,12 +33,12 @@ export const load = async ({ locals, params }) => {
     .innerJoin(schema.user, eq(schema.member.userId, schema.user.id))
     .where(eq(schema.member.organizationId, params.orgId));
 
-  const members = rows.map((m) => ({
-    id: m.id,
-    name: m.name,
-    email: m.email,
-    role: m.role,
-    status: statusOf(m),
+  const members = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: statusOf(row),
   }));
   return { members };
 };

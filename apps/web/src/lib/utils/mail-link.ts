@@ -31,7 +31,7 @@ export function classifyMailLink(href: string, text = ""): LinkDecision {
   if (scheme !== "http:" && scheme !== "https:") return { action: "drop" }; // javascript:, data:, file:, …
 
   const host = u.hostname.toLowerCase(); // URL already IDNA-encodes to punycode
-  const isIdn = host.split(".").some((l) => l.startsWith("xn--"));
+  const isIdn = host.split(".").some((label) => label.startsWith("xn--"));
   const claimed = textHostOf(text);
   const mismatch = !!claimed && claimed !== host && !host.endsWith(`.${claimed}`) && !claimed.endsWith(`.${host}`);
   const warn = mismatch

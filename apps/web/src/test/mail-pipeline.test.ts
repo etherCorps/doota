@@ -186,8 +186,8 @@ describe("materialize idempotency + dedupe (Part D)", () => {
 
     const inbox = await listThreads(db, { mailboxId: "mb_apex", placement: "inbox", ck: deps.ck });
     const snoozed = await listThreads(db, { mailboxId: "mb_apex", placement: "snoozed", ck: deps.ck });
-    expect(inbox.some((t) => t.threadId === m.threadId)).toBe(false);
-    expect(snoozed.some((t) => t.threadId === m.threadId)).toBe(true);
+    expect(inbox.some((thread) => thread.threadId === m.threadId)).toBe(false);
+    expect(snoozed.some((thread) => thread.threadId === m.threadId)).toBe(true);
   });
 
   it("cron wakes a due snooze back into the inbox, unread", async () => {
@@ -204,7 +204,7 @@ describe("materialize idempotency + dedupe (Part D)", () => {
     const state = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, m.threadId) });
     expect(state!.snoozedUntil).toBeNull();
     const inbox = await listThreads(db, { mailboxId: "mb_apex", placement: "inbox", ck: deps.ck });
-    expect(inbox.some((t) => t.threadId === m.threadId)).toBe(true);
+    expect(inbox.some((thread) => thread.threadId === m.threadId)).toBe(true);
     // Read cursor dropped → unread again.
     const read = await db.query.threadRead.findFirst({ where: eq(schema.threadRead.threadId, m.threadId) });
     expect(read).toBeUndefined();
@@ -369,11 +369,11 @@ describe("thread visibility (personal vs shared)", () => {
 
     // Personal alice: only the message she was on — the dropped reply must NOT leak.
     const alice = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_apex", ck });
-    expect(alice?.items.map((i: any) => i.id)).toEqual([m1.messageId]);
+    expect(alice?.items.map((item: any) => item.id)).toEqual([m1.messageId]);
 
     // Shared support: the whole conversation (team transparency).
     const support = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_sub", ck });
-    expect(support?.items.map((i: any) => i.id).sort()).toEqual([m1.messageId, m2.messageId].sort());
+    expect(support?.items.map((item: any) => item.id).sort()).toEqual([m1.messageId, m2.messageId].sort());
   });
 
   it("a reply whose parent this mailbox can't see carries replyContext (added on Cc)", async () => {
@@ -388,7 +388,7 @@ describe("thread visibility (personal vs shared)", () => {
     await materializeDelivery(db, { orgId: ORG, ...m2, mailboxId: "mb_apex", role: "cc", viaAliasId: null, subaddressTag: null, sentAt: p2.sentAt });
 
     const alice = await getThread(db, { threadId: m1.threadId, mailboxId: "mb_apex", ck });
-    expect(alice?.items.map((i: any) => i.id)).toEqual([m2.messageId]); // only the reply is visible
+    expect(alice?.items.map((item: any) => item.id)).toEqual([m2.messageId]); // only the reply is visible
     const ctx = (alice?.items[0] as any).replyContext;
     expect(ctx?.from).toBe("ext@sender.com");
     expect(ctx?.parentId).toBeNull(); // no access → not a jump link
@@ -409,7 +409,7 @@ describe("thread visibility (personal vs shared)", () => {
     await materializeDelivery(db, { orgId: ORG, ...mc, mailboxId: "mb_sub", role: "to", viaAliasId: null, subaddressTag: null, sentAt: c.sentAt });
 
     const t = await getThread(db, { threadId: ma.threadId, mailboxId: "mb_sub", ck }); // shared: sees all
-    const byId = new Map(t!.items.map((i: any) => [i.id, i]));
+    const byId = new Map(t!.items.map((item: any) => [item.id, item]));
     // b replies to a — the message directly above — and still gets a jump reference.
     expect((byId.get(mb.messageId) as any).replyContext?.parentId).toBe(ma.messageId);
     const cx = (byId.get(mc.messageId) as any).replyContext;
@@ -458,8 +458,8 @@ describe("materialize — render flags computed at ingest", () => {
     expect(m.htmlKind).toBe("rich");
     expect(m.hasRemoteImages).toBe(true);
     const atts = await db.query.attachment.findMany({ where: eq(schema.attachment.messageId, messageId) });
-    expect(atts.find((a: any) => a.partId === "logo@x").inline).toBe(true); // cid-referenced
-    expect(atts.find((a: any) => a.partId === "9").inline).toBe(false);
+    expect(atts.find((attachment: any) => attachment.partId === "logo@x").inline).toBe(true); // cid-referenced
+    expect(atts.find((attachment: any) => attachment.partId === "9").inline).toBe(false);
   });
 
   it("strips quotes before deciding htmlKind (blockquote-only-rich → plain)", async () => {

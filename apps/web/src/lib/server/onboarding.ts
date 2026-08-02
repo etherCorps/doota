@@ -149,8 +149,8 @@ export async function getOnboardingStatus(
     });
   }
 
-  const complete = steps.every((s) => s.done);
-  const nextStep = steps.find((s) => !s.done)?.id ?? null;
+  const complete = steps.every((step) => step.done);
+  const nextStep = steps.find((step) => !step.done)?.id ?? null;
   return { steps, complete, nextStep };
 }
 

@@ -132,7 +132,7 @@ export const SocialNode = Node.create({
 	renderHTML: ({ node }) => [
 		'div',
 		{ 'data-email-social': '', class: 'em-block em-social', style: previewStyle(node.attrs) },
-		...(node.attrs.items as { network: string }[]).map((i) => ['span', { class: 'em-social-item' }, i.network])
+		...(node.attrs.items as { network: string }[]).map((social) => ['span', { class: 'em-social-item' }, social.network])
 	]
 });
 

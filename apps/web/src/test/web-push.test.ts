@@ -4,11 +4,11 @@ import { encryptPayload, b64urlToBytes, bytesToB64url } from "@doota/mail-core/w
 
 const te = new TextEncoder();
 const concat = (...a: Uint8Array[]) => {
-  const out = new Uint8Array(a.reduce((n, x) => n + x.length, 0));
+  const out = new Uint8Array(a.reduce((total, chunk) => total + chunk.length, 0));
   let o = 0;
-  for (const x of a) {
-    out.set(x, o);
-    o += x.length;
+  for (const chunk of a) {
+    out.set(chunk, o);
+    o += chunk.length;
   }
   return out;
 };

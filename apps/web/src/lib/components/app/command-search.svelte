@@ -82,9 +82,9 @@
 		};
 	});
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
+			event.preventDefault();
 			open = !open;
 		}
 	}
@@ -128,10 +128,10 @@
 		{#if q.trim().length < 2}
 			{#if recents.length}
 				<Command.Group heading="Recent">
-					{#each recents.slice(0, 5) as r (r.threadId)}
-						<Command.Item value={`recent-${r.threadId}`} onSelect={() => run(() => openThread(r.mailboxId, r.threadId))}>
+					{#each recents.slice(0, 5) as recent (recent.threadId)}
+						<Command.Item value={`recent-${recent.threadId}`} onSelect={() => run(() => openThread(recent.mailboxId, recent.threadId))}>
 							<HistoryIcon class="text-muted-foreground size-4 shrink-0" />
-							<span class="truncate">{r.subject || '(no subject)'}</span>
+							<span class="truncate">{recent.subject || '(no subject)'}</span>
 						</Command.Item>
 					{/each}
 				</Command.Group>

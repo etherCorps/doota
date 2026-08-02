@@ -29,15 +29,15 @@
 		</Card.Card>
 	{:else if data.templates.length}
 		<ul class="flex flex-col divide-y rounded-lg border">
-			{#each data.templates as t (t.id)}
+			{#each data.templates as template (template.id)}
 				<li>
-					<a href="/templates/{t.id}" class="hover:bg-muted flex items-center gap-3 p-3 transition-colors">
+					<a href="/templates/{template.id}" class="hover:bg-muted flex items-center gap-3 p-3 transition-colors">
 						<FileTextIcon class="text-muted-foreground size-5 shrink-0" />
 						<div class="flex min-w-0 flex-1 flex-col">
-							<span class="truncate text-sm font-medium">{t.name}</span>
-							<span class="text-muted-foreground truncate font-mono text-xs">{t.slug} · updated {fmt(t.updatedAt)}</span>
+							<span class="truncate text-sm font-medium">{template.name}</span>
+							<span class="text-muted-foreground truncate font-mono text-xs">{template.slug} · updated {fmt(template.updatedAt)}</span>
 						</div>
-						{#if t.archived}<Badge variant="outline">Archived</Badge>{/if}
+						{#if template.archived}<Badge variant="outline">Archived</Badge>{/if}
 					</a>
 				</li>
 			{/each}

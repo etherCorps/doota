@@ -194,7 +194,7 @@ describe("blind search tokens", () => {
     const b = await tokensFor(KEY_B64, ["hello WORLD"]);
     expect(a.sort()).toEqual(b.sort()); // case-insensitive, same tokens
     expect(a.join(" ")).not.toContain("hello"); // opaque
-    expect(a.every((t) => /^[0-9a-f]{16}$/.test(t))).toBe(true);
+    expect(a.every((token) => /^[0-9a-f]{16}$/.test(token))).toBe(true);
   });
 });
 

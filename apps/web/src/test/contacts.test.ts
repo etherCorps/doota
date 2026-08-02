@@ -28,8 +28,8 @@ describe("correspondent autocomplete", () => {
       { mailboxId: MB, address: "new@ext.com", name: "New", seenAt: 5000 },
     ]);
     const top = await topRecipients(db, USER);
-    expect(top.map((r) => r.address)).toEqual(["new@ext.com", "old@ext.com"]);
-    expect(top.find((r) => r.address === "new@ext.com")?.name).toBe("New");
+    expect(top.map((recipient) => recipient.address)).toEqual(["new@ext.com", "old@ext.com"]);
+    expect(top.find((recipient) => recipient.address === "new@ext.com")?.name).toBe("New");
   });
 
   it("dedups per (mailbox,address), keeps newest last_seen + fills a name", async () => {
@@ -50,7 +50,7 @@ describe("correspondent autocomplete", () => {
       { mailboxId: MB, address: "carol@ext.com", name: null, seenAt: 4000 },
     ]);
     const hits = await suggestRecipients(db, USER, "bob");
-    expect(hits.map((r) => r.address)).toEqual(["bob@ext.com"]);
+    expect(hits.map((recipient) => recipient.address)).toEqual(["bob@ext.com"]);
   });
 
   it("scopes to the caller's accessible mailboxes", async () => {
@@ -58,6 +58,6 @@ describe("correspondent autocomplete", () => {
     await db.insert(schema.mailbox).values({ id: "mb2", orgId: ORG, localPart: "bob", address: "bob@acme.com", isActive: true, isPersonal: true });
     await recordCorrespondents(db, [{ mailboxId: "mb2", address: "secret@ext.com", name: null, seenAt: 8000 }]);
     const top = await topRecipients(db, USER);
-    expect(top.find((r) => r.address === "secret@ext.com")).toBeUndefined();
+    expect(top.find((recipient) => recipient.address === "secret@ext.com")).toBeUndefined();
   });
 });

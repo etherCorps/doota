@@ -31,7 +31,7 @@
 			// every action behind it is superadmin-only, so the tab is too.
 			...(data.user.role === 'superadmin' ? [{ key: 'domain', label: 'Domain' }] : []),
 			{ key: 'settings', label: 'Settings' }
-		].map((t) => ({ href: t.key ? `${base}/${t.key}` : base, label: t.label, active: rel === t.key }))
+		].map((tab) => ({ href: tab.key ? `${base}/${tab.key}` : base, label: tab.label, active: rel === tab.key }))
 	);
 </script>
 

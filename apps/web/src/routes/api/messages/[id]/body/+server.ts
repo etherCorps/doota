@@ -84,17 +84,17 @@ const INJECTED_SCRIPT =
   "window.open(u.href,'_blank','noopener,noreferrer');" +
   "},true);})();";
 
-async function sha256Base64(s: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+async function sha256Base64(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   let bin = "";
-  for (const b of new Uint8Array(digest)) bin += String.fromCharCode(b);
+  for (const byte of new Uint8Array(digest)) bin += String.fromCharCode(byte);
   return btoa(bin);
 }
 
-const escapeText = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
-const escapeAttr = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const escapeText = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+const escapeAttr = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
  * 'self' and the browser never fetches from the sender directly. Each proxied URL
@@ -105,10 +105,10 @@ const escapeAttr = (s: string) =>
 // sender only ever sees Cloudflare. @import is stripped in the rewriter.
 async function proxyRemoteResources(html: string, sign: (resource: string) => Promise<string>): Promise<string> {
   const urls = collectRemoteResourceUrls(html);
-  const tokens = new Map(await Promise.all(urls.map(async (u) => [u, await sign(`img:${u}`)] as const)));
-  return rewriteRemoteResourceUrls(html, (u) => {
-    const t = tokens.get(u);
-    return `/api/img-proxy?url=${encodeURIComponent(u)}${t ? `&t=${t}` : ""}`;
+  const tokens = new Map(await Promise.all(urls.map(async (resourceUrl) => [resourceUrl, await sign(`img:${resourceUrl}`)] as const)));
+  return rewriteRemoteResourceUrls(html, (resourceUrl) => {
+    const token = tokens.get(resourceUrl);
+    return `/api/img-proxy?url=${encodeURIComponent(resourceUrl)}${token ? `&t=${token}` : ""}`;
   });
 }
 
@@ -221,8 +221,8 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     // Exact-first, then the shared (bracket + local-part tolerant) match, so a
     // provider that references `cid:localpart` for a `<localpart@host>` part still
     // resolves (Apple Mail) without a same-local-part collision stealing an exact hit.
-    const a = atts.find((x) => cidMatches(x.partId, cid));
-    return a ? `/api/attachments/${a.id}${attToken ? `?t=${attToken}` : ""}` : null;
+    const att = atts.find((attachment) => cidMatches(attachment.partId, cid));
+    return att ? `/api/attachments/${att.id}${attToken ? `?t=${attToken}` : ""}` : null;
   };
 
   // Strip quoted reply history before rendering — the prior messages are already
@@ -244,12 +244,12 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     // (rawText) over the capped D1 twin so a long text-only message renders whole.
     const text = rawText ?? (await decryptContent(ck, msg.bodyStrippedEnc)) ?? "";
     const linkified = linkifySegments(text)
-      .map((s) =>
-        s.type === "text"
-          ? escapeText(s.value)
-          : s.type === "link"
-            ? `<a href="${escapeAttr(s.href)}">${escapeText(s.value)}</a>`
-            : `<a href="mailto:${escapeAttr(s.address)}">${escapeText(s.value)}</a>`,
+      .map((segment) =>
+        segment.type === "text"
+          ? escapeText(segment.value)
+          : segment.type === "link"
+            ? `<a href="${escapeAttr(segment.href)}">${escapeText(segment.value)}</a>`
+            : `<a href="mailto:${escapeAttr(segment.address)}">${escapeText(segment.value)}</a>`,
       )
       .join("");
     // Oversized HTML (not merely text-only mail) → Gmail-style clipped notice

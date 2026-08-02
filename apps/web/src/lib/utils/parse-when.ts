@@ -50,7 +50,7 @@ export function parseWhen(input: string, now: Date = new Date()): Date | null {
 
   // ---- day ----
   const next = /\bnext\b/.test(s);
-  const wdKey = Object.keys(WD).find((k) => new RegExp(`\\b${k}\\b`).test(s));
+  const wdKey = Object.keys(WD).find((key) => new RegExp(`\\b${key}\\b`).test(s));
   if (/\bday after tomorrow\b|\bovermorrow\b/.test(s)) {
     // Checked BEFORE "tomorrow" — the substring would otherwise match +1.
     d.setDate(d.getDate() + 2);

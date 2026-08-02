@@ -11,12 +11,12 @@
     let { data } = $props();
 
     const steps = $derived(data.onboarding.steps);
-    const doneCount = $derived(steps.filter((s) => s.done).length);
+    const doneCount = $derived(steps.filter((step) => step.done).length);
     // Later steps stay locked until the email/recovery step is verified. The
     // super-admin has NO such step (email-free genesis) — nothing to gate on, so
     // treat the prerequisite as satisfied and unlock the remaining steps.
     const verifyStep = $derived(
-        steps.find((s) => s.id === "verify-email" || s.id === "verify-recovery"),
+        steps.find((step) => step.id === "verify-email" || step.id === "verify-recovery"),
     );
     const isEmailVerified = $derived(verifyStep ? verifyStep.done : true);
 </script>
@@ -69,7 +69,7 @@
         </div>
     {/snippet}
 
-    {#each steps as step, i (step.id)}
+    {#each steps as step, stepIndex (step.id)}
         {#if !isEmailVerified && step.id !== "verify-email" && step.id !== "verify-recovery"}
             <div
                 class="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-xs opacity-50"
@@ -77,7 +77,7 @@
                 <span
                     class="bg-muted flex size-6 items-center justify-center rounded-full text-[11px]"
                 >
-                    {i + 1}
+                    {stepIndex + 1}
                 </span>
                 <div class="flex flex-col">
                     <span class="text-sm font-medium">{step.title}</span>
@@ -89,7 +89,7 @@
                 {@render stepDone({ title: step.title })}
             {:else}
                 <div class="flex flex-col gap-2">
-                    {@render stepsCounter({ index: i, length: steps.length })}
+                    {@render stepsCounter({ index: stepIndex, length: steps.length })}
                     {#if step.id === "onboard-domain"}
                         <OnboardDomainCard />
                     {:else if step.id === "verify-email"}

@@ -53,8 +53,8 @@
 	let dnsLoading = $state(false);
 	let dnsRecords = $state<DnsRecord[]>([]);
 	let dnsOpen = $state<Record<string, boolean>>({});
-	const dnsKey = (r: DnsRecord) => r.type + r.name + r.content;
-	const toggleDns = (k: string) => (dnsOpen = { ...dnsOpen, [k]: !dnsOpen[k] });
+	const dnsKey = (record: DnsRecord) => record.type + record.name + record.content;
+	const toggleDns = (key: string) => (dnsOpen = { ...dnsOpen, [key]: !dnsOpen[key] });
 
 	// --- Inbound routing (subdomains) -------------------------------------------
 	type Routing = { enabled: boolean; supportSubaddress: boolean; status?: string; subdomains: string[] };
@@ -153,7 +153,7 @@
 		removingSub = host;
 		try {
 			await removeMailSubdomain({ orgId: org.id, subdomain: host });
-			routing.subdomains = routing.subdomains.filter((s) => s !== host);
+			routing.subdomains = routing.subdomains.filter((subdomain) => subdomain !== host);
 			toast.success(`Removed ${host}.`);
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Could not remove subdomain.');
@@ -220,23 +220,23 @@
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each dnsRecords as r (dnsKey(r))}
-							{@const open = dnsOpen[dnsKey(r)]}
+						{#each dnsRecords as record (dnsKey(record))}
+							{@const open = dnsOpen[dnsKey(record)]}
 							<Table.Row>
-								<Table.Cell class="font-mono">{r.type}</Table.Cell>
-								<Table.Cell class="max-w-[14rem] truncate font-mono" title={r.name}>{r.name}</Table.Cell>
+								<Table.Cell class="font-mono">{record.type}</Table.Cell>
+								<Table.Cell class="max-w-[14rem] truncate font-mono" title={record.name}>{record.name}</Table.Cell>
 								<Table.Cell class="font-mono">
 									<button
 										type="button"
 										class="hover:text-foreground block max-w-lg cursor-pointer text-left {open ? 'break-all whitespace-normal' : 'truncate'}"
-										title={open ? 'Click to collapse' : r.content}
-										onclick={() => toggleDns(dnsKey(r))}
-									>{r.content}</button>
+										title={open ? 'Click to collapse' : record.content}
+										onclick={() => toggleDns(dnsKey(record))}
+									>{record.content}</button>
 								</Table.Cell>
-								<Table.Cell class="text-right">{r.priority ?? '—'}</Table.Cell>
-								<Table.Cell class="text-right tabular-nums">{r.ttl === 1 ? 'Auto' : (r.ttl ?? '—')}</Table.Cell>
+								<Table.Cell class="text-right">{record.priority ?? '—'}</Table.Cell>
+								<Table.Cell class="text-right tabular-nums">{record.ttl === 1 ? 'Auto' : (record.ttl ?? '—')}</Table.Cell>
 								<Table.Cell class="text-center">
-									{#if r.proxied}<StatusChip status="active" />{:else}<span class="text-muted-foreground">—</span>{/if}
+									{#if record.proxied}<StatusChip status="active" />{:else}<span class="text-muted-foreground">—</span>{/if}
 								</Table.Cell>
 							</Table.Row>
 						{/each}
@@ -307,8 +307,8 @@
 												<AlertDialog.Cancel disabled={removingSub === host}>Cancel</AlertDialog.Cancel>
 												<AlertDialog.Action
 													disabled={removingSub === host}
-													onclick={(e) => {
-														e.preventDefault();
+													onclick={(event) => {
+														event.preventDefault();
 														removeSubdomain(host);
 													}}
 													class="bg-destructive text-white hover:bg-destructive/90"
@@ -326,7 +326,7 @@
 						<p class="text-muted-foreground text-sm">No subdomains configured.</p>
 					{/if}
 
-					<form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); addSubdomain(); }}>
+					<form class="flex items-center gap-2" onsubmit={(event) => { event.preventDefault(); addSubdomain(); }}>
 						<Input bind:value={subInput} placeholder="mail" class="max-w-xs" disabled={addingSub} aria-label="Subdomain label" />
 						<span class="text-muted-foreground text-sm">.{org.domain}</span>
 						<Button type="submit" size="sm" disabled={addingSub || !subInput.trim()}>

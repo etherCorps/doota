@@ -79,7 +79,7 @@ export const fmtDay = (ms: number) =>
 
 /** First text line of a message, for the collapsed-header preview. */
 export function msgSnippet(m: MessageDTO): string {
-	return (m.bodyStripped ?? m.bodyFull ?? '').split('\n').find((l) => l.trim()) ?? '';
+	return (m.bodyStripped ?? m.bodyFull ?? '').split('\n').find((line) => line.trim()) ?? '';
 }
 
 // Grouped day → message, so a message's files stay together as one tile grid.
@@ -88,9 +88,9 @@ export function msgSnippet(m: MessageDTO): string {
  * Matches the per-message tile filter + the thread's attachment badge count. */
 export const shownAttachments = (m: MessageDTO) =>
 	m.attachments.filter(
-		(a) =>
-			!a.inline &&
-			!(m.calendarInvite && (a.contentType?.includes('calendar') || a.filename?.toLowerCase().endsWith('.ics')))
+		(att) =>
+			!att.inline &&
+			!(m.calendarInvite && (att.contentType?.includes('calendar') || att.filename?.toLowerCase().endsWith('.ics')))
 	);
 
 export function groupAttachments(msgs: MessageDTO[]) {
@@ -119,12 +119,12 @@ export const fmtSize = (n: number | null) =>
 // Subaddress-normalize: you+tag@x and you@x are the same inbox.
 export const baseAddr = (a: string) => a.toLowerCase().replace(/^([^@+]+)\+[^@]*@/, '$1@');
 /** The viewer's own addresses (base-normalized) — pass to the audience helpers. */
-export const selfSet = (identities: SendIdentity[]) => new Set(identities.map((i) => baseAddr(i.address)));
+export const selfSet = (identities: SendIdentity[]) => new Set(identities.map((identity) => baseAddr(identity.address)));
 
 // Everyone who's appeared on the thread (from/to/cc across all messages).
 export function threadParticipants(msgs: MessageDTO[]): Set<string> {
 	const s = new Set<string>();
-	for (const m of msgs) for (const a of [m.from, ...m.to, ...m.cc]) if (a) s.add(a.toLowerCase());
+	for (const msg of msgs) for (const addr of [msg.from, ...msg.to, ...msg.cc]) if (addr) s.add(addr.toLowerCase());
 	return s;
 }
 // A message whose audience is a strict subset of the thread's participants is
@@ -132,14 +132,14 @@ export function threadParticipants(msgs: MessageDTO[]): Set<string> {
 // or null when everyone on the thread is on the message.
 export function msgPrivateTo(m: MessageDTO, parts: Set<string>, self: Set<string>): string[] | null {
 	const aud = new Set<string>();
-	for (const a of [m.from, ...m.to, ...m.cc]) if (a) aud.add(a.toLowerCase());
+	for (const addr of [m.from, ...m.to, ...m.cc]) if (addr) aud.add(addr.toLowerCase());
 	if (aud.size >= parts.size) return null; // reaches everyone on the thread
-	return [...aud].filter((a) => !self.has(baseAddr(a)));
+	return [...aud].filter((addr) => !self.has(baseAddr(addr)));
 }
 // Reply-all only means something when the message reaches ≥2 people besides you.
 export function msgCanReplyAll(m: MessageDTO, self: Set<string>): boolean {
 	const all = new Set([m.from ?? '', ...m.to, ...m.cc].filter(Boolean).map(baseAddr));
-	for (const s of self) all.delete(s);
+	for (const addr of self) all.delete(addr);
 	return all.size >= 2;
 }
 
@@ -152,22 +152,22 @@ export function replyCtx(
 	target: { msgId: string; scope: 'reply' | 'reply_all' } | null,
 	self: Set<string>
 ) {
-	const chosen = target ? msgs.find((m) => m.id === target.msgId) : undefined;
+	const chosen = target ? msgs.find((msg) => msg.id === target.msgId) : undefined;
 	// A base must yield a reply address, or the whole reply bar vanishes —
 	// e.g. a DSN/bounce with no From as the latest inbound. Skip those.
-	const usable = (m: MessageDTO) => (m.outbound ? !!(m.to[0] ?? m.cc[0]) : !!(m.replyTo || m.from));
+	const usable = (msg: MessageDTO) => (msg.outbound ? !!(msg.to[0] ?? msg.cc[0]) : !!(msg.replyTo || msg.from));
 	const rev = [...msgs].reverse();
-	const base = chosen ?? rev.find((m) => !m.outbound && usable(m)) ?? rev.find(usable) ?? msgs.at(-1);
-	const notSelf = (a: string) => a && !self.has(baseAddr(a));
-	const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean).map((x) => x.toLowerCase()))];
+	const base = chosen ?? rev.find((msg) => !msg.outbound && usable(msg)) ?? rev.find(usable) ?? msgs.at(-1);
+	const notSelf = (addr: string) => addr && !self.has(baseAddr(addr));
+	const uniq = (addrs: string[]) => [...new Set(addrs.filter(Boolean).map((addr) => addr.toLowerCase()))];
 	let primary = base?.outbound ? (base.to[0] ?? base.cc[0] ?? '') : base?.replyTo || base?.from || '';
 	// Audience: an explicit per-message Reply(-all) scopes to THAT message; the
 	// default docked composer is thread-level, so its Reply-all reaches every
 	// participant — else a private reply-to-one as the latest inbound would
 	// hide the Reply/Reply-all switch even on a multi-party thread.
 	const audMsgs = chosen ? [chosen] : msgs;
-	const toAll = uniq([primary, ...audMsgs.flatMap((m) => [m.from ?? '', ...m.to])]).filter(notSelf);
-	const ccAll = uniq(audMsgs.flatMap((m) => m.cc)).filter((a) => notSelf(a) && !toAll.includes(a));
+	const toAll = uniq([primary, ...audMsgs.flatMap((msg) => [msg.from ?? '', ...msg.to])]).filter(notSelf);
+	const ccAll = uniq(audMsgs.flatMap((msg) => msg.cc)).filter((addr) => notSelf(addr) && !toAll.includes(addr));
 	// Last resort (explicitly-targeted message without a From): reply to the
 	// first non-self participant rather than hiding the composer.
 	if (!primary) primary = toAll[0] ?? ccAll[0] ?? '';
@@ -194,7 +194,7 @@ export function fwdBlock(m: MessageDTO): string {
 		m.to.length ? `To: ${m.to.join(', ')}` : ''
 	]
 		.filter(Boolean)
-		.map((l) => `<p>${escHtml(l)}</p>`)
+		.map((line) => `<p>${escHtml(line)}</p>`)
 		.join('');
 	return `${header}<blockquote>${orig}</blockquote>`;
 }

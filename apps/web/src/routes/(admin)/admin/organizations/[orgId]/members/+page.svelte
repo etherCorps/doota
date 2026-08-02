@@ -75,25 +75,25 @@
 	}
 </script>
 
-{#snippet memberCell(m: Member)}
+{#snippet memberCell(member: Member)}
 	<div class="flex flex-col">
-		<span class="font-medium">{m.name}</span>
-		<span class="text-muted-foreground font-mono text-xs">{m.email}</span>
+		<span class="font-medium">{member.name}</span>
+		<span class="text-muted-foreground font-mono text-xs">{member.email}</span>
 	</div>
 {/snippet}
 
-{#snippet roleCell(m: Member)}
-	<Badge variant={m.role === 'member' ? 'secondary' : 'info'} class="capitalize">{m.role}</Badge>
+{#snippet roleCell(member: Member)}
+	<Badge variant={member.role === 'member' ? 'secondary' : 'info'} class="capitalize">{member.role}</Badge>
 {/snippet}
 
-{#snippet statusCell(m: Member)}
-	<StatusChip status={m.status} />
+{#snippet statusCell(member: Member)}
+	<StatusChip status={member.status} />
 {/snippet}
 
-{#snippet actionsCell(m: Member)}
+{#snippet actionsCell(member: Member)}
 	<ButtonGroup class="justify-end">
-		{#if m.status === 'paused'}
-			<Button variant="outline" size="sm" onclick={() => pause(m.id)}>
+		{#if member.status === 'paused'}
+			<Button variant="outline" size="sm" onclick={() => pause(member.id)}>
 				<PauseIcon class="size-3.5" />
 				Resume
 			</Button>
@@ -109,7 +109,7 @@
 				</AlertDialog.Trigger>
 				<AlertDialog.Content>
 					<AlertDialog.Header>
-						<AlertDialog.Title>Pause {m.name}?</AlertDialog.Title>
+						<AlertDialog.Title>Pause {member.name}?</AlertDialog.Title>
 						<AlertDialog.Description>
 							They'll be signed out of all sessions and can't log in again until you resume their
 							access.
@@ -117,7 +117,7 @@
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
 						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-						<AlertDialog.Action onclick={() => pause(m.id)}>Pause</AlertDialog.Action>
+						<AlertDialog.Action onclick={() => pause(member.id)}>Pause</AlertDialog.Action>
 					</AlertDialog.Footer>
 				</AlertDialog.Content>
 			</AlertDialog.Root>
@@ -126,7 +126,7 @@
 			variant="outline"
 			size="sm"
 			class="text-destructive hover:text-destructive"
-			onclick={() => (confirmRemove = { id: m.id, name: m.name })}
+			onclick={() => (confirmRemove = { id: member.id, name: member.name })}
 		>
 			<Trash2Icon class="size-3.5" /> Remove
 		</Button>
@@ -225,7 +225,7 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<AlertDialog.Root open={!!confirmRemove} onOpenChange={(o) => !o && (confirmRemove = null)}>
+<AlertDialog.Root open={!!confirmRemove} onOpenChange={(open) => !open && (confirmRemove = null)}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Remove {confirmRemove?.name}?</AlertDialog.Title>
@@ -238,8 +238,8 @@
 			<AlertDialog.Cancel disabled={removing}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				disabled={removing}
-				onclick={(e) => {
-					e.preventDefault();
+				onclick={(event) => {
+					event.preventDefault();
 					remove();
 				}}
 				class="bg-destructive text-white hover:bg-destructive/90"

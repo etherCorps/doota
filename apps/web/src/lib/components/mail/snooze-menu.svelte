@@ -217,8 +217,8 @@
 			{/if}
 		</div>
 		<ul class="p-1">
-			{#each PRESETS as p (p.label)}
-				{@const when = parseWhen(p.phrase)}
+			{#each PRESETS as preset (preset.label)}
+				{@const when = parseWhen(preset.phrase)}
 				<li>
 					<button
 						type="button"
@@ -226,7 +226,7 @@
 						onclick={() => when && snooze(when)}
 						class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
 					>
-						<span>{p.label}</span>
+						<span>{preset.label}</span>
 						{#if when}<span class="text-muted-foreground text-[11px] tabular-nums">{fmt(when)}</span>{/if}
 					</button>
 				</li>

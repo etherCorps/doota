@@ -37,8 +37,8 @@ export async function actorOrgAdminOf(
     .from(schema.member)
     .where(eq(schema.member.userId, userId));
   return rows
-    .filter((r) => r.role === "owner" || r.role === "admin")
-    .map((r) => r.orgId);
+    .filter((row) => row.role === "owner" || row.role === "admin")
+    .map((row) => row.orgId);
 }
 
 // ponytail: emails a one-time temp password to the admin-vetted external

@@ -21,10 +21,10 @@
     };
     type Kind = "service" | "personal" | "shared";
     // Service beats personal beats shared — same precedence as the admin mailbox list.
-    const kindOf = (b: Mailbox | undefined): Kind =>
-        b?.isService
+    const kindOf = (mailbox: Mailbox | undefined): Kind =>
+        mailbox?.isService
             ? "service"
-            : (b?.isPersonal ?? true)
+            : (mailbox?.isPersonal ?? true)
               ? "personal"
               : "shared";
 
@@ -44,12 +44,12 @@
     // Same fallback order as the mail page: URL → last explicit pick → first.
     const activeId = $derived(
         page.url.searchParams.get("mailbox") ??
-            mailboxes.find((m) => m.id === activeMailbox.current)?.id ??
+            mailboxes.find((mailbox) => mailbox.id === activeMailbox.current)?.id ??
             mailboxes[0]?.id ??
             null,
     );
     const active = $derived(
-        mailboxes.find((m) => m.id === activeId) ?? mailboxes[0],
+        mailboxes.find((mailbox) => mailbox.id === activeId) ?? mailboxes[0],
     );
 
     const sidebar = useSidebar();

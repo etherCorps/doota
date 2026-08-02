@@ -60,11 +60,11 @@ async function activeOrg(orgId: string) {
 
 /** Assert the actor may manage mailboxes in `orgId` (org-admin / superadmin). */
 async function assertManageOrg(orgId: string) {
-  const a = await actor();
-  if (!can(a, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
+  const actorInfo = await actor();
+  if (!can(actorInfo, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
     error(403, "You don't manage mailboxes for this organization.");
   }
-  return a;
+  return actorInfo;
 }
 
 /**
@@ -78,10 +78,10 @@ async function assertManageMailbox(mailboxId: string) {
     columns: { id: true, orgId: true, isPersonal: true, isService: true },
   });
   if (!box) error(404, "Mailbox not found");
-  const a = await actor();
+  const actorInfo = await actor();
   const grantedManagerIds = await manageGrantUserIds(locals.db, mailboxId);
   if (
-    !can(a, "manage", {
+    !can(actorInfo, "manage", {
       type: "mailbox",
       ownerId: "",
       organizationId: box.orgId,
@@ -104,13 +104,13 @@ async function assertManageOrSendMailbox(mailboxId: string) {
     columns: { id: true, orgId: true, isService: true },
   });
   if (!box) error(404, "Mailbox not found");
-  const a = await actor();
+  const actorInfo = await actor();
   const [grantedManagerIds, grantedSenderIds] = await Promise.all([
     manageGrantUserIds(locals.db, mailboxId),
     sendGrantUserIds(locals.db, mailboxId),
   ]);
   const base = { type: "mailbox" as const, ownerId: "", organizationId: box.orgId };
-  if (!can(a, "manage", { ...base, grantedManagerIds }) && !can(a, "send", { ...base, grantedSenderIds })) {
+  if (!can(actorInfo, "manage", { ...base, grantedManagerIds }) && !can(actorInfo, "send", { ...base, grantedSenderIds })) {
     error(403, "You can't view this mailbox's send log.");
   }
   return box;
@@ -144,7 +144,7 @@ export const myMailboxes = query(async () => {
   return locals.db.query.mailbox.findMany({
     where: inArray(schema.mailbox.id, ids),
     columns: { id: true, address: true, displayName: true, isActive: true, isPersonal: true, isService: true },
-    orderBy: (m, { asc }) => asc(m.createdAt), // oldest first (old on top in the switcher)
+    orderBy: (mailbox, { asc }) => asc(mailbox.createdAt), // oldest first (old on top in the switcher)
   });
 });
 
@@ -166,7 +166,7 @@ export const myManagedMailboxIds = query(async () => {
         eq(schema.mailbox.isPersonal, false),
       ),
     );
-  return rows.map((r) => r.mailboxId);
+  return rows.map((row) => row.mailboxId);
 });
 
 /** Create a shared or service mailbox on the org's apex domain or a configured

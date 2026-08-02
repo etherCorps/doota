@@ -30,7 +30,7 @@ export const SlashCommand = Extension.create<{ items: SlashItem[] }>({
 				command: ({ editor, range, props }) => props.action(editor, range),
 				items: ({ query }) =>
 					all()
-						.filter((i) => i.title.toLowerCase().includes(query.toLowerCase()))
+						.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
 						.slice(0, 12),
 				render: () => {
 					let popup: HTMLDivElement | null = null;
@@ -48,14 +48,14 @@ export const SlashCommand = Extension.create<{ items: SlashItem[] }>({
 							popup.appendChild(empty);
 							return;
 						}
-						items.forEach((it, i) => {
+						items.forEach((item, i) => {
 							const b = document.createElement('button');
 							b.type = 'button';
 							b.className = 'slash-item' + (i === idx ? ' is-active' : '');
-							b.textContent = it.title;
+							b.textContent = item.title;
 							b.addEventListener('mousedown', (e) => {
 								e.preventDefault();
-								pick(it);
+								pick(item);
 							});
 							b.addEventListener('mouseenter', () => {
 								idx = i;

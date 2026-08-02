@@ -52,49 +52,49 @@ export const myNotifications = query(
 
     // Resolve sender names (new_mail) from the thread's latest message, and actor
     // names (assigned) from the user table — both cleartext, batched.
-    const threadIds = [...new Set(rows.filter((r) => r.type === "new_mail" && r.threadId).map((r) => r.threadId!))];
+    const threadIds = [...new Set(rows.filter((row) => row.type === "new_mail" && row.threadId).map((row) => row.threadId!))];
     const senderByThread = new Map<string, { from: string | null; fromName: string | null }>();
     if (threadIds.length) {
       // Latest message PER thread — one indexed (thread_id, sent_at) read each,
       // not a scan of every message in these threads. Bounded to the page (≤20).
       const latest = await Promise.all(
-        threadIds.map((tid) =>
+        threadIds.map((threadId) =>
           locals.db.query.message
             .findFirst({
-              where: eq(schema.message.threadId, tid),
+              where: eq(schema.message.threadId, threadId),
               orderBy: desc(schema.message.sentAt),
               columns: { fromAddr: true, fromName: true },
             })
-            .then((m) => [tid, m] as const),
+            .then((message) => [threadId, message] as const),
         ),
       );
-      for (const [tid, m] of latest)
-        if (m) senderByThread.set(tid, { from: m.fromAddr, fromName: m.fromName });
+      for (const [threadId, message] of latest)
+        if (message) senderByThread.set(threadId, { from: message.fromAddr, fromName: message.fromName });
     }
-    const actorIds = [...new Set(rows.filter((r) => r.actorUserId).map((r) => r.actorUserId!))];
+    const actorIds = [...new Set(rows.filter((row) => row.actorUserId).map((row) => row.actorUserId!))];
     const actorName = new Map<string, string>();
     if (actorIds.length) {
       const users = await locals.db
         .select({ id: schema.user.id, name: schema.user.name })
         .from(schema.user)
         .where(inArray(schema.user.id, actorIds));
-      for (const u of users) actorName.set(u.id, u.name);
+      for (const actor of users) actorName.set(actor.id, actor.name);
     }
 
-    return rows.map((r) => {
-      const s = r.threadId ? senderByThread.get(r.threadId) : undefined;
+    return rows.map((row) => {
+      const sender = row.threadId ? senderByThread.get(row.threadId) : undefined;
       return {
-        id: r.id,
-        type: r.type as NotificationType,
-        mailboxId: r.mailboxId,
-        threadId: r.threadId,
-        submissionId: r.submissionId,
-        from: s?.from ?? null,
-        fromName: s?.fromName ?? null,
-        actorName: r.actorUserId ? (actorName.get(r.actorUserId) ?? null) : null,
-        createdAt: r.createdAt.getTime(),
-        readAt: r.readAt ? r.readAt.getTime() : null,
-        seenAt: r.seenAt ? r.seenAt.getTime() : null,
+        id: row.id,
+        type: row.type as NotificationType,
+        mailboxId: row.mailboxId,
+        threadId: row.threadId,
+        submissionId: row.submissionId,
+        from: sender?.from ?? null,
+        fromName: sender?.fromName ?? null,
+        actorName: row.actorUserId ? (actorName.get(row.actorUserId) ?? null) : null,
+        createdAt: row.createdAt.getTime(),
+        readAt: row.readAt ? row.readAt.getTime() : null,
+        seenAt: row.seenAt ? row.seenAt.getTime() : null,
       };
     });
   },

@@ -26,8 +26,8 @@
 		complaint: { label: 'complaint', variant: 'warning' },
 		manual: { label: 'manual', variant: 'secondary' }
 	};
-	const fmtDate = (d: Date | string | number) =>
-		new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+	const fmtDate = (date: Date | string | number) =>
+		new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 	let addOpen = $state(false);
 	let address = $state('');
@@ -77,49 +77,49 @@
 	}
 </script>
 
-{#snippet addressCell(r: Row)}
-	<span class="font-mono">{r.address}</span>
+{#snippet addressCell(row: Row)}
+	<span class="font-mono">{row.address}</span>
 {/snippet}
 
-{#snippet reasonCell(r: Row)}
-	{@const meta = REASON[r.reason] ?? { label: r.reason, variant: 'outline' as const }}
+{#snippet reasonCell(row: Row)}
+	{@const meta = REASON[row.reason] ?? { label: row.reason, variant: 'outline' as const }}
 	<Badge variant={meta.variant} class="text-[10px]">{meta.label}</Badge>
 {/snippet}
 
-{#snippet seenCell(r: Row)}
-	<span class="text-muted-foreground text-sm">{fmtDate(r.lastSeenAt)}</span>
+{#snippet seenCell(row: Row)}
+	<span class="text-muted-foreground text-sm">{fmtDate(row.lastSeenAt)}</span>
 {/snippet}
 
-{#snippet actionsCell(r: Row)}
+{#snippet actionsCell(row: Row)}
 	<div class="flex justify-end">
 		<AlertDialog.Root>
 			<AlertDialog.Trigger>
 				{#snippet child({ props })}
-					<Button {...props} variant="outline" size="sm" disabled={removing[r.address]}>
-						{#if removing[r.address]}<Spinner class="mr-1" />{/if}
+					<Button {...props} variant="outline" size="sm" disabled={removing[row.address]}>
+						{#if removing[row.address]}<Spinner class="mr-1" />{/if}
 						Remove
 					</Button>
 				{/snippet}
 			</AlertDialog.Trigger>
 			<AlertDialog.Content>
 				<AlertDialog.Header>
-					<AlertDialog.Title>Remove {r.address}?</AlertDialog.Title>
+					<AlertDialog.Title>Remove {row.address}?</AlertDialog.Title>
 					<AlertDialog.Description>
-						This re-enables sending to <code class="font-mono">{r.address}</code>, a previously
+						This re-enables sending to <code class="font-mono">{row.address}</code>, a previously
 						suppressed address. If it's still bad, future sends may bounce or draw spam complaints.
 					</AlertDialog.Description>
 				</AlertDialog.Header>
 				<AlertDialog.Footer>
-					<AlertDialog.Cancel disabled={removing[r.address]}>Cancel</AlertDialog.Cancel>
+					<AlertDialog.Cancel disabled={removing[row.address]}>Cancel</AlertDialog.Cancel>
 					<AlertDialog.Action
-						disabled={removing[r.address]}
-						onclick={(e) => {
-							e.preventDefault();
-							remove(r.address);
+						disabled={removing[row.address]}
+						onclick={(event) => {
+							event.preventDefault();
+							remove(row.address);
 						}}
 						class="bg-destructive text-white hover:bg-destructive/90"
 					>
-						{#if removing[r.address]}<Spinner class="mr-1" />{/if}
+						{#if removing[row.address]}<Spinner class="mr-1" />{/if}
 						Remove
 					</AlertDialog.Action>
 				</AlertDialog.Footer>

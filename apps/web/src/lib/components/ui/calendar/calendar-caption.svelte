@@ -48,8 +48,8 @@
 		value={month.month}
 		onchange={(e) => {
 			if (!placeholder) return;
-			const v = Number.parseInt(e.currentTarget.value);
-			const newPlaceholder = placeholder.set({ month: v });
+			const monthNumber = Number.parseInt(e.currentTarget.value);
+			const newPlaceholder = placeholder.set({ month: monthNumber });
 			placeholder = newPlaceholder.subtract({ months: monthIndex });
 		}}
 	/>

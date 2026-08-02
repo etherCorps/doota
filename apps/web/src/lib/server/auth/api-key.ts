@@ -26,7 +26,7 @@ const KEY_BYTES = 32;
 const PREFIX_LEN = 12; // stored cleartext for display ("dk_1a2b3c…"), not secret.
 
 function hex(buf: ArrayBuffer): string {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(buf)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -127,14 +127,14 @@ export async function listApiKeys(db: Db, userId: string): Promise<ApiKeySummary
       createdAt: true,
     },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    prefix: r.prefix,
-    mailboxId: r.mailboxId,
-    lastUsedAt: r.lastUsedAt ? r.lastUsedAt.getTime() : null,
-    revokedAt: r.revokedAt ? r.revokedAt.getTime() : null,
-    createdAt: r.createdAt.getTime(),
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    prefix: row.prefix,
+    mailboxId: row.mailboxId,
+    lastUsedAt: row.lastUsedAt ? row.lastUsedAt.getTime() : null,
+    revokedAt: row.revokedAt ? row.revokedAt.getTime() : null,
+    createdAt: row.createdAt.getTime(),
   }));
 }
 
@@ -153,14 +153,14 @@ export async function listApiKeysForMailbox(db: Db, mailboxId: string): Promise<
       createdAt: true,
     },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    prefix: r.prefix,
-    mailboxId: r.mailboxId,
-    lastUsedAt: r.lastUsedAt ? r.lastUsedAt.getTime() : null,
-    revokedAt: r.revokedAt ? r.revokedAt.getTime() : null,
-    createdAt: r.createdAt.getTime(),
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    prefix: row.prefix,
+    mailboxId: row.mailboxId,
+    lastUsedAt: row.lastUsedAt ? row.lastUsedAt.getTime() : null,
+    revokedAt: row.revokedAt ? row.revokedAt.getTime() : null,
+    createdAt: row.createdAt.getTime(),
   }));
 }
 
@@ -194,6 +194,6 @@ export async function revokeApiKey(db: Db, keyId: string): Promise<void> {
 export function bearerFromHeaders(headers: Headers): string | null {
   const auth = headers.get("authorization");
   if (!auth) return null;
-  const m = /^Bearer\s+(.+)$/i.exec(auth);
-  return m ? m[1].trim() : null;
+  const match = /^Bearer\s+(.+)$/i.exec(auth);
+  return match ? match[1].trim() : null;
 }

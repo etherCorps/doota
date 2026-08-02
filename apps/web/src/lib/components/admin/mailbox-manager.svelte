@@ -99,8 +99,8 @@
 
 	const grantsMap = $derived.by(() => {
 		const m = new Map<string, { canManage: boolean; canSend: boolean; assignedOnly: boolean }>();
-		for (const g of grants)
-			m.set(g.userId, { canManage: g.canManage, canSend: g.canSend, assignedOnly: g.assignedOnly });
+		for (const grant of grants)
+			m.set(grant.userId, { canManage: grant.canManage, canSend: grant.canSend, assignedOnly: grant.assignedOnly });
 		return m;
 	});
 
@@ -160,7 +160,7 @@
 	// --- Send log (service mailboxes only) --------------------------------------
 	const logQ = $derived(mb.isService ? listSendLog(mb.id) : null);
 	const keyNameById = $derived(
-		new Map((keysQ?.current ?? []).map((k) => [k.id, k.name || `${k.prefix}…`]))
+		new Map((keysQ?.current ?? []).map((apiKey) => [apiKey.id, apiKey.name || `${apiKey.prefix}…`]))
 	);
 	let keyDialogOpen = $state(false);
 	let keyName = $state('');
@@ -212,29 +212,29 @@
 	}
 </script>
 
-{#snippet memberCell(u: Member)}
+{#snippet memberCell(member: Member)}
 	<div class="flex min-w-0 flex-col">
-		<span class="truncate text-sm font-medium">{u.name}</span>
-		<span class="text-muted-foreground truncate font-mono text-xs">{u.email}</span>
+		<span class="truncate text-sm font-medium">{member.name}</span>
+		<span class="text-muted-foreground truncate font-mono text-xs">{member.email}</span>
 	</div>
 {/snippet}
 
-{#snippet accessCell(u: Member)}
+{#snippet accessCell(member: Member)}
 	<Switch
-		checked={grantsMap.has(u.id)}
-		disabled={busyUser === u.id}
-		onCheckedChange={(v) => setAccess(u.id, v)}
+		checked={grantsMap.has(member.id)}
+		disabled={busyUser === member.id}
+		onCheckedChange={(checked) => setAccess(member.id, checked)}
 		aria-label="Access"
 	/>
 {/snippet}
 
-{#snippet scopeCell(u: Member)}
-	{@const grant = grantsMap.get(u.id)}
+{#snippet scopeCell(member: Member)}
+	{@const grant = grantsMap.get(member.id)}
 	{#if grant}
 		<Switch
 			checked={grant.canManage || !grant.assignedOnly}
-			disabled={busyUser === u.id || grant.canManage}
-			onCheckedChange={(v) => setSeesAll(u.id, v)}
+			disabled={busyUser === member.id || grant.canManage}
+			onCheckedChange={(checked) => setSeesAll(member.id, checked)}
 			aria-label="Sees all mail"
 			title={grant.canManage
 				? 'Managers always see the whole mailbox.'
@@ -245,13 +245,13 @@
 	{/if}
 {/snippet}
 
-{#snippet sendCell(u: Member)}
-	{@const grant = grantsMap.get(u.id)}
+{#snippet sendCell(member: Member)}
+	{@const grant = grantsMap.get(member.id)}
 	{#if grant}
 		<Switch
 			checked={grant.canSend}
-			disabled={busyUser === u.id}
-			onCheckedChange={(v) => setSend(u.id, v)}
+			disabled={busyUser === member.id}
+			onCheckedChange={(checked) => setSend(member.id, checked)}
 			aria-label="Can send"
 		/>
 	{:else}
@@ -259,13 +259,13 @@
 	{/if}
 {/snippet}
 
-{#snippet managerCell(u: Member)}
-	{@const grant = grantsMap.get(u.id)}
+{#snippet managerCell(member: Member)}
+	{@const grant = grantsMap.get(member.id)}
 	{#if grant}
 		<Switch
 			checked={grant.canManage}
-			disabled={busyUser === u.id}
-			onCheckedChange={(v) => setManage(u.id, v)}
+			disabled={busyUser === member.id}
+			onCheckedChange={(checked) => setManage(member.id, checked)}
 			aria-label="Manager"
 		/>
 	{:else}
@@ -336,7 +336,7 @@
 						<Switch
 							checked={mb.isActive}
 							disabled={togglingActive}
-							onCheckedChange={(v) => (v ? toggleActive() : (confirmDeactivate = true))}
+							onCheckedChange={(checked) => (checked ? toggleActive() : (confirmDeactivate = true))}
 							aria-label="Active"
 						/>
 					</div>
@@ -388,19 +388,19 @@
 							{@const keys = keysQ.current}
 							{#if keys.length}
 								<ul class="flex flex-col divide-y">
-									{#each keys as k (k.id)}
+									{#each keys as apiKey (apiKey.id)}
 										<li class="flex items-center gap-3 py-2.5">
 											<div class="flex min-w-0 flex-1 flex-col">
-												<span class="truncate text-sm font-medium">{k.name || 'Untitled key'}</span>
+												<span class="truncate text-sm font-medium">{apiKey.name || 'Untitled key'}</span>
 												<span class="text-muted-foreground truncate font-mono text-xs">
-													{k.prefix}… · created {fmtDate(k.createdAt)}
-													{#if k.lastUsedAt} · used {fmtDate(k.lastUsedAt)}{/if}
+													{apiKey.prefix}… · created {fmtDate(apiKey.createdAt)}
+													{#if apiKey.lastUsedAt} · used {fmtDate(apiKey.lastUsedAt)}{/if}
 												</span>
 											</div>
-											{#if k.revokedAt}
+											{#if apiKey.revokedAt}
 												<Badge variant="outline">Revoked</Badge>
 											{:else}
-												<Button size="sm" variant="outline" class="text-destructive hover:text-destructive" onclick={() => (confirmRevokeKey = { id: k.id, name: k.name || 'Untitled key' })}>
+												<Button size="sm" variant="outline" class="text-destructive hover:text-destructive" onclick={() => (confirmRevokeKey = { id: apiKey.id, name: apiKey.name || 'Untitled key' })}>
 													Revoke
 												</Button>
 											{/if}
@@ -437,21 +437,21 @@
 							{@const events = logQ.current}
 							{#if events.length}
 								<ul class="flex flex-col divide-y">
-									{#each events as e (e.id)}
+									{#each events as logEntry (logEntry.id)}
 										<li class="flex items-center gap-3 py-2.5">
 											<div class="flex min-w-0 flex-1 flex-col">
-												<span class="truncate text-sm font-medium">{e.subject || '(no subject)'}</span>
+												<span class="truncate text-sm font-medium">{logEntry.subject || '(no subject)'}</span>
 												<span class="text-muted-foreground truncate font-mono text-xs">
-													{e.toAddresses.join(', ') || '—'}
+													{logEntry.toAddresses.join(', ') || '—'}
 												</span>
 												<span class="text-muted-foreground truncate text-xs">
-													{fmt(e.createdAt)}
-													{#if e.apiKeyId} · {keyNameById.get(e.apiKeyId) ?? 'key'}{/if}
-													{#if e.templateId} · template{/if}
+													{fmt(logEntry.createdAt)}
+													{#if logEntry.apiKeyId} · {keyNameById.get(logEntry.apiKeyId) ?? 'key'}{/if}
+													{#if logEntry.templateId} · template{/if}
 												</span>
 											</div>
-											<Badge variant={e.status === 'failed' || e.status === 'bounced' ? 'destructive' : 'secondary'}>
-												{e.status}
+											<Badge variant={logEntry.status === 'failed' || logEntry.status === 'bounced' ? 'destructive' : 'secondary'}>
+												{logEntry.status}
 											</Badge>
 										</li>
 									{/each}
@@ -482,10 +482,10 @@
 							<dt class="text-muted-foreground text-xs">Total</dt>
 							<dd class="font-heading text-xl font-semibold tabular-nums">{activity.total}</dd>
 						</div>
-						{#each FOLDERS as f (f)}
+						{#each FOLDERS as folder (folder)}
 							<div class="flex flex-col gap-0.5">
-								<dt class="text-muted-foreground text-xs capitalize">{f}</dt>
-								<dd class="font-heading text-xl font-semibold tabular-nums">{activity.counts[f] ?? 0}</dd>
+								<dt class="text-muted-foreground text-xs capitalize">{folder}</dt>
+								<dd class="font-heading text-xl font-semibold tabular-nums">{activity.counts[folder] ?? 0}</dd>
 							</div>
 						{/each}
 					</dl>
@@ -494,13 +494,13 @@
 						<p class="mb-1 text-sm font-medium">Recent messages</p>
 						{#if activity.recent.length}
 							<ul class="divide-y rounded-md border">
-								{#each activity.recent as m (m.id)}
+								{#each activity.recent as message (message.id)}
 									<li class="flex items-center justify-between gap-3 px-3 py-2">
 										<div class="flex min-w-0 flex-col">
-											<span class="truncate text-sm">{m.subject || '(no subject)'}</span>
-											<span class="text-muted-foreground truncate font-mono text-xs">{m.from ?? '—'}</span>
+											<span class="truncate text-sm">{message.subject || '(no subject)'}</span>
+											<span class="text-muted-foreground truncate font-mono text-xs">{message.from ?? '—'}</span>
 										</div>
-										<span class="text-muted-foreground shrink-0 text-xs">{fmt(m.at)}</span>
+										<span class="text-muted-foreground shrink-0 text-xs">{fmt(message.at)}</span>
 									</li>
 								{/each}
 							</ul>
@@ -514,7 +514,7 @@
 	</Tabs.Root>
 </div>
 
-<Dialog.Root open={keyDialogOpen} onOpenChange={(o) => !o && closeKeyDialog()}>
+<Dialog.Root open={keyDialogOpen} onOpenChange={(open) => !open && closeKeyDialog()}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title class="font-heading">{newSecret ? 'Copy your key' : 'New API key'}</Dialog.Title>
@@ -556,7 +556,7 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<AlertDialog.Root open={!!confirmRevokeKey} onOpenChange={(o) => !o && (confirmRevokeKey = null)}>
+<AlertDialog.Root open={!!confirmRevokeKey} onOpenChange={(open) => !open && (confirmRevokeKey = null)}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Revoke {confirmRevokeKey?.name}?</AlertDialog.Title>
@@ -567,8 +567,8 @@
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
-				onclick={(e) => {
-					e.preventDefault();
+				onclick={(event) => {
+					event.preventDefault();
 					const id = confirmRevokeKey?.id;
 					confirmRevokeKey = null;
 					if (id) revokeKey(id);
@@ -581,7 +581,7 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-<AlertDialog.Root open={confirmDeactivate} onOpenChange={(o) => !o && (confirmDeactivate = false)}>
+<AlertDialog.Root open={confirmDeactivate} onOpenChange={(open) => !open && (confirmDeactivate = false)}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Deactivate {mb.address}?</AlertDialog.Title>
@@ -594,8 +594,8 @@
 			<AlertDialog.Cancel disabled={togglingActive}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				disabled={togglingActive}
-				onclick={(e) => {
-					e.preventDefault();
+				onclick={(event) => {
+					event.preventDefault();
 					confirmDeactivate = false;
 					toggleActive();
 				}}

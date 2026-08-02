@@ -203,7 +203,7 @@ describe("enqueue + sender copy (Parts B/D)", () => {
     const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
     expect(sub.status).toBe("queued");
     const recips = await db.query.submissionRecipient.findMany({ where: eq(schema.submissionRecipient.submissionId, submissionId) });
-    expect(recips.map((r: any) => r.address)).toEqual(["out@ext.com"]);
+    expect(recips.map((recipient: any) => recipient.address)).toEqual(["out@ext.com"]);
     // Sender's own copy: a `from` delivery; thread_state starts `archived`
     // (Sent is a view over `from` deliveries, not a placement).
     const fromDel = await db.query.delivery.findFirst({ where: eq(schema.delivery.mailboxId, "mb_alice") });
@@ -211,7 +211,7 @@ describe("enqueue + sender copy (Parts B/D)", () => {
     const ts = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, threadId) });
     expect(ts.placement).toBe("archived");
     const sent = await listThreads(db, { mailboxId: "mb_alice", placement: "sent", ck });
-    expect(sent.map((t) => t.threadId)).toEqual([threadId]);
+    expect(sent.map((thread) => thread.threadId)).toEqual([threadId]);
     const inbox = await listThreads(db, { mailboxId: "mb_alice", placement: "inbox", ck });
     expect(inbox).toEqual([]);
     expect(queue.sent.length).toBe(1);
@@ -239,10 +239,10 @@ describe("enqueue + sender copy (Parts B/D)", () => {
     const ts = await db.query.threadState.findFirst({ where: eq(schema.threadState.threadId, threadId) });
     expect(ts.placement).toBe("inbox");
     const inbox = await listThreads(db, { mailboxId: "mb_alice", placement: "inbox", ck });
-    expect(inbox.map((t) => t.threadId)).toEqual([threadId]);
+    expect(inbox.map((thread) => thread.threadId)).toEqual([threadId]);
     // …while the thread keeps showing in the Sent view (Gmail both-places).
     const sentView = await listThreads(db, { mailboxId: "mb_alice", placement: "sent", ck });
-    expect(sentView.map((t) => t.threadId)).toEqual([threadId]);
+    expect(sentView.map((thread) => thread.threadId)).toEqual([threadId]);
   });
 
   it("dedupes on idempotency key (double-send guard)", async () => {
@@ -396,7 +396,7 @@ describe("consumer send (Parts B/C/G)", () => {
     expect(sender.calls.length).toBe(1);
     expect(sender.calls[0].to).toEqual(["out@ext.com"]);
     const recips = await db.query.submissionRecipient.findMany({ where: eq(schema.submissionRecipient.submissionId, id) });
-    const byAddr = Object.fromEntries(recips.map((r: any) => [r.address, r.status]));
+    const byAddr = Object.fromEntries(recips.map((recipient: any) => [recipient.address, recipient.status]));
     expect(byAddr["bob@acme.com"]).toBe("delivered"); // materialized directly
     expect(byAddr["out@ext.com"]).toBe("sent");
     // Internal recipient got a real delivery row into their mailbox.
