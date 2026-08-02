@@ -37,7 +37,10 @@ declare global {
     interface Platform {
       env: Env;
       ctx: ExecutionContext;
-      caches: CacheStorage;
+      // Workers CacheStorage exposes `.default` (the unnamed edge cache) — not in
+      // the DOM lib type. Typed here so `platform.caches.default` is the sanctioned
+      // access (never the bare `caches` global, which is absent under vite dev).
+      caches: CacheStorage & { default: Cache };
       cf?: IncomingRequestCfProperties;
     }
 

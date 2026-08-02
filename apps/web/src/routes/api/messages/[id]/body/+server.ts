@@ -169,7 +169,10 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   // once per viewer/isolate. Auth ran above, so a post-auth cache read is safe;
   // a RENDER_CACHE_VERSION bump changes the key so patched renders don't serve
   // stale. (The browser's own ETag 304 already skips repeat views entirely.)
-  const bodyCache = (caches as { default?: Cache }).default;
+  // The cache comes from the SvelteKit platform context (App.Platform.caches),
+  // not the bare `caches` global — the global is absent under `vite dev` (Node
+  // SSR) and a bare reference throws. undefined here just skips the edge cache.
+  const bodyCache = platform?.caches?.default;
   const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
   let rawHtml: string | null = null;
   // Full plain-text body from R2 for a text-only message (no HTML part). The D1

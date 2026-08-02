@@ -43,7 +43,9 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   // every reader (the per-user gate is the auth check above, which always runs
   // first). One upstream fetch then serves all opens/users — and the sender
   // stops seeing repeat opens, the Gmail/Apple caching behaviour.
-  const cache = (caches as { default?: Cache }).default;
+  // From the platform context (App.Platform.caches), not the bare `caches` global
+  // — the global is absent under `vite dev` and a bare reference throws.
+  const cache = platform?.caches?.default;
   const cacheKey = new Request(`https://img-proxy.internal/${encodeURIComponent(target)}`);
   if (cache) {
     const hit = await cache.match(cacheKey);

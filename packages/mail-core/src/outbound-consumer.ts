@@ -6,6 +6,7 @@ import * as mail from "@doota/db/mail.schema";
 import { can, type Actor } from "@doota/db/can";
 import { routingForHost } from "@doota/db/org-domains";
 import { importKey, decryptContent, getDecryptedBlob, type ContentKey } from "./crypto";
+import { rawObjectToHtml, rawObjectToText } from "./mime";
 import { resolveRecipient } from "./resolver";
 import { materializeDelivery } from "./materialize";
 import { sendGrantUserIds } from "./mailbox";
@@ -442,9 +443,10 @@ async function buildBody(
   if (message.r2RawKey) {
     const buf = await getDecryptedBlob(env.MAIL_RAW, message.r2RawKey, ck);
     if (buf) {
-      const raw = JSON.parse(new TextDecoder().decode(buf)) as { text: string | null; html: string | null };
-      newText = raw.text;
-      newHtml = raw.html;
+      // Shape-aware (outbound JSON vs inbound MIME) + non-throwing on a malformed
+      // blob — a message being sent is outbound-staged today, but don't assume it.
+      newHtml = await rawObjectToHtml(message.r2RawKey, buf);
+      newText = await rawObjectToText(message.r2RawKey, buf);
     }
   }
   if (newText == null) newText = await decryptContent(ck, message.bodyFullEnc);
