@@ -345,7 +345,7 @@
 
 	<!-- scroll-pb-16: iOS reveals the caret at the visual-viewport bottom, which the
 	     compose send/footer bar overlays — pad the scrollport so the caret lands above it. -->
-	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto scroll-pb-16 {bodyClass}"></div>
+	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto overscroll-contain scroll-pb-16 {bodyClass}"></div>
 	<input bind:this={imageInput} type="file" accept="image/*" multiple class="hidden" onchange={onImageFiles} />
 
 	{#if activeLint}

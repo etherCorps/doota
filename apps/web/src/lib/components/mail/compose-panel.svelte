@@ -940,7 +940,7 @@
 		<!-- iOS full-screen page: fixed to the visible viewport (keyboard-safe), no
 		     drawer. The layout owns the history entry so the back-gesture closes it. -->
 		<div
-			class="bg-background fixed inset-x-0 z-50 flex flex-col overflow-hidden"
+			class="bg-background fixed inset-x-0 z-50 flex flex-col overflow-hidden overscroll-contain"
 			style={iosPageStyle}
 		>
 			<div class="flex min-h-0 flex-1 items-stretch overflow-hidden">

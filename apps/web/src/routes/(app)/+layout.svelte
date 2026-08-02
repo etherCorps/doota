@@ -102,8 +102,16 @@
 		</TopBar>
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and contains itself
 		     (panes scroll internally), but document-flow pages like /account scroll here.
-		     overscroll-contain: no iOS rubber-band bleeding to the document. -->
-		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:clientWidth={regionW}>
+		     overscroll-contain: no iOS rubber-band bleeding to the document.
+		     While the iOS full-screen composer is open, lock this region (overflow-hidden)
+		     so scrolling inside the composer can't chain into — and reveal — the mail list
+		     behind it. The composer is position:fixed, so it isn't clipped by the lock. -->
+		<div
+			class="min-h-0 flex-1 overscroll-contain {iosCompose && compose.open
+				? 'overflow-hidden'
+				: 'overflow-y-auto'}"
+			bind:clientWidth={regionW}
+		>
 			{@render children()}
 		</div>
 
