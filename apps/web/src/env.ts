@@ -24,6 +24,12 @@ export const variables = defineEnvVars({
 		public: true,
 		description: "The app's URL. Must match the dev port, or auth routes 404.",
 		schema: z.url()
+  },
+
+  ORIGINS: {
+    public: true,
+		description: "If you serve multiple domains, use this and add a default to ORIGIN.",
+		schema: optional?.transform((origins) => origins?.split(",").map((origin) => origin.trim()))
 	},
 	// One-time gate for the /setup wizard. Genesis only works when the user
 	// count is zero AND this token is presented — deploy access is the trust root.

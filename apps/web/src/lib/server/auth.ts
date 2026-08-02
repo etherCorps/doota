@@ -21,7 +21,7 @@ import * as schema from "@doota/db/schema";
 import { sendMailBackground } from "./mailer";
 import { isServedDomain, invalidateDomainCache, senderAddress, domainOf } from "@doota/db/org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
-import { ORIGIN } from "$app/env/public";
+import { ORIGIN, ORIGINS } from "$app/env/public";
 import { renderEmail } from "./email";
 import { kvSecondaryStorage } from "./auth/kv-secondary-storage.js";
 
@@ -114,7 +114,10 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       autoSignInAfterVerification: false,
     },
     appName: `Doota`,
-    baseURL: ORIGIN,
+    baseURL: ORIGINS?.length ? {
+      allowedHosts: ORIGINS,
+      fallback: ORIGIN
+    } : ORIGIN,
     secret: BETTER_AUTH_SECRET,
     database: drizzleAdapter(db!, { provider: "sqlite", schema }),
     emailAndPassword: {
