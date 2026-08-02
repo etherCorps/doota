@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { useDebounce } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { fmtSize, isImage } from '$lib/mail/format';
@@ -48,7 +48,7 @@
 		draftById
 	} from '$lib/rpc/draft.remote';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
-	import { withSignature } from '$lib/mail/signature';
+	import { withSignature, swapSignature } from '$lib/mail/signature';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import { mirrorDraft, readMirror, clearMirror, sweepMirrors } from '$lib/client/local-draft';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
@@ -107,6 +107,12 @@
 	let body = $state('');
 	let attachments = $state<AttachmentRef[]>([]);
 	let editorKey = $state(0);
+	// Signature-per-mailbox, and the exact signature currently in the editor, so a
+	// From change can swap it out (see the $effect below). sigReady gates the swap
+	// off until the initial seed is in — the onMount identity pick must not trip it.
+	let signatures = $state<Map<string, string>>(new Map());
+	let appliedSig = $state('');
+	let sigReady = $state(false);
 	let minimized = $state(false);
 	let maximized = $state(false);
 	let fileInput = $state<HTMLInputElement>();
@@ -193,7 +199,7 @@
 		sweepMirrors();
 		const [ids, sigRows] = await Promise.all([sendIdentities(), myMailboxSignatures()]);
 		identities = ids;
-		const signatures = new Map(sigRows.map((row) => [row.mailboxId, row.bodyHtml]));
+		signatures = new Map(sigRows.map((row) => [row.mailboxId, row.bodyHtml]));
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
 			draftId = d.id;
@@ -241,13 +247,31 @@
 		// signature for the chosen mailbox to the initial editor body, then remount
 		// so it renders. Editing the identity later doesn't re-swap it (v1).
 		if (mailboxId) {
-			const sig = signatures.get(mailboxId);
+			const sig = signatures.get(mailboxId) ?? '';
 			if (sig) {
 				body = withSignature(body, sig);
 				editorKey++;
 			}
+			appliedSig = sig;
 		}
 		restoreMirror();
+		sigReady = true; // fresh compose is seeded — a later From change may now swap.
+	});
+
+	// Swap the signature when the From mailbox changes (alias-only changes keep the
+	// same mailbox signature, so they no-op). untrack: this reads/writes body +
+	// appliedSig but must only re-run on mailboxId.
+	$effect(() => {
+		const id = mailboxId;
+		untrack(() => {
+			if (!sigReady || !id) return;
+			const rebuilt = swapSignature(body, appliedSig, signatures.get(id) ?? '');
+			if (rebuilt === null || rebuilt === body) return;
+			body = rebuilt;
+			appliedSig = signatures.get(id) ?? '';
+			editorKey++;
+			scheduleSave();
+		});
 	});
 
 	const canSend = $derived(phase === 'editing' && !!mailboxId && to.length + cc.length + bcc.length > 0);
@@ -800,6 +824,7 @@
 						{#key editorKey}
 							<TiptapEditor
 								fill
+								focusStart
 								initial={body}
 								oninput={(html) => {
 									body = html;

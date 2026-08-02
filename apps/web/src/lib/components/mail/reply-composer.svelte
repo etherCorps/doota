@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { useDebounce } from 'runed';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -26,7 +26,7 @@
 		detachDraftAttachment
 	} from '$lib/rpc/draft.remote';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
-	import { withSignature } from '$lib/mail/signature';
+	import { withSignature, swapSignature } from '$lib/mail/signature';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 	import type { AttachmentRef } from '@doota/mail-core/drafts';
 	import { fmtSize } from '$lib/mail/format';
@@ -126,6 +126,12 @@
 	let subjectText = $state('');
 	let body = $state('');
 	let editorKey = $state(0);
+	// Signature-per-mailbox + the signature currently in the editor, so changing
+	// the From mailbox swaps it (see the $effect below). sigReady gates the swap
+	// until the fresh reply has been seeded.
+	let sigByMailbox = $state<Map<string, string>>(new Map());
+	let appliedSig = $state('');
+	let sigReady = $state(false);
 	let attachments = $state<AttachmentRef[]>([]);
 	let fileInput = $state<HTMLInputElement>();
 	let sending = $state(false);
@@ -207,12 +213,30 @@
 	// guarded by htmlHasContent — a concurrent restore or typing wins over it.
 	async function applySignature() {
 		const rows = await myMailboxSignatures();
-		const sig = rows.find((row) => row.mailboxId === sendMailboxId)?.bodyHtml;
+		sigByMailbox = new Map(rows.map((row) => [row.mailboxId, row.bodyHtml]));
+		const sig = sigByMailbox.get(sendMailboxId) ?? '';
 		if (sig && !htmlHasContent(body)) {
 			body = withSignature(body, sig);
 			editorKey++;
 		}
+		appliedSig = sig;
+		sigReady = true; // fresh reply seeded — a later From change may now swap.
 	}
+
+	// Swap the signature when the From mailbox changes. untrack: reads/writes body
+	// + appliedSig, must only re-run on sendMailboxId.
+	$effect(() => {
+		const id = sendMailboxId;
+		untrack(() => {
+			if (!sigReady || !id) return;
+			const rebuilt = swapSignature(body, appliedSig, sigByMailbox.get(id) ?? '');
+			if (rebuilt === null || rebuilt === body) return;
+			body = rebuilt;
+			appliedSig = sigByMailbox.get(id) ?? '';
+			editorKey++;
+			scheduleSave();
+		});
+	});
 	let draftId = $state<string | null>(null);
 	let clientRevision = $state(0);
 
@@ -549,6 +573,7 @@
 			</div>
 			{#key editorKey}
 				<TiptapEditor
+					focusStart
 					initial={body}
 					placeholder="Reply to {toAddress}…"
 					bodyClass="max-h-[45svh]"

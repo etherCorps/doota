@@ -39,7 +39,8 @@
 		onsend,
 		bodyClass = '',
 		fill = false,
-		dense = false
+		dense = false,
+		focusStart = false
 	}: {
 		initial?: string;
 		placeholder?: string;
@@ -56,6 +57,11 @@
 		/** Short-body mode for small jobs (e.g. a signature): a lower height floor so
 		 * the control is sized to a few lines, not a full message composer. */
 		dense?: boolean;
+		/** Put the caret at the very start on mount. Composers seed the signature at
+		 * the end of the body, so the caret must land above it — otherwise clicking
+		 * the empty editor drops the caret after the signature and typing pushes the
+		 * user's text below their sign-off. */
+		focusStart?: boolean;
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
@@ -190,6 +196,7 @@
 				})
 			],
 			content: initial,
+			autofocus: focusStart ? 'start' : false,
 			editorProps: {
 				attributes: {
 					role: 'textbox',
