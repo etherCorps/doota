@@ -7,6 +7,7 @@ import * as schema from "@doota/db/schema";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { setOrgLifecycle } from "$lib/server/auth/escape-hatches.js";
 import { getAuthz } from "$lib/server/authz.js";
+import { invalidateRemoteContentPolicy } from "$lib/server/mail-cache.js";
 import {
   mirrorSubaddressing,
   mirrorRoutingSubdomains,
@@ -344,6 +345,7 @@ export const setOrgRemoteContent = command(
         target: schema.orgMailSettings.orgId,
         set: { remoteContentMode: mode, remoteContentLocked: locked },
       });
+    await invalidateRemoteContentPolicy(orgId); // render caches must see it now
     return { success: true as const };
   },
 );

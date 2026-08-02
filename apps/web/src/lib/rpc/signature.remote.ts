@@ -4,8 +4,8 @@ import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import * as mail from "@doota/db/mail.schema";
-import { listSendIdentities } from "@doota/mail-core/identities";
 import { sanitizeEmailHtml } from "@doota/mail-core/sanitize-email";
+import { cachedSendIdentities, kvCached, invalidateUserMailCache } from "$lib/server/mail-cache.js";
 
 /**
  * Per-(user, mailbox) email signatures. A signature belongs to the SENDER, so a
@@ -24,8 +24,8 @@ function requireUser() {
 /** Distinct mailbox ids the caller may send from (identities include aliases;
  * signatures are per mailbox, so collapse to the mailbox set). */
 async function sendableMailboxIds(): Promise<string[]> {
-  const { locals } = getRequestEvent();
-  const ids = (await listSendIdentities(locals.db, requireUser().id)).map((identity) => identity.mailboxId);
+  requireUser();
+  const ids = (await cachedSendIdentities()).map((identity) => identity.mailboxId);
   return [...new Set(ids)];
 }
 
@@ -34,6 +34,13 @@ export type MailboxSignature = { mailboxId: string; address: string; displayName
 /** The caller's signature per sendable mailbox (empty string where unset),
  * labelled with the mailbox address for the settings UI. */
 export const myMailboxSignatures = query(async (): Promise<MailboxSignature[]> => {
+  const user = requireUser();
+  // KV-cached (sig:v1:{user}, 5min) — read on every compose/reply open; deleted
+  // on setMailboxSignature and on grant changes (invalidateUserMailCache).
+  return kvCached(`sig:v1:${user.id}`, loadMailboxSignatures, Array.isArray);
+});
+
+async function loadMailboxSignatures(): Promise<MailboxSignature[]> {
   const { locals } = getRequestEvent();
   const user = requireUser();
   const mailboxIds = await sendableMailboxIds();
@@ -55,7 +62,7 @@ export const myMailboxSignatures = query(async (): Promise<MailboxSignature[]> =
     displayName: box.displayName,
     bodyHtml: byMailbox.get(box.id) ?? "",
   }));
-});
+}
 
 /** Set (or clear, with "") the caller's signature for a mailbox they send from. */
 export const setMailboxSignature = command(
@@ -81,6 +88,7 @@ export const setMailboxSignature = command(
         target: [mail.mailboxSignature.userId, mail.mailboxSignature.mailboxId],
         set: { bodyHtml: clean, updatedAt: new Date() },
       });
+    await invalidateUserMailCache(user.id); // fresh signature on the next compose
     return { mailboxId, bodyHtml: clean };
   },
 );

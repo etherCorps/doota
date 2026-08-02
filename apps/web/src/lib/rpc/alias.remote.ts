@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
 import { getAuthz } from "$lib/server/authz.js";
+import { invalidateMailboxHolders } from "$lib/server/mail-cache.js";
 import {
   createRandomAlias,
   setAliasEnabled,
@@ -73,6 +74,7 @@ export const generateAlias = command(
       host: org.domain,
       label: label ?? null,
     });
+    await invalidateMailboxHolders(mailboxId); // identity lists now include it
     return { success: true as const, ...alias };
   },
 );
@@ -90,16 +92,20 @@ async function aliasMailboxId(aliasId: string): Promise<string> {
 export const toggleAlias = command(
   z.object({ aliasId: z.string().min(1), enabled: z.boolean() }),
   async ({ aliasId, enabled }) => {
-    await requireMailboxActor(await aliasMailboxId(aliasId));
+    const mailboxId = await aliasMailboxId(aliasId);
+    await requireMailboxActor(mailboxId);
     const { locals } = getRequestEvent();
     await setAliasEnabled(locals.db, aliasId, enabled);
+    await invalidateMailboxHolders(mailboxId); // availability changed
     return { success: true as const };
   },
 );
 
 export const deleteAlias = command(z.string().min(1), async (aliasId) => {
-  await requireMailboxActor(await aliasMailboxId(aliasId));
+  const mailboxId = await aliasMailboxId(aliasId);
+  await requireMailboxActor(mailboxId);
   const { locals } = getRequestEvent();
   await deleteAliasRow(locals.db, aliasId);
+  await invalidateMailboxHolders(mailboxId); // identity lists must drop it
   return { success: true as const };
 });

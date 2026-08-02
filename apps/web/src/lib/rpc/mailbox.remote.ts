@@ -7,6 +7,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
 import { getAuthz, invalidateAuthz } from "$lib/server/authz.js";
+import { invalidateUserMailCache } from "$lib/server/mail-cache.js";
 import {
   upsertMailbox,
   grantAccess,
@@ -270,6 +271,7 @@ export const grantMailboxAccess = command(
         assignedOnly ?? existing?.assignedOnly ?? (!nextManage && !box.isPersonal),
     });
     await invalidateAuthz(userId); // the grantee's cached snapshot is now stale
+    await invalidateUserMailCache(userId); // identities/signatures follow the grant set
     return { success: true as const };
   },
 );
@@ -289,6 +291,7 @@ export const revokeMailboxAccess = command(
         ),
       );
     await invalidateAuthz(userId); // revocation must not ride out the KV TTL
+    await invalidateUserMailCache(userId); // identities/signatures follow the grant set
     return { success: true as const };
   },
 );

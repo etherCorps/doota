@@ -5,7 +5,7 @@ import { z } from "zod";
 import { importKey } from "@doota/mail-core/crypto";
 import type { OutboundEnv } from "@doota/mail-core/outbound";
 import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
-import { listSendIdentities } from "@doota/mail-core/identities";
+import { cachedSendIdentities } from "$lib/server/mail-cache.js";
 import { suggestRecipients, topRecipients, type RecipientSuggestion } from "@doota/mail-core/contacts";
 import { mailEventStream } from "@doota/mail-core/events-hub";
 import { TtlCache } from "$lib/server/ttl-cache.js";
@@ -59,9 +59,8 @@ const AddrList = z.array(z.email()).default([]);
 const Kind = z.enum(["new", "reply", "reply_all", "forward"]);
 
 export const sendIdentities = query(async () => {
-  const user = requireUser();
-  const { locals } = getRequestEvent();
-  return listSendIdentities(locals.db, user.id);
+  requireUser();
+  return cachedSendIdentities();
 });
 
 // Contact-cache TTL. Staleness ceiling for the prefetched candidate list; a
