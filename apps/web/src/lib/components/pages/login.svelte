@@ -17,7 +17,7 @@
 	import { page } from '$app/state';
 
 	let email = $state(page?.url.searchParams.get('email') ?? '');
-	let password = $state(page?.url.searchParams.get('password') ?? '');
+	let password = $state('');
 	let code = $state('');
 	// 'entering': credentials verified, navigating in — the slow stretch (session
 	// write, onboarding derivation, first layout loads) that used to render as a
@@ -102,6 +102,7 @@
 					<InputGroup>
 						<InputGroupInput
 							type="email"
+							inputmode="email"
 							placeholder="you@yourdomain.com"
 							bind:value={email}
 							required
@@ -159,7 +160,13 @@
 				<Field.Field>
 					{#if useBackup}
 						<Field.Label>Backup code</Field.Label>
-						<Input type="text" bind:value={code} required autocomplete="one-time-code" />
+						<Input
+							type="text"
+							inputmode="numeric"
+							bind:value={code}
+							required
+							autocomplete="one-time-code"
+						/>
 					{:else}
 						<Field.Label>Authenticator code</Field.Label>
 						<InputOTP.Root maxlength={6} bind:value={code}>

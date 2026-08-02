@@ -49,6 +49,7 @@
 			}
 		} catch (error) {
 			console.log(error);
+			toast.error('Something went wrong. Please try again.');
 		} finally {
 			formState.isLoading = false;
 		}
@@ -97,7 +98,7 @@
 						<Field.Field>
 							<Field.Label>Name</Field.Label>
 							<InputGroup>
-								<InputGroupInput placeholder="Shivam" {...fields.name.as('text')} type="text" />
+								<InputGroupInput placeholder="Shivam" {...fields.name.as('text')} type="text" autocomplete="name" />
 								<InputGroupAddon align="inline-start">
 									<User />
 								</InputGroupAddon>
@@ -115,6 +116,8 @@
 									placeholder="hello@email.com"
 									{...fields.email.as('email')}
 									type="email"
+									inputmode="email"
+									autocomplete="email"
 								/>
 								<InputGroupAddon align="inline-start">
 									<AtSignIcon />
@@ -128,7 +131,7 @@
 							<Alert.Root>
                     <InfoIcon />
                     <Alert.Title>Your email — used to log in and, once verified later, to recover
-								this account. It must not be on a mail hosted this server service.</Alert.Title>
+								this account. Don't use an address hosted on this server.</Alert.Title>
 							</Alert.Root>
 						</Field.Field>
 						<Field.Field>
