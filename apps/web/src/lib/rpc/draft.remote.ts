@@ -22,6 +22,7 @@ import {
   listFailedSends,
   retryFailedSend,
 } from "@doota/mail-core/drafts";
+import { tryCatch } from "@doota/utils/try-catch";
 
 /**
  * Compose surfaces (Part C/D). Drafts are per-user; each function re-derives the
@@ -232,6 +233,7 @@ export const discardDrafts = command(
     let discarded = 0;
     // ponytail: loop the single-draft path — the ownership guard and R2 blob
     // purge live there; N is small and schema-bounded. Batch SQL when it matters.
+    // TODO: Do batch query
     for (const draftId of draftIds) {
       try {
         await discardDraft(locals.db, outboundEnv(), draftId, user.id);
