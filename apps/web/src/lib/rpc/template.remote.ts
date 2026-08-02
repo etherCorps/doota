@@ -5,7 +5,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import {
   createTemplate,
   updateTemplate,
@@ -26,7 +26,7 @@ import {
 async function assertCanManageTemplates(orgId: string) {
   const { locals } = getRequestEvent();
   if (!locals.user) error(401, "Not authenticated");
-  const orgAdminOf = await actorOrgAdminOf(locals.db, locals.user.id);
+  const { orgAdminOf } = await getAuthz();
   const a = { id: locals.user.id, role: locals.user.role, orgAdminOf };
   if (can(a, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
     return locals.user;

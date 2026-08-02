@@ -5,7 +5,7 @@ import { z } from "zod";
 import { and, eq, desc } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import { suppress, unsuppress } from "@doota/mail-core/bounce";
 
 /**
@@ -27,9 +27,8 @@ function requireUser() {
 }
 
 async function assertManageOrg(orgId: string) {
-  const { locals } = getRequestEvent();
   const user = requireUser();
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const { orgAdminOf } = await getAuthz();
   const a = { id: user.id, role: user.role, orgAdminOf };
   if (!can(a, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
     error(403, "You don't manage this organization.");

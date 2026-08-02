@@ -6,9 +6,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import {
-  accessibleMailboxIds,
   assignedOnlyFor,
   assignedOnlyMailboxIds,
   manageGrantUserIds,
@@ -58,12 +57,12 @@ async function assertMailboxAccess(mailboxId: string) {
   });
   if (!box) error(404, "Mailbox not found");
 
-  const hasGrant = (await accessibleMailboxIds(locals.db, user.id)).includes(mailboxId);
+  const { mailboxIds, orgAdminOf } = await getAuthz();
+  const hasGrant = mailboxIds.includes(mailboxId);
   // Only fall back to the org-admin read check when there's no grant — otherwise
   // a plain member (never an org admin) trips a spurious can() deny on every
   // thread list/open. A grant is already sufficient.
   if (!hasGrant) {
-    const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
     const orgRead = can(
       { id: user.id, role: user.role, orgAdminOf },
       "read",
@@ -117,7 +116,7 @@ async function assertMailboxManage(mailboxId: string) {
   });
   if (!box) error(404, "Mailbox not found");
   const grantedManagerIds = await manageGrantUserIds(locals.db, mailboxId);
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const { orgAdminOf } = await getAuthz();
   const ok = can(
     { id: user.id, role: user.role, orgAdminOf },
     "manage",
@@ -171,7 +170,7 @@ export const unreadCount = query(z.object({ mailboxId: z.string().min(1) }), asy
 export const recentUnreadMail = query(async () => {
   const { locals } = getRequestEvent();
   if (!locals.user) error(401, "Not authenticated");
-  const mailboxIds = await accessibleMailboxIds(locals.db, locals.user.id);
+  const mailboxIds = (await getAuthz()).mailboxIds;
   return recentUnread(locals.db, {
     userId: locals.user.id,
     ck: await contentKey(),

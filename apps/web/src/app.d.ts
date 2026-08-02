@@ -51,6 +51,9 @@ declare global {
       db: DrizzleD1Database<typeof schema>;
       /** Set by hooks only when the user still has onboarding steps left. */
       onboarding?: OnboardingStatus;
+      /** Request-scoped memo of the caller's authz snapshot ($lib/server/authz).
+       * Populated lazily by getAuthz(); never set it directly. */
+      authz?: Promise<import("$lib/server/authz.js").Authz>;
     }
 
     // interface Error {}

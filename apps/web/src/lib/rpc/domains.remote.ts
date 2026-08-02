@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { setOrgLifecycle } from "$lib/server/auth/escape-hatches.js";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import {
   mirrorSubaddressing,
   mirrorRoutingSubdomains,
@@ -299,7 +299,7 @@ export const updateOrgProfile = command(
   async ({ orgId, name, logo }) => {
     const user = requireActor();
     if (user.role !== "superadmin") {
-      const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
+      const adminOf = (await getAuthz()).orgAdminOf;
       if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
     }
     const { locals, request } = getRequestEvent();
@@ -315,7 +315,7 @@ export const updateOrgProfile = command(
 export const orgRemoteContent = query(z.string().min(1), async (orgId) => {
   const user = requireActor();
   if (user.role !== "superadmin") {
-    const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
+    const adminOf = (await getAuthz()).orgAdminOf;
     if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
   }
   const row = await getRequestEvent().locals.db.query.orgMailSettings.findFirst({
@@ -334,7 +334,7 @@ export const setOrgRemoteContent = command(
   async ({ orgId, mode, locked }) => {
     const user = requireActor();
     if (user.role !== "superadmin") {
-      const adminOf = await actorOrgAdminOf(getRequestEvent().locals.db, user.id);
+      const adminOf = (await getAuthz()).orgAdminOf;
       if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
     }
     await getRequestEvent()

@@ -3,7 +3,7 @@ import { error, type RequestHandler } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
+import { getAuthz } from "$lib/server/authz.js";
 import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { sanitizeFilename } from "$lib/utils/filename";
 import { verifyResourceToken } from "$lib/server/resource-token.js";
@@ -47,7 +47,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const user = locals.user;
   if (!allowed) {
     if (!user) error(401, "Not authenticated");
-    const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
+    const { mailboxIds: myBoxes, orgAdminOf } = await getAuthz();
     if (myBoxes.length) {
       const del = await locals.db.query.delivery.findFirst({
         where: and(
@@ -59,7 +59,6 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
       allowed = !!del;
     }
     if (!allowed) {
-      const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
       allowed = can(
         { id: user.id, role: user.role, orgAdminOf },
         "read",

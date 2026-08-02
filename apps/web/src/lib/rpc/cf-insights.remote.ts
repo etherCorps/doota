@@ -5,7 +5,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import {
   zoneEmailAnalytics,
   zoneEmailEvents,
@@ -27,7 +27,7 @@ async function orgForInsights(orgId: string) {
   const { locals } = getRequestEvent();
   const user = locals.user;
   if (!user) error(401, "Not authenticated");
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const { orgAdminOf } = await getAuthz();
   if (!can({ id: user.id, role: user.role, orgAdminOf }, "manage", { type: "mailbox", ownerId: "", organizationId: orgId })) {
     error(403, "You don't manage this organization.");
   }

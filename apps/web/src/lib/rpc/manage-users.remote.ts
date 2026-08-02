@@ -7,7 +7,8 @@ import * as schema from "@doota/db/schema";
 import { Email } from "$lib/shared/model/utils.zod.schema.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
 import { can, type Actor } from "@doota/db/can";
-import { actorOrgAdminOf, provisionUser } from "$lib/server/provisioning.js";
+import { provisionUser } from "$lib/server/provisioning.js";
+import { getAuthz, invalidateAuthz } from "$lib/server/authz.js";
 import { purgeUserMemberships } from "$lib/server/auth/escape-hatches.js";
 
 const ADMIN_ROLES = ["admin", "superadmin"];
@@ -36,7 +37,7 @@ async function assertCanManage(actor: Actor, targetUserId: string) {
     where: eq(schema.member.userId, targetUserId),
     columns: { organizationId: true },
   });
-  const orgAdminOf = await actorOrgAdminOf(locals.db, actor.id);
+  const { orgAdminOf } = await getAuthz();
   const allowed = can({ id: actor.id, role: actor.role, orgAdminOf }, "manage", {
     type: "user",
     ownerId: target.id,
@@ -96,5 +97,6 @@ export const removeUser = command(z.string(), async (userId) => {
   // first, then remove the user.
   await purgeUserMemberships(userId);
   await locals.auth.api.removeUser({ body: { userId }, headers: request.headers });
+  await invalidateAuthz(userId); // drop the removed user's cached authz snapshot
   return { removed: true };
 });

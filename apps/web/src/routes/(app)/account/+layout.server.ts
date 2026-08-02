@@ -2,7 +2,7 @@
 import { redirect } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
-import { cachedAccessibleMailboxIds } from "$lib/server/authz-cache.js";
+import { getAuthz } from "$lib/server/authz.js";
 
 // Shared account context for every /account sub-page (Profile / Security / Mail /
 // Developer). The tab nav + the "second factor required" gate live in the layout,
@@ -19,7 +19,7 @@ export const load = async ({ locals }) => {
   // Developer tab is a SERVICE-mailbox feature (programmatic send keys). Show it
   // only when the user can reach a service mailbox, or still holds a legacy key
   // they may want to revoke — hide it for personal/shared-only users.
-  const accessibleIds = await cachedAccessibleMailboxIds(locals.db, user.id);
+  const accessibleIds = (await getAuthz()).mailboxIds;
   const serviceMailbox = accessibleIds.length
     ? await locals.db.query.mailbox.findFirst({
         where: and(inArray(schema.mailbox.id, accessibleIds), eq(schema.mailbox.isService, true)),

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
-import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
+import { getAuthz } from "$lib/server/authz.js";
 
 /**
  * Contact detail for the sender hover card: whether the address is one of our
@@ -40,7 +40,7 @@ export const contactRecent = query(
     });
     const isInternal = !!owner;
 
-    const boxes = await accessibleMailboxIds(locals.db, locals.user.id);
+    const boxes = (await getAuthz()).mailboxIds;
     if (!boxes.length) return { isInternal, recent: [] };
 
     // Messages this address is on (from OR to/cc), within readable mailboxes.

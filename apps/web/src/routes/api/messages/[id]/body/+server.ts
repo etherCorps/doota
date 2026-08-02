@@ -14,7 +14,7 @@ import {
   rewriteRemoteResourceUrls,
 } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
-import { cachedAccessibleMailboxIds, cachedActorOrgAdminOf } from "$lib/server/authz-cache.js";
+import { getAuthz } from "$lib/server/authz.js";
 import { renderETag, isNotModified, revalidateHeaders, RENDER_CACHE_VERSION } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
 import { signResourceToken } from "$lib/server/resource-token.js";
@@ -126,7 +126,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
 
   // Access mirrors thread read + the attachment endpoint: a delivery to one of
   // the user's mailboxes, or org-level read via can().
-  const myBoxes = await cachedAccessibleMailboxIds(locals.db, user.id);
+  const { mailboxIds: myBoxes, orgAdminOf } = await getAuthz();
   let allowed = false;
   if (myBoxes.length) {
     const del = await locals.db.query.delivery.findFirst({
@@ -136,7 +136,6 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     allowed = !!del;
   }
   if (!allowed) {
-    const orgAdminOf = await cachedActorOrgAdminOf(locals.db, user.id);
     allowed = can(
       { id: user.id, role: user.role, orgAdminOf },
       "read",

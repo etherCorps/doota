@@ -6,11 +6,10 @@ import { and, eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz, invalidateAuthz } from "$lib/server/authz.js";
 import {
   upsertMailbox,
   grantAccess,
-  accessibleMailboxIds,
   manageGrantUserIds,
   sendGrantUserIds,
   addressHosts,
@@ -40,9 +39,8 @@ function requireUser() {
 }
 
 async function actor() {
-  const { locals } = getRequestEvent();
   const user = requireUser();
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const { orgAdminOf } = await getAuthz();
   return { id: user.id, role: user.role, orgAdminOf };
 }
 
@@ -137,9 +135,9 @@ export const listMailboxes = query(z.string(), async (orgId) => {
  * the user already holds an access grant on.
  */
 export const myMailboxes = query(async () => {
-  const user = requireUser();
+  requireUser();
   const { locals } = getRequestEvent();
-  const ids = await accessibleMailboxIds(locals.db, user.id);
+  const ids = (await getAuthz()).mailboxIds;
   if (!ids.length) return [];
   return locals.db.query.mailbox.findMany({
     where: inArray(schema.mailbox.id, ids),
@@ -271,6 +269,7 @@ export const grantMailboxAccess = command(
       assignedOnly:
         assignedOnly ?? existing?.assignedOnly ?? (!nextManage && !box.isPersonal),
     });
+    await invalidateAuthz(userId); // the grantee's cached snapshot is now stale
     return { success: true as const };
   },
 );
@@ -289,6 +288,7 @@ export const revokeMailboxAccess = command(
           eq(mail.mailboxAccess.userId, userId),
         ),
       );
+    await invalidateAuthz(userId); // revocation must not ride out the KV TTL
     return { success: true as const };
   },
 );

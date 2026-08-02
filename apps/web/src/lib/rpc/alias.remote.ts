@@ -5,9 +5,8 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { actorOrgAdminOf } from "$lib/server/provisioning.js";
+import { getAuthz } from "$lib/server/authz.js";
 import {
-  accessibleMailboxIds,
   createRandomAlias,
   setAliasEnabled,
   deleteAlias as deleteAliasRow,
@@ -30,9 +29,9 @@ async function requireMailboxActor(mailboxId: string) {
   });
   if (!box) error(404, "Mailbox not found");
 
-  const orgAdminOf = await actorOrgAdminOf(locals.db, user.id);
+  const { mailboxIds, orgAdminOf } = await getAuthz();
   const actor = { id: user.id, role: user.role, orgAdminOf };
-  const hasGrant = (await accessibleMailboxIds(locals.db, user.id)).includes(mailboxId);
+  const hasGrant = mailboxIds.includes(mailboxId);
   const orgManage = can(actor, "manage", {
     type: "mailbox",
     ownerId: "",
