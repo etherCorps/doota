@@ -22,6 +22,33 @@
 	let name = $state(untrack(() => data.org.name));
 	let logo = $state(untrack(() => data.org.logo ?? ''));
 	let saving = $state(false);
+	let logoUploading = $state(false);
+	let logoInput = $state<HTMLInputElement>();
+
+	// Upload → we host the branding image from R2 and drop the stable URL into the
+	// field; the user still clicks Save to persist it on the org.
+	async function uploadLogo(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		logoUploading = true;
+		try {
+			const fd = new FormData();
+			fd.append('file', file);
+			const res = await fetch(`/api/org-logo/${org.id}`, { method: 'POST', body: fd });
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				toast.error(body?.message ?? 'Upload failed.');
+				return;
+			}
+			const { url } = (await res.json()) as { url: string };
+			logo = url;
+			toast.success('Logo uploaded — click Save to apply.');
+		} finally {
+			logoUploading = false;
+		}
+	}
 
 	async function save() {
 		saving = true;
@@ -47,6 +74,17 @@
 	let publishing = $state(false);
 	let uploading = $state(false);
 	let svgInput = $state<HTMLInputElement>();
+	// Bumped after a re-upload to bust the preview cache (the l= URL stays stable
+	// for BIMI validators; only the preview img gets the ?t= param).
+	let bimiVer = $state(0);
+	// Preview the ACTUAL current asset: a pasted external URL as-is, otherwise the
+	// self-hosted R2 file — so it shows even before Publish and survives reload.
+	const bimiPreviewSrc = $derived.by(() => {
+		const u = bimiLogo.trim();
+		const selfHosted = `/api/bimi/${org.id}.svg`;
+		if (u && !u.includes(selfHosted)) return u;
+		return `${selfHosted}?t=${bimiVer}`;
+	});
 
 	// Upload → we validate (Tiny-PS + safety) and host the SVG from R2; the
 	// returned stable URL drops straight into the l= field.
@@ -67,6 +105,7 @@
 			}
 			const { url } = (await res.json()) as { url: string };
 			bimiLogo = url;
+			bimiVer = Date.now(); // refresh the preview past the 1-day edge cache
 			toast.success('Logo uploaded — publish the DNS record to go live.');
 		} finally {
 			uploading = false;
@@ -125,11 +164,41 @@
 			<Input bind:value={name} placeholder="Acme Inc" />
 		</Field.Field>
 		<Field.Field>
-			<Field.Label>Branding logo URL</Field.Label>
-			<Input bind:value={logo} placeholder="https://acme.com/logo.png" type="url" />
+			<Field.Label>Branding logo</Field.Label>
+			{#if logo.trim()}
+				<div class="bg-muted/40 flex items-center gap-3 rounded-xl border p-3">
+					{#key logo.trim()}
+						<img
+							src={logo.trim()}
+							alt="Branding logo"
+							class="size-16 shrink-0 rounded-lg border bg-white object-contain p-1.5"
+							onerror={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
+						/>
+					{/key}
+					<p class="text-muted-foreground min-w-0 text-xs">
+						Current logo. Click <span class="text-foreground font-medium">Save</span> to apply it across
+						the org header and outbound mail.
+					</p>
+				</div>
+			{/if}
+			<div class="flex gap-2">
+				<Input bind:value={logo} placeholder="https://acme.com/logo.png" type="url" class="min-w-0 flex-1" />
+				<Button variant="outline" disabled={logoUploading} onclick={() => logoInput?.click()}>
+					{#if logoUploading}<Spinner class="mr-1" />{/if}
+					Upload
+				</Button>
+				<input
+					bind:this={logoInput}
+					type="file"
+					accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg"
+					class="hidden"
+					onchange={uploadLogo}
+				/>
+			</div>
 			<Field.Description>
-				Public HTTPS URL — PNG, JPG or SVG. Used for app and email branding. The verified
-				inbox logo (BIMI) is a separate SVG asset, set in the BIMI card below.
+				Upload a PNG, JPG, WEBP, GIF or SVG (≤ 2 MB) — we host it at a stable URL — or paste a
+				public HTTPS URL. Used for app and email branding. The verified inbox logo (BIMI) is a
+				separate SVG asset, set in the BIMI card below.
 			</Field.Description>
 		</Field.Field>
 		<div class="flex justify-end">
@@ -177,15 +246,18 @@
 					<Field.Field>
 						<Field.Label>Logo URL (SVG Tiny-PS)</Field.Label>
 						<div class="flex gap-2">
-							{#if bimiLogo.trim().startsWith('https://')}
-								<!-- <img> is script-inert — safe preview even for an unvalidated
-								     external URL (scripts/handlers never run in an image context). -->
+							<!-- Persistent preview of the ACTUAL current asset (self-hosted R2 file
+							     or a pasted URL). <img> is script-inert, so it's a safe preview even
+							     for an unvalidated external URL. Re-keyed on src so onerror re-runs;
+							     hides itself when nothing is uploaded yet. -->
+							{#key bimiPreviewSrc}
 								<img
-									src={bimiLogo.trim()}
-									alt="BIMI logo preview"
+									src={bimiPreviewSrc}
+									alt="BIMI logo"
 									class="size-9 shrink-0 rounded-lg border bg-white object-contain p-1"
+									onerror={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
 								/>
-							{/if}
+							{/key}
 							<Input bind:value={bimiLogo} placeholder="https://acme.com/bimi-logo.svg" type="url" class="min-w-0 flex-1" />
 							<Button variant="outline" disabled={uploading} onclick={() => svgInput?.click()}>
 								{#if uploading}<Spinner class="mr-1" />{/if}

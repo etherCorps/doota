@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { svgProblem } from "$lib/server/bimi/validate";
+import { svgProblem, svgSafetyProblem } from "$lib/server/bimi/validate";
 
 /** The upload validator is a security boundary (we serve the SVG from our origin). */
 
@@ -37,5 +37,19 @@ describe("BIMI svgProblem", () => {
     expect(svgProblem(inject("<foreignObject/>"))).toMatch(/foreignObject/);
     expect(svgProblem(OK.replace("<circle", '<circle onload="alert(1)"'))).toMatch(/Event handler/);
     expect(svgProblem(OK.replace("<circle", '<circle href="javascript:x"'))).toMatch(/javascript:|External/);
+  });
+});
+
+describe("svgSafetyProblem (branding logo — no Tiny-PS requirement)", () => {
+  it("accepts a normal SVG without baseProfile/title", () => {
+    expect(
+      svgSafetyProblem('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>')
+    ).toBeNull();
+  });
+  it("still blocks scripts, handlers, and external references", () => {
+    expect(svgSafetyProblem("hello")).toMatch(/Not an SVG/);
+    expect(svgSafetyProblem("<svg><script>x</script></svg>")).toMatch(/Scripts/);
+    expect(svgSafetyProblem('<svg><a href="https://evil.example">x</a></svg>')).toMatch(/External/);
+    expect(svgSafetyProblem('<svg><rect onload="x"/></svg>')).toMatch(/Event handler/);
   });
 });
