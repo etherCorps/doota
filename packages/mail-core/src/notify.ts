@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, eq, inArray, isNull, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, isNotNull, lt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -19,6 +19,57 @@ async function orgSubject(db: Db, orgId: string): Promise<string> {
     columns: { domain: true },
   });
   return org?.domain ? `https://${org.domain}` : "https://push.local";
+}
+
+type PushPayload = { title: string; body: string; url: string; tag: string };
+
+/** Send one payload to many users, resolving the org VAPID subject once. Every
+ * send is best-effort (a dead subscription must not fail the others). */
+async function pushToUsers(db: Db, push: WebPushEnv, orgId: string, userIds: string[], payload: PushPayload): Promise<void> {
+  if (!userIds.length) return;
+  const subject = await orgSubject(db, orgId);
+  await Promise.all(userIds.map((userId) => sendPushToUser(db, push, userId, payload, subject).catch(() => {})));
+}
+
+/** Display label for a mailbox (its name, else its address). Null when unknown —
+ * so a multi-mailbox recipient can see WHICH mailbox a notification is about. */
+async function mailboxLabel(db: Db, mailboxId: string | null): Promise<string | null> {
+  if (!mailboxId) return null;
+  const box = await db.query.mailbox.findFirst({
+    where: eq(mail.mailbox.id, mailboxId),
+    columns: { address: true, displayName: true },
+  });
+  return box ? box.displayName?.trim() || box.address : null;
+}
+
+/** An internal actor's display name (assigned / note / mention). */
+async function actorName(db: Db, userId: string | null): Promise<string | null> {
+  if (!userId) return null;
+  const user = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { name: true } });
+  return user?.name?.trim() || null;
+}
+
+/** Pure: the two-line push text for new mail — sender on top, sender address +
+ * which mailbox below (subject stays out; it's encrypted at rest). Kept pure so
+ * the branching is unit-testable without a DB. */
+export function newMailPushText(
+  fromName: string | null,
+  fromAddr: string | null,
+  boxLabel: string | null,
+): { title: string; body: string } {
+  const name = fromName?.trim();
+  const addr = fromAddr?.trim();
+  const title = name || addr || "New message";
+  const to = boxLabel ? `to ${boxLabel}` : "";
+  // Show the address on the second line only when the first line was the name
+  // (otherwise it's already the title). Append the mailbox when known.
+  const detail = name && addr ? [addr, to].filter(Boolean).join(" · ") : to;
+  return { title, body: detail || "You have new mail" };
+}
+
+/** Pure: append the mailbox to an internal-action line when known. */
+function withMailbox(text: string, boxLabel: string | null): string {
+  return boxLabel ? `${text} · ${boxLabel}` : text;
 }
 
 /**
@@ -127,16 +178,25 @@ export async function recordNewMail(
       .onConflictDoNothing();
   }
   // OS push (app closed) for every eligible recipient — tag per thread so a
-  // reply burst collapses. Best-effort; no-op without VAPID.
+  // reply burst collapses. Best-effort; no-op without VAPID. Sender + mailbox
+  // resolved once (cleartext) and reused for all recipients; subject omitted
+  // (encrypted at rest).
   if (push) {
-    const subject = await orgSubject(db, input.orgId);
-    const payload = {
-      title: "New message",
-      body: "You have new mail",
+    const [latest, boxLabel] = await Promise.all([
+      db.query.message.findFirst({
+        where: eq(mail.message.threadId, input.threadId),
+        orderBy: desc(mail.message.sentAt),
+        columns: { fromAddr: true, fromName: true },
+      }),
+      mailboxLabel(db, input.mailboxId),
+    ]);
+    const { title, body } = newMailPushText(latest?.fromName ?? null, latest?.fromAddr ?? null, boxLabel);
+    await pushToUsers(db, push, input.orgId, userIds, {
+      title,
+      body,
       url: threadUrl(input.mailboxId, input.threadId),
       tag: `thread-${input.threadId}`,
-    };
-    await Promise.all(userIds.map((u) => sendPushToUser(db, push, u, payload, subject).catch(() => {})));
+    });
   }
 }
 
@@ -163,19 +223,15 @@ export async function recordAssigned(
     actorUserId: input.actorUserId,
   });
   await notifyNotification(hub, input.assigneeUserId); // live bell ping (no-op without a hub)
-  if (push)
-    await sendPushToUser(
-      db,
-      push,
-      input.assigneeUserId,
-      {
-        title: "Assigned to you",
-        body: "A thread was assigned to you",
-        url: threadUrl(input.mailboxId, input.threadId),
-        tag: `thread-${input.threadId}`,
-      },
-      await orgSubject(db, input.orgId),
-    ).catch(() => {});
+  if (push) {
+    const [actor, boxLabel] = await Promise.all([actorName(db, input.actorUserId), mailboxLabel(db, input.mailboxId)]);
+    await pushToUsers(db, push, input.orgId, [input.assigneeUserId], {
+      title: "Assigned to you",
+      body: withMailbox(actor ? `${actor} assigned you a thread` : "A thread was assigned to you", boxLabel),
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    });
+  }
 }
 
 /** Drop read notifications older than the retention window (default 30d). Run
@@ -213,19 +269,15 @@ export async function recordNote(
     actorUserId: input.actorUserId,
   });
   await notifyNotification(hub, assignee); // live bell ping (no-op without a hub)
-  if (push)
-    await sendPushToUser(
-      db,
-      push,
-      assignee,
-      {
-        title: "New note",
-        body: "A teammate left a note",
-        url: threadUrl(input.mailboxId, input.threadId),
-        tag: `thread-${input.threadId}`,
-      },
-      await orgSubject(db, input.orgId),
-    ).catch(() => {});
+  if (push) {
+    const [actor, boxLabel] = await Promise.all([actorName(db, input.actorUserId), mailboxLabel(db, input.mailboxId)]);
+    await pushToUsers(db, push, input.orgId, [assignee], {
+      title: "New note",
+      body: withMailbox(actor ? `${actor} left a note` : "A teammate left a note", boxLabel),
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    });
+  }
 }
 
 /** A teammate was @mentioned in a note — notify them directly. Higher signal
@@ -246,19 +298,15 @@ export async function recordMention(
     actorUserId: input.actorUserId,
   });
   await notifyNotification(hub, input.mentionedUserId); // live bell ping (no-op without a hub)
-  if (push)
-    await sendPushToUser(
-      db,
-      push,
-      input.mentionedUserId,
-      {
-        title: "You were mentioned",
-        body: "A teammate mentioned you in a note",
-        url: threadUrl(input.mailboxId, input.threadId),
-        tag: `thread-${input.threadId}`,
-      },
-      await orgSubject(db, input.orgId),
-    ).catch(() => {});
+  if (push) {
+    const [actor, boxLabel] = await Promise.all([actorName(db, input.actorUserId), mailboxLabel(db, input.mailboxId)]);
+    await pushToUsers(db, push, input.orgId, [input.mentionedUserId], {
+      title: actor ? `${actor} mentioned you` : "You were mentioned",
+      body: withMailbox("in a note", boxLabel),
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `thread-${input.threadId}`,
+    });
+  }
 }
 
 /** A send the user owns failed (hard/soft bounce, complaint, or send error).
@@ -286,17 +334,13 @@ export async function recordSendFailed(
     submissionId: input.submissionId,
   });
   await notifyNotification(hub, input.userId); // live bell (no-op without a hub)
-  if (push)
-    await sendPushToUser(
-      db,
-      push,
-      input.userId,
-      {
-        title: "Delivery failed",
-        body: "A message you sent couldn't be delivered",
-        url: threadUrl(input.mailboxId, input.threadId),
-        tag: `send-failed-${input.submissionId}`,
-      },
-      await orgSubject(db, input.orgId),
-    ).catch(() => {});
+  if (push) {
+    const boxLabel = await mailboxLabel(db, input.mailboxId);
+    await pushToUsers(db, push, input.orgId, [input.userId], {
+      title: "Delivery failed",
+      body: withMailbox("A message you sent couldn't be delivered", boxLabel),
+      url: threadUrl(input.mailboxId, input.threadId),
+      tag: `send-failed-${input.submissionId}`,
+    });
+  }
 }

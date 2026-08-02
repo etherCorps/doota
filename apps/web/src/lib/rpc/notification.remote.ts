@@ -27,6 +27,8 @@ export type NotificationDTO = {
   fromName: string | null;
   /** assigned/mention: the internal actor's display name. */
   actorName: string | null;
+  /** Which mailbox this is about — so a multi-mailbox user knows where it landed. */
+  mailboxLabel: string | null;
   createdAt: number;
   readAt: number | null;
   seenAt: number | null;
@@ -81,6 +83,18 @@ export const myNotifications = query(
       for (const actor of users) actorName.set(actor.id, actor.name);
     }
 
+    // Mailbox labels (name, else address) so the client can show which mailbox a
+    // notification is about — batched over the page's distinct mailbox ids.
+    const mailboxIds = [...new Set(rows.filter((row) => row.mailboxId).map((row) => row.mailboxId!))];
+    const mailboxLabel = new Map<string, string>();
+    if (mailboxIds.length) {
+      const boxes = await locals.db
+        .select({ id: mail.mailbox.id, address: mail.mailbox.address, displayName: mail.mailbox.displayName })
+        .from(mail.mailbox)
+        .where(inArray(mail.mailbox.id, mailboxIds));
+      for (const box of boxes) mailboxLabel.set(box.id, box.displayName?.trim() || box.address);
+    }
+
     return rows.map((row) => {
       const sender = row.threadId ? senderByThread.get(row.threadId) : undefined;
       return {
@@ -92,6 +106,7 @@ export const myNotifications = query(
         from: sender?.from ?? null,
         fromName: sender?.fromName ?? null,
         actorName: row.actorUserId ? (actorName.get(row.actorUserId) ?? null) : null,
+        mailboxLabel: row.mailboxId ? (mailboxLabel.get(row.mailboxId) ?? null) : null,
         createdAt: row.createdAt.getTime(),
         readAt: row.readAt ? row.readAt.getTime() : null,
         seenAt: row.seenAt ? row.seenAt.getTime() : null,

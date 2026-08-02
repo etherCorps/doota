@@ -22,6 +22,7 @@
 		markAllNotificationsRead
 	} from '$lib/rpc/notification.remote.js';
 	import { realtime } from '$lib/client/mail-events.svelte.js';
+	import { watch } from 'runed';
 	import { relTime } from '$lib/utils/reltime';
 	import { senderLabel } from '$lib/mail/format';
 
@@ -75,17 +76,36 @@
 	// rides `inbound`, send_failed rides a failed `send_state`, and assigned/note
 	// get a dedicated `notification` ping — so every type now updates the badge live.
 	const FAILED = new Set(['failed', 'bounced_hard', 'bounced_soft', 'complained']);
-	$effect(() => {
-		void realtime.seq;
-		const evt = realtime.event;
-		if (!evt) return;
-		if (evt.type === 'inbound' || evt.type === 'notification') void unreadQ.refresh();
-		else if (evt.type === 'send_state' && FAILED.has(evt.status)) void unreadQ.refresh();
-		else void scheduledQ.refresh();
-	});
+	// runed `watch`: react to each realtime event with an EXPLICIT source
+	// (realtime.seq bumps per event, duplicates included). The callback runs
+	// untracked, so reading realtime.event / calling refresh() can't become hidden
+	// reactive dependencies the way a bare $effect body can. lazy: skip the mount
+	// tick (seq starts at 0 with no real event).
+	watch(
+		() => realtime.seq,
+		() => {
+			const evt = realtime.event;
+			if (!evt) return;
+			if (evt.type === 'inbound' || evt.type === 'notification') void unreadQ.refresh();
+			else if (evt.type === 'send_state' && FAILED.has(evt.status)) void unreadQ.refresh();
+			else void scheduledQ.refresh();
+		},
+		{ lazy: true }
+	);
 
 	const when = (ms: number) =>
 		new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+	// Second-line context. new_mail shows the sender address (when a name is on the
+	// first line) + which mailbox; internal types append the mailbox — so a user
+	// with several mailboxes can tell where each notification landed.
+	const boxSuffix = (n: (typeof notifs)[number]) => (n.mailboxLabel ? ` · ${n.mailboxLabel}` : '');
+	function newMailDetail(n: (typeof notifs)[number]): string {
+		const parts: string[] = [];
+		if (n.fromName && n.from) parts.push(n.from);
+		if (n.mailboxLabel) parts.push(`to ${n.mailboxLabel}`);
+		return parts.join(' · ') || 'New message';
+	}
 
 	function hrefFor(notification: (typeof notifs)[number]): string {
 		if (notification.mailboxId && notification.threadId)
@@ -142,31 +162,31 @@
 						<MailIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">{senderLabel({ from: notification.from, fromName: notification.fromName })}</span>
-							<span class="text-muted-foreground block truncate text-xs">New message</span>
+							<span class="text-muted-foreground block truncate text-xs">{newMailDetail(notification)}</span>
 						</span>
 					{:else if notification.type === 'assigned'}
 						<UserRoundIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Assigned to you</span>
-							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} assigned this thread` : 'A thread was assigned to you'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{(notification.actorName ? `${notification.actorName} assigned this thread` : 'A thread was assigned to you') + boxSuffix(notification)}</span>
 						</span>
 					{:else if notification.type === 'note'}
 						<StickyNoteIcon class="text-warn mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">New note</span>
-							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} left a note` : 'A teammate left a note'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{(notification.actorName ? `${notification.actorName} left a note` : 'A teammate left a note') + boxSuffix(notification)}</span>
 						</span>
 					{:else if notification.type === 'mention'}
 						<AtSignIcon class="text-brand mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">You were mentioned</span>
-							<span class="text-muted-foreground block truncate text-xs">{notification.actorName ? `${notification.actorName} mentioned you in a note` : 'A teammate mentioned you'}</span>
+							<span class="text-muted-foreground block truncate text-xs">{(notification.actorName ? `${notification.actorName} mentioned you in a note` : 'A teammate mentioned you') + boxSuffix(notification)}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Send failed</span>
-							<span class="text-muted-foreground block truncate text-xs">Tap to view the thread</span>
+							<span class="text-muted-foreground block truncate text-xs">{notification.mailboxLabel ? `Couldn't be delivered · ${notification.mailboxLabel}` : "Couldn't be delivered"}</span>
 						</span>
 					{/if}
 					<span class="text-faint shrink-0 text-[11px]" title={when(notification.createdAt)}>{relTime(notification.createdAt)}</span>
