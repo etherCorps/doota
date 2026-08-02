@@ -23,6 +23,9 @@
 	// is dirty only when its draft diverges from the server value below.
 	let drafts = $state<Record<string, string>>({});
 	let saving = $state<string | null>(null);
+	// Bumped per mailbox to remount its editor (TiptapEditor seeds from `initial`
+	// once) — that's how Discard resets the editor back to the saved signature.
+	let discardNonce = $state<Record<string, number>>({});
 
 	const draftFor = (mailboxId: string, saved: string) => drafts[mailboxId] ?? saved;
 	const isDirty = (mailboxId: string, saved: string) =>
@@ -45,6 +48,12 @@
 			saving = null;
 		}
 	}
+
+	function discard(mailboxId: string) {
+		delete drafts[mailboxId];
+		drafts = { ...drafts };
+		discardNonce[mailboxId] = (discardNonce[mailboxId] ?? 0) + 1;
+	}
 </script>
 
 <Card.Card>
@@ -57,7 +66,7 @@
 			mailboxes keep a separate signature per teammate.
 		</Card.CardDescription>
 	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col gap-6">
+	<Card.CardContent class="flex flex-col">
 		{#if q.current === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-5 w-40 rounded-md" />
@@ -69,21 +78,44 @@
 			{#each q.current as sig (sig.mailboxId)}
 				{@const dirty = isDirty(sig.mailboxId, sig.bodyHtml)}
 				{@const busy = saving === sig.mailboxId}
-				<div class="flex flex-col gap-2">
-					<div class="flex min-w-0 items-baseline gap-2">
-						<span class="truncate font-mono text-sm">{sig.address}</span>
+				<!-- Each sending address is its own region (Common Region): a hairline
+				     rule + top padding separates one signature from the next; the first
+				     needs neither. Labelled group so the editor isn't anonymous to AT. -->
+				<section
+					class="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0"
+					aria-label="Signature for {sig.address}"
+				>
+					<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+						<span class="min-w-0 truncate font-mono text-sm font-medium">{sig.address}</span>
 						{#if sig.displayName}
-							<span class="text-muted-foreground truncate text-xs">{sig.displayName}</span>
+							<span class="text-muted-foreground min-w-0 truncate text-xs">{sig.displayName}</span>
+						{/if}
+						{#if dirty}
+							<!-- Status cue for an edited-but-unsaved draft; matches the account
+							     layout's warn pills. ml-auto floats it right, wraps on narrow. -->
+							<span
+								class="border-warn/40 text-warn ml-auto inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium"
+							>
+								Unsaved
+							</span>
 						{/if}
 					</div>
-					<div class="rounded-md border">
+					<!-- No wrapper frame: TiptapEditor already draws its own border + focus
+					     ring. dense sizes it to a signature, not a full message composer. -->
+					{#key discardNonce[sig.mailboxId] ?? 0}
 						<TiptapEditor
+							dense
 							initial={sig.bodyHtml}
 							oninput={(html) => (drafts[sig.mailboxId] = html)}
 							placeholder={`Signature for ${sig.address}…`}
 						/>
-					</div>
-					<div class="flex justify-end">
+					{/key}
+					<div class="flex justify-end gap-2">
+						{#if dirty}
+							<Button variant="ghost" size="sm" disabled={busy} onclick={() => discard(sig.mailboxId)}>
+								Discard
+							</Button>
+						{/if}
 						<Button
 							size="sm"
 							disabled={!dirty || busy}
@@ -96,7 +128,7 @@
 							{/if}
 						</Button>
 					</div>
-				</div>
+				</section>
 			{/each}
 		{/if}
 	</Card.CardContent>

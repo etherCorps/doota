@@ -63,8 +63,12 @@
 	}
 
 	async function copy(text: string) {
-		await navigator.clipboard.writeText(text);
-		toast.success('Copied to clipboard.');
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success('Copied to clipboard.');
+		} catch {
+			toast.error('Could not copy to the clipboard.');
+		}
 	}
 </script>
 
@@ -84,50 +88,54 @@
 				<Skeleton class="h-8 w-full rounded-md" />
 				<Skeleton class="h-8 w-full rounded-md" />
 			</div>
+		{:catch}
+			<p class="text-destructive text-sm">Couldn't load your mailboxes. Reload the page to try again.</p>
 		{:then allBoxes}
-			{@const boxes = allBoxes.filter((b) => b.isPersonal)}
-			{#if boxes.length}
-				{#each boxes as box (box.id)}
-					{@const aliasesQ = listAliases(box.id)}
+			{@const personalMailboxes = allBoxes.filter((mailbox) => mailbox.isPersonal)}
+			{#if personalMailboxes.length}
+				{#each personalMailboxes as mailbox (mailbox.id)}
+					{@const aliasesQuery = listAliases(mailbox.id)}
 					<div class="flex flex-col gap-2">
-						<div class="flex items-center justify-between">
-							<span class="font-mono text-sm">{box.address}</span>
+						<div class="flex items-center justify-between gap-2">
+							<span class="min-w-0 truncate font-mono text-sm">{mailbox.address}</span>
 							<Button
 								size="sm"
 								variant="outline"
-								disabled={busy === box.id}
-								onclick={() => generate(box.id)}
+								class="shrink-0"
+								disabled={busy === mailbox.id}
+								onclick={() => generate(mailbox.id)}
 							>
 								<ShuffleIcon class="mr-1 size-3.5" /> Generate alias
 							</Button>
 						</div>
-						{#if aliasesQ.current}
-							{@const aliases = aliasesQ.current}
+						{#if aliasesQuery.current}
+							{@const aliases = aliasesQuery.current}
 							{#if aliases.length}
 								<ul class="flex flex-col divide-y rounded-md border">
-									{#each aliases as a (a.id)}
+									{#each aliases as alias (alias.id)}
 										<li class="flex items-center gap-2 px-3 py-2">
 											<span
-												class="flex-1 truncate font-mono text-xs {a.isEnabled
+												class="flex-1 truncate font-mono text-xs {alias.isEnabled
 													? ''
 													: 'text-muted-foreground line-through'}"
 											>
-												{a.address}
+												{alias.address}
 											</span>
 											<Button
 												size="icon"
 												variant="ghost"
-												class="size-7"
+												class="size-8"
 												title="Copy"
-												onclick={() => copy(a.address)}
+												aria-label="Copy {alias.address}"
+												onclick={() => copy(alias.address)}
 											>
 												<CopyIcon class="size-3.5" />
 											</Button>
 											<Switch
-												checked={a.isEnabled}
-												disabled={busy === a.id}
-												onCheckedChange={(v) => toggle(box.id, a.id, v)}
-												aria-label="Enabled"
+												checked={alias.isEnabled}
+												disabled={busy === alias.id}
+												onCheckedChange={(enabled) => toggle(mailbox.id, alias.id, enabled)}
+												aria-label="{alias.isEnabled ? 'Disable' : 'Enable'} {alias.address}"
 											/>
 											<AlertDialog.Root>
 												<AlertDialog.Trigger>
@@ -136,9 +144,10 @@
 															{...props}
 															size="icon"
 															variant="ghost"
-															class="text-destructive hover:text-destructive size-7"
+															class="text-destructive hover:text-destructive size-8"
 															title="Delete"
-															disabled={busy === a.id}
+															aria-label="Delete {alias.address}"
+															disabled={busy === alias.id}
 														>
 															<Trash2Icon class="size-3.5" />
 														</Button>
@@ -148,16 +157,16 @@
 													<AlertDialog.Header>
 														<AlertDialog.Title>Delete this alias?</AlertDialog.Title>
 														<AlertDialog.Description>
-															<span class="font-mono">{a.address}</span> will stop forwarding and mail sent
+															<span class="font-mono">{alias.address}</span> will stop forwarding and mail sent
 															to it will bounce. This can't be undone.
 														</AlertDialog.Description>
 													</AlertDialog.Header>
 													<AlertDialog.Footer>
 														<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
 														<AlertDialog.Action
-															onclick={(e) => {
-																e.preventDefault();
-																remove(box.id, a.id);
+															onclick={(event) => {
+																event.preventDefault();
+																remove(mailbox.id, alias.id);
 															}}
 															class="bg-destructive text-white hover:bg-destructive/90"
 														>
@@ -172,6 +181,8 @@
 							{:else}
 								<p class="text-muted-foreground text-xs">No aliases for this mailbox yet.</p>
 							{/if}
+						{:else}
+							<Skeleton class="h-8 w-full rounded-md" />
 						{/if}
 					</div>
 				{/each}

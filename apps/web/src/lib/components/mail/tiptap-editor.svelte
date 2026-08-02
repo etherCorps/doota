@@ -38,7 +38,8 @@
 		onattach,
 		onsend,
 		bodyClass = '',
-		fill = false
+		fill = false,
+		dense = false
 	}: {
 		initial?: string;
 		placeholder?: string;
@@ -52,6 +53,9 @@
 		 * floor overflows a keyboard-shrunk viewport (iOS compose); fill lets the
 		 * editor shrink and scroll its own body. Only for parents with real height. */
 		fill?: boolean;
+		/** Short-body mode for small jobs (e.g. a signature): a lower height floor so
+		 * the control is sized to a few lines, not a full message composer. */
+		dense?: boolean;
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
@@ -73,22 +77,22 @@
 	// composer is meaningless.
 	let hasContent = $state(false);
 
-	function pickSuggestion(s: HarperSuggestion) {
-		if (editor && activeLint) applyHarperFix(editor.view, activeLint.lint, s);
+	function pickSuggestion(suggestion: HarperSuggestion) {
+		if (editor && activeLint) applyHarperFix(editor.view, activeLint.lint, suggestion);
 		activeLint = null;
 	}
-	function suggestionLabel(s: HarperSuggestion): string {
-		if (s.kind === 'remove') return 'Remove';
-		if (s.kind === 'insert') return `Insert “${s.text}”`;
-		return s.text;
+	function suggestionLabel(suggestion: HarperSuggestion): string {
+		if (suggestion.kind === 'remove') return 'Remove';
+		if (suggestion.kind === 'insert') return `Insert “${suggestion.text}”`;
+		return suggestion.text;
 	}
 
 	$effect(() => {
 		if (!activeLint) return;
 		const close = () => (activeLint = null);
-		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-		const onDown = (e: PointerEvent) => {
-			if (!(e.target as Element)?.closest?.('[data-harper-menu]')) close();
+		const onKey = (event: KeyboardEvent) => event.key === 'Escape' && close();
+		const onDown = (event: PointerEvent) => {
+			if (!(event.target as Element)?.closest?.('[data-harper-menu]')) close();
 		};
 		window.addEventListener('keydown', onKey);
 		window.addEventListener('pointerdown', onDown, true);
@@ -108,12 +112,12 @@
 		return editor?.isActive(name, attrs) ?? false;
 	};
 
-	function normalize(u: string): string {
-		const t = u.trim();
-		if (!t) return '';
-		if (/^(https?:|mailto:|tel:)/i.test(t)) return t;
-		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return `mailto:${t}`;
-		return `https://${t}`;
+	function normalize(input: string): string {
+		const trimmed = input.trim();
+		if (!trimmed) return '';
+		if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return trimmed;
+		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `mailto:${trimmed}`;
+		return `https://${trimmed}`;
 	}
 	function selectionText(): string {
 		if (!editor) return '';
@@ -167,7 +171,7 @@
 	}
 	function onImageFiles(e: Event) {
 		const input = e.target as HTMLInputElement;
-		for (const f of input.files ?? []) insertImageFile(f);
+		for (const file of input.files ?? []) insertImageFile(file);
 		input.value = '';
 	}
 
@@ -180,9 +184,9 @@
 				ResizableImage.configure({ inline: true, allowBase64: true }),
 				HarperGrammar.configure({
 					debounceMs: 600,
-					onStatus: (s) => (harperStatus = s),
-					onCount: (n) => (harperCount = n),
-					onActiveLint: (p) => (activeLint = p)
+					onStatus: (status) => (harperStatus = status),
+					onCount: (count) => (harperCount = count),
+					onActiveLint: (payload) => (activeLint = payload)
 				})
 			],
 			content: initial,
@@ -194,8 +198,7 @@
 					// Harper owns the squiggles; native spellcheck would draw its own
 					// (unhookable) red underlines over the same words.
 					spellcheck: 'false',
-					class:
-						'tiptap prose-sm min-h-[200px] max-w-none px-3 py-2 text-base outline-none focus:outline-none md:text-sm'
+					class: `tiptap prose-sm ${dense ? 'min-h-[80px]' : 'min-h-[200px]'} max-w-none px-3 py-2 text-base outline-none focus:outline-none md:text-sm`
 				},
 				handleKeyDown: (_view, event) => {
 					const mod = event.metaKey || event.ctrlKey;
@@ -211,7 +214,7 @@
 					return false;
 				},
 				handlePaste: (_view, event) => {
-					const imgs = [...(event.clipboardData?.items ?? [])].filter((i) => i.type.startsWith('image/'));
+					const imgs = [...(event.clipboardData?.items ?? [])].filter((item) => item.type.startsWith('image/'));
 					if (!imgs.length) return false;
 					event.preventDefault();
 					for (const item of imgs) {
@@ -232,7 +235,7 @@
 	onDestroy(() => editor?.destroy());
 </script>
 
-<div class="focus-within:ring-ring/40 flex h-full flex-col rounded-lg border focus-within:ring-2 {fill ? 'min-h-0' : 'min-h-[180px]'}">
+<div class="focus-within:ring-ring/40 flex h-full flex-col rounded-lg border focus-within:ring-2 {fill ? 'min-h-0' : dense ? 'min-h-[120px]' : 'min-h-[180px]'}">
 	<!-- Single row that never wraps: the formatting group scrolls horizontally
 	     when the composer is narrow — wrapped toolbar rows painted over the text
 	     area (flex computes a wrapping row's min height as one line). The attach
@@ -350,14 +353,14 @@
 			style="left:{Math.min(activeLint.left, window.innerWidth - 232)}px; top:{activeLint.bottom + 6}px"
 		>
 			<p class="text-muted-foreground px-2 pt-1 pb-1.5 text-xs">{activeLint.lint.message}</p>
-			{#each activeLint.lint.suggestions.slice(0, 6) as s (s.kind + s.text)}
+			{#each activeLint.lint.suggestions.slice(0, 6) as suggestion (suggestion.kind + suggestion.text)}
 				<button
 					type="button"
 					role="menuitem"
 					class="hover:bg-accent hover:text-accent-foreground flex w-full items-center rounded px-2 py-1.5 text-left text-sm"
-					onclick={() => pickSuggestion(s)}
+					onclick={() => pickSuggestion(suggestion)}
 				>
-					{suggestionLabel(s)}
+					{suggestionLabel(suggestion)}
 				</button>
 			{/each}
 		</div>
