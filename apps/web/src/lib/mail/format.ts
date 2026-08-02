@@ -35,6 +35,21 @@ export const senderAddr = (from: string | null): string =>
 export function senderEmail(from: string | null): string {
 	return from?.match(/<([^>]+)>/)?.[1] ?? from ?? '';
 }
+// Bare lowercased domain of a `from` header/address ('' when none).
+export const domainOf = (from: string | null): string =>
+	senderAddr(from).split('@')[1]?.toLowerCase().trim() ?? '';
+// Best-effort mail provider from the sender domain — a DISPLAY hint, not an auth
+// signal (a Workspace/365 custom domain reads as null; that needs an MX lookup).
+// ponytail: static consumer-domain map, upgrade to MX/DNS only if it matters.
+const PROVIDERS: Record<string, string> = {
+	'gmail.com': 'Gmail', 'googlemail.com': 'Gmail',
+	'outlook.com': 'Outlook', 'hotmail.com': 'Outlook', 'live.com': 'Outlook', 'msn.com': 'Outlook',
+	'yahoo.com': 'Yahoo', 'ymail.com': 'Yahoo',
+	'icloud.com': 'iCloud', 'me.com': 'iCloud', 'mac.com': 'iCloud',
+	'proton.me': 'Proton', 'protonmail.com': 'Proton', 'pm.me': 'Proton',
+	'aol.com': 'AOL', 'zoho.com': 'Zoho', 'gmx.com': 'GMX', 'yandex.com': 'Yandex'
+};
+export const senderProvider = (from: string | null): string | null => PROVIDERS[domainOf(from)] ?? null;
 
 // Day dividers for the chat view. Items are a mixed union; each type carries its
 // timestamp under a different key.
