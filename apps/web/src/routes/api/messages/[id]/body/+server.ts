@@ -286,8 +286,14 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     "manifest-src 'none'",
   ];
   const metaCsp = directives.join("; ");
-  // Header-only directives (a <meta> CSP can't express these).
-  const headerCsp = `${metaCsp}; sandbox allow-scripts; frame-ancestors 'self'`;
+  // Header-only directives (a <meta> CSP can't express these). The sandbox tokens
+  // MUST match the iframe's sandbox attribute (mail-frame.svelte): the browser
+  // applies the INTERSECTION of the two, so a narrower CSP would silently strip
+  // capabilities the attribute grants. allow-popups(+escape) lets a link/CTA open
+  // in a real new tab (window.open '_blank'); allow-modals lets the phishing
+  // confirm() prompt work. Still NO allow-same-origin / allow-forms /
+  // allow-top-navigation — the frame can't touch the app or self-navigate.
+  const headerCsp = `${metaCsp}; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'`;
 
   const doc = buildFramedDocument(inner, {
     csp: metaCsp,
