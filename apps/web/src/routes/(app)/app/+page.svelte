@@ -1121,6 +1121,13 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
+	// Gmail-style per-message "details" expander (mail-view card): envelope fields
+	// built from the DTO we already have (mailed-by/signed-by need extra ingest).
+	const detailsOpen = new SvelteSet<string>();
+	function toggleDetails(id: string) {
+		if (detailsOpen.has(id)) detailsOpen.delete(id);
+		else detailsOpen.add(id);
+	}
 	// Thread attachments panel — every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
@@ -1362,8 +1369,8 @@
 	</div>
 {/snippet}
 
-{#snippet monogram(from: string | null, cls: string)}
-	<SenderAvatar {from} class={cls} />
+{#snippet monogram(from: string | null, cls: string, shape?: 'circle' | 'square')}
+	<SenderAvatar {from} class={cls} shape={shape ?? 'circle'} />
 {/snippet}
 
 <!-- Sender-origin line under the name: internal/external + best-effort provider.
@@ -1386,6 +1393,26 @@
 			{#if provider}<span class="font-medium">{provider}</span>{:else if domainOf(m.from)}<span class="font-mono">{domainOf(m.from)}</span>{/if}
 		{/if}
 	</div>
+{/snippet}
+
+{#snippet detailRow(label: string, value: string)}
+	<div class="flex gap-2">
+		<dt class="text-faint w-16 shrink-0">{label}</dt>
+		<dd class="text-muted-foreground min-w-0 flex-1 font-mono break-words">{value}</dd>
+	</div>
+{/snippet}
+<!-- Gmail "show details" envelope, from the DTO we already carry. mailed-by
+     (return-path) + signed-by (DKIM d=) are deferred (need extra ingest). -->
+{#snippet msgDetails(m: MessageDTO)}
+	<dl class="bg-muted/40 mb-3 space-y-1 rounded-lg border px-3 py-2 text-[11px]">
+		{#if m.from}{@render detailRow('From', m.from)}{/if}
+		{#if m.to.length}{@render detailRow('To', m.to.join(', '))}{/if}
+		{#if m.cc.length}{@render detailRow('Cc', m.cc.join(', '))}{/if}
+		{#if m.replyTo}{@render detailRow('Reply-To', m.replyTo)}{/if}
+		{#if m.sentAt}{@render detailRow('Date', new Date(m.sentAt).toLocaleString())}{/if}
+		{#if m.viaAlias}{@render detailRow('Via', m.viaAlias)}{/if}
+		{@render detailRow('Security', m.senderVerified ? 'DMARC passed' : 'Not verified')}
+	</dl>
 {/snippet}
 
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
@@ -2332,7 +2359,13 @@
 											<!-- Top section: avatar left, name + origin/provider stacked right. The
 											     avatar left the gutter so the bubble below spans the full column. -->
 											<div class="mb-1 flex items-center gap-2 px-1">
-												{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}
+												{#if m.from}
+													<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="shrink-0">
+														{#snippet children()}{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}{/snippet}
+													</ContactHoverCard>
+												{:else}
+													{@render monogram(m.from, 'size-7 shrink-0 text-[10px]')}
+												{/if}
 												<div class="min-w-0">
 													{#if m.from}
 														<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="text-foreground block truncate text-[13px] font-medium">
@@ -2438,39 +2471,60 @@
 								{@const isLast = m.id === msgs.at(-1)?.id}
 								{@const open = msgOpen(m.id, isLast)}
 								<article data-msg={m.id} data-newest={isLast} class="overflow-hidden rounded-2xl ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'border-brand/25 bg-card border shadow-xs' : 'bg-card border shadow-xs'}">
-									<button
-										type="button"
-										aria-expanded={open}
-										onclick={() => toggleMsg(m.id)}
-										class="hover:bg-muted/40 focus-visible:ring-ring/50 flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors outline-none focus-visible:ring-2"
-									>
-										{@render monogram(m.from, 'mt-0.5 size-8 text-[11px]')}
-										<div class="min-w-0 flex-1">
-											<div class="flex items-baseline gap-2">
-												{#if outbound || !m.from}
-												<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderLabel(m)}</span>
-											{:else}
-												<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="truncate text-sm font-semibold">
-													{#snippet children()}{senderLabel(m)}{/snippet}
-												</ContactHoverCard>
-											{/if}
-												{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
+									<!-- Header row: avatar (own hover card, not part of the expand toggle),
+									     the expand toggle (name/meta/preview/time), and the details ▼. -->
+									<div class="flex w-full items-start gap-2.5 px-3.5 py-2.5">
+										{#if !outbound && m.from}
+											<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="mt-0.5 shrink-0">
+												{#snippet children()}{@render monogram(m.from, 'size-8 text-[11px]', 'square')}{/snippet}
+											</ContactHoverCard>
+										{:else}
+											{@render monogram(m.from, 'mt-0.5 size-8 text-[11px]', 'square')}
+										{/if}
+										<button
+											type="button"
+											aria-expanded={open}
+											onclick={() => toggleMsg(m.id)}
+											class="hover:bg-muted/40 focus-visible:ring-ring/50 -my-1 flex min-w-0 flex-1 items-start gap-2 rounded-lg py-1 text-left transition-colors outline-none focus-visible:ring-2"
+										>
+											<div class="min-w-0 flex-1">
+												<div class="flex items-baseline gap-2">
+													{#if outbound || !m.from}
+													<span class="truncate text-sm font-semibold {outbound ? 'text-brand' : ''}">{outbound ? 'You' : senderLabel(m)}</span>
+												{:else}
+													<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="truncate text-sm font-semibold">
+														{#snippet children()}{senderLabel(m)}{/snippet}
+													</ContactHoverCard>
+												{/if}
+													{#if m.viaAlias}<span class="text-faint truncate font-mono text-[10px]">via {m.viaAlias}</span>{/if}
+												</div>
+												{#if !outbound && m.from}{@render senderMeta(m)}{/if}
+												{#if open}
+													<span class="text-muted-foreground block truncate font-mono text-[11px]">{m.from ?? ''}</span>
+												{:else}
+													<span class="text-muted-foreground block truncate text-xs">{msgSnippet(m)}</span>
+												{/if}
 											</div>
-											{#if !outbound && m.from}{@render senderMeta(m)}{/if}
-											{#if open}
-												<span class="text-muted-foreground block truncate font-mono text-[11px]">{m.from ?? ''}</span>
-											{:else}
-												<span class="text-muted-foreground block truncate text-xs">{msgSnippet(m)}</span>
-											{/if}
-										</div>
-										<div class="text-faint flex shrink-0 items-center gap-1 text-[11px]">
-											<span>{fmtTime(m.sentAt)}</span>
-											{#if outbound && m.submission}
-												{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
-												{:else if m.submission.tick === 'warning'}<TriangleAlertIcon class="text-destructive size-3" />{/if}
-											{/if}
-										</div>
-									</button>
+											<div class="text-faint flex shrink-0 items-center gap-1 text-[11px]">
+												<span>{fmtTime(m.sentAt)}</span>
+												{#if outbound && m.submission}
+													{#if m.submission.tick === 'clock'}<ClockIcon class="size-3" />
+													{:else if m.submission.tick === 'warning'}<TriangleAlertIcon class="text-destructive size-3" />{/if}
+												{/if}
+											</div>
+										</button>
+										{#if open}
+											<button
+												type="button"
+												title="Details"
+												aria-expanded={detailsOpen.has(m.id)}
+												onclick={() => toggleDetails(m.id)}
+												class="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+											>
+												<ChevronDownIcon class="size-4 transition-transform {detailsOpen.has(m.id) ? 'rotate-180' : ''}" />
+											</button>
+										{/if}
+									</div>
 									{#if m.submission?.tick === 'warning'}
 										<div class="px-3.5 pb-2.5">
 											{@render sendFailure(m.submission)}
@@ -2478,6 +2532,7 @@
 									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
+											{#if detailsOpen.has(m.id)}{@render msgDetails(m)}{/if}
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
 												{@const inviteOnly = !showOriginal.has(m.id)}

@@ -5,7 +5,13 @@
 	// Sender avatar with a three-step fallback: our user's uploaded image (via
 	// /api/sender-avatar, browser HTTP-cached) → DiceBear generated locally for
 	// external senders → initials tint while anything loads.
-	let { from, class: cls = '' }: { from: string | null; class?: string } = $props();
+	// shape: circle (default, people everywhere) or square (rounded-xl) — the
+	// mail-view card uses square so brand logos render uncropped against the card.
+	let {
+		from,
+		class: cls = '',
+		shape = 'circle'
+	}: { from: string | null; class?: string; shape?: 'circle' | 'square' } = $props();
 
 	// Extract the bare address from a raw header ("Name <addr>" or a plain
 	// address). Keying the avatar lookup on the whole "Name <addr>" string would
@@ -40,7 +46,7 @@
 	);
 </script>
 
-<span class="relative grid shrink-0 place-items-center overflow-hidden rounded-full font-semibold {tint} {cls}">
+<span class="relative grid shrink-0 place-items-center overflow-hidden font-semibold {shape === 'square' ? 'rounded-xl' : 'rounded-full'} {tint} {cls}">
 	{initials}
 	{#if src}
 		<img
