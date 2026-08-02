@@ -5,6 +5,7 @@
 	// contextual config panel. Doc serializes to MJML → MRML → HTML on save; the
 	// send path stays un-jinja only.
 	import { onMount, untrack, type Component } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Link from '@tiptap/extension-link';
@@ -117,6 +118,38 @@
 
 	let editorEl = $state<HTMLDivElement>();
 	let editor: Editor | undefined;
+	// Unsaved-changes guard. `dirty` flips on any doc/name/subject/settings edit
+	// (set from the Tiptap transaction hook + reactive field bindings) and clears
+	// on save. `saved` tracks whether this template has ever been persisted.
+	let dirty = $state(false);
+	let saved = $state(untrack(() => templateId != null));
+	let ready = $state(false);
+	function markDirty() {
+		dirty = true;
+	}
+	$effect(() => {
+		// Touch the reactive fields so typing in name/subject/preview/settings marks dirty.
+		void name;
+		void subject;
+		void previewText;
+		void background;
+		void width;
+		void globalCss;
+		void theme;
+		if (ready) markDirty();
+	});
+	$effect(() => {
+		if (!dirty) return;
+		const onBeforeUnload = (e: BeforeUnloadEvent) => {
+			e.preventDefault();
+		};
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return () => window.removeEventListener('beforeunload', onBeforeUnload);
+	});
+	beforeNavigate((nav) => {
+		if (!dirty) return;
+		if (!confirm('You have unsaved changes. Leave without saving?')) nav.cancel();
+	});
 	// The 3-pane builder can't work on a phone — gate it (see the mobile block in
 	// the markup). Templates list + preview stay reachable everywhere.
 	const mobile = new IsMobile();
@@ -180,9 +213,10 @@
 			content: initialDoc ?? '',
 			editorProps: { attributes: { class: 'email-doc focus:outline-none' } },
 			onSelectionUpdate: refreshSel,
-			onTransaction: () => {
+			onTransaction: ({ transaction }) => {
 				refreshSel();
 				scheduleDraft();
+				if (ready && transaction.docChanged) markDirty();
 			}
 		});
 		// Restore an unsaved local draft for a NEW template (crash recovery).
@@ -209,6 +243,7 @@
 				}
 			})();
 		}
+		ready = true;
 		return () => editor?.destroy();
 	});
 
@@ -403,6 +438,8 @@
 		try {
 			await req;
 			void opfsDelete(draftKey); // published — drop the local draft
+			dirty = false; // clear the unsaved-changes guard before navigating away
+			saved = true;
 			await goto(resolve('/templates'));
 		} catch {
 			// surfaced by toast
@@ -534,7 +571,7 @@
 				<a href={resolve('/templates')} class="text-muted-foreground hover:text-foreground">Templates</a>
 				<span class="text-muted-foreground">/</span>
 				<span class="truncate font-medium">{name || 'Untitled template'}</span>
-				<Badge variant="secondary">Draft</Badge>
+				<Badge variant="secondary">{dirty ? 'Unsaved' : saved ? 'Published' : 'Draft'}</Badge>
 			</div>
 			<div class="ml-auto flex items-center gap-2">
 				{#if saving}<LoaderIcon class="text-muted-foreground size-4 animate-spin" />{/if}
@@ -593,9 +630,9 @@
 					     app theme. Chrome around it (rails, panels) follows the theme. -->
 					<div class="overflow-hidden rounded-lg shadow-sm ring-1 ring-black/5" style:background={background || '#ffffff'}>
 						<div class="flex flex-col gap-1.5 border-b border-neutral-200 px-6 py-3">
-							<input bind:value={name} placeholder="Template name" class="w-full bg-transparent text-sm font-medium text-neutral-900 outline-none placeholder:text-neutral-400" />
-							<input bind:value={subject} placeholder="Subject" class="w-full bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400" />
-							<input bind:value={previewText} placeholder="Preview text" class="w-full bg-transparent text-xs text-neutral-500 outline-none placeholder:text-neutral-400" />
+							<input bind:value={name} aria-label="Template name" placeholder="Template name" class="w-full bg-transparent text-sm font-medium text-neutral-900 outline-none placeholder:text-neutral-400" />
+							<input bind:value={subject} aria-label="Subject" placeholder="Subject" class="w-full bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400" />
+							<input bind:value={previewText} aria-label="Preview text" placeholder="Preview text" class="w-full bg-transparent text-xs text-neutral-500 outline-none placeholder:text-neutral-400" />
 						</div>
 						<!-- Inline formatting toolbar -->
 						<div class="flex items-center gap-0.5 border-b border-neutral-200 px-4 py-1.5 text-neutral-600">
