@@ -66,6 +66,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { linkifySegments } from '$lib/utils/linkify.js';
 	import { toast } from 'svelte-sonner';
+	import { progressToast, type ProgressToast } from '$lib/utils/send-toast';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import MailOpenIcon from '@lucide/svelte/icons/mail-open';
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, retrySendById } from '$lib/rpc/draft.remote';
@@ -411,7 +412,7 @@
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
 		const busy = ids.length > 1 ? label.replace('…', ` ${ids.length}…`) : label;
 		try {
-			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (id) => toastUndoMove(prevs, pl, id) });
+			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (progress) => toastUndoMove(prevs, pl, progress) });
 			if (ok) void refreshUnread();
 			else void loadThreads(true);
 		} finally {
@@ -452,7 +453,7 @@
 		threadSel.clear();
 		if (threadId) nav({ thread: null });
 		const ok = await runWithToast(`Emptying ${name}…`, `Could not empty ${name.toLowerCase()}.`, () => emptyFolder({ mailboxId: mb, placement: pl }), {
-			done: (id) => toast.success(`${name} emptied.`, { id })
+			done: (progress) => progress.success(`${name} emptied.`)
 		});
 		if (!ok) items = kept;
 	}
@@ -719,29 +720,32 @@
 		loading: string,
 		error: string,
 		run: () => Promise<unknown>,
-		opts?: { done?: (id: string | number) => void }
+		opts?: { done?: (progress: ProgressToast) => void }
 	): Promise<boolean> {
-		const id = toast.loading(loading);
+		// progressToast (not raw toast.loading): the loading toast stays alive
+		// however long the write takes, and the terminal morphs it in place —
+		// a plain loading toast expires on the default duration, after which
+		// the terminal would ADD a second toast.
+		const progress = progressToast(loading);
 		try {
 			await run();
-			if (opts?.done) opts.done(id);
-			else toast.dismiss(id);
+			if (opts?.done) opts.done(progress);
+			else progress.dismiss();
 			return true;
 		} catch {
-			toast.error(error, { id });
+			progress.error(error);
 			return false;
 		}
 	}
 	// `id` updates an existing (loading) toast in place — the promise-toast flow:
 	// spinner while the write is in flight, then this Undo toast replaces it.
-	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, id?: string | number) {
+	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, progress: ProgressToast) {
 		const mb = mailboxId;
 		if (!mb) return;
 		const label = MOVE_LABEL[target] ?? 'Moved';
-		toast(entries.length > 1 ? `${label} · ${entries.length} conversations` : label, {
-			id,
-			duration: 6000,
-			action: {
+		progress.note(
+			entries.length > 1 ? `${label} · ${entries.length} conversations` : label,
+			{
 				label: 'Undo',
 				onClick: async () => {
 					for (const entry of entries) {
@@ -754,8 +758,9 @@
 					await loadThreads(true);
 					void refreshUnread();
 				}
-			}
-		});
+			},
+			6000
+		);
 	}
 	/** A row's current placement (for undo): the row's own placement (Sent view
 	 * rows differ), else the open folder. */
@@ -774,13 +779,13 @@
 		items = items.filter((thread) => thread.threadId !== id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
-		const tid = toast.loading(MOVE_BUSY[target] ?? 'Moving…');
+		const progress = progressToast(MOVE_BUSY[target] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: target });
-			toastUndoMove([{ threadId: id, prev }], target, tid);
+			toastUndoMove([{ threadId: id, prev }], target, progress);
 			void refreshUnread();
 		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
+			progress.error('Action failed — restoring the list.');
 			void loadThreads(true);
 		} finally {
 			setTimeout(() => rowFx.delete(id), 350);
@@ -819,13 +824,13 @@
 		const prev = rowPrev(id);
 		nav({ thread: null });
 		items = items.filter((thread) => thread.threadId !== id);
-		const tid = toast.loading(MOVE_BUSY[placement] ?? 'Moving…');
+		const progress = progressToast(MOVE_BUSY[placement] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
-			toastUndoMove([{ threadId: id, prev }], placement, tid);
+			toastUndoMove([{ threadId: id, prev }], placement, progress);
 			void refreshUnread();
 		} catch {
-			toast.error('Action failed — restoring the list.', { id: tid });
+			progress.error('Action failed — restoring the list.');
 			void loadThreads(true);
 		}
 	}
@@ -1014,8 +1019,8 @@
 		retryingSubId = submissionId;
 		try {
 			await runWithToast('Retrying send…', 'Retry failed — try again in a moment.', () => retrySendById({ submissionId }), {
-				done: (id) => {
-					toast.success('Retrying — sending again.', { id });
+				done: (progress) => {
+					progress.success('Retrying — sending again.');
 					void refresh();
 				}
 			});
