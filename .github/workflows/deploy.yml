@@ -39,6 +39,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Worker secrets/vars — unset repository secrets arrive as "" and the
+      # stack treats empty as absent (state-minted or feature-off).
+      # Required
+      SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      APP_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.APP_CLOUDFLARE_ACCOUNT_ID }}
+      # We need a different API token because of the requirements are different
+      # to deploy a worker and to access the dashboard information from cloudflare.
+      APP_CLOUDFLARE_API_TOKEN: ${{ secrets.APP_CLOUDFLARE_API_TOKEN }}
+      # Comma-separated full origins WITH protocol; first entry is the
+      # canonical app URL, every entry is a custom domain + allowed host.
+      ORIGINS: ${{ vars.ORIGINS }}
+      UNSUBSCRIBE_URL: ${{ vars.UNSUBSCRIBE_URL }}
+      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      # Optional
+      MAIL_DEK: ${{ secrets.MAIL_DEK }}
+      MAIL_SEARCH_KEY: ${{ secrets.MAIL_SEARCH_KEY }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +80,6 @@ jobs:
       # alchemy's dependency tree can't perturb the app's resolution — install both.
       - run: pnpm install --frozen-lockfile
       - run: pnpm -C infra install --frozen-lockfile
-
       # SvelteKit build — the stack deploys .svelte-kit/cloudflare byte-for-byte.
       - run: pnpm run build
 
@@ -66,26 +88,26 @@ jobs:
         run: >
           pnpm alchemy deploy --stage production --yes
           ${{ inputs.adopt && '--adopt' || '' }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Worker secrets/vars — unset repository secrets arrive as "" and the
-          # stack treats empty as absent (state-minted or feature-off).
-          # Required
-          SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.APP_CLOUDFLARE_ACCOUNT_ID }}
-          # We need a different API token because of the requirements are different
-          # to deploy a worker and to access the dashboard information from cloudflare.
-          APP_CLOUDFLARE_API_TOKEN: ${{ secrets.APP_CLOUDFLARE_API_TOKEN }}
-          # Comma-separated full origins WITH protocol; first entry is the
-          # canonical app URL, every entry is a custom domain + allowed host.
-          ORIGINS: ${{ vars.ORIGINS }}
-          UNSUBSCRIBE_URL: ${{ vars.UNSUBSCRIBE_URL }}
-          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
-          # Optional
-          MAIL_DEK: ${{ secrets.MAIL_DEK }}
-          MAIL_SEARCH_KEY: ${{ secrets.MAIL_SEARCH_KEY }}
-          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        # env:
+        #   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        #   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        #   # Worker secrets/vars — unset repository secrets arrive as "" and the
+        #   # stack treats empty as absent (state-minted or feature-off).
+        #   # Required
+        #   SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
+        #   CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        #   APP_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.APP_CLOUDFLARE_ACCOUNT_ID }}
+        #   # We need a different API token because of the requirements are different
+        #   # to deploy a worker and to access the dashboard information from cloudflare.
+        #   APP_CLOUDFLARE_API_TOKEN: ${{ secrets.APP_CLOUDFLARE_API_TOKEN }}
+        #   # Comma-separated full origins WITH protocol; first entry is the
+        #   # canonical app URL, every entry is a custom domain + allowed host.
+        #   ORIGINS: ${{ vars.ORIGINS }}
+        #   UNSUBSCRIBE_URL: ${{ vars.UNSUBSCRIBE_URL }}
+        #   LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+        #   # Optional
+        #   MAIL_DEK: ${{ secrets.MAIL_DEK }}
+        #   MAIL_SEARCH_KEY: ${{ secrets.MAIL_SEARCH_KEY }}
+        #   BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+        #   VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+        #   VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
