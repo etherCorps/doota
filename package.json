@@ -21,7 +21,8 @@
     "db:migrate:local": "pnpm --filter doota db:migrate:local",
     "db:migrate:remote": "pnpm --filter doota db:migrate:remote",
     "infra:plan": "pnpm -C infra run plan",
-    "infra:deploy": "pnpm run build && pnpm -C infra run deploy"
+    "infra:deploy": "pnpm run build && pnpm -C infra run deploy",
+    "infra:deploy:staging": "pnpm run build && pnpm -C infra run deploy:staging"
   },
   "pnpm": {
     "overrides": {

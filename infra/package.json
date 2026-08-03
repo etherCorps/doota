@@ -8,6 +8,7 @@
     "alchemy": "NODE_OPTIONS=--experimental-strip-types alchemy",
     "plan": "NODE_OPTIONS=--experimental-strip-types alchemy plan",
     "deploy": "NODE_OPTIONS=--experimental-strip-types alchemy deploy",
+    "deploy:staging": "NODE_OPTIONS=--experimental-strip-types alchemy deploy --stage staging --yes",
     "destroy": "NODE_OPTIONS=--experimental-strip-types alchemy destroy",
     "check": "tsc -p tsconfig.json"
   },
