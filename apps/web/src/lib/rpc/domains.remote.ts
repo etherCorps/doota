@@ -17,6 +17,7 @@ import {
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
 import {
   addRoutingSubdomain,
+  createRoutingRule,
   findZone,
   getRoutingConfig,
   listZoneDnsRecords,
@@ -239,6 +240,16 @@ export const refreshDomain = command(z.string(), async (orgId) => {
     return { status: "active" as ZoneOnboardStatus, nameServers: [] };
   }
 
+  if (zone.status === "active" && org.status === "active" && MAIL_IN_WORKER_NAME) {
+    // Self-heal an already-active org whose catch-all never attached (domain
+    // onboarded before the mail-in Worker existed) or was detached on the
+    // dashboard. createRoutingRule is an idempotent upsert.
+    const mail = await inspectZoneMail(org.zoneId);
+    if (!mail.catchAllToWorker(MAIL_IN_WORKER_NAME)) {
+      await createRoutingRule(org.zoneId, MAIL_IN_WORKER_NAME);
+    }
+  }
+
   await setOrgLifecycle(org.id, zone.status);
   return { status: zone.status, nameServers: zone.nameServers };
 });
@@ -451,12 +462,20 @@ function normalizeSubdomain(input: string, apex: string): string | null {
 export const mailRoutingConfig = command(z.string(), async (orgId) => {
   const { zoneId, apex } = await orgZone(orgId);
   const config = await getRoutingConfig(zoneId, apex);
+  // Catch-all truth: routing can be enabled while the catch-all was never
+  // pointed at the mail-in Worker (onboarding before the Worker deployed —
+  // createRoutingRule tolerates that and leaves it unset). Surface it so the
+  // UI can say "refresh to retry" instead of failing silently. null = can't
+  // judge (no MAIL_IN_WORKER_NAME configured, e.g. local dev).
+  const catchAllAttached = MAIL_IN_WORKER_NAME
+    ? (await inspectZoneMail(zoneId)).catchAllToWorker(MAIL_IN_WORKER_NAME)
+    : null;
   // Reconcile-on-view: refresh the D1 mirror from CF truth so a direct dashboard
   // edit self-heals and the inbound hot path stays accurate.
   const { locals } = getRequestEvent();
   await mirrorSubaddressing(locals.db, orgId, config.supportSubaddress);
   await mirrorRoutingSubdomains(locals.db, orgId, config.subdomains);
-  return config;
+  return { ...config, catchAllAttached };
 });
 
 /** Add a subdomain to the org's Email Routing. Superadmin only. */

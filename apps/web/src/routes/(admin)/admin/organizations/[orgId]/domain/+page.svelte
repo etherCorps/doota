@@ -57,7 +57,14 @@
 	const toggleDns = (key: string) => (dnsOpen = { ...dnsOpen, [key]: !dnsOpen[key] });
 
 	// --- Inbound routing (subdomains) -------------------------------------------
-	type Routing = { enabled: boolean; supportSubaddress: boolean; status?: string; subdomains: string[] };
+	type Routing = {
+		enabled: boolean;
+		supportSubaddress: boolean;
+		status?: string;
+		subdomains: string[];
+		/** Catch-all points at this deployment's mail-in Worker. null = unknown (dev). */
+		catchAllAttached?: boolean | null;
+	};
 	let routing = $state<Routing | null>(null);
 	let routingLoading = $state(false);
 	let subInput = $state('');
@@ -101,6 +108,8 @@
 			if (res.status === 'active') toast.success(`${org.domain} is active — mail is wired.`);
 			else if (res.nameServers?.length) nameservers = res.nameServers;
 			await invalidateAll();
+			// Re-read routing so the catch-all banner reflects the re-wire attempt.
+			if (ready) routing = await mailRoutingConfig(org.id);
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Refresh failed.');
 		} finally {
@@ -186,6 +195,20 @@
 			{/if}
 		</Card.CardHeader>
 		<Card.CardContent class="space-y-4">
+			{#if routing?.catchAllAttached === false}
+				<div class="border-destructive/30 bg-destructive/5 space-y-2 rounded-lg border p-3">
+					<p class="text-sm font-medium">Inbound routing isn't attached</p>
+					<p class="text-muted-foreground text-xs">
+						Incoming mail for <span class="font-mono">{org.domain}</span> is not reaching Doota — the
+						Email Routing catch-all isn't pointed at the mail worker. This usually means the domain
+						was onboarded before the worker was deployed. Reattach to fix it now.
+					</p>
+					<Button variant="outline" size="sm" disabled={refreshing} onclick={refresh}>
+						{#if refreshing}<Spinner class="mr-1" />{:else}<RefreshCwIcon class="mr-1 size-3.5" />{/if}
+						Reattach
+					</Button>
+				</div>
+			{/if}
 			{#if nameservers}
 				<div class="bg-muted/40 space-y-1 rounded-lg border p-3">
 					<p class="text-sm font-medium">Delegate {org.domain}</p>
