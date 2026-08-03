@@ -8,4 +8,15 @@ onlyBuiltDependencies:
   - puppeteer
 packages:
   - 'apps/*'
+  # docs is standalone (own lockfile + workspace file) — excluding it keeps its
+  # Astro subtree's peers (@types/node 26) out of root resolution, which was
+  # forking drizzle-orm into type-incompatible variants.
+  - '!apps/docs'
   - 'packages/*'
+
+# Single source of truth for versions that MUST stay identical across the
+# workspace — a version drift here forks peer-variant instances (e.g. two
+# type-incompatible drizzle-orm copies). Bump versions HERE only.
+catalog:
+  '@cloudflare/workers-types': 4.20260615.1
+  '@types/node': 22.20.1
