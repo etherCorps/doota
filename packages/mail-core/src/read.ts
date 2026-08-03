@@ -124,6 +124,8 @@ export async function listThreads(
       isStarred: schema.threadState.isStarred,
       assigneeUserId: schema.threadState.assigneeUserId,
       placement: schema.threadState.placement,
+      lastInboundAt: schema.threadState.lastInboundAt,
+      lastActivityAt: schema.threadState.lastActivityAt,
     })
     .from(schema.threadState)
     .where(
@@ -145,6 +147,14 @@ export async function listThreads(
     )
     .limit(input.limit ?? 30)
     .offset(input.offset ?? 0);
+
+  // Unread keys on the mailbox mode (same model as unreadCount below):
+  // personal → last_inbound_at (an own send never marks unread), shared →
+  // last_activity_at (a teammate's send does).
+  const listBox = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, input.mailboxId),
+    columns: { isPersonal: true },
+  });
 
   // Per-USER read cursors for these threads (shared-mailbox unread is per person,
   // not per mailbox). One indexed read for the page, keyed to this user.
@@ -250,7 +260,15 @@ export async function listThreads(
       participantCount,
       lastMessageAt,
       isStarred: s.isStarred,
-      unread: lastReadAt == null || (lastMessageAt != null && lastReadAt < lastMessageAt),
+      // Personal: only inbound counts — an own-sent(-only) thread is read by
+      // definition. Shared: any activity after the cursor counts (the sender's
+      // own cursor is bumped at send time in sendDraft).
+      unread: (() => {
+        const newestRelevantAt = listBox?.isPersonal
+          ? (s.lastInboundAt?.getTime() ?? null)
+          : (s.lastActivityAt?.getTime() ?? lastMessageAt);
+        return newestRelevantAt != null && (lastReadAt == null || lastReadAt < newestRelevantAt);
+      })(),
       hasNotes: notedThreads.has(s.threadId),
       assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
       placement: s.placement,

@@ -774,6 +774,18 @@ export async function sendDraft(
       .set({ status: "sent", submissionId: res.submissionId })
       .where(eq(mail.draft.id, input.draftId));
 
+    // The sender has read their own send by definition — bump their cursor so
+    // the thread doesn't surface as unread (shared mailboxes key unread on
+    // last_activity_at, which this send just bumped past the old cursor).
+    const readAt = new Date();
+    await db
+      .insert(mail.threadRead)
+      .values({ orgId: row.orgId, userId, threadId: res.threadId, mailboxId: row.mailboxId, lastReadAt: readAt })
+      .onConflictDoUpdate({
+        target: [mail.threadRead.userId, mail.threadRead.threadId, mail.threadRead.mailboxId],
+        set: { lastReadAt: readAt },
+      });
+
     return { submissionId: res.submissionId, threadId: res.threadId };
   } catch (e) {
     // Nothing was enqueued — hand the draft back to the editor. A crash between
