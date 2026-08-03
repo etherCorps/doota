@@ -20,8 +20,9 @@ dashboard.
    (e.g. `ORIGINS=https://mail.acme.com`). Each hostname is attached as a
    Cloudflare custom domain, so its zone must already exist in your account.
    Skip it to start on workers.dev and add your domain later.
-2. **`SETUP_TOKEN`** — any string you choose. After deploying you'll open
-   `/setup` with it to create the super-admin. No token, no wizard.
+2. **`SETUP_TOKEN`** — any string you choose, min 8 chars. After deploying
+   you'll open `/setup` with it to create the super-admin. The deploy
+   requires it.
 3. **The app's Cloudflare API token** — `APP_CLOUDFLARE_ACCOUNT_ID` +
    `APP_CLOUDFLARE_API_TOKEN`, needed the moment you onboard a mail domain.
    Creating it has its own page: [Cloudflare API token](/self-hosting/cloudflare-api-token).
@@ -59,7 +60,7 @@ Two behaviors to know:
 | `APP_CLOUDFLARE_API_TOKEN` | ✓ | ✓ | **Scoped** runtime API token for onboarding — a different token than the deploy one. Never the Global API Key. See [token scopes](/self-hosting/cloudflare-api-token). |
 | `MAIL_IN_WORKER_NAME` | auto | — | Name of the deployed inbound Worker that the catch-all routing rule targets. The deploy injects it from the deployed Worker itself — you never set it. |
 | `CRON_SECRET` | ✓ | ✓ | Bearer secret the cron trigger presents to `POST /api/cron` for maintenance sweeps. |
-| `SETUP_TOKEN` | — | ✓ | One-time token that gates the `/setup` genesis wizard. Leave unset to disable the web wizard (use the CLI instead). |
+| `SETUP_TOKEN` | ✓ | ✓ | One-time token (min 8 chars) that gates the `/setup` genesis wizard — the deploy fails without it. |
 | `LOG_LEVEL` | — | — | Mail-pipeline log level: `debug` \| `info` \| `warn` \| `error`. Defaults to `info`. |
 | `UNSUBSCRIBE_URL` | — | — | Path/query for the `{{ unsubscribe_url }}` template variable (default `/unsubscribe`). The host is taken from the **request origin**, never from here, so one deployment serving multiple domains links each recipient to the correct host. Set an absolute URL to point at an external unsubscribe system. |
 | `DATABASE_URL` | dev only | — | Local Drizzle target (`file:local.db`). Production uses the D1 binding. |
@@ -107,7 +108,7 @@ ORIGINS="http://localhost:5173"
 BETTER_AUTH_SECRET="<32+ chars>"
 MAIL_DEK="<base64 32 bytes>"
 MAIL_SEARCH_KEY="<base64 32 bytes>"
-SETUP_TOKEN=""                 # set to enable /setup, or use pnpm reset-admin
+SETUP_TOKEN="dev-setup-token"  # required in dev; used at /setup
 APP_CLOUDFLARE_ACCOUNT_ID=""
 APP_CLOUDFLARE_API_TOKEN=""
 MAIL_IN_WORKER_NAME="doota-mail-inbound"

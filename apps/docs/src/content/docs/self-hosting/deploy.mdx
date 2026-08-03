@@ -18,7 +18,7 @@ There are two ways to run that command. Pick one:
 | Path | Best for | Auth |
 | --- | --- | --- |
 | [**A. From your machine**](#a-deploy-from-your-machine) | First deploy, personal instances, test stages | Browser sign-in, no token |
-| [**B. From GitHub**](#b-auto-deploy-from-github) | Teams, production — every merge to `main` deploys itself | Two repository secrets |
+| [**B. From GitHub**](#b-auto-deploy-from-github) | Teams, production — every merge to `main` deploys itself | Three repository secrets |
 
 Most people start with **A** to see their instance come up, then wire up
 **B** so production stays current without touching a terminal.
@@ -111,20 +111,35 @@ Token**, with:
 This is **not** the same token as `APP_CLOUDFLARE_API_TOKEN` —
 [two tokens, two jobs](/self-hosting/cloudflare-api-token).
 
-### 2. Set the repository secrets
+### 2. Add secrets and variables to the repository
 
-Two are required:
+Everything lives in one place: your repo on GitHub → **Settings → Secrets
+and variables → Actions**. Two tabs matter:
 
-| Repository secret | Value |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | The deploy token from step 1 |
-| `CLOUDFLARE_ACCOUNT_ID` | Your account id |
+- **Secrets** tab → *New repository secret* — for sensitive values. Write-only
+  once saved; masked in logs.
+- **Variables** tab → *New repository variable* — for plain config like URLs.
 
-Then add your [configuration](/self-hosting/configuration) values as
-repository secrets (sensitive: `SETUP_TOKEN`, `APP_CLOUDFLARE_API_TOKEN`, …)
-and variables (plain: `ORIGINS`, `LOG_LEVEL`, …) — the workflow forwards all
-of them. Anything you leave unset follows the same rules as local deploys:
-minted once into state, or feature-off.
+Add these (names must match exactly — the workflow forwards them as-is):
+
+| Name | Where | Required | Value |
+| --- | --- | :-: | --- |
+| `CLOUDFLARE_API_TOKEN` | Secret | ✓ | The deploy token from step 1 |
+| `CLOUDFLARE_ACCOUNT_ID` | Secret | ✓ | Your account id (dashboard → Workers & Pages → right sidebar) |
+| `SETUP_TOKEN` | Secret | ✓ | Any string ≥ 8 chars you choose — you'll open `/setup` with it. **The deploy fails without it** |
+| `APP_CLOUDFLARE_API_TOKEN` | Secret | for mail | The app's [runtime token](/self-hosting/cloudflare-api-token) — without it, domain onboarding is off |
+| `APP_CLOUDFLARE_ACCOUNT_ID` | Secret | for mail | Same account id (the app provisions in it) |
+| `ORIGINS` | Variable | for domains | Comma-separated full URLs, first canonical — e.g. `https://mail.acme.com`. Unset → workers.dev |
+| `CRON_SECRET`, `UNSUBSCRIBE_URL`, `LOG_LEVEL` | Secret / Variable / Variable | — | Optional features |
+
+Nothing else is needed: `MAIL_DEK`, `MAIL_SEARCH_KEY`, `BETTER_AUTH_SECRET`,
+and the web-push keypair mint themselves on the first CI deploy and persist
+in the stack's state store — later runs reuse the same values automatically.
+
+<Aside type="tip" title="Changing a value later">
+  Edit the secret/variable in the same GitHub screen, then push (or use the
+  manual trigger). Config rebinds on every deploy — no other steps.
+</Aside>
 
 ### 3. Merge to main
 
