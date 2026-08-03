@@ -2,7 +2,7 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { getRequestEvent } from "$app/server";
-import { ORIGIN } from "$app/env/public";
+import { canonicalOrigin } from "./origins.js";
 import * as schema from "@doota/db/schema";
 import { getDiceBearURL } from "$lib/utils/dice-bear.js";
 import { tryCatch } from "$lib/utils/try-catch.js";
@@ -186,7 +186,7 @@ export async function provisionUser(
     from,
     mailbox: email,
     tempPassword: password,
-    loginLink: `${ORIGIN}/login?email=${email}&password=${password}`,
+    loginLink: `${canonicalOrigin}/login?email=${email}&password=${password}`,
   });
   await tryCatch(
     sendMailBackground({ to: recoveryEmail, from, subject: mail.subject, text: mail.text, html: mail.html }),

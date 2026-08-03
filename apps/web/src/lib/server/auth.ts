@@ -26,7 +26,7 @@ import {
   domainOf,
 } from "@doota/db/org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
-import { ORIGIN, ORIGINS } from "$app/env/public";
+import { ORIGINS } from "$app/env/public";
 import { renderEmail } from "./email";
 import { kvSecondaryStorage } from "./auth/kv-secondary-storage.js";
 
@@ -124,12 +124,13 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       autoSignInAfterVerification: false,
     },
     appName: `Doota`,
-    baseURL: ORIGINS?.length
-      ? {
-          allowedHosts: ORIGINS,
-          fallback: ORIGIN,
-        }
-      : ORIGIN,
+    // ORIGINS entries are full origins (protocol included) — better-auth uses
+    // them verbatim as trusted origins; the canonical first entry is the
+    // fallback base URL when a request can't resolve one.
+    baseURL: {
+      allowedHosts: ORIGINS,
+      fallback: ORIGINS[0],
+    },
     secret: BETTER_AUTH_SECRET,
     database: drizzleAdapter(db!, { provider: "sqlite", schema }),
     emailAndPassword: {

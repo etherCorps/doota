@@ -20,16 +20,15 @@ export const variables = defineEnvVars({
 		// ponytail: length enforced only in prod so throwaway dev secrets keep working.
 		schema: dev ? z.string().min(1) : z.string().min(32)
 	},
-	ORIGIN: {
+	ORIGINS: {
 		public: true,
-		description: "The app's URL. Must match the dev port, or auth routes 404.",
-		schema: z.url()
-  },
-
-  ORIGINS: {
-    public: true,
-		description: "If you serve multiple domains, use this and add a default to ORIGIN.",
-		schema: optional?.transform((origins) => origins?.split(",").map((origin) => origin.trim()))
+		description:
+			'Comma-separated full origins WITH protocol (e.g. "https://mail.acme.com"). First entry is the canonical app URL (absolute links, auth fallback); every entry is a better-auth allowed host. Must include the dev origin locally, or auth routes 404.',
+		schema: z
+			.string()
+			.min(1)
+			.transform((origins) => origins.split(',').map((origin) => origin.trim()).filter(Boolean))
+			.pipe(z.array(z.url()).min(1))
 	},
 	// One-time gate for the /setup wizard. Genesis only works when the user
 	// count is zero AND this token is presented — deploy access is the trust root.

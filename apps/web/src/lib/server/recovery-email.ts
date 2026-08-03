@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { ORIGIN } from "$app/env/public";
+import { canonicalOrigin } from "./origins.js";
 import { sendMail } from "./mailer";
 import { renderEmail } from "./email";
 import { tokenStore, setUserAuthFlags } from "./auth/escape-hatches.js";
@@ -22,7 +22,7 @@ export async function sendRecoveryEmailVerification(
     JSON.stringify({ userId, email: recoveryEmail }),
     TOKEN_TTL_MS,
   );
-  const verifyLink = `${ORIGIN}/verify-recovery-email?token=${token}`;
+  const verifyLink = `${canonicalOrigin}/verify-recovery-email?token=${token}`;
   const mail = renderEmail("recovery-verify", { from, verifyLink });
   await sendMail({ to: recoveryEmail, from, subject: mail.subject, text: mail.text, html: mail.html });
 }

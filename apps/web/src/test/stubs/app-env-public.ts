@@ -1,2 +1,2 @@
 // SPDX-License-Identifier: Apache-2.0
-export const ORIGIN = "http://localhost:5173";
+export const ORIGINS = ["http://localhost:5173"];
