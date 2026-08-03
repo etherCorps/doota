@@ -26,8 +26,9 @@ export default {
   async queue(batch, env): Promise<void> {
     initLogLevel(env);
     // Two consumed queues, routed by name: outbound sends + Email Service
-    // event subscriptions (delivery lifecycle).
-    if (batch.queue === "doota-mail-events") {
+    // event subscriptions (delivery lifecycle). Prefix match, not equality —
+    // stage deploys (alchemy.run.ts) suffix queue names (doota-mail-events-<stage>).
+    if (batch.queue.startsWith("doota-mail-events")) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await handleMailEventsQueue(batch as any, env);
       return;
