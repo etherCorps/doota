@@ -41,10 +41,11 @@ Still with us? Here's what you'll need.
 - A **domain** you can point at Cloudflare — Doota's model is **one deployment =
   one company = one mail domain**. You can onboard several domains, each as its
   own organization.
-- **Node 22+**, **[pnpm](https://pnpm.io)**, and a local clone of the repo.
-- A **scoped Cloudflare API token** — Doota calls the CF API to onboard domains
-  (zone, Email Routing, DNS, DKIM). See
-  [Cloudflare API token](/self-hosting/cloudflare-api-token).
+- **Node 22.18+**, **[pnpm](https://pnpm.io)**, and a local clone of the repo.
+- A **scoped Cloudflare API token** for the running app — Doota calls the CF
+  API to onboard domains (zone, Email Routing, DNS, DKIM). See
+  [Cloudflare API token](/self-hosting/cloudflare-api-token). (Deploying
+  itself needs no token locally — you sign in through the browser.)
 
 <Aside type="caution" title="Beta dependency">
   Outbound is sent through Cloudflare Email Sending, which is in public beta.
@@ -55,28 +56,31 @@ Still with us? Here's what you'll need.
 
 ## The deploy path, end to end
 
+Doota deploys as **one stack** ([Alchemy](https://alchemy.run)): resources,
+Workers, bindings, migrations, and secrets all reconcile from a single
+declaration in `infra/`. No manual provisioning, no ID wiring, no
+secret-by-secret pushes.
+
 <Steps>
-  <Step title="Provision resources">
-    Create the D1 database, R2 bucket, KV namespace, and Queues, then point the
-    `wrangler.jsonc` files at them.
+  <Step title="Configure">
+    Decide your instance's settings — serving domain(s), the setup-wizard
+    token, and the app's
+    [Cloudflare API token](/self-hosting/cloudflare-api-token). Start at
+    [Configuration](/self-hosting/configuration); required secrets you don't
+    provide are minted automatically on the first deploy.
   </Step>
-  <Step title="Set secrets">
-    Push `BETTER_AUTH_SECRET`, the Cloudflare API token, and the rest as Worker
-    secrets.
+  <Step title="Deploy — pick your path">
+    **From your machine**: `pnpm alchemy login` once, then `pnpm infra:deploy`
+    — your instance comes up and prints its URL. **From GitHub**: set two
+    repository secrets and every merge to `main` deploys itself. Both paths:
+    [Deploy](/self-hosting/deploy).
   </Step>
-  <Step title="Migrate the remote database">
-    `pnpm db:migrate:remote` applies the D1 schema in production.
-  </Step>
-  <Step title="Deploy the Workers">
-    `pnpm deploy:all` builds and ships the web app and both mail Workers.
-  </Step>
-  <Step title="Run genesis and onboard a domain">
-    Create the super-admin, then onboard your first domain so Email Routing and
-    sending come online. See [First run](/self-hosting/first-run).
+  <Step title="First run">
+    Create the super-admin via `/setup`, onboard your first domain so Email
+    Routing and sending come online, send a test message. See
+    [First run](/self-hosting/first-run).
   </Step>
 </Steps>
-
-Full walkthrough: [Deploy](/self-hosting/deploy).
 
 ## What each Worker binds
 
@@ -99,14 +103,14 @@ DO migration.
 ## In this section
 
 <CardGrid>
+  <Card title="Configuration" icon="ph:sliders">
+    Step 1 — decide your domains, setup token, and every variable's meaning.
+  </Card>
   <Card title="Cloudflare API token" icon="ph:key">
-    The exact scopes Doota needs, and when you can drop Zone:Create.
+    The app's runtime token: exact scopes, and when you can drop Zone:Create.
   </Card>
   <Card title="Deploy" icon="ph:cloud-arrow-up">
-    Provision resources, set secrets, migrate, and ship.
-  </Card>
-  <Card title="Configuration" icon="ph:sliders">
-    Every environment variable and secret, what it does, and how to generate it.
+    One command from your machine, or auto-deploy from GitHub on merge.
   </Card>
   <Card title="First run" icon="ph:flag-checkered">
     Genesis, onboard a domain, create a mailbox, send a test message.

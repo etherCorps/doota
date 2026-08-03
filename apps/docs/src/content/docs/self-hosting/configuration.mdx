@@ -1,26 +1,63 @@
 ---
 title: Configuration
-description: Every Doota environment variable and secret — what it does, whether it's required, and how to generate it.
+description: "Step 1: decide your instance's settings — domains, setup token, API token — before you deploy."
 sidebar:
-  order: 3
+  order: 1
 ---
 
-Doota reads a small set of variables. In local dev they live in `.env`; in
-production, sensitive values are **Worker secrets** (`wrangler secret put`) and
-the rest are plain vars (`wrangler.jsonc` `vars` or the dashboard, protected by
-`keep_vars: true`).
+**Start here.** Before deploying, decide what your instance looks like: which
+domain it serves, how you'll unlock the setup wizard, and whether it can
+onboard mail domains. Configuration lives in the deploy environment and the
+**deploy applies it**: values you put in `infra/.env` (deploying from your
+machine) or GitHub secrets/variables (deploying from CI) become Worker
+secrets and vars on every deploy — nothing is set through wrangler or the
+dashboard.
+
+## Decide these three things
+
+1. **`ORIGINS`** — the URL(s) your instance will serve on, full URLs with
+   protocol, comma-separated, first entry canonical
+   (e.g. `ORIGINS=https://mail.acme.com`). Each hostname is attached as a
+   Cloudflare custom domain, so its zone must already exist in your account.
+   Skip it to start on workers.dev and add your domain later.
+2. **`SETUP_TOKEN`** — any string you choose. After deploying you'll open
+   `/setup` with it to create the super-admin. No token, no wizard.
+3. **The app's Cloudflare API token** — `APP_CLOUDFLARE_ACCOUNT_ID` +
+   `APP_CLOUDFLARE_API_TOKEN`, needed the moment you onboard a mail domain.
+   Creating it has its own page: [Cloudflare API token](/self-hosting/cloudflare-api-token).
+
+Everything else can wait: the core secrets mint themselves, and every value
+below can be added or changed later with a redeploy.
+
+If you're deploying from your machine, put the values in `infra/.env` now
+(`cp infra/.env.example infra/.env`); for GitHub deploys you'll enter them as
+repository secrets/variables during [Deploy](/self-hosting/deploy).
+
+## How values behave
+
+Two behaviors to know:
+
+- **Minted if unset** — the core secrets (`MAIL_DEK`, `MAIL_SEARCH_KEY`,
+  `BETTER_AUTH_SECRET`, the web-push keypair) are generated on the first
+  deploy and persisted in the stack's state store; every later deploy reuses
+  the same values. Provide your own and it wins. The deploy prints
+  `secretSources` showing env vs state per secret — and because one value is
+  bound to all three Workers, the keys can never drift between them.
+- **Re-read every deploy** — everything else (`ORIGINS`, `SETUP_TOKEN`,
+  `APP_CLOUDFLARE_*`, …) rebinds from the current environment on each
+  deploy: change it → redeploy; clear it → the binding is removed.
 
 ## Web app (`doota`)
 
 | Variable | Required | Secret | What it does |
 | --- | :-: | :-: | --- |
-| `ORIGIN` | ✓ | — | The app's canonical URL. better-auth mounts `/api/auth/*` here — a mismatch causes 404s. Must match the dev port locally. |
-| `BETTER_AUTH_SECRET` | ✓ | ✓ | Signs sessions and tokens. 32+ chars, high entropy. |
-| `MAIL_DEK` | ✓ | ✓ | AES-256-GCM data-encryption key for subjects and bodies in D1. Base64, decodes to exactly 32 bytes. |
-| `MAIL_SEARCH_KEY` | ✓ | ✓ | HMAC key for blind-token search. Instance secret, distinct from `MAIL_DEK`. |
+| `ORIGINS` | — | — | The app's serving origins: comma-separated **full URLs with protocol**. First entry is the canonical app URL (absolute links, auth fallback); every entry is attached to the web Worker as a Cloudflare custom domain (zones must exist) and trusted by auth as an allowed host. Unset in production → workers.dev, URL derived automatically. Locally it must include the dev origin — a mismatch 404s the auth routes. |
+| `BETTER_AUTH_SECRET` | minted | ✓ | Signs sessions and tokens. 32+ chars, high entropy. |
+| `MAIL_DEK` | minted | ✓ | AES-256-GCM data-encryption key for subjects and bodies in D1. Base64, decodes to exactly 32 bytes. |
+| `MAIL_SEARCH_KEY` | minted | ✓ | HMAC key for blind-token search. Instance secret, distinct from `MAIL_DEK`. |
 | `APP_CLOUDFLARE_ACCOUNT_ID` | ✓ | ✓ | Cloudflare account the domain-onboarding flow provisions in. |
-| `APP_CLOUDFLARE_API_TOKEN` | ✓ | ✓ | **Scoped** API token for onboarding. Never the Global API Key. See [token scopes](/self-hosting/cloudflare-api-token). |
-| `MAIL_IN_WORKER_NAME` | ✓ | — | Name of the deployed inbound Worker (`doota-mail-inbound`) that the catch-all routing rule targets. |
+| `APP_CLOUDFLARE_API_TOKEN` | ✓ | ✓ | **Scoped** runtime API token for onboarding — a different token than the deploy one. Never the Global API Key. See [token scopes](/self-hosting/cloudflare-api-token). |
+| `MAIL_IN_WORKER_NAME` | auto | — | Name of the deployed inbound Worker that the catch-all routing rule targets. The deploy injects it from the deployed Worker itself — you never set it. |
 | `CRON_SECRET` | ✓ | ✓ | Bearer secret the cron trigger presents to `POST /api/cron` for maintenance sweeps. |
 | `SETUP_TOKEN` | — | ✓ | One-time token that gates the `/setup` genesis wizard. Leave unset to disable the web wizard (use the CLI instead). |
 | `LOG_LEVEL` | — | — | Mail-pipeline log level: `debug` \| `info` \| `warn` \| `error`. Defaults to `info`. |
@@ -33,22 +70,27 @@ Both mail Workers touch encrypted content, so both need the content keys:
 
 | Variable | Required | Secret | What it does |
 | --- | :-: | :-: | --- |
-| `MAIL_DEK` | ✓ | ✓ | Same key as the web app — must be identical across all three Workers. |
-| `MAIL_SEARCH_KEY` | ✓ | ✓ | Same key as the web app. |
+| `MAIL_DEK` | minted | ✓ | Same key as the web app — identical across all three Workers. |
+| `MAIL_SEARCH_KEY` | minted | ✓ | Same key as the web app. |
 | `CRON_SECRET` | ✓ (jobs) | ✓ | `doota-mail-jobs` presents this when calling the web app's `/api/cron`. |
 | `LOG_LEVEL` | — | — | Per-Worker log level, as above. |
 
-<Aside type="danger" title="The three Workers must share MAIL_DEK and MAIL_SEARCH_KEY">
+<Aside type="note" title="The three Workers share MAIL_DEK and MAIL_SEARCH_KEY">
   `doota-mail-inbound` writes encrypted rows, `doota-mail-jobs` reads and writes
-  them, and the web app renders them. If the keys differ between Workers,
-  decryption fails and search silently returns nothing. Set the **same**
-  `MAIL_DEK` and `MAIL_SEARCH_KEY` everywhere.
+  them, and the web app renders them — the keys must be identical everywhere,
+  or decryption fails and search silently returns nothing. The deploy
+  guarantees this: one value (provided or minted) is bound to all three
+  Workers in the same run.
 </Aside>
 
 ## Generating values
 
+You usually don't: the deploy mints the core secrets (see above). Generate
+manually only when you want to provide your own — e.g. to keep a copy in your
+password manager, or for local dev `.env`:
+
 ```sh
-# Any 32-byte, base64 secret — used for BETTER_AUTH_SECRET, MAIL_DEK,
+# Any 32-byte, base64 secret — usable for BETTER_AUTH_SECRET, MAIL_DEK,
 # MAIL_SEARCH_KEY, CRON_SECRET, SETUP_TOKEN.
 openssl rand -base64 32
 ```
@@ -61,7 +103,7 @@ are tolerated, so any of the common generators work.
 
 ```sh title=".env"
 DATABASE_URL=file:local.db
-ORIGIN="http://localhost:5173"
+ORIGINS="http://localhost:5173"
 BETTER_AUTH_SECRET="<32+ chars>"
 MAIL_DEK="<base64 32 bytes>"
 MAIL_SEARCH_KEY="<base64 32 bytes>"
@@ -75,3 +117,8 @@ LOG_LEVEL=""                   # defaults to info
 
 For the mail Workers in local dev, put `MAIL_DEK` / `MAIL_SEARCH_KEY` /
 `LOG_LEVEL` in each Worker's `.dev.vars`.
+
+## Next
+
+Create the app's [Cloudflare API token](/self-hosting/cloudflare-api-token)
+(or defer it), then [deploy](/self-hosting/deploy).

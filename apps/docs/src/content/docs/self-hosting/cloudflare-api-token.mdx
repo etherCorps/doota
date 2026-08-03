@@ -2,13 +2,21 @@
 title: Cloudflare API token
 description: The scoped token Doota uses to onboard domains — required permissions, and why the Global API Key must never be used.
 sidebar:
-  order: 1
+  order: 2
 ---
 
-Doota calls the Cloudflare API to onboard domains: create (or reuse) the zone,
-enable Email Routing, write MX / SPF / DKIM / DMARC records, and point the
-catch-all rule at the mail-in Worker. This is the **only** place Doota touches
-the CF API — never on the inbound hot path or during login.
+Doota involves two **different** Cloudflare tokens with different jobs. Don't
+reuse one for the other:
+
+| Token | Who uses it | When |
+| --- | --- | --- |
+| **Deploy token** (`CLOUDFLARE_API_TOKEN`) | Alchemy / CI | Deploy time only — creates and updates Workers, database, storage, queues. Scopes are listed in [Deploy](/self-hosting/deploy#b-auto-deploy-from-github). Local deploys don't need it at all (browser sign-in). |
+| **App runtime token** (`APP_CLOUDFLARE_API_TOKEN`) | The running web app | When an org onboards a mail domain. **This page is about this token.** |
+
+The running app calls the Cloudflare API to onboard domains: create (or reuse)
+the zone, enable Email Routing, write MX / SPF / DKIM / DMARC records, and
+point the catch-all rule at the mail-in Worker. This is the **only** place the
+app touches the CF API — never on the inbound hot path or during login.
 
 <Aside type="danger" title="Never use the Global API Key">
   Use a **scoped API token** (a Bearer token). The Global API Key grants full
@@ -28,9 +36,10 @@ the CF API — never on the inbound hot path or during login.
     account (or specific zones) that will host Doota domains.
   </Step>
   <Step title="Store it as a secret">
-    Copy the token once — it's shown only at creation — and set it as the
-    `APP_CLOUDFLARE_API_TOKEN` Worker secret (see
-    [Deploy](/self-hosting/deploy)). Never commit it.
+    Copy the token once — it's shown only at creation — and set it as
+    `APP_CLOUDFLARE_API_TOKEN` in your deploy environment (`infra/.env`
+    locally, a repository secret in CI), then redeploy — the deploy binds it
+    to the web Worker. Never commit it.
   </Step>
 </Steps>
 

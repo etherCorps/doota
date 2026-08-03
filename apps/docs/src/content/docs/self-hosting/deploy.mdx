@@ -1,176 +1,171 @@
 ---
 title: Deploy
-description: Provision Cloudflare resources, set secrets, migrate the database, and ship all Workers.
+description: Ship Doota with one command — from your machine, or automatically from GitHub on every merge to main.
 sidebar:
-  order: 2
+  order: 3
 ---
 
-This takes a clone of the repo to a live instance. You'll provision resources,
-wire their IDs into the `wrangler.jsonc` files, push secrets, migrate the
-remote database, and deploy.
+You've [prepared your configuration](/self-hosting/configuration) — now ship
+it. Doota deploys as **one stack**: the three Workers plus everything they
+bind (D1, KV, R2, queues, the Durable Object, the email sender) are declared
+in `infra/alchemy.run.ts`, and a single command reconciles your Cloudflare
+account against that declaration. No manual resource creation, no ID wiring,
+no secret-by-secret pushes — and required secrets you didn't provide are
+minted automatically on the first run.
 
-<Aside type="note" title="Before you start">
-  Have a [Cloudflare API token](/self-hosting/cloudflare-api-token) ready, and
-  make sure you're logged in to Wrangler: `wrangler login`. All commands run
-  from the repository root unless noted.
+There are two ways to run that command. Pick one:
+
+| Path | Best for | Auth |
+| --- | --- | --- |
+| [**A. From your machine**](#a-deploy-from-your-machine) | First deploy, personal instances, test stages | Browser sign-in, no token |
+| [**B. From GitHub**](#b-auto-deploy-from-github) | Teams, production — every merge to `main` deploys itself | Two repository secrets |
+
+Most people start with **A** to see their instance come up, then wire up
+**B** so production stays current without touching a terminal.
+
+<Aside type="note" title="Prerequisites">
+  Node ≥ 22.18, pnpm, a clone of the repo with `pnpm install` run at the root
+  **and** in `infra/` (`pnpm -C infra install`), and a Cloudflare account.
 </Aside>
 
-## 1. Provision resources
+## A. Deploy from your machine
 
-Create the D1 database, R2 bucket, KV namespace, and the three queues. Names
-below match the committed `wrangler.jsonc` files — keep them, or change both
-sides.
+### 1. Sign in to Cloudflare
 
 ```sh
-# D1 database
-wrangler d1 create doota
-
-# R2 bucket for raw messages, attachments, and drafts
-wrangler r2 bucket create doota-mail-raw
-
-# KV namespace for the session read-cache
-wrangler kv namespace create AUTH_KV
-
-# Queues
-wrangler queues create doota-mail-inbound
-wrangler queues create doota-mail-outbound
-wrangler queues create doota-mail-events
+cd infra
+pnpm alchemy login
 ```
 
-Each command prints an **id**. You need the D1 `database_id` and the KV
-namespace `id` for the next step. (Queues and the R2 bucket bind by name, so
-they need no id.)
+Opens the browser for OAuth and saves a profile to `~/.alchemy`. One-time per
+machine — no API token needed for this path.
 
-## 2. Wire the IDs into wrangler config
+### 2. Deploy
 
-Open the three Worker configs and replace the committed ids with yours:
+From the repository root:
 
-- `apps/web/wrangler.jsonc`
-- `apps/mail-in/wrangler.jsonc`
-- `apps/mail-jobs/wrangler.jsonc`
-
-```jsonc title="apps/web/wrangler.jsonc" {4,10}
-"d1_databases": [
-  {
-    "binding": "DB",
-    "database_id": "<your-d1-database-id>", // [!code highlight]
-    "database_name": "doota",
-    "migrations_dir": "../../drizzle"
-  }
-],
-"kv_namespaces": [
-  { "binding": "AUTH_KV", "id": "<your-kv-namespace-id>" } // [!code highlight]
-]
+```sh
+pnpm infra:deploy
 ```
 
-The D1 id must match in **all three** configs — the web app and both mail
-Workers share one database.
+This builds the web app and deploys the stack. The first run creates
+everything: database (with the full schema applied), bucket, KV, queues, and
+the three Workers. When it finishes, the printed `webUrl` is your running
+instance:
 
-<Aside type="tip" title="Custom domain">
-  `apps/web/wrangler.jsonc` has a `routes` entry with a `custom_domain`. Point
-  it at the hostname you'll serve the app on (e.g. `mail.acme.com`), or remove
-  it to use the `*.workers.dev` URL while testing.
+```
+webUrl: https://doota-dev-yourname.your-account.workers.dev
+```
+
+<Aside type="tip" title="Where did this deploy go?">
+  Every deploy targets a **stage** — by default `dev_<your-username>`, where
+  every resource name is suffixed (`doota-dev-yourname`, …) and isolated.
+  Production is its own explicit stage with the bare names:
+
+  ```sh
+  pnpm --filter @doota/infra deploy --stage production
+  ```
+
+  You cannot hit production by accident; you have to type it. Use your
+  default stage to test the deploy end to end, then deploy production.
 </Aside>
 
-## 3. Set variables and secrets
-
-Non-secret vars (`ORIGIN`, `MAIL_IN_WORKER_NAME`, optional `LOG_LEVEL`) go in
-each Worker's `vars` block or the dashboard — `keep_vars: true` keeps dashboard
-vars from being wiped on deploy. Everything sensitive goes in as a **secret**.
-
-Set secrets per Worker with `wrangler secret put`, pointing `-c` at each config:
-
-<Tabs>
-  <TabItem label="web (doota)">
-    ```sh
-    wrangler secret put BETTER_AUTH_SECRET       -c apps/web/wrangler.jsonc
-    wrangler secret put MAIL_DEK                  -c apps/web/wrangler.jsonc
-    wrangler secret put MAIL_SEARCH_KEY          -c apps/web/wrangler.jsonc
-    wrangler secret put APP_CLOUDFLARE_ACCOUNT_ID -c apps/web/wrangler.jsonc
-    wrangler secret put APP_CLOUDFLARE_API_TOKEN  -c apps/web/wrangler.jsonc
-    wrangler secret put CRON_SECRET              -c apps/web/wrangler.jsonc
-    # optional — enables the /setup web wizard, one-time
-    wrangler secret put SETUP_TOKEN              -c apps/web/wrangler.jsonc
-    ```
-  </TabItem>
-  <TabItem label="mail-in">
-    ```sh
-    wrangler secret put MAIL_DEK        -c apps/mail-in/wrangler.jsonc
-    wrangler secret put MAIL_SEARCH_KEY -c apps/mail-in/wrangler.jsonc
-    ```
-  </TabItem>
-  <TabItem label="mail-jobs">
-    ```sh
-    wrangler secret put MAIL_DEK        -c apps/mail-jobs/wrangler.jsonc
-    wrangler secret put MAIL_SEARCH_KEY -c apps/mail-jobs/wrangler.jsonc
-    wrangler secret put CRON_SECRET     -c apps/mail-jobs/wrangler.jsonc
-    ```
-  </TabItem>
-</Tabs>
-
-Generate the three high-entropy secrets:
+To preview what a deploy *would* change without touching anything:
 
 ```sh
-openssl rand -base64 32   # BETTER_AUTH_SECRET
-openssl rand -base64 32   # MAIL_DEK  (must decode to exactly 32 bytes)
-openssl rand -base64 32   # MAIL_SEARCH_KEY
+pnpm infra:plan
 ```
 
-<Aside type="danger" title="Back up MAIL_DEK and MAIL_SEARCH_KEY now">
-  `MAIL_DEK` encrypts every subject and body in D1; `MAIL_SEARCH_KEY` powers
-  search. They live only as Worker secrets, never in the database. **Lose
-  `MAIL_DEK` and every encrypted message is permanently unrecoverable** — a D1
-  backup without it is useless. Store both in a password manager or secrets
-  vault before you go further. See [Operations](/self-hosting/operations).
+### 3. Apply your configuration
+
+If you filled `infra/.env` during [Configuration](/self-hosting/configuration),
+it was already applied. Changing config later is the same motion: edit
+`infra/.env`, run `pnpm infra:deploy` again — config re-applies on every
+deploy, and only the changes go out.
+
+<Aside type="danger" title="MAIL_DEK is still precious">
+  Minted or provided, `MAIL_DEK` encrypts every stored message. The minted
+  copy lives in the Alchemy state store in your Cloudflare account — don't
+  destroy a stage whose mail you care about, and back the key up if you can.
+  **Lose `MAIL_DEK` and every encrypted message is permanently
+  unrecoverable.** See [Operations](/self-hosting/operations).
 </Aside>
 
-The full list of variables — required vs optional, secret vs plain — is in
-[Configuration](/self-hosting/configuration).
+## B. Auto-deploy from GitHub
 
-## 4. Migrate the remote database
+`.github/workflows/deploy.yml` deploys `--stage production` on **every push
+to `main`** — a merged PR is a push, so once this is set up, shipping Doota
+is just merging. No `alchemy login`, no `.env` file in CI; minted secrets
+come from the state store.
 
-```sh
-pnpm db:migrate:remote
-```
+### 1. Create the deploy token
 
-This runs `wrangler d1 migrations apply doota --remote` against the `drizzle/`
-migrations.
+In the Cloudflare dashboard: **My Profile → API Tokens → Create Custom
+Token**, with:
 
-<Aside type="caution" title="D1 has no cross-statement transactions">
-  If a migration fails midway, it does not roll back. See the migration policy
-  in [Operations](/self-hosting/operations) before applying migrations to a
-  database with data in it.
-</Aside>
+- **Account**: Workers Scripts, D1, Workers KV Storage, Workers R2 Storage,
+  Queues, Secrets Store — all *Edit*; Account Settings *Read*.
+- **Zone** (each zone in `ORIGINS`): Workers Routes *Edit*, DNS *Edit*,
+  Zone *Read*. Skip if you're workers.dev-only.
 
-## 5. Deploy the Workers
+This is **not** the same token as `APP_CLOUDFLARE_API_TOKEN` —
+[two tokens, two jobs](/self-hosting/cloudflare-api-token).
 
-```sh
-pnpm deploy:all
-```
+### 2. Set the repository secrets
 
-That's shorthand for building and shipping the web app plus both mail Workers.
-You can also deploy them individually:
+Two are required:
 
-| Command | Deploys |
+| Repository secret | Value |
 | --- | --- |
-| `pnpm deploy` | `doota` (web) |
-| `pnpm deploy:mail-in` | `doota-mail-inbound` |
-| `pnpm deploy:mail-jobs` | `doota-mail-jobs` |
-| `pnpm deploy:workers` | both mail Workers |
-| `pnpm deploy:all` | all three |
+| `CLOUDFLARE_API_TOKEN` | The deploy token from step 1 |
+| `CLOUDFLARE_ACCOUNT_ID` | Your account id |
 
-<Aside type="note" title="Deploy mail-jobs first if it's a cold start">
-  `doota-mail-jobs` owns the `MailEventHub` Durable Object that the other
-  Workers bind to by `script_name`. On a brand-new account, deploy
-  `mail-jobs` first so the DO class exists, then the rest.
-</Aside>
+Then add your [configuration](/self-hosting/configuration) values as
+repository secrets (sensitive: `SETUP_TOKEN`, `APP_CLOUDFLARE_API_TOKEN`, …)
+and variables (plain: `ORIGINS`, `LOG_LEVEL`, …) — the workflow forwards all
+of them. Anything you leave unset follows the same rules as local deploys:
+minted once into state, or feature-off.
 
-Set `MAIL_IN_WORKER_NAME` to the deployed inbound Worker's name
-(`doota-mail-inbound`) — the domain-onboarding flow points the Email Routing
-catch-all rule at it.
+### 3. Merge to main
 
-## 6. Onboard your first domain
+That's the whole deployment procedure from here on. The workflow also has a
+manual trigger (**Actions → Deploy → Run workflow**) for re-deploys and the
+one-time adoption run below.
 
-Your Workers are live but no mail flows yet — Email Routing and sending come up
-per domain. Continue to [First run](/self-hosting/first-run) to create the
+## Migrating from a wrangler deployment
+
+Only relevant if you already run Doota deployed with `wrangler deploy`.
+Alchemy must **adopt** your existing resources once, instead of creating new
+ones:
+
+<Steps>
+  <Step title="Export every live secret">
+    `MAIL_DEK`, `MAIL_SEARCH_KEY`, `BETTER_AUTH_SECRET`, the VAPID pair, and
+    any optional ones you use. The stack replaces each Worker's entire
+    binding set — without the live values it would bind freshly minted ones,
+    and mail stored under the live `MAIL_DEK` becomes unreadable. The deploy
+    warns loudly if production is about to get a minted key.
+  </Step>
+  <Step title="Check the KV namespace title">
+    Adoption matches KV by dashboard **title** (`AUTH_KV`). A mismatch
+    silently creates a new namespace.
+  </Step>
+  <Step title="Plan, then adopt">
+    ```sh
+    pnpm --filter @doota/infra plan   --stage production
+    pnpm --filter @doota/infra deploy --stage production --adopt
+    ```
+    D1 is safe: the stack reads the same `d1_migrations` table wrangler
+    wrote, so only pending migrations run.
+  </Step>
+  <Step title="Turn off competing deploys">
+    Disable Workers Builds (or any CI running `wrangler deploy`) for these
+    Workers — a later wrangler deploy would overwrite the stack's bindings.
+  </Step>
+</Steps>
+
+## Next: first run
+
+Your Workers are live but no mail flows yet — Email Routing and sending come
+up per domain. Continue to [First run](/self-hosting/first-run) to create the
 super-admin, onboard a domain, make a mailbox, and send a test message.

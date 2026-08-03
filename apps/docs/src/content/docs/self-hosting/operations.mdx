@@ -71,20 +71,28 @@ backup is not recoverable:
   </Step>
   <Step title="Secrets (MAIL_DEK, MAIL_SEARCH_KEY, BETTER_AUTH_SECRET)">
     Back these up out-of-band, in a password manager or vault. D1 + R2 without
-    `MAIL_DEK` cannot be read.
+    `MAIL_DEK` cannot be read. If you let the deploy mint them, the values
+    live in the Alchemy state store in your Cloudflare account — the safest
+    posture is to provide your own values via the deploy env so a copy exists
+    in your vault from day one.
   </Step>
 </Steps>
 
 Restore is the reverse: recreate resources, import the D1 dump, restore R2
-objects, and re-set the **same** secrets on all three Workers.
+objects, and provide the **same** secrets in the deploy environment — the
+deploy binds them to all three Workers.
 
 ## Running migrations
 
-Migrations live in `drizzle/` and apply with:
+Migrations live in `drizzle/`. **In production they apply automatically**:
+every deploy runs pending migrations before the Workers update — a brand-new
+database gets the full schema on its first deploy. Tracking uses the standard
+`d1_migrations` table, so the manual command stays equivalent if you ever
+need it outside a deploy:
 
 ```sh
 pnpm db:migrate:remote     # wrangler d1 migrations apply doota --remote
-pnpm db:migrate:local      # local database
+pnpm db:migrate:local      # local dev database (deploys don't touch it)
 ```
 
 <Aside type="caution" title="D1 has no cross-statement transactions">

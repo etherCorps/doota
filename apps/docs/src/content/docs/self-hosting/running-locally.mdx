@@ -2,7 +2,7 @@
 title: Run Doota locally
 description: Clone, install, migrate, and run Doota on your machine in a few minutes.
 sidebar:
-  order: 0
+  order: 7
 ---
 
 Get Doota running on `localhost` — no Cloudflare account required for the app
@@ -36,7 +36,7 @@ deployed instance with a domain; see [Self-hosting](/self-hosting).)
     For local dev you only need two values filled in:
 
     ```sh title=".env"
-    ORIGIN="http://localhost:5173"
+    ORIGINS="http://localhost:5173"
     BETTER_AUTH_SECRET="<32+ random chars>"
     ```
 
@@ -46,10 +46,11 @@ deployed instance with a domain; see [Self-hosting](/self-hosting).)
     openssl rand -base64 32
     ```
 
-    <Aside type="caution" title="ORIGIN must match your dev port">
-      better-auth mounts its routes at `ORIGIN`. If `ORIGIN` doesn't match the
-      port the dev server actually runs on, `/api/auth/*` returns 404. The dev
-      server defaults to `http://localhost:5173`.
+    <Aside type="caution" title="ORIGINS must include your dev origin">
+      better-auth trusts the origins listed in `ORIGINS`. If the port the dev
+      server actually runs on isn't in the list, `/api/auth/*` returns 404.
+      The dev server defaults to `http://localhost:5173` — include it with
+      the protocol.
     </Aside>
 
     See [Configuration](/self-hosting/configuration) for every variable.

@@ -55,9 +55,10 @@ Common failure modes and where to check. The onboarding health view on
 
 ## Auth routes return 404 (`/api/auth/*`)
 
-`ORIGIN` doesn't match the URL the app is actually served on. better-auth
-mounts its routes at `ORIGIN`. In dev, set it to `http://localhost:5173` (the
-default dev port); in production, to your real app URL. Redeploy after changing.
+The URL the app is served on isn't in `ORIGINS`. better-auth only answers
+for origins in that list (full URLs, with protocol). In dev, include
+`http://localhost:5173` (the default dev port); in production, your real app
+URL(s). Redeploy after changing.
 
 ## Can't decrypt messages / search returns nothing
 
