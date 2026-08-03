@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Gmail "show details" envelope for one message, from the DTO we already carry.
      mailed-by (return-path) + signed-by (DKIM d=) are deferred (need extra
-     ingest). Rendered under the message header when the details ▼ is toggled. -->
+     ingest). Rendered inside the details Popover (overlay — no layout shift). -->
 <script lang="ts">
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import { fmtDateTime } from '$lib/mail/format';
@@ -21,7 +21,7 @@
 	);
 </script>
 
-<dl class="bg-muted/40 mb-3 space-y-1 rounded-lg border px-3 py-2 text-[11px]">
+<dl class="space-y-1 text-[11px]">
 	{#each rows as row (row.label)}
 		<div class="flex gap-2">
 			<dt class="text-faint w-16 shrink-0">{row.label}</dt>

@@ -1123,13 +1123,6 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
-	// Gmail-style per-message "details" expander (mail-view card): envelope fields
-	// built from the DTO we already have (mailed-by/signed-by need extra ingest).
-	const detailsOpen = new SvelteSet<string>();
-	function toggleDetails(id: string) {
-		if (detailsOpen.has(id)) detailsOpen.delete(id);
-		else detailsOpen.add(id);
-	}
 	// Thread attachments panel — every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
@@ -1400,28 +1393,23 @@
 		</div>
 	{/if}
 {/snippet}
-<!-- Message details toggle: an info glyph (not a chevron — a chevron reads as
-     "expand replies") with a hover tooltip. Reveals the envelope via MessageDetails. -->
+<!-- Message details: an info glyph (not a chevron — a chevron reads as
+     "expand replies") opening the envelope in a Popover overlay — anchored,
+     portal-rendered, so the thread's geometry never changes (no layout shift). -->
 {#snippet detailsToggle(m: MessageDTO)}
-	<Tooltip.Provider delayDuration={400}>
-		<Tooltip.Root>
-			<Tooltip.Trigger>
-				{#snippet child({ props })}
-					<button
-						{...props}
-						type="button"
-						aria-label="Message details"
-						aria-expanded={detailsOpen.has(m.id)}
-						onclick={() => toggleDetails(m.id)}
-						class="focus-visible:ring-ring/50 pointer-coarse:size-10 grid size-8 shrink-0 place-items-center rounded-lg outline-none transition-colors focus-visible:ring-2 {detailsOpen.has(m.id) ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-					>
-						<InfoIcon class="size-4" />
-					</button>
-				{/snippet}
-			</Tooltip.Trigger>
-			<Tooltip.Content>Message details</Tooltip.Content>
-		</Tooltip.Root>
-	</Tooltip.Provider>
+	<Popover.Root>
+		<Popover.Trigger
+			aria-label="Message details"
+			class="focus-visible:ring-ring/50 pointer-coarse:size-10 text-muted-foreground hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground grid size-8 shrink-0 place-items-center rounded-lg outline-none transition-colors focus-visible:ring-2"
+		>
+			<InfoIcon class="size-4" />
+		</Popover.Trigger>
+		<!-- right-start beside the info glyph — into the thread's empty right
+		     margin, instead of dropping over the message bubble below. -->
+		<Popover.Content side="right" align="start" sideOffset={8} collisionPadding={16} class="w-80 max-w-[calc(100vw-2rem)] p-3">
+			<MessageDetails {m} />
+		</Popover.Content>
+	</Popover.Root>
 {/snippet}
 
 
@@ -2375,7 +2363,6 @@
 												</div>
 												{@render detailsToggle(m)}
 											</div>
-											{#if detailsOpen.has(m.id)}<MessageDetails {m} />{/if}
 										{/if}
 											<div class="w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs ring-brand transition-shadow duration-300 motion-reduce:transition-none {flashMsgId === m.id ? 'ring-2' : 'ring-0'} {outbound ? 'bg-foreground text-background rounded-tr-md' : 'bg-card rounded-tl-md border'}">
 												{@render replyContextNote(m)}
@@ -2519,7 +2506,6 @@
 									{/if}
 									{#if open}
 										<div class="px-3.5 pb-3.5">
-											{#if detailsOpen.has(m.id)}<MessageDetails {m} />{/if}
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
 												{@const inviteOnly = !showOriginal.has(m.id)}

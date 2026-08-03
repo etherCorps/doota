@@ -91,7 +91,13 @@
 			<span {...props} onclick={onTriggerClick} class={cn('focus-visible:ring-ring/50 cursor-default rounded-sm outline-none focus-visible:ring-2', className)}>{@render children()}</span>
 		{/snippet}
 	</HoverCard.Trigger>
-	<HoverCard.Content class="w-80 p-0" sideOffset={8} side="right">
+	<!-- right-start: the thread column keeps its empty space to the RIGHT of
+	     the header row, so the card sits beside the sender instead of blanketing
+	     the message below. align="start" pins the TOP edge to the trigger — the
+	     old default (center) re-centered vertically whenever content height
+	     changed, which is what made the card drift; with a pinned top the
+	     recent-conversations expansion only ever grows downward. -->
+	<HoverCard.Content class="w-80 p-0" sideOffset={8} side="right" align="start" collisionPadding={16}>
 		<div class="flex items-start gap-3 p-3.5">
 			<SenderAvatar from={`${name} <${addr}>`} class="size-11 text-sm" />
 			<div class="min-w-0 flex-1">
@@ -140,7 +146,10 @@
 				<ChevronDownIcon class="text-muted-foreground size-4 transition-transform duration-150 motion-reduce:transition-none {showRecent ? 'rotate-180' : ''}" />
 			</button>
 			{#if showRecent}
-				<div transition:slide={{ duration: reduce() ? 0 : 150, easing: cubicOut }} class="pb-1.5">
+				<!-- Height-capped with internal scroll: the expansion can never outgrow
+				     the viewport, so the card's position stays put however many
+				     conversations load. -->
+				<div transition:slide={{ duration: reduce() ? 0 : 150, easing: cubicOut }} class="max-h-48 overflow-y-auto overscroll-contain pb-1.5">
 					{#if !info?.current}
 						<p class="text-muted-foreground px-3.5 py-2 text-xs">Loading…</p>
 					{:else if recent.length === 0}
