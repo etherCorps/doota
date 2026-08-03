@@ -50,9 +50,15 @@ export function progressToast(initial: string) {
 
 	return {
 		id,
-		/** Swap the loading line in place — call as often as the work has phases. */
+		/** Swap the loading line in place — call as often as the work has phases.
+		 * The huge finite duration defuses a svelte-sonner bug: its `updated`
+		 * effect unconditionally re-arms the auto-close timer on ANY in-place
+		 * update — even on promise-loading toasts — with the 4s default, which
+		 * hid the loading toast mid-flight and let the terminal re-add a second
+		 * one. (Not Infinity: browsers coerce setTimeout(…, Infinity) to 0.)
+		 * Terminal updates then re-arm the timer with their own real duration. */
 		update: (message: string) => {
-			if (!done) toast.loading(message, { id });
+			if (!done) toast.loading(message, { id, duration: 600_000 });
 		},
 		success: (message: string, options?: { action?: Action; duration?: number }) =>
 			finish({ kind: 'success', message, ...options }),
