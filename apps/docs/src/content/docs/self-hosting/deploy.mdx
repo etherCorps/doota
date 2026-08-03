@@ -58,16 +58,17 @@ webUrl: https://doota-dev-yourname.your-account.workers.dev
 ```
 
 <Aside type="tip" title="Where did this deploy go?">
-  Every deploy targets a **stage** — by default `dev_<your-username>`, where
-  every resource name is suffixed (`doota-dev-yourname`, …) and isolated.
-  Production is its own explicit stage with the bare names:
+  Every deploy targets a **stage** — by default `dev_<your-username>`, and
+  every resource name is suffixed with it (`doota-dev-yourname`, …), fully
+  isolated. Your production instance is just the stage named `prod`:
 
   ```sh
-  pnpm --filter @doota/infra deploy --stage production
+  pnpm -C infra run deploy -- --stage prod
   ```
 
-  You cannot hit production by accident; you have to type it. Use your
-  default stage to test the deploy end to end, then deploy production.
+  Stages can never collide with each other or with anything you deployed
+  manually — the stack only ever creates suffixed names. Test on your
+  default stage, then deploy `prod`.
 </Aside>
 
 To preview what a deploy *would* change without touching anything:
@@ -93,7 +94,7 @@ deploy, and only the changes go out.
 
 ## B. Auto-deploy from GitHub
 
-`.github/workflows/deploy.yml` deploys `--stage production` on **every push
+`.github/workflows/deploy.yml` deploys the `prod` stage on **every push
 to `main`** — a merged PR is a push, so once this is set up, shipping Doota
 is just merging. No `alchemy login`, no `.env` file in CI; minted secrets
 come from the state store.
@@ -147,37 +148,15 @@ That's the whole deployment procedure from here on. The workflow also has a
 manual trigger (**Actions → Deploy → Run workflow**) for re-deploys and the
 one-time adoption run below.
 
-## Migrating from a wrangler deployment
+## Coexisting with a wrangler deployment
 
-Only relevant if you already run Doota deployed with `wrangler deploy`.
-Alchemy must **adopt** your existing resources once, instead of creating new
-ones:
-
-<Steps>
-  <Step title="Export every live secret">
-    `MAIL_DEK`, `MAIL_SEARCH_KEY`, `BETTER_AUTH_SECRET`, the VAPID pair, and
-    any optional ones you use. The stack replaces each Worker's entire
-    binding set — without the live values it would bind freshly minted ones,
-    and mail stored under the live `MAIL_DEK` becomes unreadable. The deploy
-    warns loudly if production is about to get a minted key.
-  </Step>
-  <Step title="Check the KV namespace title">
-    Adoption matches KV by dashboard **title** (`AUTH_KV`). A mismatch
-    silently creates a new namespace.
-  </Step>
-  <Step title="Plan, then adopt">
-    ```sh
-    pnpm --filter @doota/infra plan   --stage production
-    pnpm --filter @doota/infra deploy --stage production --adopt
-    ```
-    D1 is safe: the stack reads the same `d1_migrations` table wrangler
-    wrote, so only pending migrations run.
-  </Step>
-  <Step title="Turn off competing deploys">
-    Disable Workers Builds (or any CI running `wrangler deploy`) for these
-    Workers — a later wrangler deploy would overwrite the stack's bindings.
-  </Step>
-</Steps>
+Already running Doota deployed with `wrangler deploy`? Nothing changes for
+it: the stack only ever creates stage-suffixed names, so your bare-name
+Workers, database, and bucket are never touched — the two deployments live
+side by side. To move an instance's **data** onto a stage, do a manual
+export/import (D1 export → import, R2 object copy) and provide that
+deployment's live secrets via the deploy env so the imported data stays
+decryptable.
 
 ## Next: first run
 

@@ -1,4 +1,7 @@
 # Production deploy via the Alchemy stack (infra/alchemy.run.ts).
+# Deploys --stage prod → suffixed names (doota-prod, …). The stack NEVER
+# touches bare names (doota, doota-mail-inbound, …) — those stay manually
+# managed. Stage "production" is retired (see alchemy.run.ts header).
 #
 # Fires ONLY on a push to main — which is also what a merged PR is. No PR
 # previews here; run a stage deploy locally for that (`pnpm infra:deploy`).
@@ -12,12 +15,10 @@
 #                            Zone (per ORIGIN/ORIGINS zone): Workers Routes
 #                            Edit, DNS Edit, Zone Read.
 #   CLOUDFLARE_ACCOUNT_ID  — the target account id
-# Adopting the EXISTING production deployment additionally requires the live
-# worker secrets (MAIL_DEK, MAIL_SEARCH_KEY, BETTER_AUTH_SECRET, VAPID_*) as
-# repository secrets — the stack replaces each worker's whole binding set, and
-# without them it would bind freshly minted state values instead (stored mail
-# becomes unreadable). A FRESH deployment can leave them all unset: the stack
-# mints and persists them in Alchemy state on first deploy.
+# Secrets (MAIL_DEK, MAIL_SEARCH_KEY, BETTER_AUTH_SECRET, VAPID_*) can stay
+# unset: the stack mints them into Alchemy state on the first deploy and
+# every later run reuses the same values. Provide them as repository secrets
+# only to override.
 name: Deploy
 
 on:
@@ -31,7 +32,7 @@ on:
         default: false
 
 concurrency:
-  group: deploy-production
+  group: deploy-prod
   cancel-in-progress: false
 
 jobs:
@@ -83,10 +84,10 @@ jobs:
       # SvelteKit build — the stack deploys .svelte-kit/cloudflare byte-for-byte.
       - run: pnpm run build
 
-      - name: Deploy (stage production)
+      - name: Deploy (stage prod)
         working-directory: infra
         run: >
-          pnpm alchemy deploy --stage production --yes
+          pnpm alchemy deploy --stage prod --yes
           ${{ inputs.adopt && '--adopt' || '' }}
         # env:
         #   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

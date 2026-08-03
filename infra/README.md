@@ -74,26 +74,30 @@ To preview what a deploy *would* do without changing anything:
 pnpm infra:plan
 ```
 
-## Stages: why your deploy can't break production
+## Stages: why your deploy can't break anything
 
 Every deploy targets a **stage**. Unless you say otherwise, that's
-`dev_<your-username>` — and on any stage except `production`, every physical
-resource name gets the stage as a suffix: the worker is
-`doota-dev-yourname`, the bucket `doota-mail-raw-dev-yourname`, and so on,
-each with its own empty D1/KV/R2/queues. Two developers can deploy at the
-same time and never collide, and nothing you do from your stage can touch
-production data.
+`dev_<your-username>` — and on EVERY stage, every physical resource name
+gets the stage as a suffix: the worker is `doota-dev-yourname`, the bucket
+`doota-mail-raw-dev-yourname`, and so on, each with its own empty
+D1/KV/R2/queues. Two developers deploy at the same time and never collide,
+and the stack is structurally incapable of touching anything deployed
+manually under the bare names (`doota`, `doota-mail-inbound`, …) — those
+belong to the wrangler flow and stay untouched forever.
 
-`--stage production` is the only stage that uses the bare names
-(`doota`, `doota-mail-inbound`, `doota-mail-jobs`). You have to type it —
-there is no way to hit production by accident.
+The production instance is just a stage named `prod` (`doota-prod`, …) —
+it's what CI deploys.
 
 ```sh
-pnpm --filter @doota/infra plan                        # preview, your stage
-pnpm --filter @doota/infra deploy --stage staging      # a named shared stage
-pnpm --filter @doota/infra deploy --stage production   # the real thing
-pnpm --filter @doota/infra destroy --stage <name>      # tear a stage down
+pnpm -C infra run plan                       # preview, your stage
+pnpm -C infra run deploy -- --stage staging  # a named shared stage
+pnpm -C infra run deploy -- --stage prod     # the production stage (CI does this)
+pnpm -C infra run destroy -- --stage <name>  # tear a stage down
 ```
+
+Never deploy `--stage production` — the stack hard-rejects it. That retired
+stage's state (from an early bare-name deploy) claims the manually-managed
+bare workers, and reusing it would rename/delete them.
 
 ## Secrets: you probably don't need to set any
 
@@ -220,35 +224,16 @@ minted secrets stable across runs.
 There's also a manual trigger (Actions → Deploy → Run workflow) with an
 **adopt** checkbox, used only for the scenario below.
 
-## Adopting an existing wrangler deployment (one-time)
+## Coexisting with a wrangler deployment
 
-Skip this section unless your Cloudflare account **already runs Doota
-deployed via wrangler** and you're switching it to this stack.
-
-Alchemy must take ownership of the existing workers/queues/bucket/database
-instead of creating new ones. One-time procedure:
-
-1. **Export every live secret** before deploying: `MAIL_DEK`,
-   `MAIL_SEARCH_KEY`, `BETTER_AUTH_SECRET`, the VAPID pair, and any optional
-   ones that are set. The stack replaces each worker's *entire* binding set —
-   without the live values it would bind freshly minted ones, and all mail
-   stored under the live `MAIL_DEK` becomes unreadable.
-2. Check the KV namespace's **title** in the Cloudflare dashboard matches
-   `AUTH_KV` — adoption matches by title, and a mismatch silently creates a
-   new namespace.
-3. Preview: `pnpm --filter @doota/infra plan --stage production` — read what
-   it intends to do.
-4. Deploy with adoption:
-   `pnpm --filter @doota/infra deploy --stage production --adopt`
-   (or the CI manual trigger with the adopt checkbox).
-5. **Disable Workers Builds** auto-deploy for these workers if it's on — a
-   later `wrangler deploy` would overwrite the stack's bindings.
-
-One constraint on that first adopting deploy: the Durable Object class name
-(`MailEventHub`) must match what's live — it does; renaming becomes possible
-afterwards. D1 is safe: the stack uses the same wrangler-compatible
-`d1_migrations` table, so it sees the already-applied migrations and only
-runs pending ones.
+An existing wrangler-managed deployment (bare names: `doota`,
+`doota-mail-inbound`, `doota-mail-jobs`, D1 `doota`, bucket
+`doota-mail-raw`, …) lives alongside the stack untouched — every stack
+stage uses suffixed names, so the two can never collide. Migrating an
+instance's DATA from the wrangler deployment onto a stage is a manual
+export/import (D1 export/import + R2 object copy, with the live secrets
+provided via env so the imported data stays decryptable); the stack
+deliberately has no adopt-the-bare-names path.
 
 ## What this stack deliberately does NOT manage
 

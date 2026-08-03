@@ -13,12 +13,15 @@ import { hexToBase64, stateSecret, VapidKeyPair, VapidKeyPairProvider } from "./
  * mail-jobs) plus every shared resource they bind (D1, KV, R2, the three
  * queues, the MailEventHub Durable Object, the Email Service sender).
  *
- * Full guide — stages, env vars, secret minting, CI, production adoption —
- * lives in ./README.md. The short version:
- *   - default deploy lands on stage `dev_<username>` with suffixed resource
- *     names; only `--stage production` touches the bare production names
- *     (first production deploy against an existing account needs `--adopt`
- *     AND the live secrets in env — see README).
+ * Full guide — stages, env vars, secret minting, CI — lives in ./README.md.
+ * The short version:
+ *   - EVERY stage suffixes EVERY physical name (`doota-<stage>`, …) — the
+ *     stack never touches bare names, so nothing deployed manually (e.g. a
+ *     wrangler-managed `doota`) can ever be overwritten. Default stage is
+ *     `dev_<username>`; CI deploys `--stage prod`.
+ *   - NEVER deploy `--stage production`: that stage's state (from an early
+ *     bare-name run) claims the manually-managed bare workers, and reusing
+ *     it would rename/delete them. The stage name is retired.
  *   - secrets: env wins; absent ones are minted once into stack state.
  *   - custom domains come from ORIGINS (see env.ts).
  *   - D1 migrations from ../drizzle apply on every deploy (create included).
@@ -32,22 +35,25 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    // Production keeps the bare pre-existing names (adoption path); any other
-    // stage suffixes every physical name so test deploys are self-labelling
-    // and collision-free. Cloudflare names allow [a-z0-9-] — sanitize the
-    // stage (default `dev_<username>` contains an underscore).
+    // EVERY stage suffixes every physical name — self-labelling, collision-
+    // free, and structurally incapable of overwriting anything deployed
+    // manually under the bare names. Cloudflare names allow [a-z0-9-] —
+    // sanitize the stage (default `dev_<username>` contains an underscore).
     const stage = yield* Alchemy.Stage;
-    const isProduction = stage === "production";
+    if (stage === "production") {
+      // Retired: this stage's state claims the manually-managed bare-name
+      // workers (from an early bare-name deploy); reusing it would rename
+      // them to suffixed names and DELETE the bare originals. Use `prod`.
+      throw new Error('Stage "production" is retired — deploy --stage prod instead (see alchemy.run.ts header).');
+    }
     const stageSuffix = stage.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    const named = (baseName: string) => (`${baseName}-${stageSuffix}`);
+    const named = (baseName: string) => `${baseName}-${stageSuffix}`;
 
-    // ── Shared resources (pre-existing in production; per-stage otherwise) ──
+    // ── Shared resources (fresh per stage — never the bare manual names) ──
     const database = yield* Cloudflare.D1.Database("Database", {
       name: named("doota"),
       migrationsDir: "../drizzle",
     });
-    // Production title must match the live namespace's dashboard title —
-    // check before the adopting deploy; a mismatch would CREATE a new one.
     const authKv = yield* Cloudflare.KV.Namespace("AuthKv", { title: named("AUTH_KV") });
     const mailRawBucket = yield* Cloudflare.R2.Bucket("MailRaw", { name: named("doota-mail-raw") });
     const inboundQueue = yield* Cloudflare.Queues.Queue("MailInbound", { name: named("doota-mail-inbound") });
@@ -68,14 +74,6 @@ export default Alchemy.Stack(
     const mailDek = yield* stateSecret("MAIL_DEK", "MailDek", hexToBase64);
     const mailSearchKey = yield* stateSecret("MAIL_SEARCH_KEY", "MailSearchKey", hexToBase64);
     const betterAuthSecret = yield* stateSecret("BETTER_AUTH_SECRET", "BetterAuthSecret");
-    if (isProduction && !process.env.MAIL_DEK) {
-      // Fine for a brand-new production; catastrophic when adopting an
-      // existing deployment — its mail is encrypted under the LIVE key, and
-      // binding a state-minted one instead makes all of it unreadable.
-      console.warn(
-        "[infra] production deploy with a state-minted MAIL_DEK — correct only for a FRESH deployment. Adopting an existing one? Provide the live MAIL_DEK (and the other live secrets) via env.",
-      );
-    }
 
     const mintedVapid = yield* VapidKeyPair("VapidKeys", {});
     const sharedMailSecrets = {
