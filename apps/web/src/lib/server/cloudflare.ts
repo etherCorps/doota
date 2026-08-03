@@ -192,8 +192,12 @@ export async function upsertTxtRecord(
   }
 }
 
-/** Enable Email Routing on the zone. Tolerates already-enabled. */
+/** Enable Email Routing on the zone. Check-first: skip the mutation when
+ * already enabled and ready (no audit-log noise, no touched timestamps);
+ * `tolerant` still covers the enable racing another writer. */
 export async function enableEmailRouting(zoneId: string): Promise<void> {
+  const current = await cf().emailRouting.get({ zone_id: zoneId }).catch(() => null);
+  if (current?.enabled && current?.status === "ready") return;
   await tolerant(() => cf().emailRouting.enable({ zone_id: zoneId, body: {} }));
 }
 
@@ -266,12 +270,25 @@ export async function inspectZoneMail(zoneId: string): Promise<{
 
 /**
  * Point the zone's catch-all routing rule at the deployed mail-in Worker.
- * `update` is an upsert, so this is idempotent by construction.
+ * `update` is an upsert, so this is idempotent by construction; the
+ * check-first read just skips the write when the rule is already enabled
+ * AND pointed at this worker (a disabled-but-correct rule still falls
+ * through so the PUT re-enables it). The read is guarded — on a zone
+ * whose routing isn't up yet it can throw, and we'd rather attempt the
+ * upsert than fail on the peek.
  */
 export async function createRoutingRule(
   zoneId: string,
   workerName: string,
 ): Promise<void> {
+  const current = await cf().emailRouting.rules.catchAlls.get({ zone_id: zoneId }).catch(() => null);
+  const alreadyWired =
+    current?.enabled &&
+    current.matchers?.some((matcher) => matcher.type === "all") &&
+    current.actions?.some(
+      (action) => action.type === "worker" && action.value?.includes(workerName),
+    );
+  if (alreadyWired) return;
   try {
     await cf().emailRouting.rules.catchAlls.update({
       zone_id: zoneId,
