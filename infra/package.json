@@ -1,0 +1,20 @@
+{
+  "name": "@doota/infra",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "//": "Alchemy IaC for the three Workers (web, mail-in, mail-jobs). Commands run with cwd = this folder, so alchemy.run.ts references the repo via ../ paths. NODE_OPTIONS strips TS types (needed until node >= 22.18).",
+  "scripts": {
+    "alchemy": "NODE_OPTIONS=--experimental-strip-types alchemy",
+    "plan": "NODE_OPTIONS=--experimental-strip-types alchemy plan",
+    "deploy": "NODE_OPTIONS=--experimental-strip-types alchemy deploy",
+    "destroy": "NODE_OPTIONS=--experimental-strip-types alchemy destroy",
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.0-beta.102",
+    "alchemy": "2.0.0-beta.67",
+    "effect": "4.0.0-beta.102",
+    "@types/node": "26.1.2"
+  }
+}

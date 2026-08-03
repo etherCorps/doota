@@ -31,3 +31,4 @@ worker-configuration.d.ts
 # seed script scratch output
 **/scripts/.seed.sql
 fern
+.alchemy/

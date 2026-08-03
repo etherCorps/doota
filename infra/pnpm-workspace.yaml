@@ -1,0 +1,8 @@
+# Standalone package (like apps/docs): kept OUT of the root workspace so
+# alchemy's dependency tree (workers-types 5, effect 4 beta, drizzle rc) never
+# splits the root resolution into peer-variants (that skew broke drizzle types
+# across packages/db and apps/web).
+packages: []
+ignoredBuiltDependencies:
+  - workerd
+  - msgpackr-extract

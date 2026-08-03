@@ -1,0 +1,12 @@
+{
+  "//": "Alchemy stack runs under Node (the CLI imports alchemy.run.ts), so node types replace the workers types the base sets for runtime packages.",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "*.ts"
+  ]
+}
