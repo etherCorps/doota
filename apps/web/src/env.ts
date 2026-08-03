@@ -6,6 +6,16 @@ import { z } from 'zod';
 // Contract: a var WITHOUT a schema must be a non-empty string at boot, so
 // every optional var needs an explicit .optional() schema. Validated when the
 // app starts; `description` shows on hover at the import site.
+//
+// Every var here is DYNAMIC (`static` defaults to false): values are read
+// from the Worker's environment at boot — which is what lets the infra
+// deploy bind them after the bundle is built. Never set `static: true` on
+// these; it would inline the BUILD machine's values into the bundle.
+//
+// Provisioning contract (infra/.env.example is the canonical list):
+// required-from-deployer = ORIGINS, SETUP_TOKEN, APP_CLOUDFLARE_*;
+// minted-by-deploy = BETTER_AUTH_SECRET (+ mail keys on the Workers);
+// injected-by-deploy = MAIL_IN_WORKER_NAME; the rest optional.
 const optional = z.string().optional();
 
 export const variables = defineEnvVars({
@@ -16,9 +26,8 @@ export const variables = defineEnvVars({
 	},
 	BETTER_AUTH_SECRET: {
 		public: false,
-		description: 'better-auth signing secret — 32+ chars, high entropy, in production.',
-		// ponytail: length enforced only in prod so throwaway dev secrets keep working.
-		schema: dev ? z.string().min(1) : z.string().min(32)
+		description: 'better-auth signing secret — 32+ chars in production. Minted into stack state by the infra deploy when not provided.',
+		schema: dev ? z.string().min(1) : optional
 	},
 	ORIGINS: {
 		public: true,
@@ -34,24 +43,26 @@ export const variables = defineEnvVars({
 	// count is zero AND this token is presented — deploy access is the trust root.
 	SETUP_TOKEN: {
 		public: false,
-		description: 'One-time token gating the /setup genesis wizard. Unset = wizard disabled.',
-		schema: optional
+		description: 'Required from the deployer: one-time token gating the /setup genesis wizard. Unset = wizard disabled — no first admin.',
+		// Required in dev so the local loop always has a working /setup; optional
+		// in prod so a deploy without it boots with the wizard off, not a crash.
+		schema: dev ? z.string().min(1) : z.string().min(8)
 	},
 	// Cloudflare credential: a SCOPED API Token (Bearer), never the Global API
 	// Key. Store as a Worker secret. No account email / global key.
 	APP_CLOUDFLARE_ACCOUNT_ID: {
 		public: false,
-		description: 'Cloudflare account id for the DNS/Email Routing API.',
-		schema: optional
+		description: 'Required from the deployer: Cloudflare account id for the DNS/Email Routing API. Unset = domain onboarding disabled.',
+		schema: dev ? z.string().min(1) : optional
 	},
 	APP_CLOUDFLARE_API_TOKEN: {
 		public: false,
-		description: 'SCOPED Cloudflare API token (never the Global API Key). Worker secret in prod.',
-		schema: optional
+		description: 'Required from the deployer: SCOPED runtime API token for domain onboarding (never the Global API Key, not the deploy token). Unset = domain onboarding disabled.',
+		schema: dev ? z.string().min(1) : optional
 	},
 	MAIL_IN_WORKER_NAME: {
 		public: false,
-		description: 'Name of the deployed mail-in Worker the catch-all routing rule targets.',
+		description: 'Injected by the infra deploy from the deployed mail-in Worker — never set manually. The catch-all routing rule targets it.',
 		schema: optional
 	},
 	CRON_SECRET: {

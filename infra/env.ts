@@ -17,6 +17,15 @@ try {
   // No infra/.env — fall back to whatever the shell/CI exported.
 }
 
+// SETUP_TOKEN is required from the deployer (the app hard-requires it at
+// boot in production — the first admin is created with it). Fail the DEPLOY,
+// not the running worker.
+if (!process.env.SETUP_TOKEN || process.env.SETUP_TOKEN.length < 8) {
+  throw new Error(
+    "SETUP_TOKEN is required (min 8 chars) — the deployer defines it and uses it at /setup to create the first admin. Set it in infra/.env (or CI secrets).",
+  );
+}
+
 // VAPID halves come in pairs — a mismatched pair breaks push silently, so
 // providing exactly one is a hard error (both or neither; neither → minted
 // into stack state, see secrets.ts).

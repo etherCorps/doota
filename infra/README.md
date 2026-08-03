@@ -54,8 +54,10 @@ cd ..
 pnpm infra:deploy     # builds the web app, then deploys the stack
 ```
 
-That's it. **You do not need to prepare any secrets or config** — see
-[Secrets](#secrets-you-probably-dont-need-to-set-any) for why. When the deploy
+The only value you must invent first is `SETUP_TOKEN` (min 8 chars — it's how
+you'll create the first admin at `/setup`): put it in `infra/.env`. Every
+other secret mints itself — see
+[Secrets](#secrets-you-probably-dont-need-to-set-any). When the deploy
 finishes it prints the stack outputs; `webUrl` is your running app:
 
 ```
@@ -63,10 +65,8 @@ webUrl: https://doota-dev-yourname.your-account.workers.dev
 ```
 
 Your deploy landed on **your own stage** (more below), with its own empty
-database — the full schema is applied automatically during the deploy. To use
-the app you'll want the setup wizard: set `SETUP_TOKEN` (see
-[Configuration](#configuration-env-vars)), redeploy, and open
-`<webUrl>/setup` with that token.
+database — the full schema is applied automatically during the deploy. Open
+`<webUrl>/setup` with your `SETUP_TOKEN` to create the first admin.
 
 To preview what a deploy *would* do without changing anything:
 
@@ -118,7 +118,7 @@ What's minted vs. what you must provide:
 | `MAIL_SEARCH_KEY` | Minted (search/token HMAC key) |
 | `BETTER_AUTH_SECRET` | Minted (session signing) |
 | `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` | Minted **as a pair** (it's a real P-256 keypair — providing only one half is an error) |
-| `SETUP_TOKEN` | Not minted. You must *know* this value to open the `/setup` wizard, so a blind-generated one would be useless. Unset = wizard disabled |
+| `SETUP_TOKEN` | **Deploy fails.** Required from the deployer (min 8 chars) — you must know it to open `/setup` and create the first admin |
 | `CRON_SECRET`, `APP_CLOUDFLARE_ACCOUNT_ID`, `APP_CLOUDFLARE_API_TOKEN` | Not minted — the features that use them stay off |
 
 Why the two mail keys are special: mail content is encrypted under
