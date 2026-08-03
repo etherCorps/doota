@@ -73,6 +73,6 @@ export const variables = defineEnvVars({
 	LOG_LEVEL: {
 		public: false,
 		description: 'Minimum mail-pipeline log level (@doota/mail-core/log). Default: info.',
-		schema: z.enum(['debug', 'info', 'warn', 'error']).optional().default('info')
+		schema: z.enum(['debug', 'info', 'warn', 'error']).optional()
 	}
 });

@@ -39,7 +39,7 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const isProduction = stage === "production";
     const stageSuffix = stage.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    const named = (baseName: string) => (isProduction ? baseName : `${baseName}-${stageSuffix}`);
+    const named = (baseName: string) => (`${baseName}-${stageSuffix}`);
 
     // ── Shared resources (pre-existing in production; per-stage otherwise) ──
     const database = yield* Cloudflare.D1.Database("Database", {
