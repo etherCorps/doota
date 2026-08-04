@@ -14,6 +14,7 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
 	let {
 		name,
@@ -67,9 +68,15 @@
 		window.location.assign(resolve('/login'));
 	}
 
-	async function switchTo(sessionToken: string) {
-		const { error } = await authClient.multiSession.setActive({ sessionToken });
+	// The switch spans a setActive roundtrip + a full document load — seconds
+	// during which the OLD account is still on screen. A blocking overlay (below)
+	// covers the whole stretch; the document unload takes it down.
+	let switching = $state<string | null>(null);
+	async function switchTo(target: DeviceSession) {
+		switching = target.user.email;
+		const { error } = await authClient.multiSession.setActive({ sessionToken: target.session.token });
 		if (error) {
+			switching = null;
 			toast.error(error.message ?? 'Could not switch accounts.');
 			return;
 		}
@@ -142,7 +149,7 @@
 			<DropdownMenu.Group>
 				<DropdownMenu.GroupHeading class="text-muted-foreground text-xs">Switch account</DropdownMenu.GroupHeading>
 				{#each others as other (other.user.id)}
-					<DropdownMenu.Item onSelect={() => switchTo(other.session.token)}>
+					<DropdownMenu.Item onSelect={() => switchTo(other)}>
 						<Avatar.Root class="size-6 rounded-md">
 							{#if other.user.image}<Avatar.Image src={other.user.image} alt={other.user.name} class="rounded-md" />{/if}
 							<Avatar.Fallback class="rounded-md text-[10px]">{toInitials(other.user.name)}</Avatar.Fallback>
@@ -192,3 +199,15 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+{#if switching}
+	<div
+		class="bg-background/80 fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 backdrop-blur-sm"
+		role="status"
+	>
+		<Spinner class="size-6" />
+		<p class="text-muted-foreground text-sm">
+			Switching to <span class="text-foreground font-medium">{switching}</span>…
+		</p>
+	</div>
+{/if}
