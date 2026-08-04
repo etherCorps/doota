@@ -10,6 +10,10 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
+
+	// Reactive (not one-shot await): self-heals if the experimental remote-query
+	// cache resolves late or transiently undefined during hydration.
+	const mailboxesQ = myMailboxes();
 	import { listAliases, generateAlias, toggleAlias, deleteAlias } from '$lib/rpc/alias.remote';
 
 	let busy = $state<string | null>(null);
@@ -83,15 +87,13 @@
 		</Card.CardDescription>
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col gap-5">
-		{#await myMailboxes()}
+		{#if mailboxesQ.current === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-8 w-full rounded-md" />
 				<Skeleton class="h-8 w-full rounded-md" />
 			</div>
-		{:catch}
-			<p class="text-destructive text-sm">Couldn't load your mailboxes. Reload the page to try again.</p>
-		{:then allBoxes}
-			{@const personalMailboxes = allBoxes.filter((mailbox) => mailbox.isPersonal)}
+		{:else}
+			{@const personalMailboxes = mailboxesQ.current.filter((mailbox) => mailbox.isPersonal)}
 			{#if personalMailboxes.length}
 				{#each personalMailboxes as mailbox (mailbox.id)}
 					{@const aliasesQuery = listAliases(mailbox.id)}
@@ -189,6 +191,6 @@
 			{:else}
 				<p class="text-muted-foreground text-sm">No personal mailbox to add aliases to.</p>
 			{/if}
-		{/await}
+		{/if}
 	</Card.CardContent>
 </Card.Card>

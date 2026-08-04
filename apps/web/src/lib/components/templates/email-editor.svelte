@@ -490,7 +490,7 @@
 	async function loadMailboxes() {
 		if (mailboxesLoaded) return;
 		try {
-			const list = ((await myMailboxes()) as Mbx[]).filter((mailbox) => mailbox.isActive);
+			const list = (((await myMailboxes()) ?? []) as Mbx[]).filter((mailbox) => mailbox.isActive);
 			mailboxes = list;
 			// Default: send FROM a service mailbox if any (the template's real sender),
 			// TO the user's own personal mailbox (round-trips into their inbox).

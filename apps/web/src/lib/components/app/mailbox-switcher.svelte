@@ -38,7 +38,10 @@
     };
     let mailboxes = $state<Mailbox[]>([]);
     onMount(async () => {
-        mailboxes = await myMailboxes();
+        // Never trust an awaited remote-query result: under hydration load the
+        // experimental remote-functions cache can resolve a torn-down proxy to
+        // undefined (staging hard-reload crash: `.find` on undefined here).
+        mailboxes = (await myMailboxes()) ?? [];
     });
 
     // Same fallback order as the mail page: URL → last explicit pick → first.
