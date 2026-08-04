@@ -24,6 +24,7 @@ import {
   setLoadAllRemoteImages,
 } from "@doota/mail-core/sender-trust";
 import { assignThread as doAssign, emitPlacementEvent } from "@doota/mail-core/collab";
+import { addSenderListEntry, latestSenderOf } from "@doota/mail-core/spam";
 
 /**
  * Mailbox read paths. Access resolves through can() + mailbox_access grants —
@@ -140,8 +141,10 @@ export const mailboxThreads = query(
     mailboxId: z.string().min(1),
     placement: z.enum(VIEW_PLACEMENTS).default("inbox"),
     offset: z.number().int().min(0).default(0),
+    /** Folder view: threads carrying this label (placement is ignored). */
+    labelId: z.string().min(1).optional(),
   }),
-  async ({ mailboxId, placement, offset }) => {
+  async ({ mailboxId, placement, offset, labelId }) => {
     const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
     const { locals } = getRequestEvent();
     const ck = await contentKey();
@@ -154,6 +157,7 @@ export const mailboxThreads = query(
       includeCollab: hasGrant,
       userId: locals.user!.id,
       assignedTo,
+      labelId,
     });
   },
 );
@@ -291,10 +295,32 @@ export const moveThread = command(
     const { locals, locals: { user } } = getRequestEvent();
     await locals.db
       .update(mail.threadState)
-      .set({ placement, hiddenAt: null }) // moving un-hides
+      .set({
+        placement,
+        hiddenAt: null, // moving un-hides
+        // Explicit user decision: rules may never re-file this thread, and a
+        // new reply returns it to the inbox. Records WHO for the "why is this
+        // here?" sheet on shared mailboxes.
+        placementOrigin: "user",
+        placementUserId: user?.id ?? null,
+        placementRuleId: null,
+        placementAt: new Date(),
+      })
       .where(
         and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)),
       );
+    // Moving OUT of Junk is a ham vote: implicit allow-list entry for the
+    // sender (Phase 5) so the classifier never junks them again. Best-effort.
+    if (prev?.placement === "spam" && placement !== "spam" && placement !== "trash") {
+      await tryLog(
+        "spam.unjunk_allow_failed",
+        (async () => {
+          const sender = await latestSenderOf(locals.db, threadId);
+          if (sender) await addSenderListEntry(locals.db, { mailboxId, address: sender, kind: "allow" });
+        })(),
+        { threadId },
+      );
+    }
     // Quiet system event on shared mailboxes only (Task 5); no-op otherwise.
     if (prev && user) {
       await emitPlacementEvent(locals.db, {
@@ -358,10 +384,17 @@ export const bulkMoveThreads = command(
   }),
   async ({ mailboxId, threadIds, placement }) => {
     const box = await assertMailboxGrant(mailboxId);
-    const { locals } = getRequestEvent();
+    const { locals, locals: { user } } = getRequestEvent();
     await locals.db
       .update(mail.threadState)
-      .set({ placement, hiddenAt: null }) // moving un-hides
+      .set({
+        placement,
+        hiddenAt: null, // moving un-hides
+        placementOrigin: "user",
+        placementUserId: user?.id ?? null,
+        placementRuleId: null,
+        placementAt: new Date(),
+      })
       .where(
         and(
           eq(mail.threadState.mailboxId, mailboxId),

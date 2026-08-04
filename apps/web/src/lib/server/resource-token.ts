@@ -29,9 +29,11 @@ async function hmac(secret: string, msg: string): Promise<string> {
 	return b64url(new Uint8Array(sig));
 }
 
-/** `<exp>.<sig>` where sig = HMAC(secret, `<resource>:<exp>`). */
-export async function signResourceToken(secret: string, resource: string): Promise<string> {
-	const exp = Date.now() + TTL_MS;
+/** `<exp>.<sig>` where sig = HMAC(secret, `<resource>:<exp>`). `ttlMs`
+ * overrides the image-default TTL — mailbox-export capability URLs are
+ * minutes, not days. */
+export async function signResourceToken(secret: string, resource: string, ttlMs = TTL_MS): Promise<string> {
+	const exp = Date.now() + ttlMs;
 	return `${exp}.${await hmac(secret, `${resource}:${exp}`)}`;
 }
 

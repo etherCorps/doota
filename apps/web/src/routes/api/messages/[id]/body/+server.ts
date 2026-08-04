@@ -15,6 +15,7 @@ import {
   rewriteRemoteResourceUrls,
 } from "@doota/mail-core/sanitize-email";
 import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
+import { splitSignatureHtml } from "$lib/mail/signature";
 import { getAuthz } from "$lib/server/authz.js";
 import { renderETag, isNotModified, revalidateHeaders, RENDER_CACHE_VERSION } from "$lib/server/render-cache.js";
 import { linkifySegments } from "$lib/utils/linkify.js";
@@ -70,6 +71,10 @@ const INJECTED_SCRIPT =
   "document.addEventListener('click',function(e){" +
   "var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a)return;e.preventDefault();" +
   "if(a.id==='__viewfull'){parent.postMessage({__mailframe:1,type:'viewfull'},'*');return;}" +
+  // Collapsed-signature toggle (see the splitSignatureHtml wrap below). Height
+  // re-measures via the body ResizeObserver, so no explicit h() call needed.
+  "if(a.id==='__sigtoggle'){var sg=document.getElementById('__sig');" +
+  "if(sg){var show=sg.style.display==='none';sg.style.display=show?'':'none';a.setAttribute('aria-expanded',String(show));}return;}" +
   "var href=a.getAttribute('href')||'';" +
   "if(!/^[a-z][a-z0-9+.-]*:/i.test(href))return;" + // absolute-scheme only; drop relative
   "var u;try{u=new URL(href);}catch(_){return;}var s=u.protocol.toLowerCase();" +
@@ -152,6 +157,10 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
 
   const requestedImages = url.searchParams.get("images") === "1";
   const fullView = url.searchParams.get("full") === "1";
+  // Reader preference "Always show signatures" (device-local, sent by the page):
+  // render the `-- ` block inline instead of collapsing it. Part of the URL, so
+  // the browser's URL-keyed revalidation cache keeps both variants distinct.
+  const sigsExpanded = url.searchParams.get("sigs") === "1";
   // Org remote-content policy is SERVER-AUTHORITATIVE: a locked org can't be
   // overridden by the reader's ?images=1, and an `allow` org auto-loads even
   // without it. Key the ETag on the EFFECTIVE decision, not the raw request.
@@ -269,6 +278,26 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
           `[Message clipped] <a href="#__viewfull" id="__viewfull">View entire message</a></div>`
         : "";
     inner = `<div style="white-space:pre-wrap;font:14px system-ui,sans-serif">${linkified}</div>${clippedNote}`;
+  }
+
+  // Collapse the sender's signature (last `-- ` delimiter) behind a Gmail-style
+  // "···" control, per message, expandable inside the frame. The quoted trail
+  // was stripped entirely above (stripQuotesHtml — prior messages live in the
+  // timeline), so this is the bubble's ONLY trimmed-content control; a message
+  // never shows two disclosures. Skipped in the full view, when the reader opted
+  // into always-expanded signatures, and on a clipped render (the clipped notice
+  // must never hide behind the toggle).
+  if (!fullView && !sigsExpanded && !inner.includes('id="__viewfull"')) {
+    const split = splitSignatureHtml(inner);
+    if (split) {
+      // ponytail: a string slice can cut inside nested wrappers — browsers
+      // rebalance the stray tags, same stance as Gmail's trimmed-content cut.
+      inner =
+        split.main +
+        `<div><a href="#__sigtoggle" id="__sigtoggle" role="button" aria-expanded="false" aria-label="Show trimmed signature" title="Show trimmed signature" ` +
+        `style="display:inline-block;margin:8px 0 0;padding:0 8px;border:1px solid ${FRAME_RULE};border-radius:9999px;color:inherit;opacity:.65;text-decoration:none;font:700 13px/18px system-ui,sans-serif;letter-spacing:2px">&#183;&#183;&#183;</a></div>` +
+        `<div id="__sig" style="display:none">${split.signature}</div>`;
+    }
   }
 
   const scriptHash = await sha256Base64(INJECTED_SCRIPT);

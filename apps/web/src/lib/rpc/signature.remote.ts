@@ -29,15 +29,25 @@ async function sendableMailboxIds(): Promise<string[]> {
   return [...new Set(ids)];
 }
 
-export type MailboxSignature = { mailboxId: string; address: string; displayName: string | null; bodyHtml: string };
+export type MailboxSignature = {
+  mailboxId: string;
+  address: string;
+  displayName: string | null;
+  /** New-message signature ('new' context). */
+  bodyHtml: string;
+  /** Reply/forward signature ('reply' context); empty = fall back to bodyHtml. */
+  replyBodyHtml: string;
+};
 
-/** The caller's signature per sendable mailbox (empty string where unset),
- * labelled with the mailbox address for the settings UI. */
+/** The caller's signatures per sendable mailbox (empty string where unset),
+ * labelled with the mailbox address for the settings UI. A missing 'reply'
+ * signature falls back to the 'new' one at use time, so a single signature
+ * keeps working everywhere. */
 export const myMailboxSignatures = query(async (): Promise<MailboxSignature[]> => {
   const user = requireUser();
-  // KV-cached (sig:v1:{user}, 5min) — read on every compose/reply open; deleted
+  // KV-cached (sig:v2:{user}, 5min) — read on every compose/reply open; deleted
   // on setMailboxSignature and on grant changes (invalidateUserMailCache).
-  return kvCached(`sig:v1:${user.id}`, loadMailboxSignatures, Array.isArray);
+  return kvCached(`sig:v2:${user.id}`, loadMailboxSignatures, Array.isArray);
 });
 
 async function loadMailboxSignatures(): Promise<MailboxSignature[]> {
@@ -48,26 +58,32 @@ async function loadMailboxSignatures(): Promise<MailboxSignature[]> {
   const [sigs, boxes] = await Promise.all([
     locals.db.query.mailboxSignature.findMany({
       where: and(eq(mail.mailboxSignature.userId, user.id), inArray(mail.mailboxSignature.mailboxId, mailboxIds)),
-      columns: { mailboxId: true, bodyHtml: true },
+      columns: { mailboxId: true, bodyHtml: true, context: true },
     }),
     locals.db.query.mailbox.findMany({
       where: inArray(mail.mailbox.id, mailboxIds),
       columns: { id: true, address: true, displayName: true },
     }),
   ]);
-  const byMailbox = new Map(sigs.map((sig) => [sig.mailboxId, sig.bodyHtml]));
+  const newByMailbox = new Map(sigs.filter((s) => s.context === "new").map((s) => [s.mailboxId, s.bodyHtml]));
+  const replyByMailbox = new Map(sigs.filter((s) => s.context === "reply").map((s) => [s.mailboxId, s.bodyHtml]));
   return boxes.map((box) => ({
     mailboxId: box.id,
     address: box.address,
     displayName: box.displayName,
-    bodyHtml: byMailbox.get(box.id) ?? "",
+    bodyHtml: newByMailbox.get(box.id) ?? "",
+    replyBodyHtml: replyByMailbox.get(box.id) ?? "",
   }));
 }
 
 /** Set (or clear, with "") the caller's signature for a mailbox they send from. */
 export const setMailboxSignature = command(
-  z.object({ mailboxId: z.string().min(1), bodyHtml: z.string().max(20_000) }),
-  async ({ mailboxId, bodyHtml }) => {
+  z.object({
+    mailboxId: z.string().min(1),
+    bodyHtml: z.string().max(20_000),
+    context: z.enum(["new", "reply"]).default("new"),
+  }),
+  async ({ mailboxId, bodyHtml, context }) => {
     const { locals } = getRequestEvent();
     const user = requireUser();
     if (!(await sendableMailboxIds()).includes(mailboxId)) {
@@ -83,12 +99,12 @@ export const setMailboxSignature = command(
     }
     await locals.db
       .insert(mail.mailboxSignature)
-      .values({ userId: user.id, mailboxId, bodyHtml: clean, updatedAt: new Date() })
+      .values({ userId: user.id, mailboxId, bodyHtml: clean, context, updatedAt: new Date() })
       .onConflictDoUpdate({
-        target: [mail.mailboxSignature.userId, mail.mailboxSignature.mailboxId],
+        target: [mail.mailboxSignature.userId, mail.mailboxSignature.mailboxId, mail.mailboxSignature.context],
         set: { bodyHtml: clean, updatedAt: new Date() },
       });
     await invalidateUserMailCache(user.id); // fresh signature on the next compose
-    return { mailboxId, bodyHtml: clean };
+    return { mailboxId, context, bodyHtml: clean };
   },
 );
