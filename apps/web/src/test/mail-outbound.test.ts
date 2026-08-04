@@ -553,3 +553,56 @@ describe("retries + bounces (Parts B/F)", () => {
     expect(dropped.status).toBe("dropped");
   });
 });
+
+describe("shared-mailbox identity (Phase 0d)", () => {
+  beforeEach(async () => {
+    await db.insert(schema.mailbox).values({
+      id: "mb_support", orgId: ORG, localPart: "support", address: "support@acme.com",
+      isActive: true, isPersonal: false,
+    });
+    await db.insert(schema.mailboxAccess).values({
+      id: "acc_sup", userId: "u1", mailboxId: "mb_support", canManage: false, canSend: true,
+      sendDisplayName: "Priya at Acme Support",
+    });
+    invalidateDomainCache();
+  });
+
+  async function sendAsSupport() {
+    const { submissionId } = await enqueueSend(db, enqEnv(), baseReq({
+      mailboxId: "mb_support", fromAddress: "support@acme.com", to: ["out@ext.com"], undoSeconds: 0,
+    }));
+    const sender = fakeSender();
+    await processSubmission(db, consEnv(sender), ck, msg(submissionId));
+    expect(sender.calls.length).toBe(1);
+    return { call: sender.calls[0] as any, submissionId };
+  }
+
+  it("From carries the person's display name but ALWAYS the shared address", async () => {
+    const { call, submissionId } = await sendAsSupport();
+    expect(call.from).toEqual({ name: "Priya at Acme Support", email: "support@acme.com" });
+    // Internal record of the human, independent of the wire.
+    const sub = await db.query.submission.findFirst({ where: eq(schema.submission.id, submissionId) });
+    expect(sub.createdByUserId).toBe("u1");
+    expect(sub.mailboxId).toBe("mb_support");
+    // reveal_sender off (default) → no Sender header.
+    expect(call.headers?.Sender).toBeUndefined();
+  });
+
+  it("reveal_sender never changes From; Cloudflare's header allowlist drops Sender on the wire", async () => {
+    await db.update(schema.mailbox).set({ revealSender: true }).where(eq(schema.mailbox.id, "mb_support"));
+    const { call } = await sendAsSupport();
+    expect(call.from.email).toBe("support@acme.com"); // From never changes
+    // The consumer computes Sender for the provider seam, but Cloudflare Email
+    // Sending's allowlist excludes it — the filter must drop it BEFORE the
+    // binding, or the entire send fails with E_HEADER_NOT_ALLOWED. A provider
+    // that accepts Sender will receive it via email.headers.
+    expect(call.headers?.Sender).toBeUndefined();
+  });
+
+  it("falls back to mailbox display name when the grant has no send_display_name", async () => {
+    await db.update(schema.mailboxAccess).set({ sendDisplayName: null }).where(eq(schema.mailboxAccess.id, "acc_sup"));
+    await db.update(schema.mailbox).set({ displayName: "Acme Support" }).where(eq(schema.mailbox.id, "mb_support"));
+    const { call } = await sendAsSupport();
+    expect(call.from).toEqual({ name: "Acme Support", email: "support@acme.com" });
+  });
+});

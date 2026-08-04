@@ -61,3 +61,32 @@ describe("correspondent autocomplete", () => {
     expect(top.find((recipient) => recipient.address === "secret@ext.com")).toBeUndefined();
   });
 });
+
+describe("correspondent interaction facts (Phase 3)", () => {
+  it("inbound bumps message_count + first_seen_at once; sent stamps last_replied_at", async () => {
+    const { makeDb } = await import("./mail-db");
+    const { recordCorrespondents } = await import("@doota/mail-core/contacts");
+    const schema = await import("@doota/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const db: any = await makeDb();
+    await db.insert(schema.organization).values({ id: "o1", name: "A", slug: "a", domain: "a.com", status: "active", createdAt: new Date() });
+    await db.insert(schema.mailbox).values({ id: "mb1", orgId: "o1", localPart: "a", address: "a@a.com", isActive: true });
+
+    const t0 = Date.now();
+    await recordCorrespondents(db, [{ mailboxId: "mb1", address: "ext@x.com", name: "Ext", seenAt: t0 }]);
+    await recordCorrespondents(db, [{ mailboxId: "mb1", address: "ext@x.com", seenAt: t0 + 1000 }]);
+    let row = await db.query.correspondent.findFirst({
+      where: and(eq(schema.correspondent.mailboxId, "mb1"), eq(schema.correspondent.address, "ext@x.com")),
+    });
+    expect(row.messageCount).toBe(2);
+    expect(row.firstSeenAt.getTime()).toBe(t0); // set once, never advanced
+    expect(row.lastRepliedAt).toBeNull();
+
+    await recordCorrespondents(db, [{ mailboxId: "mb1", address: "ext@x.com", seenAt: t0 + 2000, direction: "sent" }]);
+    row = await db.query.correspondent.findFirst({
+      where: and(eq(schema.correspondent.mailboxId, "mb1"), eq(schema.correspondent.address, "ext@x.com")),
+    });
+    expect(row.lastRepliedAt.getTime()).toBe(t0 + 2000);
+    expect(row.messageCount).toBe(2); // a send is not an inbound message
+  });
+});
