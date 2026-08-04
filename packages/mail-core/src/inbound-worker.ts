@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { resolveRecipient } from "./resolver";
 import { importKey, putEncryptedBlob } from "./crypto";
+import { log } from "./log";
 
 /**
  * `mail-in` handler — Cloudflare Email Routing catch-all target. Runs merged
@@ -20,11 +21,17 @@ import { importKey, putEncryptedBlob } from "./crypto";
 export type MailEnv = {
   DB: D1Database;
   MAIL_RAW: R2Bucket;
-  MAIL_QUEUE: Queue<InboundJob>;
+  // Also carries rule-backfill + mailbox-export jobs (same consumer, routed by `kind`).
+  MAIL_QUEUE: Queue<
+    InboundJob | import("./rules-backfill").RuleBackfillJob | import("./export").MailboxExportJob
+  >;
   MAIL_DEK: string;
   MAIL_SEARCH_KEY: string;
   /** Per-user event hub (DO in doota-mail-jobs) — DSN bounces notify through it. */
   MAIL_EVENTS?: import("./events-hub").EventHubNamespace;
+  /** Outbound queue — the rules-engine `forward` action enqueues sends here.
+   * Optional: forwards are log-skipped when the binding is absent. */
+  MAIL_OUT_QUEUE?: Queue<import("./outbound").OutboundJob>;
   /** Web app's contact-candidate cache — busted when a new correspondent lands. */
   AUTH_KV?: KVNamespace;
   /** Web Push (Phase B) — new_mail sends an OS push for the app-closed case. */
@@ -45,6 +52,9 @@ export type InboundJob = {
   /** Sender passed aligned DMARC (from CF's Authentication-Results) — the
    * "verified sender" signal, captured here where the header is authoritative. */
   dmarcPass: boolean;
+  /** Raw Authentication-Results header (spf/dkim/dmarc verdicts) — the spam
+   * classifier's tier-1 input. Absent on older queued jobs. */
+  authResults?: string | null;
 };
 
 /** True when Cloudflare's Authentication-Results shows an aligned DMARC pass.
@@ -92,7 +102,16 @@ export async function handleEmail(
   const messageIdHeader = message.headers.get("message-id");
   // CF stamps Authentication-Results on the forwarded message — authoritative
   // here (before it's buried in the stored raw). Captured now, stored downstream.
-  const dmarcPass = isDmarcPass(message.headers.get("authentication-results"));
+  const authResults = message.headers.get("authentication-results");
+  const dmarcPass = isDmarcPass(authResults);
+  // Spam-spike observability (build guide, Phase 5): the classifier is built
+  // against OBSERVED headers, not assumptions. Debug-level: watch
+  // in.auth_headers on a real deployment to verify what CF actually sends.
+  log.debug("in.auth_headers", {
+    authResults,
+    spamStatus: message.headers.get("x-spam-status"),
+    spf: message.headers.get("received-spf"),
+  });
   const keyId = messageIdHeader ? safeKey(messageIdHeader) : await sha256Hex(rawBuf);
   const r2RawKey = `raw/${resolved.orgId}/${keyId}`;
 
@@ -113,6 +132,7 @@ export async function handleEmail(
     envelopeFrom: message.from,
     messageIdHeader,
     dmarcPass,
+    authResults,
   };
   await env.MAIL_QUEUE.send(job);
 }

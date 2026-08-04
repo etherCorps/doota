@@ -129,12 +129,25 @@ class CloudflareProvider implements MailProvider {
 }
 
 /**
- * Headers Cloudflare Email Sending accepts: threading (In-Reply-To, References)
- * plus any X-* header. Message-ID and everything else are dropped — the binding
- * rejects unknown headers and sets Message-ID itself. Returns undefined if none
- * survive (so the send omits the field entirely).
+ * Headers Cloudflare Email Sending accepts (docs: email-service/reference/
+ * headers): threading, list-management, Auto-Submitted (vacation replies),
+ * Precedence, a few content/display ones, plus any X-* header. Message-ID and
+ * everything else are dropped — the binding rejects unknown headers
+ * (E_HEADER_NOT_ALLOWED fails the whole send) and sets Message-ID itself.
+ * Returns undefined if none survive (so the send omits the field entirely).
  */
-const CF_ALLOWED_HEADERS = new Set(["in-reply-to", "references"]);
+const CF_ALLOWED_HEADERS = new Set([
+  "in-reply-to",
+  "references",
+  "auto-submitted",
+  "precedence",
+  "list-unsubscribe",
+  "list-unsubscribe-post",
+  "list-id",
+  "content-language",
+  "importance",
+  "organization",
+]);
 function filterCloudflareHeaders(
   headers: Record<string, string> | undefined,
 ): Record<string, string> | undefined {

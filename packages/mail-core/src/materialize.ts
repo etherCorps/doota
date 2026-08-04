@@ -393,6 +393,11 @@ export async function materializeDelivery(
     subaddressTag: string | null;
     sentAt: number | null;
     placement?: PlacementPolicy;
+    /** Rules engine: markRead/markFlagged land AT INSERT (both is_read and
+     * keywords, kept consistent) — an insert-then-update would burn a second
+     * change_log seq per delivery. */
+    isRead?: boolean;
+    keywords?: string[];
   },
 ): Promise<void> {
   await db
@@ -404,6 +409,8 @@ export async function materializeDelivery(
       role: input.role,
       viaAliasId: input.viaAliasId,
       subaddressTag: input.subaddressTag,
+      ...(input.isRead !== undefined ? { isRead: input.isRead } : {}),
+      ...(input.keywords ? { keywords: JSON.stringify(input.keywords) } : {}),
     })
     .onConflictDoNothing();
 
@@ -449,7 +456,7 @@ async function ensureThreadState(
       eq(schema.threadState.threadId, threadId),
       eq(schema.threadState.mailboxId, mailboxId),
     ),
-    columns: { id: true, placement: true },
+    columns: { id: true, placement: true, snoozedUntil: true, muted: true, placementOrigin: true },
   });
   if (!existing) {
     await db
@@ -474,9 +481,25 @@ async function ensureThreadState(
     set.lastInboundAt = sql`MAX(COALESCE(${mail.threadState.lastInboundAt}, 0), ${sentAtMs})`;
     // A new inbound reply wakes a snoozed thread early (Gmail semantics): clearing
     // snoozedUntil returns it to the inbox, and the recency bumps above put it at
-    // the top, unread.
-    set.snoozedUntil = null;
+    // the top, unread. Only when actually snoozed — SQLite's `UPDATE OF` fires on
+    // a watched column merely APPEARING in SET, and this write runs on every
+    // inbound delivery; an unconditional null would burn a change_log seq each time.
+    if (existing.snoozedUntil != null) set.snoozedUntil = null;
   }
-  if (policy.unarchiveOnReply && existing.placement === "archived") set.placement = "inbox";
+  // Resurfacing on a new reply follows placement_origin (build guide, Phase 1):
+  //   user/default archived → back to inbox (the reply needs attention);
+  //   rule-filed → stays put (the user expressed a standing intent — Phase 2
+  //   re-evaluates rules and re-files);
+  //   muted → stays put regardless (chat mute semantics; notify.ts keeps it
+  //   silent). Origin itself is NOT reset — a user-filed thread stays sticky
+  //   against rules even after it resurfaces.
+  if (
+    policy.unarchiveOnReply &&
+    existing.placement === "archived" &&
+    !existing.muted &&
+    existing.placementOrigin !== "rule"
+  ) {
+    set.placement = "inbox";
+  }
   await db.update(mail.threadState).set(set).where(eq(mail.threadState.id, existing.id));
 }

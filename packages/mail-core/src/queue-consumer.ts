@@ -4,7 +4,14 @@ import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";
 import * as schema from "@doota/db/schema";
 import { importKey, encryptContent, putEncryptedBlob, getDecryptedBlob, type ContentKey } from "./crypto";
-import { materializeMessage, materializeDelivery, type ParsedMessage } from "./materialize";
+import { materializeMessage, materializeDelivery, type ParsedMessage, type PlacementPolicy } from "./materialize";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { loadRules, evalRules, applyRuleOutcome, emptyOutcome, type RuleOutcome, type RuleMessageView } from "./rules";
+import { classifyInbound } from "./spam";
+import { handleRuleBackfill, type RuleBackfillJob } from "./rules-backfill";
+import { handleExportJob, type MailboxExportJob } from "./export";
+import { enqueueSend, type OutboundEnv } from "./outbound";
+import { maybeVacationReply } from "./vacation";
 import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
 import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
@@ -36,7 +43,15 @@ type PMParsed = {
   text?: string;
   html?: string;
   attachments?: PMAttachment[];
+  /** Full header list from postal-mime — rules (List-Id) + auto-reply guards. */
+  headers?: { key: string; value: string }[];
 };
+
+/** First header value by (case-insensitive) name, or null. */
+export function headerValue(parsed: PMParsed, name: string): string | null {
+  const lower = name.toLowerCase();
+  return parsed.headers?.find((h) => h.key.toLowerCase() === lower)?.value ?? null;
+}
 type PMAttachment = {
   filename?: string;
   mimeType?: string;
@@ -208,7 +223,262 @@ async function persistInvite(
   }
 }
 
-type QueueBatch = { messages: { body: InboundJob; ack(): void; retry(): void }[] };
+type QueueBatch = {
+  messages: { body: InboundJob | RuleBackfillJob | MailboxExportJob; ack(): void; retry(): void }[];
+};
+
+/**
+ * Named inbound stages (build guide 0b): metadata → rulesEval → placement →
+ * notify. Execution is driven by INBOUND_STAGES, so the order is structural —
+ * the one load-bearing constraint is that rulesEval precedes notify: a rule
+ * that files or junks a message must suppress its notification in the same
+ * pass, before the notification dedupe machinery ever records the event.
+ * receive (handleEmail) and parse (PostalMime + bounce short-circuit) run
+ * before the stage loop.
+ */
+export type RulesOutcome = {
+  /** Placement override handed to materializeDelivery; null = default policy. */
+  placement: PlacementPolicy | null;
+  /** A rule filed/junked the mail — no new-mail notification. */
+  suppressNotification: boolean;
+  /** Full evaluation detail — the placement stage applies it. */
+  outcome?: RuleOutcome;
+};
+
+type InboundStageCtx = {
+  db: DrizzleD1Database<typeof schema> & { $client: D1Database };
+  env: MailEnv;
+  deps: { ck: ContentKey; searchKeyB64: string };
+  job: InboundJob;
+  parsed: PMParsed;
+  pm: ParsedMessage;
+  /** Raw MIME size in bytes (rules `size` conditions). */
+  rawSize?: number;
+  messageId?: string;
+  threadId?: string;
+  role?: "to" | "cc" | "bcc";
+  rules?: RulesOutcome;
+};
+
+async function metadataStage(ctx: InboundStageCtx): Promise<void> {
+  await stageInboundAttachments(ctx.env, ctx.job.orgId, ctx.parsed, ctx.pm, ctx.deps.ck);
+  const { messageId, threadId } = await materializeMessage(ctx.db, ctx.job.orgId, ctx.pm, ctx.deps);
+  ctx.messageId = messageId;
+  ctx.threadId = threadId;
+  // Calendar invite (iMIP): parse + store alongside the message, before the
+  // delivery so the invite is present the first time the thread is opened.
+  await persistInvite(ctx.db, ctx.deps.ck, ctx.job.orgId, messageId, ctx.parsed);
+  const recipientBase = baseAddress(ctx.job.recipient, ctx.job.subaddressTag);
+  ctx.role = deriveRole(ctx.parsed, recipientBase);
+}
+
+/** Tier-1 view of the message — everything already in memory post-parse. */
+export function ruleViewOf(parsed: PMParsed, pm: ParsedMessage, rawSize: number | null): RuleMessageView {
+  return {
+    from: pm.from,
+    to: pm.to ?? [],
+    cc: pm.cc ?? [],
+    subject: pm.subject ?? null,
+    listId: headerValue(parsed, "list-id"),
+    hasAttachment: realAttachments(parsed).length > 0,
+    size: rawSize,
+  };
+}
+
+async function rulesEvalStage(ctx: InboundStageCtx): Promise<void> {
+  const rules = await loadRules(ctx.db, ctx.job.resolvedMailboxId);
+  // Tier-2 body is ALREADY in memory at ingest (postal-mime parsed it) — the
+  // lazy getter costs nothing here; the R2 gate matters in the backfill.
+  const outcome = rules.length
+    ? await evalRules(rules, ruleViewOf(ctx.parsed, ctx.pm, ctx.rawSize ?? null), async () => ctx.pm.text ?? null)
+    : emptyOutcome();
+  // Spam (Phase 5) is a built-in rule kind on the same stage: lists → tier-2
+  // ham floor → tier-1 auth verdict. An explicit user-rule filing beats the
+  // classifier (a rule moveTo is a statement about this sender; the heuristic
+  // yields), and a user junk rule needs no help.
+  if (outcome.moveToLabelId === null && !outcome.junk) {
+    const verdict = await classifyInbound(ctx.db, {
+      mailboxId: ctx.job.resolvedMailboxId,
+      fromAddress: ctx.pm.from,
+      dmarcPass: ctx.job.dmarcPass,
+      authResults: ctx.job.authResults,
+    });
+    if (verdict.spam) {
+      outcome.junk = true; // junkRuleId stays null → "marked as spam" origin
+      log.info("in.spam_classified", { mailboxId: ctx.job.resolvedMailboxId, reason: verdict.reason });
+    }
+  }
+  ctx.rules = {
+    // Placement override applies at INSERT time so rule-matched mail never
+    // appears in Inbox first — a new thread lands filed/junked directly.
+    placement: outcome.junk
+      ? { newThread: "spam", unarchiveOnReply: false }
+      : outcome.moveToLabelId
+        ? { newThread: "archived", unarchiveOnReply: false }
+        : null,
+    // Junk is silent. Folder-filed mail is silenced via the target folder's
+    // notify_new_mail setting (rule-fed folders default to None), which
+    // recordNewMail reads AFTER labels apply — see notify.ts folderSilenced.
+    suppressNotification: outcome.junk,
+    outcome,
+  };
+}
+
+async function placementStage(ctx: InboundStageCtx): Promise<void> {
+  const out = ctx.rules?.outcome;
+  const keywords: string[] = [];
+  if (out?.markRead) keywords.push("$seen");
+  if (out?.markFlagged) keywords.push("$flagged");
+  await materializeDelivery(ctx.db, {
+    orgId: ctx.job.orgId,
+    messageId: ctx.messageId!,
+    threadId: ctx.threadId!,
+    mailboxId: ctx.job.resolvedMailboxId,
+    role: ctx.role!,
+    viaAliasId: ctx.job.viaAliasId,
+    subaddressTag: ctx.job.subaddressTag,
+    sentAt: ctx.pm.sentAt,
+    placement: ctx.rules?.placement ?? undefined,
+    isRead: out?.markRead || undefined,
+    keywords: keywords.length ? keywords : undefined,
+  });
+  if (out) {
+    await applyRuleOutcome(ctx.db, {
+      orgId: ctx.job.orgId,
+      mailboxId: ctx.job.resolvedMailboxId,
+      threadId: ctx.threadId!,
+      outcome: out,
+    });
+    await executeForwards(ctx);
+  }
+}
+
+/**
+ * Rules-engine `forward` action. Mail-loop + exfiltration guards, in order of
+ * cheapness: needs the outbound binding; never re-forward our own forwards
+ * (X-Doota-Forwarded); never forward auto-generated mail; never forward a
+ * bounce (null envelope); never forward to the mailbox itself. Sends are
+ * authorized as the rule's creator, so the normal can() send gate and the
+ * outbound rate limit both apply.
+ */
+async function executeForwards(ctx: InboundStageCtx): Promise<void> {
+  const forwards = ctx.rules?.outcome?.forwards ?? [];
+  if (!forwards.length) return;
+  if (!ctx.env.MAIL_OUT_QUEUE) {
+    log.warn("rules.forward_skipped", { reason: "no MAIL_OUT_QUEUE binding" });
+    return;
+  }
+  if (headerValue(ctx.parsed, "x-doota-forwarded")) {
+    log.warn("rules.forward_loop_blocked", { messageId: ctx.messageId });
+    return;
+  }
+  const autoSubmitted = headerValue(ctx.parsed, "auto-submitted");
+  if (autoSubmitted && autoSubmitted.trim().toLowerCase() !== "no") return;
+  if (!ctx.job.envelopeFrom) return;
+  const box = await ctx.db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, ctx.job.resolvedMailboxId),
+    columns: { address: true },
+  });
+  if (!box) return;
+  const outboundEnv: OutboundEnv = {
+    MAIL_DEK: ctx.env.MAIL_DEK,
+    MAIL_SEARCH_KEY: ctx.env.MAIL_SEARCH_KEY,
+    MAIL_RAW: ctx.env.MAIL_RAW,
+    MAIL_OUT_QUEUE: ctx.env.MAIL_OUT_QUEUE,
+  };
+  for (const fwd of forwards) {
+    if (fwd.to === box.address) continue;
+    const ruleRow = await ctx.db.query.rule.findFirst({
+      where: eq(schema.rule.id, fwd.ruleId),
+      columns: { createdByUserId: true },
+    });
+    if (!ruleRow?.createdByUserId) {
+      log.warn("rules.forward_skipped", { reason: "rule has no creator", ruleId: fwd.ruleId });
+      continue;
+    }
+    await tryLog(
+      "rules.forward_failed",
+      enqueueSend(ctx.db, outboundEnv, {
+        orgId: ctx.job.orgId,
+        mailboxId: ctx.job.resolvedMailboxId,
+        createdByUserId: ruleRow.createdByUserId,
+        fromAddress: box.address,
+        to: [fwd.to],
+        subject: `Fwd: ${ctx.pm.subject ?? ""}`,
+        text: ctx.pm.text,
+        html: ctx.pm.html,
+        // Redelivered inbound job → same key → no duplicate forward.
+        idempotencyKey: `rulefwd:${fwd.ruleId}:${ctx.messageId}`,
+        undoSeconds: 0,
+        wireHeaders: { "X-Doota-Forwarded": "1" },
+      }),
+      { ruleId: fwd.ruleId },
+    );
+  }
+}
+
+async function notifyStage(ctx: InboundStageCtx): Promise<void> {
+  if (ctx.rules?.suppressNotification) return;
+  // Live inbox: wake the mailbox's users — list prepends + badge bumps.
+  await notifyInboundMail(ctx.db, ctx.env.MAIL_EVENTS, ctx.job.resolvedMailboxId, ctx.threadId!);
+  // Durable notification (bell) — best-effort, never fails the delivery.
+  await tryLog(
+    "in.notify_failed",
+    recordNewMail(
+      ctx.db,
+      { orgId: ctx.job.orgId, mailboxId: ctx.job.resolvedMailboxId, threadId: ctx.threadId! },
+      ctx.env,
+    ),
+    { threadId: ctx.threadId },
+  );
+}
+
+/**
+ * Vacation auto-responder (Phase 4) — evaluates AFTER rulesEval (the junk
+ * decision is an input: junked mail never gets an auto-reply) and after
+ * placement. Best-effort: a responder failure never fails the delivery.
+ */
+async function vacationStage(ctx: InboundStageCtx): Promise<void> {
+  if (!ctx.env.MAIL_OUT_QUEUE) return; // no outbound path in this deployment
+  await tryLog(
+    "in.vacation_failed",
+    maybeVacationReply(
+      ctx.db,
+      {
+        MAIL_DEK: ctx.env.MAIL_DEK,
+        MAIL_SEARCH_KEY: ctx.env.MAIL_SEARCH_KEY,
+        MAIL_RAW: ctx.env.MAIL_RAW,
+        MAIL_OUT_QUEUE: ctx.env.MAIL_OUT_QUEUE,
+        AUTH_KV: ctx.env.AUTH_KV,
+      },
+      {
+        mailboxId: ctx.job.resolvedMailboxId,
+        orgId: ctx.job.orgId,
+        check: {
+          junk: ctx.rules?.outcome?.junk ?? false,
+          envelopeFrom: ctx.job.envelopeFrom,
+          role: ctx.role!,
+          headers: ctx.parsed.headers ?? [],
+          fromAddress: ctx.pm.from,
+        },
+        messageIdHeader: ctx.pm.messageIdHeader,
+        subject: ctx.pm.subject,
+      },
+    ),
+    { mailboxId: ctx.job.resolvedMailboxId },
+  );
+}
+
+export const INBOUND_STAGES: readonly {
+  name: "metadata" | "rulesEval" | "placement" | "vacation" | "notify";
+  run(ctx: InboundStageCtx): Promise<void>;
+}[] = [
+  { name: "metadata", run: metadataStage },
+  { name: "rulesEval", run: rulesEvalStage },
+  { name: "placement", run: placementStage },
+  { name: "vacation", run: vacationStage },
+  { name: "notify", run: notifyStage },
+];
 
 export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void> {
   const db = drizzle(env.DB, { schema });
@@ -216,7 +486,29 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
   const deps = { ck, searchKeyB64: env.MAIL_SEARCH_KEY };
 
   for (const m of batch.messages) {
-    const job = m.body;
+    // Rule backfill + export batches ride the inbound queue (same consumer
+    // bindings), routed by `kind` — each re-enqueues itself until done.
+    if ("kind" in m.body && m.body.kind === "rule_backfill") {
+      try {
+        await handleRuleBackfill(db, env, m.body);
+        m.ack();
+      } catch (e) {
+        log.error("rules.backfill_retry", { ruleId: m.body.ruleId, ...errInfo(e) });
+        m.retry();
+      }
+      continue;
+    }
+    if ("kind" in m.body && m.body.kind === "mailbox_export") {
+      try {
+        await handleExportJob(db, env, m.body);
+        m.ack();
+      } catch (e) {
+        log.error("export.retry", { exportId: m.body.exportId, ...errInfo(e) });
+        m.retry();
+      }
+      continue;
+    }
+    const job = m.body as InboundJob;
     try {
       const buf = await getDecryptedBlob(env.MAIL_RAW, job.r2RawKey, ck);
       if (!buf) {
@@ -285,37 +577,9 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       }
 
       const pm = toParsedMessage(parsed, job);
-      await stageInboundAttachments(env, job.orgId, parsed, pm, ck);
-
-      const { messageId, threadId } = await materializeMessage(db, job.orgId, pm, deps);
-
-      // Calendar invite (iMIP): parse + store alongside the message, before the
-      // delivery so the invite is present the first time the thread is opened.
-      await persistInvite(db, ck, job.orgId, messageId, parsed);
-
-      const recipientBase = baseAddress(job.recipient, job.subaddressTag);
-      const role = deriveRole(parsed, recipientBase);
-
-      await materializeDelivery(db, {
-        orgId: job.orgId,
-        messageId,
-        threadId,
-        mailboxId: job.resolvedMailboxId,
-        role,
-        viaAliasId: job.viaAliasId,
-        subaddressTag: job.subaddressTag,
-        sentAt: pm.sentAt,
-      });
-
-      // Live inbox: wake the mailbox's users — list prepends + badge bumps.
-      await notifyInboundMail(db, env.MAIL_EVENTS, job.resolvedMailboxId, threadId);
-
-      // Durable notification (bell) — best-effort, never fails the delivery.
-      await tryLog(
-        "in.notify_failed",
-        recordNewMail(db, { orgId: job.orgId, mailboxId: job.resolvedMailboxId, threadId }, env),
-        { threadId },
-      );
+      const ctx: InboundStageCtx = { db, env, deps, job, parsed, pm, rawSize: buf.byteLength };
+      for (const stage of INBOUND_STAGES) await stage.run(ctx);
+      const threadId = ctx.threadId!;
 
       // A new correspondent just landed — record the sender against this mailbox
       // (autocomplete index) and bust the recipients' cached contact candidates

@@ -117,7 +117,15 @@ export function topRecipients(db: Db, userId: string, limit = 200): Promise<Reci
  */
 export async function recordCorrespondents(
   db: Db,
-  entries: { mailboxId: string; address: string | null | undefined; name?: string | null; seenAt: number | null }[],
+  entries: {
+    mailboxId: string;
+    address: string | null | undefined;
+    name?: string | null;
+    seenAt: number | null;
+    /** 'inbound' (they wrote us — default) bumps message_count + first_seen_at;
+     * 'sent' (we wrote them) stamps last_replied_at, the tier-2 ham signal. */
+    direction?: "inbound" | "sent";
+  }[],
 ): Promise<void> {
   const rows = entries
     .map((e) => ({
@@ -125,19 +133,43 @@ export async function recordCorrespondents(
       address: e.address?.trim().toLowerCase(),
       name: e.name?.trim() || null,
       lastSeenAt: new Date(e.seenAt ?? Date.now()),
+      direction: e.direction ?? ("inbound" as const),
     }))
-    .filter((e): e is { mailboxId: string; address: string; name: string | null; lastSeenAt: Date } => !!e.address);
+    .filter(
+      (e): e is { mailboxId: string; address: string; name: string | null; lastSeenAt: Date; direction: "inbound" | "sent" } =>
+        !!e.address,
+    );
   if (!rows.length) return;
-  await db
-    .insert(schema.correspondent)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [schema.correspondent.mailboxId, schema.correspondent.address],
-      set: {
-        // Monotonic: never move recency backwards on an out-of-order write.
-        lastSeenAt: sql`max(excluded.last_seen_at, ${schema.correspondent.lastSeenAt})`,
-        // Prefer a freshly-seen name, else keep what we had.
-        name: sql`coalesce(excluded.name, ${schema.correspondent.name})`,
-      },
-    });
+  // Two upserts, split by direction — the conflict-update SET differs.
+  const inbound = rows.filter((r) => r.direction === "inbound");
+  const sent = rows.filter((r) => r.direction === "sent");
+  if (inbound.length) {
+    await db
+      .insert(schema.correspondent)
+      .values(inbound.map((r) => ({ ...r, firstSeenAt: r.lastSeenAt, messageCount: 1 })))
+      .onConflictDoUpdate({
+        target: [schema.correspondent.mailboxId, schema.correspondent.address],
+        set: {
+          // Monotonic: never move recency backwards on an out-of-order write.
+          lastSeenAt: sql`max(excluded.last_seen_at, ${schema.correspondent.lastSeenAt})`,
+          // Prefer a freshly-seen name, else keep what we had.
+          name: sql`coalesce(excluded.name, ${schema.correspondent.name})`,
+          firstSeenAt: sql`coalesce(${schema.correspondent.firstSeenAt}, excluded.first_seen_at)`,
+          messageCount: sql`${schema.correspondent.messageCount} + 1`,
+        },
+      });
+  }
+  if (sent.length) {
+    await db
+      .insert(schema.correspondent)
+      .values(sent.map((r) => ({ ...r, lastRepliedAt: r.lastSeenAt })))
+      .onConflictDoUpdate({
+        target: [schema.correspondent.mailboxId, schema.correspondent.address],
+        set: {
+          lastSeenAt: sql`max(excluded.last_seen_at, ${schema.correspondent.lastSeenAt})`,
+          name: sql`coalesce(excluded.name, ${schema.correspondent.name})`,
+          lastRepliedAt: sql`max(coalesce(excluded.last_replied_at, 0), coalesce(${schema.correspondent.lastRepliedAt}, 0))`,
+        },
+      });
+  }
 }

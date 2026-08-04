@@ -55,6 +55,25 @@ async function bumpAndRead(
 export type RateLimitResult = { ok: true } | { ok: false; scope: "mailbox" | "instance" };
 
 /**
+ * Generic windowed counter over the same table — for automations that need
+ * their OWN ceiling (vacation replies) instead of the outbound caps. Same
+ * bump-then-check semantics (over-blocking is the safe direction).
+ */
+export async function chargeCounter(
+  db: Db,
+  scope: string,
+  scopeKey: string,
+  windowMs: number,
+  cap: number,
+  n = 1,
+  now = Date.now(),
+): Promise<{ ok: boolean }> {
+  const ws = new Date(Math.floor(now / windowMs) * windowMs);
+  const count = await bumpAndRead(db, scope, scopeKey, n, ws);
+  return { ok: count <= cap };
+}
+
+/**
  * Charge `count` external recipients against the mailbox + instance windows.
  * Returns not-ok (with which cap tripped) when either is exceeded.
  */

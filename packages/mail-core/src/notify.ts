@@ -97,11 +97,30 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
       .where(eq(mail.mailboxAccess.mailboxId, mailboxId)),
     db.query.threadState.findFirst({
       where: and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)),
-      columns: { assigneeUserId: true },
+      columns: { assigneeUserId: true, muted: true },
     }),
   ]);
+  // Muted thread: stays put and stays SILENT (chat mute semantics) — the
+  // unread count still shows, but no bell row and no OS push.
+  if (state?.muted) return [];
   const assignee = state?.assigneeUserId ?? null;
   return access.filter((a) => !a.assignedOnly || a.canManage || a.userId === assignee).map((a) => a.userId);
+}
+
+/**
+ * Per-folder notification setting: a thread filed into folders that are ALL
+ * set to notify_new_mail = false is silent (bell + push). A thread with no
+ * labels, or with any notify-on label, notifies normally. Rule-fed folders
+ * default to off at rule creation (Phase 2) — filing away mail that still
+ * buzzes achieves nothing.
+ */
+async function folderSilenced(db: Db, mailboxId: string, threadId: string): Promise<boolean> {
+  const labels = await db
+    .select({ notify: mail.label.notifyNewMail })
+    .from(mail.threadLabel)
+    .innerJoin(mail.label, eq(mail.threadLabel.labelId, mail.label.id))
+    .where(and(eq(mail.threadLabel.threadId, threadId), eq(mail.threadLabel.mailboxId, mailboxId)));
+  return labels.length > 0 && labels.every((l) => !l.notify);
 }
 
 /** The user opened/read a thread from the LIST (not the bell) — clear their
@@ -139,6 +158,7 @@ export async function recordNewMail(
   let userIds = await newMailRecipients(db, input.mailboxId, input.threadId);
   if (input.excludeUserId) userIds = userIds.filter((u) => u !== input.excludeUserId);
   if (!userIds.length) return;
+  if (await folderSilenced(db, input.mailboxId, input.threadId)) return;
   // Bump an existing unread new_mail row (reset seenAt so the bell re-lights)
   // instead of stacking a second row for the same thread.
   const existing = await db

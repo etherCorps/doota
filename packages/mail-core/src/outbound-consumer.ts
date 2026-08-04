@@ -204,8 +204,12 @@ export async function processSubmission(
   }
   // Wire From display name. Alias sends use the alias label ONLY — hide-my-email
   // exists to not leak who's behind it, so never fall through to the user's real
-  // name. Direct sends: mailbox displayName, else the sending user's name.
+  // name. Direct sends: the sender's per-mailbox send_display_name ("Priya at
+  // Acme Support"), else mailbox displayName, else the sending user's name.
+  // The From ADDRESS is always the mailbox address — replies must return to the
+  // team, never a teammate's personal inbox.
   let fromName: string | undefined;
+  let senderHeader: string | undefined;
   if (sub.fromAliasId) {
     const aliasRow = await db.query.alias.findFirst({
       where: eq(schema.alias.id, sub.fromAliasId),
@@ -218,15 +222,57 @@ export async function processSubmission(
   } else {
     const box = await db.query.mailbox.findFirst({
       where: eq(schema.mailbox.id, sub.mailboxId),
-      columns: { displayName: true },
+      columns: { displayName: true, revealSender: true },
     });
-    fromName = box?.displayName ?? undefined;
+    if (sub.createdByUserId) {
+      const grant = await db.query.mailboxAccess.findFirst({
+        where: and(
+          eq(schema.mailboxAccess.userId, sub.createdByUserId),
+          eq(schema.mailboxAccess.mailboxId, sub.mailboxId),
+        ),
+        columns: { sendDisplayName: true },
+      });
+      fromName = grant?.sendDisplayName ?? undefined;
+    }
+    fromName ??= box?.displayName ?? undefined;
     if (!fromName && sub.createdByUserId) {
       const sender = await db.query.user.findFirst({
         where: eq(schema.user.id, sub.createdByUserId),
         columns: { name: true },
       });
       fromName = sender?.name || undefined;
+    }
+    // Sender: header naming the individual behind a shared-mailbox send
+    // (RFC 5322 permits From ≠ Sender; DMARC aligns on From, so it's free).
+    // Gated by mailbox.reveal_sender (off by default — Outlook shows "on
+    // behalf of"). Never on alias sends. Uses the sender's personal mailbox
+    // address; silently skipped if they have none.
+    // NOTE: Cloudflare Email Sending's header allowlist excludes Sender, so
+    // filterCloudflareHeaders drops it on the wire today (passing it through
+    // would fail the whole send with E_HEADER_NOT_ALLOWED). The seam still
+    // computes it so a future provider transmits it unchanged.
+    if (box?.revealSender && sub.createdByUserId) {
+      const personal = await db
+        .select({ address: mail.mailbox.address })
+        .from(mail.mailboxAccess)
+        .innerJoin(mail.mailbox, eq(mail.mailboxAccess.mailboxId, mail.mailbox.id))
+        .where(
+          and(
+            eq(mail.mailboxAccess.userId, sub.createdByUserId),
+            eq(mail.mailbox.isPersonal, true),
+            eq(mail.mailbox.orgId, sub.orgId),
+          ),
+        )
+        .limit(1);
+      if (personal.length && personal[0].address !== sub.envelopeFrom) {
+        const sender = await db.query.user.findFirst({
+          where: eq(schema.user.id, sub.createdByUserId),
+          columns: { name: true },
+        });
+        senderHeader = sender?.name
+          ? `"${sender.name.replace(/"/g, "")}" <${personal[0].address}>`
+          : personal[0].address;
+      }
     }
   }
 
@@ -355,6 +401,12 @@ export async function processSubmission(
     const headers: Record<string, string> = { "Message-ID": message.messageIdHeader };
     if (message.inReplyTo) headers["In-Reply-To"] = message.inReplyTo;
     if (message.references) headers["References"] = message.references;
+    if (senderHeader) headers["Sender"] = senderHeader;
+    // Staged extra headers (X-* — e.g. the forward loop guard) ride along; the
+    // provider filter still governs what reaches the wire.
+    for (const [headerName, headerValue] of Object.entries(built.extraHeaders ?? {})) {
+      headers[headerName] = headerValue;
+    }
     const attachments = [...((await loadAttachments(db, env, ck, sub.messageId)) ?? []), ...images];
     const from = { name: fromName, email: sub.envelopeFrom };
 
@@ -437,9 +489,10 @@ async function buildBody(
   env: OutboundConsumerEnv,
   ck: Awaited<ReturnType<typeof importKey>>,
   message: typeof schema.message.$inferSelect,
-): Promise<{ text?: string; html?: string }> {
+): Promise<{ text?: string; html?: string; extraHeaders?: Record<string, string> }> {
   let newText: string | null = null;
   let newHtml: string | null = null;
+  let extraHeaders: Record<string, string> | undefined;
   if (message.r2RawKey) {
     const buf = await getDecryptedBlob(env.MAIL_RAW, message.r2RawKey, ck);
     if (buf) {
@@ -447,12 +500,24 @@ async function buildBody(
       // blob — a message being sent is outbound-staged today, but don't assume it.
       newHtml = await rawObjectToHtml(message.r2RawKey, buf);
       newText = await rawObjectToText(message.r2RawKey, buf);
+      // Outbound-staged JSON may carry extra wire headers (X-* — e.g. the
+      // rules engine's X-Doota-Forwarded loop guard).
+      if (message.r2RawKey.startsWith("outbound/")) {
+        try {
+          const staged = JSON.parse(new TextDecoder().decode(buf)) as {
+            headers?: Record<string, string> | null;
+          };
+          if (staged.headers) extraHeaders = staged.headers;
+        } catch {
+          // malformed blob already tolerated above
+        }
+      }
     }
   }
   if (newText == null) newText = await decryptContent(ck, message.bodyFullEnc);
 
   if (!message.inReplyTo) {
-    return { text: newText ?? undefined, html: newHtml ?? undefined };
+    return { text: newText ?? undefined, html: newHtml ?? undefined, extraHeaders };
   }
   // Walk the ancestor chain (newest-first) so outbound replies carry FULL
   // accumulated history like every provider — bodies are stored quote-stripped,
@@ -479,10 +544,11 @@ async function buildBody(
     });
     ref = parent.inReplyTo;
   }
-  if (!parents.length) return { text: newText ?? undefined, html: newHtml ?? undefined };
+  if (!parents.length) return { text: newText ?? undefined, html: newHtml ?? undefined, extraHeaders };
   return {
     text: buildQuotedText(newText ?? "", parents),
     html: newHtml ? buildQuotedHtml(newHtml, parents) : undefined,
+    extraHeaders,
   };
 }
 

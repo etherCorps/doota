@@ -85,14 +85,32 @@ export async function listThreads(
     /** Assigned-only grantee: show ONLY threads assigned to this user id
      * (from assignedOnlyFor; null/undefined = full mailbox). */
     assignedTo?: string | null;
+    /** Folder view: threads carrying this label (any placement short of
+     * spam/trash), like `sent` a VIEW — `placement` is ignored when set. */
+    labelId?: string;
   },
 ): Promise<ThreadSummary[]> {
   // `snoozed` is a VIEW like `sent`: any non-spam/trash thread with a pending
   // snooze, soonest-to-wake first. Every other placement EXCLUDES snoozed threads
   // (they've left the inbox until the cron wakes them — see the where clause).
-  const isSnoozedView = input.placement === "snoozed";
-  const placementCond =
-    input.placement === "sent"
+  const isSnoozedView = input.placement === "snoozed" && !input.labelId;
+  const placementCond = input.labelId
+    ? and(
+        notInArray(schema.threadState.placement, ["spam", "trash"]),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(schema.threadLabel)
+            .where(
+              and(
+                eq(schema.threadLabel.mailboxId, input.mailboxId),
+                eq(schema.threadLabel.labelId, input.labelId),
+                eq(schema.threadLabel.threadId, schema.threadState.threadId),
+              ),
+            ),
+        ),
+      )
+    : input.placement === "sent"
       ? and(
           notInArray(schema.threadState.placement, ["spam", "trash"]),
           exists(
@@ -415,6 +433,63 @@ export async function countUnread(
       ),
     );
   return rows[0]?.n ?? 0;
+}
+
+/**
+ * Unread thread count per label for (mailbox, user) — the sidebar's folder
+ * badges in one grouped query (mirrors countUnread's cursor predicate, but
+ * over any non-spam/trash placement: a filed thread is exactly the one whose
+ * unread state the folder badge must carry).
+ */
+export async function countUnreadByLabel(
+  db: Db,
+  input: { mailboxId: string; userId: string },
+): Promise<Map<string, number>> {
+  const mbox = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, input.mailboxId),
+    columns: { isPersonal: true },
+  });
+  const newerThanCursor = mbox?.isPersonal
+    ? and(
+        isNotNull(schema.threadState.lastInboundAt),
+        or(
+          isNull(schema.threadRead.lastReadAt),
+          gt(schema.threadState.lastInboundAt, schema.threadRead.lastReadAt),
+        ),
+      )
+    : or(
+        isNull(schema.threadRead.lastReadAt),
+        lt(schema.threadRead.lastReadAt, schema.threadState.lastActivityAt),
+      );
+  const rows = await db
+    .select({ labelId: schema.threadLabel.labelId, n: sql<number>`count(*)` })
+    .from(schema.threadLabel)
+    .innerJoin(
+      schema.threadState,
+      and(
+        eq(schema.threadState.threadId, schema.threadLabel.threadId),
+        eq(schema.threadState.mailboxId, input.mailboxId),
+      ),
+    )
+    .leftJoin(
+      schema.threadRead,
+      and(
+        eq(schema.threadRead.threadId, schema.threadState.threadId),
+        eq(schema.threadRead.mailboxId, input.mailboxId),
+        eq(schema.threadRead.userId, input.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.threadLabel.mailboxId, input.mailboxId),
+        notInArray(schema.threadState.placement, ["spam", "trash"]),
+        isNull(schema.threadState.hiddenAt),
+        isNull(schema.threadState.snoozedUntil),
+        newerThanCursor,
+      ),
+    )
+    .groupBy(schema.threadLabel.labelId);
+  return new Map(rows.map((r) => [r.labelId, r.n]));
 }
 
 /** Full thread DTO for a mailbox: timeline items + this mailbox's triage. */

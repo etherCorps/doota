@@ -7,6 +7,8 @@ import { sweepDueSnoozes } from "./snooze";
 import { pruneStaleNotifications } from "./notify";
 import { pruneStalePushSubscriptions } from "./web-push";
 import { purgeExpiredSendData } from "./send-log";
+import { pruneChangeLog } from "./change-log";
+import { sweepJunk } from "./spam";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -26,7 +28,7 @@ const DAILY_ODDS = 1 / 288;
 export async function runScheduledSweeps(
   db: Db,
   env: OutboundEnv,
-): Promise<{ dueEnqueued: number; snoozesWoken: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number; sendDataPurged: number }> {
+): Promise<{ dueEnqueued: number; snoozesWoken: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number; sendDataPurged: number; changeLogPruned: number; junkHidden: number }> {
   const dueEnqueued = await sweepDueSubmissions(db, env.MAIL_OUT_QUEUE);
   // User-facing timing (a snooze returning to the inbox) — runs every 5 min, not
   // daily-gated.
@@ -42,5 +44,11 @@ export async function runScheduledSweeps(
   const pushSubsPruned = daily ? await pruneStalePushSubscriptions(db) : 0;
   // Null out send-log payloads past their retention TTL (metadata rows stay).
   const sendDataPurged = daily ? await purgeExpiredSendData(db) : 0;
-  return { dueEnqueued, snoozesWoken, staleDraftsDeleted, notificationsPruned, pushSubsPruned, sendDataPurged };
+  // change_log retention: delete past-window rows and raise each mailbox's
+  // floor first, so a below-floor sync token gets a resync signal, never a
+  // silently incomplete diff.
+  const changeLogPruned = daily ? await pruneChangeLog(db) : 0;
+  // Junk retention: HIDE spam threads past the window (never a delete).
+  const junkHidden = daily ? await sweepJunk(db) : 0;
+  return { dueEnqueued, snoozesWoken, staleDraftsDeleted, notificationsPruned, pushSubsPruned, sendDataPurged, changeLogPruned, junkHidden };
 }

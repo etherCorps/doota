@@ -61,6 +61,10 @@ export type SendRequest = {
   sendAt?: number | null;
   idempotencyKey: string;
   undoSeconds?: number;
+  /** Extra wire headers (X-* only survive the provider filter). Persisted in
+   * the outbound R2 JSON so they survive the queue hop — the rules engine's
+   * forward action stamps X-Doota-Forwarded here as its loop guard. */
+  wireHeaders?: Record<string, string>;
 };
 
 // Sent is a VIEW (deliveries with role `from`), not a placement. A new outbound
@@ -81,11 +85,28 @@ export type EnqueueResult = {
   deduped: boolean;
 };
 
+/**
+ * Named outbound stages (build guide 0b): compose (client editor) →
+ * identityResolve (resolveSender / resolveServiceSender in resolver.ts) →
+ * signature → submit (enqueueSend) → send (outbound-consumer).
+ */
+export const OUTBOUND_STAGES = ["compose", "identityResolve", "signature", "submit", "send"] as const;
+
+/**
+ * Signature insertion point (Phase 3). Today the signature is composed
+ * client-side into the draft body; this stage exists so Phase 3 can apply or
+ * augment it server-side without re-plumbing enqueueSend. Identity for now.
+ */
+function signatureStage(req: SendRequest): SendRequest {
+  return req;
+}
+
 export async function enqueueSend(
   db: Db,
   env: OutboundEnv,
   req: SendRequest,
 ): Promise<EnqueueResult> {
+  req = signatureStage(req);
   // Double-send guard: a repeated idempotency_key returns the existing send
   // rather than creating a second one (also enforced by the unique index).
   const existing = await db.query.submission.findFirst({
@@ -149,7 +170,7 @@ export async function enqueueSend(
     env.MAIL_RAW,
     r2RawKey,
     ck,
-    JSON.stringify({ text: req.text ?? null, html: req.html ?? null }),
+    JSON.stringify({ text: req.text ?? null, html: req.html ?? null, headers: req.wireHeaders ?? null }),
     { httpMetadata: { contentType: "application/octet-stream" } },
   );
 
@@ -242,7 +263,15 @@ export async function enqueueSend(
       "out.correspondent_failed",
       recordCorrespondents(
         db,
-        recips.map((r) => ({ mailboxId: req.mailboxId, address: r.address, name: null, seenAt: now })),
+        recips.map((r) => ({
+          mailboxId: req.mailboxId,
+          address: r.address,
+          name: null,
+          seenAt: now,
+          // We wrote to them: stamps last_replied_at — the contact card's
+          // "you reply to them" line and spam tier 2's strongest ham signal.
+          direction: "sent" as const,
+        })),
       ),
       { submissionId },
     );
