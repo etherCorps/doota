@@ -234,6 +234,38 @@ export async function recordAssigned(
   }
 }
 
+/**
+ * Inbound-routing health → superadmin bells. `attached=false` raises one
+ * unread `routing_issue` row per superadmin (deduped on an existing unread row
+ * for the org, so repeated health checks don't stack); `attached=true`
+ * resolves them (marks read). Called wherever the catch-all state is actually
+ * inspected — admin config views and the reattach self-heal — since there is
+ * no background prober. Best-effort at call sites: a bell failure must never
+ * fail the config read.
+ */
+export async function syncRoutingIssue(db: Db, orgId: string, attached: boolean): Promise<void> {
+  const unreadIssue = and(
+    eq(mail.notification.orgId, orgId),
+    eq(mail.notification.type, "routing_issue"),
+    isNull(mail.notification.readAt),
+  );
+  if (attached) {
+    await db.update(mail.notification).set({ readAt: new Date() }).where(unreadIssue);
+    return;
+  }
+  const superadmins = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.role, "superadmin"));
+  if (!superadmins.length) return;
+  const existing = await db.select({ userId: mail.notification.userId }).from(mail.notification).where(unreadIssue);
+  const alerted = new Set(existing.map((row) => row.userId));
+  const fresh = superadmins.filter((admin) => !alerted.has(admin.id));
+  if (fresh.length) {
+    await db.insert(mail.notification).values(fresh.map((admin) => ({ userId: admin.id, orgId, type: "routing_issue" })));
+  }
+}
+
 /** Drop read notifications older than the retention window (default 30d). Run
  * from the cron sweep; unread rows are always kept. */
 export async function pruneStaleNotifications(db: Db, olderThanMs = 30 * 24 * 60 * 60 * 1000): Promise<number> {

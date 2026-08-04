@@ -7,6 +7,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import UserRoundIcon from '@lucide/svelte/icons/user-round';
@@ -108,6 +109,10 @@
 	}
 
 	function hrefFor(notification: (typeof notifs)[number]): string {
+		// Org-scoped health alert (superadmin) — lands on the org overview, where
+		// the routing banner carries the Reattach fix.
+		if (notification.type === 'routing_issue')
+			return `${resolve('/admin/organizations')}/${notification.orgId}`;
 		if (notification.mailboxId && notification.threadId)
 			return `${resolve('/app')}?mailbox=${notification.mailboxId}&thread=${notification.threadId}`;
 		if (notification.threadId) return `${resolve('/app')}?thread=${notification.threadId}`;
@@ -181,6 +186,12 @@
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">You were mentioned</span>
 							<span class="text-muted-foreground block truncate text-xs">{(notification.actorName ? `${notification.actorName} mentioned you in a note` : 'A teammate mentioned you') + boxSuffix(notification)}</span>
+						</span>
+					{:else if notification.type === 'routing_issue'}
+						<TriangleAlertIcon class="text-destructive mt-0.5 size-4 shrink-0" />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate text-sm {uread ? 'font-semibold' : 'font-medium'}">Inbound routing detached</span>
+							<span class="text-muted-foreground block truncate text-xs">{notification.orgDomain ? `Mail to ${notification.orgDomain} isn't reaching Doota — click to fix` : 'A domain catch-all is not attached — click to fix'}</span>
 						</span>
 					{:else}
 						<AlertCircleIcon class="text-destructive mt-0.5 size-4 shrink-0" />

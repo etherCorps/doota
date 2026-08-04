@@ -15,10 +15,11 @@ import * as mail from "@doota/db/mail.schema";
  * when a switcher lands.
  */
 
-export type NotificationType = "new_mail" | "send_failed" | "assigned" | "note" | "mention";
+export type NotificationType = "new_mail" | "send_failed" | "assigned" | "note" | "mention" | "routing_issue";
 export type NotificationDTO = {
   id: string;
   type: NotificationType;
+  orgId: string;
   mailboxId: string | null;
   threadId: string | null;
   submissionId: string | null;
@@ -29,6 +30,8 @@ export type NotificationDTO = {
   actorName: string | null;
   /** Which mailbox this is about — so a multi-mailbox user knows where it landed. */
   mailboxLabel: string | null;
+  /** routing_issue: the affected org's domain, for "Mail to acme.com isn't arriving". */
+  orgDomain: string | null;
   createdAt: number;
   readAt: number | null;
   seenAt: number | null;
@@ -95,11 +98,24 @@ export const myNotifications = query(
       for (const box of boxes) mailboxLabel.set(box.id, box.displayName?.trim() || box.address);
     }
 
+    // Org domains for routing_issue rows (superadmin health alerts) — the row is
+    // org-scoped, not mailbox/thread-scoped, so the domain IS the display context.
+    const issueOrgIds = [...new Set(rows.filter((row) => row.type === "routing_issue").map((row) => row.orgId))];
+    const orgDomain = new Map<string, string>();
+    if (issueOrgIds.length) {
+      const orgs = await locals.db
+        .select({ id: schema.organization.id, domain: schema.organization.domain })
+        .from(schema.organization)
+        .where(inArray(schema.organization.id, issueOrgIds));
+      for (const org of orgs) orgDomain.set(org.id, org.domain);
+    }
+
     return rows.map((row) => {
       const sender = row.threadId ? senderByThread.get(row.threadId) : undefined;
       return {
         id: row.id,
         type: row.type as NotificationType,
+        orgId: row.orgId,
         mailboxId: row.mailboxId,
         threadId: row.threadId,
         submissionId: row.submissionId,
@@ -107,6 +123,7 @@ export const myNotifications = query(
         fromName: sender?.fromName ?? null,
         actorName: row.actorUserId ? (actorName.get(row.actorUserId) ?? null) : null,
         mailboxLabel: row.mailboxId ? (mailboxLabel.get(row.mailboxId) ?? null) : null,
+        orgDomain: row.type === "routing_issue" ? (orgDomain.get(row.orgId) ?? null) : null,
         createdAt: row.createdAt.getTime(),
         readAt: row.readAt ? row.readAt.getTime() : null,
         seenAt: row.seenAt ? row.seenAt.getTime() : null,

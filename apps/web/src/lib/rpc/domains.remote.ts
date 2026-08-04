@@ -15,6 +15,7 @@ import {
   mirrorReturnPathDomain,
 } from "@doota/mail-core/mirror";
 import { MAIL_IN_WORKER_NAME } from "$app/env/private";
+import { syncRoutingIssue } from "@doota/mail-core/notify";
 import {
   addRoutingSubdomain,
   createRoutingRule,
@@ -247,6 +248,8 @@ export const refreshDomain = command(z.string(), async (orgId) => {
     const mail = await inspectZoneMail(org.zoneId);
     if (!mail.catchAllToWorker(MAIL_IN_WORKER_NAME)) {
       await createRoutingRule(org.zoneId, MAIL_IN_WORKER_NAME);
+      // Just fixed it — resolve any outstanding superadmin routing_issue bells.
+      await syncRoutingIssue(locals.db, org.id, true).catch(() => {});
     }
   }
 
@@ -475,6 +478,12 @@ export const mailRoutingConfig = command(z.string(), async (orgId) => {
   const { locals } = getRequestEvent();
   await mirrorSubaddressing(locals.db, orgId, config.supportSubaddress);
   await mirrorRoutingSubdomains(locals.db, orgId, config.subdomains);
+  // Bell truth rides the same inspection: detached raises a routing_issue
+  // notification for every superadmin, attached resolves them. Best-effort —
+  // a notification hiccup must not fail the config read.
+  if (catchAllAttached !== null) {
+    await syncRoutingIssue(locals.db, orgId, catchAllAttached).catch(() => {});
+  }
   return { ...config, catchAllAttached };
 });
 

@@ -15,6 +15,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
+	import InboundRoutingBanner from '$lib/components/admin/inbound-routing-banner.svelte';
 	import DeliveryChart from '$lib/components/admin/delivery-chart.svelte';
 	import { zoneAnalytics, zoneUsage, sendingReputation } from '$lib/rpc/cf-insights.remote';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -144,6 +145,12 @@
 			{/if}
 		</Card.CardContent>
 	</Card.Card>
+
+	<!-- Catch-all health: renders only when the org is live but inbound routing
+	     came detached (mail silently not arriving) — with the fix inline. -->
+	{#if active}
+		<InboundRoutingBanner orgId={org.id} domain={org.domain} />
+	{/if}
 
 	<!-- Counts -->
 	<div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
