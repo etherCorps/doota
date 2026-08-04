@@ -4,44 +4,58 @@
 	//  states: default · hover · focus · active · disabled · loading · error · success
 	//  contrast: pass (inherits project tokens) · pre-emit critique: P5 H4 E4 S4 R5 V4
 	//
-	// Account → Mail: per-(user, mailbox) email signature. One rich editor per
-	// sending address; a signature is appended to new messages and replies from
-	// that address automatically. Dirty state is tracked as a per-mailbox draft
-	// compared against the live server value (cleared on save) — no seed effect.
+	// Account → Mail: per-(user, mailbox) email signature, with a New message /
+	// Replies context tab per mailbox (Gmail's "reply signature" split). Dirty
+	// state is tracked as a per-(mailbox, context) draft compared against the live
+	// server value (cleared on save) — no seed effect. An empty reply signature
+	// falls back to the new-message one at use time.
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import { toast } from 'svelte-sonner';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import TiptapEditor from '$lib/components/mail/tiptap-editor.svelte';
-	import { myMailboxSignatures, setMailboxSignature } from '$lib/rpc/signature.remote';
+	import { myMailboxSignatures, setMailboxSignature, type MailboxSignature } from '$lib/rpc/signature.remote';
+
+	type SigContext = 'new' | 'reply';
 
 	const q = myMailboxSignatures();
 
-	// Unsaved editor HTML per mailbox — undefined until the user edits, so a row
-	// is dirty only when its draft diverges from the server value below.
+	// Which context tab each mailbox shows (default: new message).
+	let tab = $state<Record<string, SigContext>>({});
+	// Unsaved editor HTML per (mailbox, context) — undefined until the user edits,
+	// so a row is dirty only when its draft diverges from the server value below.
 	let drafts = $state<Record<string, string>>({});
 	let saving = $state<string | null>(null);
-	// Bumped per mailbox to remount its editor (TiptapEditor seeds from `initial`
-	// once) — that's how Discard resets the editor back to the saved signature.
+	// Bumped per (mailbox, context) to remount its editor (TiptapEditor seeds from
+	// `initial` once) — that's how Discard resets back to the saved signature.
 	let discardNonce = $state<Record<string, number>>({});
 
-	const draftFor = (mailboxId: string, saved: string) => drafts[mailboxId] ?? saved;
-	const isDirty = (mailboxId: string, saved: string) =>
-		drafts[mailboxId] !== undefined && drafts[mailboxId] !== saved;
+	const keyOf = (mailboxId: string, ctx: SigContext) => `${mailboxId}:${ctx}`;
+	const savedFor = (sig: MailboxSignature, ctx: SigContext) =>
+		ctx === 'reply' ? sig.replyBodyHtml : sig.bodyHtml;
+	const draftFor = (key: string, saved: string) => drafts[key] ?? saved;
+	const isDirty = (key: string, saved: string) =>
+		drafts[key] !== undefined && drafts[key] !== saved;
 
-	async function save(mailboxId: string, saved: string) {
+	async function save(sig: MailboxSignature, ctx: SigContext) {
 		if (saving) return;
-		saving = mailboxId;
+		const key = keyOf(sig.mailboxId, ctx);
+		saving = key;
 		try {
-			await setMailboxSignature({ mailboxId, bodyHtml: draftFor(mailboxId, saved) });
+			await setMailboxSignature({
+				mailboxId: sig.mailboxId,
+				bodyHtml: draftFor(key, savedFor(sig, ctx)),
+				context: ctx
+			});
 			// Drop the draft so the refreshed server value (post-sanitize) is the
 			// source of truth again — the row settles back to "not dirty".
-			delete drafts[mailboxId];
+			delete drafts[key];
 			drafts = { ...drafts };
 			await q.refresh();
-			toast.success('Signature saved.');
+			toast.success(ctx === 'reply' ? 'Reply signature saved.' : 'Signature saved.');
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Could not save the signature.');
 		} finally {
@@ -49,10 +63,10 @@
 		}
 	}
 
-	function discard(mailboxId: string) {
-		delete drafts[mailboxId];
+	function discard(key: string) {
+		delete drafts[key];
 		drafts = { ...drafts };
-		discardNonce[mailboxId] = (discardNonce[mailboxId] ?? 0) + 1;
+		discardNonce[key] = (discardNonce[key] ?? 0) + 1;
 	}
 </script>
 
@@ -62,8 +76,8 @@
 			<PenLineIcon class="size-4" /> Signature
 		</Card.CardTitle>
 		<Card.CardDescription>
-			A sign-off added automatically to new messages and replies you send from each address. Shared
-			mailboxes keep a separate signature per teammate.
+			A sign-off added automatically to messages you send from each address — with an optional
+			separate version for replies. Shared mailboxes keep a separate signature per teammate.
 		</Card.CardDescription>
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col">
@@ -76,8 +90,11 @@
 			<p class="text-muted-foreground text-sm">You don't have any sending addresses yet.</p>
 		{:else}
 			{#each q.current as sig (sig.mailboxId)}
-				{@const dirty = isDirty(sig.mailboxId, sig.bodyHtml)}
-				{@const busy = saving === sig.mailboxId}
+				{@const ctx = tab[sig.mailboxId] ?? 'new'}
+				{@const key = keyOf(sig.mailboxId, ctx)}
+				{@const saved = savedFor(sig, ctx)}
+				{@const dirty = isDirty(key, saved)}
+				{@const busy = saving === key}
 				<!-- Each sending address is its own region (Common Region): a hairline
 				     rule + top padding separates one signature from the next; the first
 				     needs neither. Labelled group so the editor isn't anonymous to AT. -->
@@ -100,27 +117,38 @@
 							</span>
 						{/if}
 					</div>
+					<!-- Context tabs: one editor, remounted per (context, discard) so the
+					     right saved value seeds it. Switching tabs keeps each tab's draft. -->
+					<Tabs.Root value={ctx} onValueChange={(value) => (tab[sig.mailboxId] = value as SigContext)}>
+						<Tabs.List>
+							<Tabs.Trigger value="new">New message</Tabs.Trigger>
+							<Tabs.Trigger value="reply">Replies</Tabs.Trigger>
+						</Tabs.List>
+					</Tabs.Root>
 					<!-- No wrapper frame: TiptapEditor already draws its own border + focus
 					     ring. dense sizes it to a signature, not a full message composer. -->
-					{#key discardNonce[sig.mailboxId] ?? 0}
+					{#key `${ctx}:${discardNonce[key] ?? 0}`}
 						<TiptapEditor
 							dense
-							initial={sig.bodyHtml}
-							oninput={(html) => (drafts[sig.mailboxId] = html)}
-							placeholder={`Signature for ${sig.address}…`}
+							initial={draftFor(key, saved)}
+							oninput={(html) => (drafts[key] = html)}
+							placeholder={ctx === 'reply'
+								? `Reply signature for ${sig.address}…`
+								: `Signature for ${sig.address}…`}
 						/>
 					{/key}
-					<div class="flex justify-end gap-2">
+					<div class="flex items-center justify-end gap-2">
+						{#if ctx === 'reply'}
+							<p class="text-muted-foreground mr-auto text-xs">
+								Leave empty to use your new-message signature on replies too.
+							</p>
+						{/if}
 						{#if dirty}
-							<Button variant="ghost" size="sm" disabled={busy} onclick={() => discard(sig.mailboxId)}>
+							<Button variant="ghost" size="sm" disabled={busy} onclick={() => discard(key)}>
 								Discard
 							</Button>
 						{/if}
-						<Button
-							size="sm"
-							disabled={!dirty || busy}
-							onclick={() => save(sig.mailboxId, sig.bodyHtml)}
-						>
+						<Button size="sm" disabled={!dirty || busy} onclick={() => save(sig, ctx)}>
 							{#if busy}
 								<Spinner class="mr-1 size-3.5" /> Saving…
 							{:else}

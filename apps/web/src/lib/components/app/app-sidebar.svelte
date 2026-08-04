@@ -22,6 +22,19 @@
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import PaletteIcon from '@lucide/svelte/icons/palette';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { myFolders, createFolder, updateFolder, deleteFolder } from '$lib/rpc/label.remote';
+	import { goto } from '$app/navigation';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import { fly } from 'svelte/transition';
 	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
@@ -50,8 +63,115 @@
 	] as const;
 
 	// Active folder comes from the ?folder= param; inbox is the default view.
+	// ?label= selects an org folder instead — it suppresses the system highlight.
 	const activeFolder = $derived(page.url.searchParams.get('folder') ?? 'inbox');
+	const activeLabel = $derived(page.url.searchParams.get('label'));
 	const activeMailbox = $derived(page.url.searchParams.get('mailbox'));
+
+	// Org folders (labels) — shared vocabulary, per-mailbox unread counts. The
+	// page writes ?mailbox back on a bare load, so the param is reliably there.
+	const foldersQ = $derived(activeMailbox ? myFolders({ mailboxId: activeMailbox }) : null);
+	const orgFolders = $derived(foldersQ?.current ?? []);
+	// Roots name-sorted, each followed by its (sorted) children — max depth 2.
+	const folderTree = $derived.by(() => {
+		type OrgFolder = (typeof orgFolders)[number];
+		const byName = (a: OrgFolder, b: OrgFolder) => a.name.localeCompare(b.name);
+		const out: (OrgFolder & { depth: number })[] = [];
+		for (const root of orgFolders.filter((folder) => !folder.parentId).sort(byName)) {
+			out.push({ ...root, depth: 0 });
+			for (const child of orgFolders.filter((folder) => folder.parentId === root.id).sort(byName)) {
+				out.push({ ...child, depth: 1 });
+			}
+		}
+		return out;
+	});
+	const rootFolders = $derived(orgFolders.filter((folder) => !folder.parentId));
+
+	const labelHref = (id: string) => {
+		const sp = new URLSearchParams({ label: id });
+		if (activeMailbox) sp.set('mailbox', activeMailbox);
+		return `${resolve('/app')}?${sp}`;
+	};
+
+	// Inline "new folder" popover. Color is optional (dot falls back to muted);
+	// parent select offers roots only (depth is capped at 2).
+	const PALETTE = ['#ef4444', '#f59e0b', '#22c55e', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#64748b'];
+	let newOpen = $state(false);
+	let newName = $state('');
+	let newColor = $state<string | null>(null);
+	let newParent = $state('');
+	let creatingFolder = $state(false);
+	async function submitNewFolder() {
+		const name = newName.trim();
+		const mb = activeMailbox;
+		if (!name || !mb || creatingFolder) return;
+		creatingFolder = true;
+		try {
+			await createFolder({ mailboxId: mb, name, color: newColor, parentId: newParent || null });
+			await foldersQ?.refresh();
+			newOpen = false;
+			newName = '';
+			newColor = null;
+			newParent = '';
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not create the folder.');
+		} finally {
+			creatingFolder = false;
+		}
+	}
+
+	// Folder manage — the "…" menu. Small patches (color/notify) write straight
+	// through; rename + delete get dialogs. Every write refreshes the shared
+	// myFolders query (the mail page reads the same one).
+	async function patchFolder(labelId: string, patch: { name?: string; color?: string | null; notifyNewMail?: boolean }) {
+		const mb = activeMailbox;
+		if (!mb) return;
+		try {
+			await updateFolder({ mailboxId: mb, labelId, ...patch });
+			await foldersQ?.refresh();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not update the folder.');
+		}
+	}
+
+	let renameTarget = $state<{ id: string; name: string } | null>(null);
+	let renameName = $state('');
+	let renameBusy = $state(false);
+	async function submitRename() {
+		const target = renameTarget;
+		const name = renameName.trim();
+		if (!target || !name || renameBusy) return;
+		renameBusy = true;
+		try {
+			await patchFolder(target.id, { name });
+			renameTarget = null;
+		} finally {
+			renameBusy = false;
+		}
+	}
+
+	// Delete is never immediate — the dialog always asks where the contents go
+	// ("" = they just lose the label; mail keeps its placement either way).
+	let deleteTarget = $state<{ id: string; name: string } | null>(null);
+	let deleteMoveTo = $state('');
+	let deleteBusy = $state(false);
+	async function submitDelete() {
+		const target = deleteTarget;
+		const mb = activeMailbox;
+		if (!target || !mb || deleteBusy) return;
+		deleteBusy = true;
+		try {
+			await deleteFolder({ mailboxId: mb, labelId: target.id, moveContentsToLabelId: deleteMoveTo || null });
+			await foldersQ?.refresh();
+			deleteTarget = null;
+			// Viewing the folder we just deleted — fall back to the inbox.
+			if (activeLabel === target.id) void goto(folderHref('inbox'));
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not delete the folder.');
+		} finally {
+			deleteBusy = false;
+		}
+	}
 
 	// Keep the current mailbox when switching folders — otherwise the mailbox
 	// param drops and the mail page falls back to the first mailbox (a surprise
@@ -66,6 +186,14 @@
 	// No-op on desktop (openMobile only drives the sheet).
 	const sidebar = useSidebar();
 	const closeMobile = () => sidebar.setOpenMobile(false);
+
+	// ✱ badge → rules settings (?rules=1 on the mail page, current view kept).
+	function openRules() {
+		closeMobile();
+		const sp = new URLSearchParams(page.url.searchParams);
+		sp.set('rules', '1');
+		void goto(`${resolve('/app')}?${sp}`);
+	}
 </script>
 
 <!-- collapsible="icon": desktop collapse leaves an icon rail (tooltips carry the
@@ -97,13 +225,13 @@
 
 	<Sidebar.Content>
 		<Sidebar.Group>
-			<Sidebar.GroupLabel>Folders</Sidebar.GroupLabel>
+			<Sidebar.GroupLabel>Mail</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
 					{#each FOLDERS as folder (folder.id)}
 						{@const Icon = folder.icon}
 						<Sidebar.MenuItem>
-							<Sidebar.MenuButton isActive={activeFolder === folder.id} tooltipContent={folder.name}>
+							<Sidebar.MenuButton isActive={activeFolder === folder.id && !activeLabel} tooltipContent={folder.name}>
 								{#snippet child({ props })}
 									<!-- mergeProps: a plain onclick before the spread gets clobbered by
 									     the menu-button/tooltip handlers inside `props`. -->
@@ -132,6 +260,192 @@
 			</Sidebar.GroupContent>
 		</Sidebar.Group>
 
+		{#if activeMailbox}
+			<Sidebar.Group>
+				<Sidebar.GroupLabel>Folders</Sidebar.GroupLabel>
+				<Sidebar.GroupContent>
+					<Sidebar.Menu>
+						{#each folderTree as orgFolder (orgFolder.id)}
+							<Sidebar.MenuItem>
+								<Sidebar.MenuButton isActive={activeLabel === orgFolder.id} tooltipContent={orgFolder.name}>
+									{#snippet child({ props })}
+										<a
+											href={labelHref(orgFolder.id)}
+											{...mergeProps(props, {
+												onclick: closeMobile,
+												style: orgFolder.depth ? 'padding-left: 1.625rem' : ''
+											})}
+										>
+											<span
+												class="size-2.5 shrink-0 rounded-full"
+												style="background: {orgFolder.color ?? 'var(--color-muted-foreground)'}"
+											></span>
+											<span class="truncate">{orgFolder.name}</span>
+											{#if orgFolder.ruleFed}
+												<!-- span-as-button: a real <button> can't nest inside the row's <a>.
+												     Clicking opens rules settings instead of the folder. -->
+												<span
+													role="button"
+													tabindex="0"
+													title="Fed by a rule"
+													aria-label="Fed by a rule — open rules"
+													class="text-brand/70 hover:text-brand focus-visible:ring-ring/50 -my-1 shrink-0 rounded p-1 outline-none focus-visible:ring-2"
+													onclick={(event) => {
+														event.preventDefault();
+														event.stopPropagation();
+														openRules();
+													}}
+													onkeydown={(event) => {
+														if (event.key === 'Enter' || event.key === ' ') {
+															event.preventDefault();
+															event.stopPropagation();
+															openRules();
+														}
+													}}
+												>
+													<SparklesIcon class="size-3" />
+												</span>
+											{/if}
+										</a>
+									{/snippet}
+								</Sidebar.MenuButton>
+								{#if orgFolder.unread > 0}
+									<Sidebar.MenuBadge class="bg-brand/10 text-brand rounded-full group-data-[collapsible=icon]:hidden">
+										<span class="tabular-nums">{orgFolder.unread > 99 ? '99+' : orgFolder.unread}</span>
+									</Sidebar.MenuBadge>
+								{/if}
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props: triggerProps })}
+											<Sidebar.MenuAction showOnHover>
+												{#snippet child({ props })}
+													<button type="button" {...mergeProps(props, triggerProps, { class: 'bg-sidebar' })}>
+														<EllipsisIcon class="size-4" />
+														<span class="sr-only">Folder actions for {orgFolder.name}</span>
+													</button>
+												{/snippet}
+											</Sidebar.MenuAction>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content class="w-48" side="right" align="start">
+										<DropdownMenu.Item
+											onSelect={() => {
+												renameTarget = { id: orgFolder.id, name: orgFolder.name };
+												renameName = orgFolder.name;
+											}}
+										>
+											<PencilIcon class="size-4" /> Rename
+										</DropdownMenu.Item>
+										<DropdownMenu.Sub>
+											<DropdownMenu.SubTrigger>
+												<PaletteIcon class="size-4" /> Color
+											</DropdownMenu.SubTrigger>
+											<DropdownMenu.SubContent class="flex w-auto items-center gap-1.5 p-2">
+												{#each PALETTE as color (color)}
+													<button
+														type="button"
+														aria-label="Folder color {color}"
+														aria-pressed={orgFolder.color === color}
+														onclick={() => void patchFolder(orgFolder.id, { color: orgFolder.color === color ? null : color })}
+														class="focus-visible:ring-ring/50 size-5 rounded-full border outline-none transition-transform focus-visible:ring-2 {orgFolder.color === color ? 'ring-ring scale-110 ring-2' : ''}"
+														style="background: {color}"
+													></button>
+												{/each}
+											</DropdownMenu.SubContent>
+										</DropdownMenu.Sub>
+										<DropdownMenu.CheckboxItem
+											checked={orgFolder.notifyNewMail}
+											closeOnSelect={false}
+											onCheckedChange={(value) => void patchFolder(orgFolder.id, { notifyNewMail: value })}
+										>
+											Notify on new mail
+										</DropdownMenu.CheckboxItem>
+										<DropdownMenu.Separator />
+										<DropdownMenu.Item
+											variant="destructive"
+											onSelect={() => {
+												deleteTarget = { id: orgFolder.id, name: orgFolder.name };
+												deleteMoveTo = '';
+											}}
+										>
+											<Trash2Icon class="size-4" /> Delete
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+							</Sidebar.MenuItem>
+						{/each}
+						<Sidebar.MenuItem>
+							<Popover.Root bind:open={newOpen}>
+								<Popover.Trigger>
+									{#snippet child({ props: triggerProps })}
+										<Sidebar.MenuButton tooltipContent="New folder">
+											{#snippet child({ props })}
+												<button type="button" {...mergeProps(props, triggerProps, { class: 'text-muted-foreground' })}>
+													<PlusIcon class="size-4" />
+													<span>New folder</span>
+												</button>
+											{/snippet}
+										</Sidebar.MenuButton>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-64 p-3" side="right" align="start">
+									<p class="mb-2 text-xs font-medium">New folder</p>
+									<Input
+										class="h-8 text-xs pointer-coarse:text-base"
+										placeholder="Name"
+										aria-label="Folder name"
+										bind:value={newName}
+										disabled={creatingFolder}
+										onkeydown={(event) => {
+											if (event.key === 'Enter') {
+												event.preventDefault();
+												void submitNewFolder();
+											}
+										}}
+									/>
+									<div class="mt-2 flex items-center gap-1.5">
+										{#each PALETTE as color (color)}
+											<button
+												type="button"
+												title="Folder color"
+												aria-label="Folder color {color}"
+												aria-pressed={newColor === color}
+												onclick={() => (newColor = newColor === color ? null : color)}
+												class="focus-visible:ring-ring/50 size-5 rounded-full border outline-none transition-transform focus-visible:ring-2 {newColor === color ? 'ring-ring scale-110 ring-2' : ''}"
+												style="background: {color}"
+											></button>
+										{/each}
+									</div>
+									{#if rootFolders.length}
+										<Select.Root type="single" bind:value={newParent} disabled={creatingFolder}>
+											<Select.Trigger size="sm" class="mt-2 w-full text-xs" aria-label="Parent folder">
+												<span class="truncate">
+													{rootFolders.find((root) => root.id === newParent)?.name ?? 'No parent'}
+												</span>
+											</Select.Trigger>
+											<Select.Content>
+												<Select.Item value="" label="No parent" />
+												{#each rootFolders as root (root.id)}
+													<Select.Item value={root.id} label={root.name} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
+									{/if}
+									<Button
+										size="sm"
+										class="mt-2 h-8 w-full"
+										disabled={!newName.trim() || creatingFolder}
+										onclick={submitNewFolder}
+									>
+										Create
+									</Button>
+								</Popover.Content>
+							</Popover.Root>
+						</Sidebar.MenuItem>
+					</Sidebar.Menu>
+				</Sidebar.GroupContent>
+			</Sidebar.Group>
+		{/if}
 		</Sidebar.Content>
 
 	<Sidebar.Footer>
@@ -206,3 +520,65 @@
 	</Sidebar.Footer>
 	<Sidebar.Rail />
 </Sidebar.Root>
+
+<!-- Rename folder -->
+<Dialog.Root open={!!renameTarget} onOpenChange={(value) => { if (!value) renameTarget = null; }}>
+	<Dialog.Content class="max-w-xs">
+		<Dialog.Header>
+			<Dialog.Title class="text-sm">Rename folder</Dialog.Title>
+		</Dialog.Header>
+		<Input
+			class="h-8 text-xs pointer-coarse:text-base"
+			aria-label="Folder name"
+			bind:value={renameName}
+			disabled={renameBusy}
+			onkeydown={(event) => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					void submitRename();
+				}
+			}}
+		/>
+		<Button size="sm" class="h-8 w-full" disabled={!renameName.trim() || renameBusy} onclick={submitRename}>
+			Rename
+		</Button>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Delete folder — always confirmed, always asks where the mail's label goes. -->
+<Dialog.Root open={!!deleteTarget} onOpenChange={(value) => { if (!value) deleteTarget = null; }}>
+	<Dialog.Content class="max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title class="text-sm">Delete folder “{deleteTarget?.name}”?</Dialog.Title>
+			<Dialog.Description class="text-xs">
+				Conversations are never deleted — they only lose this folder's label.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="flex flex-col gap-1.5 text-xs">
+			<Label for="delete-folder-move-to" class="text-muted-foreground text-xs font-normal">
+				Move its conversations to
+			</Label>
+			<Select.Root type="single" bind:value={deleteMoveTo} disabled={deleteBusy}>
+				<Select.Trigger id="delete-folder-move-to" size="sm" class="w-full text-xs">
+					<span class="truncate">
+						{folderTree.find((folderOption) => folderOption.id === deleteMoveTo)?.name ??
+							'None — just remove the label'}
+					</span>
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="" label="None — just remove the label" />
+					{#each folderTree.filter((folderOption) => folderOption.id !== deleteTarget?.id) as folderOption (folderOption.id)}
+						<Select.Item
+							value={folderOption.id}
+							label={folderOption.name}
+							class={folderOption.depth ? 'pl-6' : ''}
+						/>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<Button variant="destructive" size="sm" class="h-8 w-full" disabled={deleteBusy} onclick={submitDelete}>
+			Delete folder
+		</Button>
+	</Dialog.Content>
+</Dialog.Root>

@@ -203,9 +203,11 @@
 
 	onMount(async () => {
 		sweepMirrors();
+		// `?? []`: an awaited remote query can resolve undefined mid-hydration
+		// (see mailbox-switcher) — a blank identity list beats a crashed panel.
 		const [ids, sigRows] = await Promise.all([sendIdentities(), myMailboxSignatures()]);
-		identities = ids;
-		signatures = new Map(sigRows.map((row) => [row.mailboxId, row.bodyHtml]));
+		identities = ids ?? [];
+		signatures = new Map((sigRows ?? []).map((row) => [row.mailboxId, row.bodyHtml]));
 		if (resumeDraftId) {
 			const d = await draftById({ draftId: resumeDraftId });
 			draftId = d.id;

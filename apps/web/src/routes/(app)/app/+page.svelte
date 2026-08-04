@@ -4,7 +4,7 @@
 	import { mode } from 'mode-watcher';
 	import { PersistedState, watch } from 'runed';
 	import { page } from '$app/state';
-	import { goto, pushState, replaceState, onNavigate } from '$app/navigation';
+	import { goto, pushState, onNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { flip } from 'svelte/animate';
@@ -17,6 +17,7 @@
 	import ReplyComposer from '$lib/components/mail/reply-composer.svelte';
 	import SnoozeMenu from '$lib/components/mail/snooze-menu.svelte';
 	import Highlight from '$lib/components/mail/highlight.svelte';
+	import ContactCardSheet from '$lib/components/mail/contact-card-sheet.svelte';
 	import ContactHoverCard from '$lib/components/mail/contact-hovercard.svelte';
 	import MessageDetails from '$lib/components/mail/message-details.svelte';
 	import { AvatarGroup } from '$lib/components/ui/avatar/index.js';
@@ -30,6 +31,12 @@
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
+	import MoveSheet from '$lib/components/mail/move-sheet.svelte';
+	import RulesSheet from '$lib/components/mail/rules-sheet.svelte';
+	import WhyHereSheet from '$lib/components/mail/why-here-sheet.svelte';
+	import ApplyRuleDialog from '$lib/components/mail/apply-rule-dialog.svelte';
+	import { createRule, whyHere } from '$lib/rpc/rules.remote';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import { compose } from '$lib/client/compose.svelte.js';
 	import EmptyState from '$lib/components/mail/empty-state.svelte';
 	import ListEndCat from '$lib/components/mail/list-end-cat.svelte';
@@ -39,6 +46,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { myMailboxes, myManagedMailboxIds } from '$lib/rpc/mailbox.remote';
 	import { activeMailbox as lastMailbox } from '$lib/client/active-mailbox.svelte.js';
+	import { showSignatures } from '$lib/client/reading-prefs';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
@@ -61,6 +69,8 @@
 		imagesLoadAll,
 		setInviteRsvp
 	} from '$lib/rpc/thread.remote';
+	import { myFolders, threadFolders, moveToFolder, undoMove, createFolder, addThreadLabel, removeThreadLabel } from '$lib/rpc/label.remote';
+	import TagIcon from '@lucide/svelte/icons/tag';
 	import { unread } from '$lib/client/unread.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -116,6 +126,7 @@
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import FolderInputIcon from '@lucide/svelte/icons/folder-input';
 	import { searchMail } from '$lib/rpc/search.remote';
 	import { slide } from 'svelte/transition';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -151,19 +162,25 @@
 			null
 	);
 	const placement = $derived(params.get('folder') ?? 'inbox');
+	// ?label= selects an org folder view; the server ignores placement then, so
+	// the default 'inbox' can stay in the query args.
+	const labelId = $derived(params.get('label'));
 	const threadId = $derived(params.get('thread'));
 
 	// Continuation: on a bare /app load the mailbox comes from the persisted pick,
 	// but the URL doesn't show it — so write it back (replace, no history entry).
 	// Now the URL always reflects the active mailbox: refresh/share is stable and
 	// folder links carry the param instead of leaning on the fallback.
+	// goto (a real replace navigation), NOT shallow replaceState: shallow routing
+	// doesn't propagate to `page.url` in other components, so the sidebar's
+	// Folders group (gated on ?mailbox) never appeared on a bare load.
 	$effect(() => {
 		const mb = mailboxId;
 		if (!mb || params.get('mailbox')) return;
 		untrack(() => {
 			const sp = new URLSearchParams(page.url.searchParams);
 			sp.set('mailbox', mb);
-			replaceState(`?${sp}`, page.state);
+			void goto(`?${sp}`, { replaceState: true, keepFocus: true, noScroll: true });
 		});
 	});
 	const isVirtual = $derived(placement === 'drafts' || placement === 'scheduled');
@@ -171,6 +188,14 @@
 	const managedIdsQ = myManagedMailboxIds();
 	const canManageActive = $derived(!!mailboxId && (managedIdsQ.current ?? []).includes(mailboxId));
 	const folder = $derived(FOLDERS.find((folderOption) => folderOption.id === placement) ?? FOLDERS[0]);
+
+	// Org folders — the label view title, the row chips, and the move sheet all
+	// read from this one (shared, arg-cached) query; the sidebar shares it too.
+	const foldersQ = $derived(mailboxId ? myFolders({ mailboxId }) : null);
+	const orgFolders = $derived(foldersQ?.current ?? []);
+	const activeLabelFolder = $derived(
+		labelId ? (orgFolders.find((orgFolder) => orgFolder.id === labelId) ?? null) : null
+	);
 
 	// Folder-specific empty states — a Compose button only where starting a new
 	// message is the natural next step; trash/spam/archive just explain themselves.
@@ -326,18 +351,21 @@
 		loadingList = true;
 		const forMailbox = mailboxId;
 		const forPlacement = placement;
+		const forLabel = labelId;
 		try {
 			const offset = reset ? 0 : nextOffset;
-			const q = mailboxThreads({ mailboxId, placement: placement as never, offset });
+			const q = mailboxThreads({ mailboxId, placement: placement as never, offset, labelId: labelId ?? undefined });
 			// Same-args query calls are deduped/cached — a plain re-await can hand
 			// back the stale page. Resets come from live events, so force the read.
 			const page = reset ? ((await q.refresh(), q.current) ?? []) : await q;
 			// The user may have switched folders/mailboxes while this was in flight —
 			// drop the late page rather than paint the wrong folder's mail.
-			if (forMailbox !== mailboxId || forPlacement !== placement) return;
+			if (forMailbox !== mailboxId || forPlacement !== placement || forLabel !== labelId) return;
 			items = reset ? page : [...items, ...page];
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
+			if (reset) rowLabels.clear();
+			void loadRowLabels(forMailbox, page.map((thread) => thread.threadId));
 		} finally {
 			loadingList = false;
 			if (pendingReload) {
@@ -347,10 +375,27 @@
 		}
 	}
 
+	// Folder chips on rows — fetched per loaded page (≤ PAGE ids, well under the
+	// rpc's 100-id cap). refresh() forces past the arg cache so an undo/reload
+	// repaints fresh chips, mirroring the reset path in loadThreads.
+	const rowLabels = new SvelteMap<string, { labelId: string; name: string; color: string | null }[]>();
+	async function loadRowLabels(mb: string, threadIds: string[]) {
+		if (!threadIds.length) return;
+		try {
+			const chipsQ = threadFolders({ mailboxId: mb, threadIds });
+			await chipsQ.refresh();
+			for (const [rowThreadId, chips] of Object.entries(chipsQ.current ?? {})) {
+				rowLabels.set(rowThreadId, chips);
+			}
+		} catch {
+			// chips are decoration — skip on failure, next reload retries
+		}
+	}
+
 	// Reset + load page 0 when mailbox/folder changes. `watch` tracks only its
 	// sources, so the loader's own state writes can't retrigger it.
 	watch(
-		[() => mailboxId, () => isVirtual, () => placement],
+		[() => mailboxId, () => isVirtual, () => placement, () => labelId],
 		([mb, virt]) => {
 			draftSel.clear();
 			threadSel.clear();
@@ -834,6 +879,152 @@
 			void loadThreads(true);
 		}
 	}
+
+	// "Move to…" (org folders). Same optimistic shape as move()/bulkMove: rows
+	// leave now, the write settles behind a loading→Undo toast. Filing archives
+	// the thread server-side (Gmail semantics), so it leaves the current view;
+	// Undo posts each snapshot back to restore labels AND placement.
+	let moveSheetOpen = $state(false);
+	let moveTargets = $state<string[]>([]);
+	// Single-thread move: the raw sender ADDRESS — shown on the "always file"
+	// row and used verbatim in the created rule's from-equals condition.
+	const moveSender = $derived.by(() => {
+		if (moveTargets.length !== 1) return null;
+		const row = items.find((thread) => thread.threadId === moveTargets[0]);
+		if (row?.from) return row.from;
+		// Deep-linked open thread may not be in the list — read the DTO instead.
+		if (openDto?.id === moveTargets[0]) {
+			const external = openDto.items.filter(
+				(item): item is MessageDTO => item.type === 'external_message'
+			);
+			return external.at(-1)?.from ?? null;
+		}
+		return null;
+	});
+	function openMoveSheet(ids: string[]) {
+		if (!ids.length) return;
+		moveTargets = ids;
+		moveSheetOpen = true;
+	}
+
+	// "Why is this here?" — only queried in a folder (label) view; the ✱ chip
+	// shows only when the placement actually came from a rule or a person.
+	let whyOpen = $state(false);
+	const whyQ = $derived(
+		mailboxId && threadId && labelId && !isVirtual ? whyHere({ mailboxId, threadId }) : null
+	);
+	const whyInfo = $derived(whyQ?.current ?? null);
+	async function moveToLabel(targetLabelId: string | null, opts?: { fileFromSender?: boolean }) {
+		const mb = mailboxId;
+		const ids = [...moveTargets];
+		// Snapshot before the sheet closes/clears — the rule needs the address.
+		const ruleSender = opts?.fileFromSender && ids.length === 1 && targetLabelId ? moveSender : null;
+		if (!mb || !ids.length) return;
+		moveSheetOpen = false;
+		const targetName = targetLabelId
+			? (orgFolders.find((orgFolder) => orgFolder.id === targetLabelId)?.name ?? 'folder')
+			: 'Inbox';
+		const fx: RowFx = targetLabelId ? 'archived' : 'inbox';
+		for (const id of ids) rowFx.set(id, fx);
+		items = items.filter((thread) => !ids.includes(thread.threadId));
+		if (threadId && ids.includes(threadId)) nav({ thread: null });
+		threadSel.clear();
+		const progress = progressToast(`Moving to ${targetName}…`);
+		try {
+			const snapshots: Parameters<typeof undoMove>[0][] = [];
+			for (const id of ids) {
+				const res = await moveToFolder({ mailboxId: mb, threadId: id, labelId: targetLabelId });
+				snapshots.push(res.snapshot);
+			}
+			progress.note(
+				ids.length > 1 ? `Moved to ${targetName} · ${ids.length} conversations` : `Moved to ${targetName}`,
+				{
+					label: 'Undo',
+					onClick: async () => {
+						for (const snapshot of snapshots) {
+							try {
+								await undoMove(snapshot);
+							} catch {
+								// thread may have moved again meanwhile — restore the rest
+							}
+						}
+						await loadThreads(true);
+						void refreshUnread();
+						void foldersQ?.refresh();
+					}
+				},
+				6000
+			);
+			void refreshUnread();
+			void foldersQ?.refresh();
+			if (ruleSender && targetLabelId) {
+				await createSenderRule(mb, ruleSender, targetLabelId, targetName);
+			}
+		} catch {
+			progress.error('Move failed — restoring the list.');
+			void loadThreads(true);
+		} finally {
+			setTimeout(() => {
+				for (const id of ids) rowFx.delete(id);
+			}, 350);
+		}
+	}
+
+	// "Always file mail from <sender> here" — create the rule after the move
+	// lands, then offer the existing-mail backfill from the confirm toast
+	// (ApplyRuleDialog owns the preview/override flow).
+	let applyRuleDialog = $state<{ start: (ruleId: string) => void } | null>(null);
+	async function createSenderRule(mb: string, sender: string, labelId: string, targetName: string) {
+		try {
+			const created = await createRule({
+				mailboxId: mb,
+				name: `From ${sender}`.slice(0, 80),
+				conditions: { op: 'AND', conditions: [{ field: 'from', operator: 'equals', value: sender }] },
+				actions: [{ type: 'moveTo', labelId }]
+			});
+			void foldersQ?.refresh(); // ✱ badge appears on the fed folder
+			toast.success(`Rule created — new mail from ${sender} files to ${targetName}`, {
+				duration: 8000,
+				action: {
+					label: 'Apply to existing messages',
+					onClick: () => applyRuleDialog?.start(created.id)
+				}
+			});
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Moved, but the rule could not be created.');
+		}
+	}
+	// "Labels…" — additive labels for the cross-cutting case ("belongs in two
+	// folders"). Flat name-sorted checklist; checkmarks read from the same
+	// rowLabels map the row chips use, toggles write through and re-fetch it.
+	const labelChecklist = $derived([...orgFolders].sort((a, b) => a.name.localeCompare(b.name)));
+	async function toggleThreadLabel(id: string, targetLabelId: string, next: boolean) {
+		const mb = mailboxId;
+		if (!mb) return;
+		try {
+			if (next) await addThreadLabel({ mailboxId: mb, threadId: id, labelId: targetLabelId });
+			else await removeThreadLabel({ mailboxId: mb, threadId: id, labelId: targetLabelId });
+			await loadRowLabels(mb, [id]);
+			void foldersQ?.refresh();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not update labels.');
+		}
+	}
+
+	// Move sheet's inline "+ New folder": create, refresh the shared folders
+	// query (sidebar included), then move straight there.
+	async function createFolderAndMove(name: string, opts?: { fileFromSender?: boolean }) {
+		const mb = mailboxId;
+		if (!mb) return;
+		try {
+			const res = await createFolder({ mailboxId: mb, name });
+			void foldersQ?.refresh();
+			await moveToLabel(res.id, opts);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not create the folder.');
+		}
+	}
+
 	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
 	// and drop its row (it left the current view), same optimistic shape as move().
 	function afterSnoozeChange(info?: { kept?: boolean }) {
@@ -1099,6 +1290,30 @@
 	// WhatsApp-style bubbles, reads as a communication flow) and 'mail' (Gmail-style
 	// collapsible card stack, reads as correspondence).
 	const threadView = new PersistedState<'chat' | 'mail'>('doota:thread-view', 'chat');
+
+	// "Always show signatures" (account → Mail → Reading, device-local): rendered
+	// into the body-route URL so the frame ships the `-- ` block expanded instead
+	// of behind the per-message "···" control.
+	const sigsQS = $derived(showSignatures.current ? '&sigs=1' : '');
+
+	// Contact card (Drawer mobile / Dialog desktop, like move-sheet): opened by
+	// tapping the sender name / an avatar in the open thread header. `verified`
+	// reuses the per-message DMARC flag the thread already carries for that
+	// address, so the card's chip can't claim more than the bubbles do.
+	let contactCardOpen = $state(false);
+	let contactCardTarget = $state<{ address: string; name: string; verified: boolean } | null>(null);
+	function openContactCard(from: string | null) {
+		const addr = senderAddr(from).toLowerCase();
+		if (!addr) return;
+		const verified = (openDto?.items ?? []).some(
+			(item) =>
+				item.type === 'external_message' &&
+				senderAddr(item.from).toLowerCase() === addr &&
+				item.senderVerified
+		);
+		contactCardTarget = { address: addr, name: nameFor(from), verified };
+		contactCardOpen = true;
+	}
 
 	// Land on the newest message when a thread OPENS — once per thread, not on
 	// every view toggle. Toggling chat↔mail used to re-run this and yank the scroll
@@ -1594,7 +1809,15 @@
 				</button>
 			{:else}
 				<div class="min-w-0 flex-1">
-					<h2 class="font-heading text-[15px] leading-tight font-semibold tracking-tight">{folder.name}</h2>
+					<h2 class="font-heading flex items-center gap-1.5 text-[15px] leading-tight font-semibold tracking-tight">
+						{#if activeLabelFolder}
+							<span
+								class="size-2.5 shrink-0 rounded-full"
+								style="background: {activeLabelFolder.color ?? 'var(--color-muted-foreground)'}"
+							></span>
+						{/if}
+						<span class="truncate">{activeLabelFolder?.name ?? folder.name}</span>
+					</h2>
 					<span class="text-muted-foreground mt-1 block truncate font-mono text-[11px] leading-none">{activeMailbox?.address ?? '…'}</span>
 				</div>
 			{/if}
@@ -1717,6 +1940,9 @@
 								<ArchiveIcon class="size-4" />
 							</Button>
 						{/if}
+						<Button variant="ghost" size="icon" class="size-7" title="Move to folder" disabled={!n || bulkBusy} onclick={() => openMoveSheet([...threadSel])}>
+							<FolderInputIcon class="size-4" />
+						</Button>
 						{#if placement !== 'spam'}
 							<Button variant="ghost" size="icon" class="size-7" title="Mark spam" disabled={!n || bulkBusy} onclick={() => bulkMove('spam')}>
 								<ShieldAlertIcon class="size-4" />
@@ -1956,6 +2182,13 @@
 										{#if placement === 'sent' && thread.placement === 'inbox'}
 											<span class="bg-brand/10 text-brand shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">Inbox</span>
 										{/if}
+										<!-- Folder chips — the active label view's own chip is redundant, skip it. -->
+										{#each (rowLabels.get(thread.threadId) ?? []).filter((chip) => chip.labelId !== labelId).slice(0, 2) as chip (chip.labelId)}
+											<span class="bg-muted text-muted-foreground inline-flex max-w-24 shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium">
+												<span class="size-1.5 shrink-0 rounded-full" style="background: {chip.color ?? 'var(--color-muted-foreground)'}"></span>
+												<span class="truncate">{chip.name}</span>
+											</span>
+										{/each}
 										<span class="min-w-0 flex-1 truncate text-[13px] {thread.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{thread.subject ?? '(no subject)'}</span>
 										{#if thread.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
 										{#if thread.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
@@ -2029,7 +2262,9 @@
 							{/snippet}
 						</EmptyState>
 					{:else}
-						{@const empty = EMPTY_COPY[placement] ?? EMPTY_COPY.inbox}
+						{@const empty = activeLabelFolder
+							? { title: 'Nothing filed here', desc: 'Move conversations into this folder and they appear here.' }
+							: (EMPTY_COPY[placement] ?? EMPTY_COPY.inbox)}
 						{#if empty.compose}
 							<EmptyState icon={folder.icon} title={empty.title} description={empty.desc}>
 								{#snippet action()}
@@ -2081,7 +2316,12 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm leading-tight font-semibold">{thread.subject ?? '(no subject)'}</p>
 							<p class="text-muted-foreground truncate text-[11px] leading-tight">
-								{msgs.length} message{msgs.length === 1 ? '' : 's'}{ctx.target ? ` · ${nameFor(ctx.target)}` : ''}
+								{msgs.length} message{msgs.length === 1 ? '' : 's'}{#if ctx.target}<!--
+								-->&nbsp;·&nbsp;<button
+									type="button"
+									class="hover:text-foreground focus-visible:ring-ring/50 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2"
+									onclick={() => openContactCard(ctx.target)}
+								>{nameFor(ctx.target)}</button>{/if}
 							</p>
 						</div>
 						<!-- Who's on the thread, at a glance (group threads read instantly). -->
@@ -2089,7 +2329,15 @@
 							<div class="hidden items-center gap-1.5 md:flex" title={ppl.map((person) => person.name).join(', ')}>
 								<AvatarGroup>
 									{#each ppl.slice(0, 4) as person (person.address)}
-										<SenderAvatar from={person.address} class="ring-background size-6 rounded-full text-[9px] ring-2" />
+										<!-- Tap an avatar → that person's contact card. -->
+										<button
+											type="button"
+											aria-label="Contact card for {person.name}"
+											onclick={() => openContactCard(person.address)}
+											class="focus-visible:ring-ring/50 rounded-full outline-none focus-visible:ring-2"
+										>
+											<SenderAvatar from={person.address} class="ring-background size-6 rounded-full text-[9px] ring-2" />
+										</button>
 									{/each}
 								</AvatarGroup>
 								{#if ppl.length > 4}<span class="text-faint text-[10px] tabular-nums">+{ppl.length - 4}</span>{/if}
@@ -2164,6 +2412,20 @@
 									</div>
 								</Popover.Content>
 							</Popover.Root>
+						{/if}
+
+						<!-- ✱ "Why is this here?" — folder views only, and only when a rule or
+						     a person put the thread here (default placements need no story). -->
+						{#if labelId && whyInfo && whyInfo.origin !== 'default'}
+							<button
+								type="button"
+								title="Why is this here?"
+								aria-label="Why is this here?"
+								onclick={() => (whyOpen = true)}
+								class="text-brand hover:bg-muted focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+							>
+								<SparklesIcon class="size-4" />
+							</button>
 						{/if}
 
 						<!-- Interact actions (find / star / forward) live in the ⋯ menu at all
@@ -2258,6 +2520,39 @@
 										<SearchIcon class="size-4" /> Find
 									</DropdownMenu.Item>
 								{/if}
+								<DropdownMenu.Item onSelect={() => openMoveSheet([thread.id])}>
+									<FolderInputIcon class="size-4" /> Move to folder…
+								</DropdownMenu.Item>
+								<!-- ponytail: submenu instead of a bespoke popover — same primitive
+								     the rest of this menu uses, closeOnSelect=false allows multi-toggle. -->
+								<DropdownMenu.Sub
+									onOpenChange={(subOpen) => {
+										// Deep-linked threads may not be in the chips map yet — freshen on open.
+										if (subOpen && mailboxId) void loadRowLabels(mailboxId, [thread.id]);
+									}}
+								>
+									<DropdownMenu.SubTrigger>
+										<TagIcon class="size-4" /> Labels…
+									</DropdownMenu.SubTrigger>
+									<DropdownMenu.SubContent class="max-h-64 w-48 overflow-y-auto">
+										{#each labelChecklist as labelOption (labelOption.id)}
+											{@const hasLabel = (rowLabels.get(thread.id) ?? []).some((chip) => chip.labelId === labelOption.id)}
+											<DropdownMenu.CheckboxItem
+												checked={hasLabel}
+												closeOnSelect={false}
+												onCheckedChange={(next) => void toggleThreadLabel(thread.id, labelOption.id, next)}
+											>
+												<span
+													class="size-2.5 shrink-0 rounded-full"
+													style="background: {labelOption.color ?? 'var(--color-muted-foreground)'}"
+												></span>
+												<span class="truncate">{labelOption.name}</span>
+											</DropdownMenu.CheckboxItem>
+										{:else}
+											<p class="text-muted-foreground px-3 py-2 text-xs">No folders yet.</p>
+										{/each}
+									</DropdownMenu.SubContent>
+								</DropdownMenu.Sub>
 								<DropdownMenu.Separator class="sm:hidden" />
 								{#if placement !== 'inbox'}
 									<DropdownMenu.Item class="sm:hidden" onSelect={() => move('inbox')}>
@@ -2390,7 +2685,7 @@
 													<div class="w-[min(34rem,calc(85cqi-2rem))]">
 														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 														<MailFrame
-															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`}
+															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`}
 															fadeClass={outbound ? 'from-foreground' : 'from-card'}
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
 															onmailto={openMailto}
@@ -2536,7 +2831,7 @@
 												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
 												<!-- Mail (Gmail) view: the card is the container — render full height,
 												     no second collapse layer. -->
-												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}`} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
+												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
 												{#if !allow && m.hasRemoteImages}
 													<div class="mt-1.5 flex flex-wrap gap-x-2 text-xs">
 														<button type="button" class="text-brand hover:underline" onclick={() => loadedImages.add(m.id)}>
@@ -2710,6 +3005,48 @@
 	</div>
 </div>
 
+<!-- "Move to…" destination picker — single thread (⋯ menu) or bulk selection. -->
+<MoveSheet
+	bind:open={moveSheetOpen}
+	folders={orgFolders}
+	sender={moveSender}
+	onMove={(targetLabelId, opts) => void moveToLabel(targetLabelId, opts)}
+	onCreate={createFolderAndMove}
+/>
+
+<!-- Post-rule "apply to existing" flow (preview → override confirm → backfill). -->
+<ApplyRuleDialog bind:this={applyRuleDialog} {mailboxId} onApplied={() => void foldersQ?.refresh()} />
+
+<!-- Rules settings — ?rules=1 so the sidebar ✱ badges can deep-link here. -->
+<RulesSheet
+	open={params.get('rules') === '1'}
+	onOpenChange={(value) => {
+		if (!value) nav({ rules: null });
+	}}
+	{mailboxId}
+	folders={orgFolders}
+	onChanged={() => void foldersQ?.refresh()}
+/>
+
+<!-- "Why is this here?" — behind the ✱ chip in the thread header. -->
+<WhyHereSheet
+	bind:open={whyOpen}
+	{mailboxId}
+	info={whyInfo}
+	folderName={activeLabelFolder?.name ?? 'this folder'}
+	onEditRule={() => nav({ rules: '1' })}
+	onMoveToInbox={() => {
+		if (threadId) {
+			moveTargets = [threadId];
+			void moveToLabel(null);
+		}
+	}}
+	onRuleDisabled={() => {
+		void foldersQ?.refresh();
+		void whyQ?.refresh();
+	}}
+/>
+
 <!-- "[Message clipped] → View entire message" — shallow-routed full render
      (?full=1, raised caps, same sandbox). Back button/gesture closes it. -->
 <!-- Image-attachment lightbox — shallow-routed; Esc/backdrop (Dialog) or Back closes. -->
@@ -2735,6 +3072,17 @@
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
+{/if}
+
+<!-- Contact card for the sender tapped in the thread header (Drawer/Dialog). -->
+{#if contactCardTarget}
+	<ContactCardSheet
+		bind:open={contactCardOpen}
+		address={contactCardTarget.address}
+		name={contactCardTarget.name}
+		verified={contactCardTarget.verified}
+		{mailboxId}
+	/>
 {/if}
 
 {#if page.state.fullMessage}

@@ -211,9 +211,12 @@
 
 	// Append the sender's signature to a fresh (non-restored) reply. Async, so
 	// guarded by htmlHasContent — a concurrent restore or typing wins over it.
+	// Reply context: the 'reply' signature wins, empty falls back to the
+	// new-message one. The map already holds the resolved value, so the
+	// From-switch swap below uses the same context for free.
 	async function applySignature() {
-		const rows = await myMailboxSignatures();
-		sigByMailbox = new Map(rows.map((row) => [row.mailboxId, row.bodyHtml]));
+		const rows = (await myMailboxSignatures()) ?? [];
+		sigByMailbox = new Map(rows.map((row) => [row.mailboxId, row.replyBodyHtml || row.bodyHtml]));
 		const sig = sigByMailbox.get(sendMailboxId) ?? '';
 		if (sig && !htmlHasContent(body)) {
 			body = withSignature(body, sig);

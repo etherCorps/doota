@@ -1,8 +1,12 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
 	import AliasesCard from '$lib/components/account/aliases-card.svelte';
+	import ExportCard from '$lib/components/account/export-card.svelte';
+	import ReadingCard from '$lib/components/account/reading-card.svelte';
 	import RemoteImagesCard from '$lib/components/account/remote-images-card.svelte';
+	import SenderListsCard from '$lib/components/account/sender-lists-card.svelte';
 	import SignaturesCard from '$lib/components/account/signatures-card.svelte';
+	import VacationCard from '$lib/components/account/vacation-card.svelte';
 </script>
 
 <!--
@@ -23,11 +27,15 @@
 	minmax(0,1fr) tracks, so long content truncates instead of forcing scroll.
 -->
 <div class="grid grid-cols-1 gap-6 xl:grid-cols-3 xl:items-start">
-	<div class="xl:col-span-2">
+	<div class="flex flex-col gap-6 xl:col-span-2">
 		<SignaturesCard />
+		<VacationCard />
+		<SenderListsCard />
 	</div>
 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-1">
 		<AliasesCard />
 		<RemoteImagesCard />
+		<ReadingCard />
+		<ExportCard />
 	</div>
 </div>
