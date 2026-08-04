@@ -13,21 +13,25 @@
  * against the remote D1 instead.
  */
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
-const MIG_DIR = "drizzle";
+// Migrations live at the workspace root. Resolve from THIS file, not cwd —
+// `db:push` runs with cwd apps/web, where a bare "drizzle" doesn't exist.
+const MIG_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "drizzle");
 const remote = process.argv.includes("--remote");
 const target = remote ? "--remote" : "--local";
 
-// Every custom virtual-table migration (name-matched, so a renumbered file still
-// resolves). Extend the pattern if more virtual tables are added later.
+// Every custom migration drizzle-kit push skips: FTS5 virtual tables AND the
+// change_log triggers (drizzle can't model either). Name-matched, so a
+// renumbered file still resolves. Extend the pattern for future custom SQL.
 const files = readdirSync(MIG_DIR)
-  .filter((f) => /_fts5\.sql$/.test(f))
+  .filter((f) => /_(fts5|triggers)\.sql$/.test(f))
   .sort();
 
 if (files.length === 0) {
-  console.error("apply-virtual-tables: no *_fts5.sql found — nothing to apply.");
+  console.error("apply-virtual-tables: no *_fts5.sql / *_triggers.sql found — nothing to apply.");
   process.exit(0);
 }
 

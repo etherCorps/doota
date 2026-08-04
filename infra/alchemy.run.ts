@@ -129,6 +129,10 @@ export default Alchemy.Stack(
         MAIL_RAW: mailRawBucket,
         AUTH_KV: authKv,
         MAIL_QUEUE: inboundQueue,
+        // Rules-engine `forward` action + vacation auto-replies enqueue
+        // outbound sends from the inbound consumer (consumed by mail-jobs).
+        // Optional in MailEnv — without it those features silently no-op.
+        MAIL_OUT_QUEUE: outboundQueue,
         MAIL_EVENTS: Cloudflare.DurableObject("MailEventsHub", {
           className: "MailEventHub",
           scriptName: mailJobsWorker.workerName,

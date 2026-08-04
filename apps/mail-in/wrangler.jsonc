@@ -52,10 +52,16 @@
   },
   "queues": {
     // email() enqueues to MAIL_QUEUE; this Worker also consumes it.
+    // MAIL_OUT_QUEUE: rules-engine `forward` action enqueues an outbound send
+    // (consumed by doota-mail-jobs, same as app sends).
     "producers": [
       {
         "binding": "MAIL_QUEUE",
         "queue": "doota-mail-inbound"
+      },
+      {
+        "binding": "MAIL_OUT_QUEUE",
+        "queue": "doota-mail-outbound"
       }
     ],
     "consumers": [
