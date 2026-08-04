@@ -29,7 +29,12 @@
 
 	const shell = $derived(
 		step === 'credentials'
-			? { title: 'Doota', description: 'Log in to your mailbox.' }
+			? {
+					title: 'Doota',
+					description: page.url.searchParams.has('add')
+						? 'Add another account to this device.'
+						: 'Log in to your mailbox.'
+				}
 			: step === 'entering'
 				? { title: 'Doota', description: 'Signing you in…' }
 				: {
@@ -42,6 +47,12 @@
 
 	async function enter() {
 		step = 'entering';
+		// Add-account (multiSession): a session was already live, so every layout
+		// holds the PREVIOUS account's data — only a full document load resets it.
+		if (page.url.searchParams.has('add')) {
+			window.location.assign(resolve('/'));
+			return;
+		}
 		await goto(resolve('/'));
 	}
 

@@ -29,6 +29,7 @@ import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGINS } from "$app/env/public";
 import { renderEmail } from "./email";
 import { kvSecondaryStorage } from "./auth/kv-secondary-storage.js";
+import { MAX_DEVICE_SESSIONS } from "$lib/auth-limits.js";
 
 // Instance roles (admin plugin). Separate from org membership roles
 // (owner/admin/member), which the organization plugin manages per-membership.
@@ -330,8 +331,10 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
         },
       }),
       // Switching between accounts on DIFFERENT domains — NOT the /app↔/admin
-      // switch (that is plain navigation within a single account).
-      multiSession(),
+      // switch (that is plain navigation within a single account). The cap is
+      // explicit and shared with the UI, which blocks BEFORE a sign-in would
+      // exceed it (over the cap the plugin silently stops tracking sessions).
+      multiSession({ maximumSessions: MAX_DEVICE_SESSIONS }),
       lastLoginMethod(),
       twoFactor(),
       // No TOTP after passkey login: a passkey is already two factors.
