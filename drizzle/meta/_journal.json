@@ -253,6 +253,69 @@
       "when": 1785678815823,
       "tag": "0035_futuristic_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1785848253890,
+      "tag": "0036_third_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1785848282499,
+      "tag": "0037_change_log_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1785849379397,
+      "tag": "0038_far_dormammu",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1785860248043,
+      "tag": "0039_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1785860429151,
+      "tag": "0040_rule_creator",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1785861824083,
+      "tag": "0041_signature_ctx_correspondent",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1785862169886,
+      "tag": "0042_vacation",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1785862370497,
+      "tag": "0043_sender_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1785862628609,
+      "tag": "0044_mail_export",
+      "breakpoints": true
     }
   ]
 }

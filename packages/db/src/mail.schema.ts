@@ -92,6 +92,10 @@ export const mailbox = sqliteTable(
     // Service mailboxes are non-human sending identities for automation; org
     // admins issue send-only API keys against them (never a personal inbox).
     isService: integer("is_service", { mode: "boolean" }).default(false).notNull(),
+    // Emit a `Sender:` header naming the individual who sent as this shared
+    // mailbox (RFC 5322 From ≠ Sender; DMARC aligns on From, so it's free).
+    // Off by default — Outlook renders it as "on behalf of".
+    revealSender: integer("reveal_sender", { mode: "boolean" }).default(false).notNull(),
     createdAt: now(),
   },
   (t) => [
@@ -125,6 +129,10 @@ export const mailboxAccess = sqliteTable(
     assignedOnly: integer("assigned_only", { mode: "boolean" })
       .default(false)
       .notNull(),
+    // "Priya at Acme Support" — this user's From display name when sending as a
+    // shared mailbox. Falls back to mailbox.display_name. The wire From address
+    // is ALWAYS the mailbox address (replies must return to the team).
+    sendDisplayName: text("send_display_name"),
     createdAt: now(),
   },
   (t) => [
@@ -312,6 +320,17 @@ export const threadState = sqliteTable(
     // Partial index below (snoozed_snoozed_idx) keeps the tiny snoozed set — so the
     // cron's due-sweep and the Snoozed view are index-served, not full scans.
     snoozedUntil: integer("snoozed_until", { mode: "timestamp_ms" }),
+    // How the thread reached its placement — drives resurfacing on a new reply
+    // (user-filed returns to inbox; rule-filed stays put) and the "why is this
+    // here?" sheet. Cheap now, impossible to backfill later.
+    placementOrigin: text("placement_origin").default("default").notNull(), // default | user | rule
+    placementRuleId: text("placement_rule_id"), // set when origin = 'rule'
+    placementUserId: text("placement_user_id"), // set when origin = 'user' — who moved it
+    placementAt: integer("placement_at", { mode: "timestamp_ms" }),
+    // Shared mute (matches thread_state's shared semantics): a new reply never
+    // resurfaces or notifies. Per-user mute, if ever needed, is a new table
+    // alongside thread_read — additive, no rewrite.
+    muted: integer("muted", { mode: "boolean" }).default(false).notNull(),
     createdAt: now(),
   },
   (t) => [
@@ -386,9 +405,135 @@ export const label = sqliteTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     color: text("color"),
+    // Folder nesting, max depth 2 (parent → child, no grandchildren) —
+    // enforced in the rpc layer, deeper trees are where folder UIs die.
+    // No FK self-reference: SQLite ALTER TABLE can't add one, and a dangling
+    // parent simply renders at the root.
+    parentId: text("parent_id"),
+    // Per-folder new-mail notification (All=true / None=false). Rule-fed
+    // folders default to None at rule creation (Phase 2) — filing away mail
+    // that still buzzes achieves nothing. Inbox itself isn't a label.
+    notifyNewMail: integer("notify_new_mail", { mode: "boolean" }).default(true).notNull(),
     createdAt: now(),
   },
   (t) => [uniqueIndex("label_org_name_uidx").on(t.orgId, t.name)],
+);
+
+/**
+ * Mailbox export jobs (build guide, Phase 6) — data portability is part of
+ * the self-hosting promise. A queued, RESUMABLE job streams an mbox (plus a
+ * sidecar JSON) into R2 part objects; the download route concatenates them
+ * behind a short-lived capability URL. This row is the cursor (a lost job
+ * resumes from D1), the progress readout, and the AUDIT RECORD — an export
+ * decrypts everything, so who/when is part of the feature.
+ */
+export const mailExport = sqliteTable(
+  "mail_export",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    requestedByUserId: text("requested_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").default("running").notNull(), // running | done | failed
+    cursor: text("cursor").default("").notNull(), // last delivery id processed
+    messageCount: integer("message_count").default(0).notNull(),
+    partCount: integer("part_count").default(0).notNull(),
+    createdAt: now(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("mail_export_mailbox_idx").on(t.mailboxId)],
+);
+
+/**
+ * Per-mailbox sender allow/block lists (build guide, Phase 5) — evaluated
+ * BEFORE the spam classifier. `address` is a full address or a "@domain"
+ * suffix entry. Moving mail out of Junk adds an implicit allow entry.
+ */
+export const mailboxSenderList = sqliteTable(
+  "mailbox_sender_list",
+  {
+    id: id(),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    address: text("address").notNull(), // lowercased; "@acme.com" = whole domain
+    kind: text("kind").notNull(), // allow | block
+    createdAt: now(),
+  },
+  (t) => [uniqueIndex("sender_list_mailbox_addr_uidx").on(t.mailboxId, t.address)],
+);
+
+/**
+ * Vacation auto-responder settings, one row per mailbox (build guide, Phase
+ * 4). The UI is trivial; RFC 3834 compliance in vacation.ts is the feature.
+ * Dedupe (one reply per sender per interval) lives in KV with TTL, not here.
+ */
+export const mailboxVacation = sqliteTable("mailbox_vacation", {
+  mailboxId: text("mailbox_id")
+    .primaryKey()
+    .references(() => mailbox.id, { onDelete: "cascade" }),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).default(false).notNull(),
+  // Replies are sent AS the mailbox but authorized as this user (the normal
+  // can() send gate) — the responder dies with their revoked access.
+  enabledByUserId: text("enabled_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  subject: text("subject").default("").notNull(), // empty → "Auto: Re: <subject>"
+  bodyText: text("body_text").default("").notNull(),
+  startsAt: integer("starts_at", { mode: "timestamp_ms" }),
+  endsAt: integer("ends_at", { mode: "timestamp_ms" }),
+  // One reply per sender per this many days (KV TTL).
+  intervalDays: integer("interval_days").default(4).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+});
+
+/**
+ * Rules engine (build guide, Phase 2). JSON DSL, not Sieve — change_log is
+ * JMAP-shaped and JMAP has its own filter model. Evaluated in `position`
+ * order at the inbound rulesEval stage (BEFORE placement + notification);
+ * spam and vacation later hang off the same stage as built-in kinds.
+ * `conditions` / `actions` are validated on write against a closed enum
+ * (rules.ts) — nothing unvalidated reaches the executor.
+ */
+export const rule = sqliteTable(
+  "rule",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // The human who authored the rule. `forward` actions send AS the mailbox
+    // but are authorized as this user — the existing can() send gate applies,
+    // so a forward dies with its creator's revoked access instead of becoming
+    // an ownerless exfiltration path.
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    position: integer("position").default(0).notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+    conditions: text("conditions").notNull(), // JSON RuleConditions
+    actions: text("actions").notNull(), // JSON RuleAction[]
+    stopProcessing: integer("stop_processing", { mode: "boolean" }).default(false).notNull(),
+    // Resumable "apply to existing messages" backfill: cursor + progress live
+    // here (not in the queue payload alone) so a lost job resumes from D1 and
+    // the UI can read progress.
+    backfillCursor: text("backfill_cursor"),
+    backfillDone: integer("backfill_done").default(0).notNull(),
+    backfillStartedAt: integer("backfill_started_at", { mode: "timestamp_ms" }),
+    createdAt: now(),
+  },
+  (t) => [index("rule_mailbox_position_idx").on(t.mailboxId, t.position)],
 );
 
 export const threadLabel = sqliteTable(
@@ -1084,11 +1229,17 @@ export const mailboxSignature = sqliteTable(
     // Sanitized signature HTML (reuses the outbound compose sanitizer). Empty
     // string is a valid "no signature" — a row's presence isn't required.
     bodyHtml: text("body_html").notNull().default(""),
+    // Separate signatures for fresh messages vs replies/forwards (build guide,
+    // Phase 3). Existing rows default to 'new'; a missing 'reply' row falls
+    // back to 'new' at load, so one signature keeps working everywhere.
+    context: text("context").notNull().default("new"), // new | reply
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
   },
-  (t) => [uniqueIndex("mailbox_signature_user_mailbox_uidx").on(t.userId, t.mailboxId)],
+  (t) => [
+    uniqueIndex("mailbox_signature_user_mailbox_ctx_uidx").on(t.userId, t.mailboxId, t.context),
+  ],
 );
 
 /**
@@ -1114,6 +1265,18 @@ export const correspondent = sqliteTable(
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
+    // Interaction facts (build guide, Phase 3) — the substance of the contact
+    // card, and cheap only if maintained from day one:
+    firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }),
+    // Inbound messages received from this address (not sends to it).
+    messageCount: integer("message_count").default(0).notNull(),
+    // Last time THIS mailbox sent to the address — the ham signal for spam
+    // tier 2 and the "you reply to them" line on the card. Cannot be
+    // reconstructed cheaply later.
+    lastRepliedAt: integer("last_replied_at", { mode: "timestamp_ms" }),
+    // User-ACCEPTED contact details (phone/url/…), JSON object. Extraction
+    // only ever suggests; nothing lands here without an explicit tap.
+    details: text("details"),
   },
   (t) => [
     uniqueIndex("correspondent_mailbox_address_uidx").on(t.mailboxId, t.address),
@@ -1121,6 +1284,41 @@ export const correspondent = sqliteTable(
     index("correspondent_recency_idx").on(t.mailboxId, t.lastSeenAt),
   ],
 );
+
+/**
+ * Monotonic per-mailbox change stream — the substrate for local-first sync and
+ * a future JMAP server (shape satisfies JMAP /changes even though no endpoint
+ * exists yet). Rows are written by SQLite TRIGGERS (drizzle/*_change_log_triggers.sql),
+ * never application code, so logging cannot be forgotten by a future code path.
+ * Structural refs only — no subjects, addresses, or bodies (same discipline as
+ * notifications).
+ *
+ * `seq` must be AUTOINCREMENT (not a rowid alias): a reused rowid would let the
+ * state token move backwards, which surfaces as silent client data loss.
+ * `seq` is global; scoping is by query on mailbox_id (the JMAP accountId).
+ */
+export const changeLog = sqliteTable(
+  "change_log",
+  {
+    seq: integer("seq").primaryKey({ autoIncrement: true }),
+    mailboxId: text("mailbox_id").notNull(),
+    type: text("type").notNull(), // JMAP type names: Email | Thread | Mailbox | EmailSubmission
+    objectId: text("object_id").notNull(),
+    action: text("action").notNull(), // created | updated | destroyed
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("change_log_mailbox_seq").on(t.mailboxId, t.seq)],
+);
+
+/**
+ * Highest pruned seq per mailbox. A client presenting a token at or below the
+ * floor gets JMAP's cannotCalculateChanges (full resync) instead of a silently
+ * incomplete diff. Maintained by pruneChangeLog on the daily cron.
+ */
+export const changeLogFloor = sqliteTable("change_log_floor", {
+  mailboxId: text("mailbox_id").primaryKey(),
+  floorSeq: integer("floor_seq").notNull(),
+});
 
 export const mailboxRelations = relations(mailbox, ({ many }) => ({
   access: many(mailboxAccess),

@@ -1,0 +1,1 @@
+ALTER TABLE `rule` ADD `created_by_user_id` text REFERENCES user(id);
