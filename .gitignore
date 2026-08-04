@@ -32,3 +32,4 @@ worker-configuration.d.ts
 **/scripts/.seed.sql
 fern
 .alchemy/
+.serena
