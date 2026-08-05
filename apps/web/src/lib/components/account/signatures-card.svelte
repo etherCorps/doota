@@ -17,11 +17,24 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import TiptapEditor from '$lib/components/mail/tiptap-editor.svelte';
+	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
 	import { myMailboxSignatures, setMailboxSignature, type MailboxSignature } from '$lib/rpc/signature.remote';
 
 	type SigContext = 'new' | 'reply';
 
+	// Page-level mailbox scope: when set, only that mailbox's signature renders
+	// (the page's scope bar already names it, so the address heading drops too).
+	let { mailboxId = null }: { mailboxId?: string | null } = $props();
+
 	const q = myMailboxSignatures();
+	const visible = $derived(
+		q.current === undefined
+			? undefined
+			: mailboxId
+				? q.current.filter((sig) => sig.mailboxId === mailboxId)
+				: q.current
+	);
+	const scopedSig = $derived(mailboxId ? q.current?.find((sig) => sig.mailboxId === mailboxId) : undefined);
 
 	// Which context tab each mailbox shows (default: new message).
 	let tab = $state<Record<string, SigContext>>({});
@@ -70,26 +83,35 @@
 	}
 </script>
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<PenLineIcon class="size-4" /> Signature
-		</Card.CardTitle>
-		<Card.CardDescription>
-			A sign-off added automatically to messages you send from each address — with an optional
-			separate version for replies. Shared mailboxes keep a separate signature per teammate.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col">
+<SettingsCollapsibleCard contentClass="flex flex-col gap-4">
+	{#snippet title()}
+		<PenLineIcon class="size-4" /> Signature
+	{/snippet}
+	{#snippet summary()}
 		{#if q.current === undefined}
+			<Skeleton class="h-4 w-24 rounded-md" />
+		{:else if scopedSig}
+			{scopedSig.bodyHtml ? 'Set' : 'Not set'}{scopedSig.replyBodyHtml ? ' · reply variant set' : ''}
+		{:else}
+			Not set
+		{/if}
+	{/snippet}
+	<Card.CardDescription>
+		A sign-off added automatically to messages you send from each address — with an optional
+		separate version for replies. Shared mailboxes keep a separate signature per teammate.
+	</Card.CardDescription>
+	<div class="flex flex-col">
+		{#if visible === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-5 w-40 rounded-md" />
 				<Skeleton class="h-24 w-full rounded-md" />
 			</div>
-		{:else if q.current.length === 0}
-			<p class="text-muted-foreground text-sm">You don't have any sending addresses yet.</p>
+		{:else if visible.length === 0}
+			<p class="text-muted-foreground text-sm">
+				{mailboxId ? "You can't send from this mailbox." : "You don't have any sending addresses yet."}
+			</p>
 		{:else}
-			{#each q.current as sig (sig.mailboxId)}
+			{#each visible as sig (sig.mailboxId)}
 				{@const ctx = tab[sig.mailboxId] ?? 'new'}
 				{@const key = keyOf(sig.mailboxId, ctx)}
 				{@const saved = savedFor(sig, ctx)}
@@ -102,21 +124,25 @@
 					class="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0"
 					aria-label="Signature for {sig.address}"
 				>
-					<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-						<span class="min-w-0 truncate font-mono text-sm font-medium">{sig.address}</span>
-						{#if sig.displayName}
-							<span class="text-muted-foreground min-w-0 truncate text-xs">{sig.displayName}</span>
-						{/if}
-						{#if dirty}
-							<!-- Status cue for an edited-but-unsaved draft; matches the account
-							     layout's warn pills. ml-auto floats it right, wraps on narrow. -->
-							<span
-								class="border-warn/40 text-warn ml-auto inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium"
-							>
-								Unsaved
-							</span>
-						{/if}
-					</div>
+					{#if !mailboxId || dirty}
+						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+							{#if !mailboxId}
+								<span class="min-w-0 truncate font-mono text-sm font-medium">{sig.address}</span>
+								{#if sig.displayName}
+									<span class="text-muted-foreground min-w-0 truncate text-xs">{sig.displayName}</span>
+								{/if}
+							{/if}
+							{#if dirty}
+								<!-- Status cue for an edited-but-unsaved draft; matches the account
+								     layout's warn pills. ml-auto floats it right, wraps on narrow. -->
+								<span
+									class="border-warn/40 text-warn ml-auto inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium"
+								>
+									Unsaved
+								</span>
+							{/if}
+						</div>
+					{/if}
 					<!-- Context tabs: one editor, remounted per (context, discard) so the
 					     right saved value seeds it. Switching tabs keeps each tab's draft. -->
 					<Tabs.Root value={ctx} onValueChange={(value) => (tab[sig.mailboxId] = value as SigContext)}>
@@ -159,5 +185,5 @@
 				</section>
 			{/each}
 		{/if}
-	</Card.CardContent>
-</Card.Card>
+	</div>
+</SettingsCollapsibleCard>

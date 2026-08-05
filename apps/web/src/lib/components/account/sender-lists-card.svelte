@@ -12,10 +12,26 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 
+	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
+
 	// Reactive (not one-shot await): self-heals if the experimental remote-query
 	// cache resolves late or transiently undefined during hydration.
 	const mailboxesQ = myMailboxes();
 	import { senderLists, addSenderEntry, removeSenderEntry } from '$lib/rpc/sender-list.remote';
+
+	// Page-level mailbox scope (see signatures-card): only that mailbox's lists
+	// render and the address heading drops.
+	let { mailboxId = null }: { mailboxId?: string | null } = $props();
+
+	const visible = $derived(
+		mailboxesQ.current === undefined
+			? undefined
+			: mailboxId
+				? mailboxesQ.current.filter((box) => box.id === mailboxId)
+				: mailboxesQ.current
+	);
+	// Header summary reads the same per-mailbox query the lists use (cached by args).
+	const summaryQuery = $derived(mailboxId ? senderLists({ mailboxId }) : undefined);
 
 	// Mirrors the server rule: a full address or "@domain".
 	const ADDRESS_RE = /^(@[^\s@]+\.[^\s@]+|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
@@ -88,24 +104,31 @@
 	</div>
 {/snippet}
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<ShieldIcon class="size-4" /> Allowed &amp; blocked senders
-		</Card.CardTitle>
-		<Card.CardDescription>
-			Allowed senders always skip the Junk folder; blocked senders always land there. Moving a
-			message out of Junk adds its sender to the allowed list automatically.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col gap-6">
-		{#if mailboxesQ.current === undefined}
+<SettingsCollapsibleCard contentClass="flex flex-col gap-6">
+	{#snippet title()}
+		<ShieldIcon class="size-4" /> Allowed &amp; blocked senders
+	{/snippet}
+	{#snippet summary()}
+		{#if summaryQuery?.current === undefined}
+			<Skeleton class="h-4 w-24 rounded-md" />
+		{:else}
+			{summaryQuery.current.filter((entry) => entry.kind === 'allow').length} allowed · {summaryQuery.current.filter(
+				(entry) => entry.kind === 'block'
+			).length} blocked
+		{/if}
+	{/snippet}
+	<Card.CardDescription>
+		Allowed senders always skip the Junk folder; blocked senders always land there. Moving a
+		message out of Junk adds its sender to the allowed list automatically.
+	</Card.CardDescription>
+	<div class="flex flex-col gap-6">
+		{#if visible === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-8 w-full rounded-md" />
 				<Skeleton class="h-8 w-full rounded-md" />
 			</div>
 		{:else}
-			{@const boxes = mailboxesQ.current}
+			{@const boxes = visible}
 			{#if boxes.length === 0}
 				<p class="text-muted-foreground text-sm">You don't have any mailboxes yet.</p>
 			{:else}
@@ -115,7 +138,9 @@
 						class="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0"
 						aria-label="Sender lists for {box.address}"
 					>
-						<span class="min-w-0 truncate font-mono text-sm font-medium">{box.address}</span>
+						{#if !mailboxId}
+							<span class="min-w-0 truncate font-mono text-sm font-medium">{box.address}</span>
+						{/if}
 						<div class="flex flex-wrap items-center gap-2">
 							<Input
 								class="min-w-40 flex-1"
@@ -167,5 +192,5 @@
 				{/each}
 			{/if}
 		{/if}
-	</Card.CardContent>
-</Card.Card>
+	</div>
+</SettingsCollapsibleCard>

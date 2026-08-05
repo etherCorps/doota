@@ -15,6 +15,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
 	import { vacationSettings, setVacationSettings } from '$lib/rpc/vacation.remote';
 	import { toLocalDatetime } from '$lib/utils/parse-when';
@@ -37,10 +38,33 @@
 		intervalDays: number;
 	};
 
+	// Page-level mailbox scope (see signatures-card): only that mailbox's form
+	// renders and its address heading drops.
+	let { mailboxId = null }: { mailboxId?: string | null } = $props();
+
 	const mailboxes = myMailboxSignatures();
+	const visible = $derived(
+		mailboxes.current === undefined
+			? undefined
+			: mailboxId
+				? mailboxes.current.filter((box) => box.mailboxId === mailboxId)
+				: mailboxes.current
+	);
+	// Header summary reads the same per-mailbox query the form uses (cached by args).
+	const summaryQuery = $derived(mailboxId ? vacationSettings({ mailboxId }) : undefined);
 
 	const INTERVAL_CHOICES = [1, 2, 4, 7, 14];
 	const intervalLabel = (days: number) => (days === 1 ? 'once a day' : `once every ${days} days`);
+	const shortDate = (ms: number) =>
+		new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	const rangeLabel = (startsAt: number | null, endsAt: number | null) =>
+		startsAt && endsAt
+			? ` · ${shortDate(startsAt)} – ${shortDate(endsAt)}`
+			: startsAt
+				? ` · from ${shortDate(startsAt)}`
+				: endsAt
+					? ` · until ${shortDate(endsAt)}`
+					: '';
 
 	let drafts = $state<Record<string, Partial<VacationForm>>>({});
 	let saving = $state<string | null>(null);
@@ -83,26 +107,38 @@
 	}
 </script>
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<PlaneIcon class="size-4" /> Vacation auto-reply
-		</Card.CardTitle>
-		<Card.CardDescription>
-			Automatically answer new mail while you're away. Each sender gets at most one auto-reply
-			every few days, so back-and-forth threads aren't flooded.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col gap-6">
-		{#if mailboxes.current === undefined}
+<SettingsCollapsibleCard contentClass="flex flex-col gap-6">
+	{#snippet title()}
+		<PlaneIcon class="size-4" /> Vacation auto-reply
+	{/snippet}
+	{#snippet summary()}
+		{#if summaryQuery?.current === undefined}
+			<Skeleton class="h-4 w-24 rounded-md" />
+		{:else if !summaryQuery.current.enabled}
+			Off
+		{:else}
+			On · {intervalLabel(summaryQuery.current.intervalDays)}{rangeLabel(
+				summaryQuery.current.startsAt,
+				summaryQuery.current.endsAt
+			)}
+		{/if}
+	{/snippet}
+	<Card.CardDescription>
+		Automatically answer new mail while you're away. Each sender gets at most one auto-reply
+		every few days, so back-and-forth threads aren't flooded.
+	</Card.CardDescription>
+	<div class="flex flex-col gap-6">
+		{#if visible === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-5 w-40 rounded-md" />
 				<Skeleton class="h-24 w-full rounded-md" />
 			</div>
-		{:else if mailboxes.current.length === 0}
-			<p class="text-muted-foreground text-sm">You don't have any sending addresses yet.</p>
+		{:else if visible.length === 0}
+			<p class="text-muted-foreground text-sm">
+				{mailboxId ? "You can't send from this mailbox." : "You don't have any sending addresses yet."}
+			</p>
 		{:else}
-			{#each mailboxes.current as box (box.mailboxId)}
+			{#each visible as box (box.mailboxId)}
 				{@const settingsQuery = vacationSettings({ mailboxId: box.mailboxId })}
 				<section
 					class="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0"
@@ -116,7 +152,9 @@
 						{@const busy = saving === box.mailboxId}
 						<div class="flex items-center justify-between gap-4">
 							<div class="min-w-0">
-								<span class="block min-w-0 truncate font-mono text-sm font-medium">{box.address}</span>
+								{#if !mailboxId}
+									<span class="block min-w-0 truncate font-mono text-sm font-medium">{box.address}</span>
+								{/if}
 								<p class="text-muted-foreground text-xs">Reply automatically to new mail here.</p>
 							</div>
 							<Switch
@@ -213,5 +251,5 @@
 				</section>
 			{/each}
 		{/if}
-	</Card.CardContent>
-</Card.Card>
+	</div>
+</SettingsCollapsibleCard>

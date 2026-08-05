@@ -11,10 +11,25 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 
+	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
+
 	// Reactive (not one-shot await): self-heals if the experimental remote-query
 	// cache resolves late or transiently undefined during hydration.
 	const mailboxesQ = myMailboxes();
 	import { listAliases, generateAlias, toggleAlias, deleteAlias } from '$lib/rpc/alias.remote';
+
+	// Page-level mailbox scope (see signatures-card). Aliases exist only on
+	// personal mailboxes — a scoped non-personal mailbox gets a one-line note.
+	let { mailboxId = null }: { mailboxId?: string | null } = $props();
+
+	const scopedBox = $derived(
+		mailboxId ? mailboxesQ.current?.find((box) => box.id === mailboxId) : undefined
+	);
+	const scopedNotPersonal = $derived(scopedBox !== undefined && !scopedBox.isPersonal);
+	// Header summary reads the same per-mailbox query the list uses (cached by args).
+	const summaryQuery = $derived(
+		scopedBox?.isPersonal ? listAliases(scopedBox.id) : undefined
+	);
 
 	let busy = $state<string | null>(null);
 
@@ -76,30 +91,43 @@
 	}
 </script>
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<ShuffleIcon class="size-4" /> Email aliases
-		</Card.CardTitle>
-		<Card.CardDescription>
-			Hide-my-email: random, revocable addresses that forward to your personal mailbox. Shared
-			mailboxes don't support aliases. Disable or delete an alias to stop receiving on it.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col gap-5">
+<SettingsCollapsibleCard>
+	{#snippet title()}
+		<ShuffleIcon class="size-4" /> Email aliases
+	{/snippet}
+	{#snippet summary()}
+		{#if scopedNotPersonal}
+			Aliases are available on personal mailboxes.
+		{:else if summaryQuery?.current === undefined}
+			<Skeleton class="h-4 w-24 rounded-md" />
+		{:else}
+			{summaryQuery.current.filter((alias) => alias.isEnabled).length} active
+		{/if}
+	{/snippet}
+	<Card.CardDescription>
+		Hide-my-email: random, revocable addresses that forward to your personal mailbox. Shared
+		mailboxes don't support aliases. Disable or delete an alias to stop receiving on it.
+	</Card.CardDescription>
+	<div class="flex flex-col gap-5">
 		{#if mailboxesQ.current === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-8 w-full rounded-md" />
 				<Skeleton class="h-8 w-full rounded-md" />
 			</div>
+		{:else if scopedNotPersonal}
+			<p class="text-muted-foreground text-sm">Aliases are available on personal mailboxes.</p>
 		{:else}
-			{@const personalMailboxes = mailboxesQ.current.filter((mailbox) => mailbox.isPersonal)}
+			{@const personalMailboxes = mailboxesQ.current.filter(
+				(mailbox) => mailbox.isPersonal && (!mailboxId || mailbox.id === mailboxId)
+			)}
 			{#if personalMailboxes.length}
 				{#each personalMailboxes as mailbox (mailbox.id)}
 					{@const aliasesQuery = listAliases(mailbox.id)}
 					<div class="flex flex-col gap-2">
 						<div class="flex items-center justify-between gap-2">
-							<span class="min-w-0 truncate font-mono text-sm">{mailbox.address}</span>
+							{#if !mailboxId}
+								<span class="min-w-0 truncate font-mono text-sm">{mailbox.address}</span>
+							{/if}
 							<Button
 								size="sm"
 								variant="outline"
@@ -192,5 +220,5 @@
 				<p class="text-muted-foreground text-sm">No personal mailbox to add aliases to.</p>
 			{/if}
 		{/if}
-	</Card.CardContent>
-</Card.Card>
+	</div>
+</SettingsCollapsibleCard>

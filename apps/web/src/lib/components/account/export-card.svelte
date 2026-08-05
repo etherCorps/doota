@@ -13,18 +13,33 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import { startExport, exportStatus, exportDownloadUrl } from '$lib/rpc/export.remote';
 
+	// Page-level mailbox scope (see signatures-card): only that mailbox's export
+	// section renders and the address heading drops.
+	let { mailboxId = null }: { mailboxId?: string | null } = $props();
+
 	const mailboxes = myMailboxes();
+	const visible = $derived(
+		mailboxes.current === undefined
+			? undefined
+			: mailboxId
+				? mailboxes.current.filter((box) => box.id === mailboxId)
+				: mailboxes.current
+	);
+	// Header summary reads the same per-mailbox query the list uses (cached by
+	// args; rows are createdAt-desc, so [0] is the latest export).
+	const summaryQuery = $derived(mailboxId ? exportStatus({ mailboxId }) : undefined);
 
 	let busy = $state<string | null>(null);
 
-	// Poll every 5s while any mailbox has a running export. Reading the queries'
-	// .current here subscribes the effect, so it re-evaluates when a poll lands
-	// and stops itself once nothing is running.
+	// Poll every 5s while any visible mailbox has a running export. Reading the
+	// queries' .current here subscribes the effect, so it re-evaluates when a
+	// poll lands and stops itself once nothing is running.
 	$effect(() => {
-		const runningIds = (mailboxes.current ?? [])
+		const runningIds = (visible ?? [])
 			.map((box) => box.id)
 			.filter((mailboxId) =>
 				exportStatus({ mailboxId }).current?.some((row) => row.status === 'running')
@@ -86,32 +101,43 @@
 	};
 </script>
 
-<Card.Card>
-	<Card.CardHeader>
-		<Card.CardTitle class="flex items-center gap-2">
-			<DownloadIcon class="size-4" /> Export mailbox
-		</Card.CardTitle>
-		<Card.CardDescription>
-			Download a full copy of a mailbox as a standard .mbox file you can open in most mail apps.
-		</Card.CardDescription>
-	</Card.CardHeader>
-	<Card.CardContent class="flex flex-col gap-5">
-		{#if mailboxes.current === undefined}
+<SettingsCollapsibleCard>
+	{#snippet title()}
+		<DownloadIcon class="size-4" /> Export mailbox
+	{/snippet}
+	{#snippet summary()}
+		{#if summaryQuery?.current === undefined}
+			<Skeleton class="h-4 w-24 rounded-md" />
+		{:else if summaryQuery.current.length === 0}
+			Never exported
+		{:else}
+			{@const latest = summaryQuery.current[0]}
+			Last export {when(latest.completedAt ?? latest.createdAt)} · {STATUS_LABEL[latest.status] ??
+				latest.status}
+		{/if}
+	{/snippet}
+	<Card.CardDescription>
+		Download a full copy of a mailbox as a standard .mbox file you can open in most mail apps.
+	</Card.CardDescription>
+	<div class="flex flex-col gap-5">
+		{#if visible === undefined}
 			<div class="flex flex-col gap-2">
 				<Skeleton class="h-8 w-full rounded-md" />
 				<Skeleton class="h-8 w-full rounded-md" />
 			</div>
-		{:else if mailboxes.current.length === 0}
+		{:else if visible.length === 0}
 			<p class="text-muted-foreground text-sm">You don't have any mailboxes yet.</p>
 		{:else}
-			{#each mailboxes.current as box (box.id)}
+			{#each visible as box (box.id)}
 				{@const statusQuery = exportStatus({ mailboxId: box.id })}
 				<section
 					class="flex flex-col gap-2 border-t pt-5 first:border-t-0 first:pt-0"
 					aria-label="Export {box.address}"
 				>
 					<div class="flex items-center justify-between gap-2">
-						<span class="min-w-0 truncate font-mono text-sm">{box.address}</span>
+						{#if !mailboxId}
+							<span class="min-w-0 truncate font-mono text-sm">{box.address}</span>
+						{/if}
 						<AlertDialog.Root>
 							<AlertDialog.Trigger>
 								{#snippet child({ props })}
@@ -174,5 +200,5 @@
 				</section>
 			{/each}
 		{/if}
-	</Card.CardContent>
-</Card.Card>
+	</div>
+</SettingsCollapsibleCard>
