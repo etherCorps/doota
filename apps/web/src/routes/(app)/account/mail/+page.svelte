@@ -6,6 +6,7 @@
 	import RemoteImagesCard from '$lib/components/account/remote-images-card.svelte';
 	import SenderListsCard from '$lib/components/account/sender-lists-card.svelte';
 	import SignaturesCard from '$lib/components/account/signatures-card.svelte';
+	import WebhooksCard from '$lib/components/account/webhooks-card.svelte';
 	import VacationCard from '$lib/components/account/vacation-card.svelte';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -79,6 +80,10 @@
 			<section class="flex flex-col gap-3">
 				<h2 class="text-muted-foreground text-sm font-medium">Incoming</h2>
 				<SenderListsCard mailboxId={scopedId} />
+			</section>
+			<section class="flex flex-col gap-3">
+				<h2 class="text-muted-foreground text-sm font-medium">Integrations</h2>
+				<WebhooksCard mailboxId={scopedId} />
 			</section>
 		</div>
 		<div class="flex flex-col gap-8">

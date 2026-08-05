@@ -35,6 +35,8 @@ export type OutboundEnv = {
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
   /** Optional per-user event hub — cancel/state writes announce through it. */
   MAIL_EVENTS?: EventHubNamespace;
+  /** Optional webhook queue — submission state changes fan out to it. */
+  WEBHOOK_QUEUE?: Queue<{ deliveryId: string }>;
 };
 
 export type SendRequest = {

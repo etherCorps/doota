@@ -17,6 +17,7 @@ import { chargeSend } from "./send-rate-limit";
 import { selectProvider, ProviderSendError, type OutboundEmail } from "./provider";
 import { extractInlineImages } from "./inline-images";
 import { notifyInboundMail, notifySubmissionState, type EventHubNamespace } from "./events-hub";
+import { emitSubmissionWebhook, emitInboundWebhook } from "./webhooks";
 import { log, errInfo, tryLog } from "./log";
 import type { OutboundJob } from "./outbound";
 
@@ -36,6 +37,8 @@ export type OutboundConsumerEnv = {
   MAIL_SEARCH_KEY: string;
   EMAIL_SENDER?: SendEmail;
   MAIL_OUT_QUEUE: Queue<OutboundJob>;
+  /** Webhook delivery queue — submission state changes fan out to it. */
+  WEBHOOK_QUEUE?: Queue<{ deliveryId: string }>;
   /** Per-user event hub (Durable Object) — wakes live failure streams. */
   MAIL_EVENTS?: EventHubNamespace;
   /** Web Push (Phase B) — internal deliveries send an OS push, app-closed case. */
@@ -156,6 +159,7 @@ export async function processSubmission(
       .set({ status: "failed", bounceReason: reason })
       .where(and(eq(mail.submissionRecipient.submissionId, sub.id), notTerminalRecipient()));
     await notifySubmissionState(db, env.MAIL_EVENTS, sub.id, "failed", { userId: sub.createdByUserId });
+    await emitSubmissionWebhook(db, env.WEBHOOK_QUEUE, sub.id, "failed");
     // Durable notification for the sender — best-effort. threadId resolves from
     // the submission at read time; null here keeps the fail path cheap.
     if (sub.createdByUserId && sub.orgId) {
@@ -315,6 +319,7 @@ export async function processSubmission(
       await setRecipient(db, r.id, { status: "delivered" });
       // Live inbox for the internal recipient — same push external mail gets.
       await notifyInboundMail(db, env.MAIL_EVENTS, resolved.mailboxId, message.threadId);
+      await emitInboundWebhook(db, env.WEBHOOK_QUEUE, resolved.mailboxId, message.threadId);
       // Durable bell — internal mail never hits the inbound consumer, so record
       // it here too. Exclude the sender (they may share the recipient mailbox).
       await tryLog(
@@ -464,6 +469,7 @@ export async function processSubmission(
     userId: sub.createdByUserId,
     threadId: message.threadId,
   });
+  await emitSubmissionWebhook(db, env.WEBHOOK_QUEUE, sub.id, rolled.status);
   m.ack();
 }
 

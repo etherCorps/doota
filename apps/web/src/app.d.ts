@@ -26,6 +26,9 @@ declare global {
      * derived per push from the org's own domain, so there's no subject var. */
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
+    /** Outbound webhook delivery queue (Phase A). One job per delivery row. Absent
+     * under vite dev — the create RPC skips the test enqueue when unbound. */
+    WEBHOOK_QUEUE?: Queue<{ deliveryId: string }>;
     /** Optional path/query override for the {{ unsubscribe_url }} template variable
      * (default "/unsubscribe"). The HOST is taken from the request origin — never
      * from env — so one worker serving multiple domains links each recipient to

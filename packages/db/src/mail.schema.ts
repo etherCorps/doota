@@ -1079,6 +1079,82 @@ export const apiKey = sqliteTable(
 );
 
 /**
+ * Outbound webhook endpoints (Phase A). PER MAILBOX: the mailbox's own users
+ * decide where its delivery-outcome + inbound events go, so a shared mailbox's
+ * webhooks are separate from a personal one's. The signing `secret` is stored
+ * ENCRYPTED with the instance DEK (not hashed): unlike an api_key we must
+ * recover it to compute the HMAC at delivery time. It is shown in cleartext
+ * once at creation and never re-displayed. `events` is a JSON array of
+ * subscribed event types; empty = all. Auto-disabled after N consecutive
+ * failures (a dead endpoint retried forever is a self-inflicted outbound DoS).
+ */
+export const webhookEndpoint = sqliteTable(
+  "webhook_endpoint",
+  {
+    id: id(),
+    // Denormalized org (from the mailbox) — kept for admin queries + cascade.
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    // The mailbox whose events this endpoint receives.
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    // AES-GCM envelope of the HMAC signing key (see crypto.ts encryptContent).
+    secretEnc: text("secret_enc").notNull(),
+    // First 12 chars of the plaintext secret, cleartext for display only.
+    secretPrefix: text("secret_prefix").notNull(),
+    events: text("events").notNull().default("[]"),
+    isEnabled: integer("is_enabled", { mode: "boolean" }).default(true).notNull(),
+    // Consecutive failures; reset to 0 on any delivered attempt.
+    failureCount: integer("failure_count").default(0).notNull(),
+    disabledAt: integer("disabled_at", { mode: "timestamp_ms" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: now(),
+  },
+  (t) => [index("webhook_endpoint_mailbox_idx").on(t.mailboxId)],
+);
+
+/**
+ * A single delivery attempt-set for one event to one endpoint. `event_id` is
+ * stable across retries so receivers dedupe on it. Rides the write-row-then-
+ * enqueue pattern (like `submission`): the row is inserted `queued`, then a job
+ * is enqueued — so queue redelivery is idempotent. Retries use exponential
+ * backoff with jitter; `next_attempt_at` drives both the delay and the due
+ * scan (partial index below).
+ */
+export const webhookDelivery = sqliteTable(
+  "webhook_delivery",
+  {
+    id: id(),
+    endpointId: text("endpoint_id")
+      .notNull()
+      .references(() => webhookEndpoint.id, { onDelete: "cascade" }),
+    // Stable event identity — receivers dedupe on it across retries/redeliveries.
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    // JSON body (structural refs only — never subject/body). Signed at delivery.
+    payload: text("payload").notNull(),
+    status: text("status").notNull().default("queued"), // queued|delivering|delivered|failed
+    attempts: integer("attempts").default(0).notNull(),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }),
+    responseCode: integer("response_code"),
+    lastError: text("last_error"),
+    createdAt: now(),
+  },
+  (t) => [
+    index("webhook_delivery_endpoint_idx").on(t.endpointId),
+    // Due scan for the retry sweep — only rows still awaiting an attempt.
+    index("webhook_delivery_due_idx")
+      .on(t.nextAttemptAt)
+      .where(sql`status = 'queued'`),
+  ],
+);
+
+/**
  * Send log for API-originated mail (service accounts). Two tiers:
  *   1. durable metadata — who/when/which key/which template/status/recipients —
  *      retained long (the audit trail);

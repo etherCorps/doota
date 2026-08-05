@@ -15,6 +15,7 @@ import { maybeVacationReply } from "./vacation";
 import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
 import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
+import { emitInboundWebhook } from "./webhooks";
 import { sendGrantUserIds } from "./mailbox";
 import { recordNewMail } from "./notify";
 import { recordCorrespondents } from "./contacts";
@@ -420,6 +421,7 @@ async function notifyStage(ctx: InboundStageCtx): Promise<void> {
   if (ctx.rules?.suppressNotification) return;
   // Live inbox: wake the mailbox's users — list prepends + badge bumps.
   await notifyInboundMail(ctx.db, ctx.env.MAIL_EVENTS, ctx.job.resolvedMailboxId, ctx.threadId!);
+  await emitInboundWebhook(ctx.db, ctx.env.WEBHOOK_QUEUE, ctx.job.resolvedMailboxId, ctx.threadId!);
   // Durable notification (bell) — best-effort, never fails the delivery.
   await tryLog(
     "in.notify_failed",

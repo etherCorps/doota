@@ -37,6 +37,8 @@
     "./rules-backfill": "./src/rules-backfill.ts",
     "./resolver": "./src/resolver.ts",
     "./sanitize-email": "./src/sanitize-email.ts",
+    "./ssrf": "./src/ssrf.ts",
+    "./webhooks": "./src/webhooks.ts",
     "./signature-detect": "./src/signature-detect.ts",
     "./search": "./src/search.ts",
     "./send-log": "./src/send-log.ts",

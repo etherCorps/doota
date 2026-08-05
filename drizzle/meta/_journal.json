@@ -323,6 +323,20 @@
       "when": 1785863000000,
       "tag": "0045_label_mailbox_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1785864000000,
+      "tag": "0046_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1785864500000,
+      "tag": "0047_webhook_mailbox_scope",
+      "breakpoints": true
     }
   ]
 }

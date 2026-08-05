@@ -9,6 +9,7 @@ import { pruneStalePushSubscriptions } from "./web-push";
 import { purgeExpiredSendData } from "./send-log";
 import { pruneChangeLog } from "./change-log";
 import { sweepJunk } from "./spam";
+import { sweepDueWebhooks, pruneWebhookDeliveries } from "./webhooks";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -28,11 +29,15 @@ const DAILY_ODDS = 1 / 288;
 export async function runScheduledSweeps(
   db: Db,
   env: OutboundEnv,
-): Promise<{ dueEnqueued: number; snoozesWoken: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number; sendDataPurged: number; changeLogPruned: number; junkHidden: number }> {
+): Promise<{ dueEnqueued: number; snoozesWoken: number; webhooksRedriven: number; staleDraftsDeleted: number; notificationsPruned: number; pushSubsPruned: number; sendDataPurged: number; changeLogPruned: number; junkHidden: number; webhookDeliveriesPruned: number }> {
   const dueEnqueued = await sweepDueSubmissions(db, env.MAIL_OUT_QUEUE);
   // User-facing timing (a snooze returning to the inbox) — runs every 5 min, not
   // daily-gated.
   const snoozesWoken = await sweepDueSnoozes(db);
+  // Re-drive webhook deliveries whose retry came due (or whose enqueue was lost)
+  // — timely, so every 5 min like snoozes, not daily-gated. No-op without the
+  // queue binding.
+  const webhooksRedriven = env.WEBHOOK_QUEUE ? await sweepDueWebhooks(db, env.WEBHOOK_QUEUE) : 0;
   // Daily-gated GC — all bounded scans that don't need per-5-min frequency:
   // abandoned-draft + stuck-send tombstones, read notifications past retention,
   // push subscriptions that stopped refreshing. Draft GC ran ~288×/day for a
@@ -50,5 +55,8 @@ export async function runScheduledSweeps(
   const changeLogPruned = daily ? await pruneChangeLog(db) : 0;
   // Junk retention: HIDE spam threads past the window (never a delete).
   const junkHidden = daily ? await sweepJunk(db) : 0;
-  return { dueEnqueued, snoozesWoken, staleDraftsDeleted, notificationsPruned, pushSubsPruned, sendDataPurged, changeLogPruned, junkHidden };
+  // Webhook delivery-row retention (terminal rows past the window). Folds into
+  // the daily GC — not a second cron.
+  const webhookDeliveriesPruned = daily ? await pruneWebhookDeliveries(db) : 0;
+  return { dueEnqueued, snoozesWoken, webhooksRedriven, staleDraftsDeleted, notificationsPruned, pushSubsPruned, sendDataPurged, changeLogPruned, junkHidden, webhookDeliveriesPruned };
 }

@@ -59,6 +59,7 @@ export default Alchemy.Stack(
     const inboundQueue = yield* Cloudflare.Queues.Queue("MailInbound", { name: named("doota-mail-inbound") });
     const outboundQueue = yield* Cloudflare.Queues.Queue("MailOutbound", { name: named("doota-mail-outbound") });
     const mailEventsQueue = yield* Cloudflare.Queues.Queue("MailEvents", { name: named("doota-mail-events") });
+    const webhookQueue = yield* Cloudflare.Queues.Queue("Webhooks", { name: named("doota-webhooks") });
 
     const compatibility = {
       date: "2026-04-28",
@@ -99,6 +100,9 @@ export default Alchemy.Stack(
         DB: database,
         MAIL_RAW: mailRawBucket,
         MAIL_OUT_QUEUE: outboundQueue,
+        // Webhook delivery: mail-jobs both produces (submission state changes in
+        // the outbound consumer) and consumes (the delivery jobs below).
+        WEBHOOK_QUEUE: webhookQueue,
         MAIL_EVENTS: Cloudflare.DurableObject("MailEventsHub", { className: "MailEventHub" }),
         EMAIL_SENDER: Cloudflare.Email.SendEmail("EmailSender"),
         ...sharedMailSecrets,
@@ -113,6 +117,11 @@ export default Alchemy.Stack(
     });
     yield* Cloudflare.Queues.Consumer("MailEventsConsumer", {
       queueId: mailEventsQueue.queueId,
+      scriptName: mailJobsWorker.workerName,
+      settings: { batchSize: 10, maxRetries: 5 },
+    });
+    yield* Cloudflare.Queues.Consumer("WebhookConsumer", {
+      queueId: webhookQueue.queueId,
       scriptName: mailJobsWorker.workerName,
       settings: { batchSize: 10, maxRetries: 5 },
     });
@@ -133,6 +142,8 @@ export default Alchemy.Stack(
         // outbound sends from the inbound consumer (consumed by mail-jobs).
         // Optional in MailEnv — without it those features silently no-op.
         MAIL_OUT_QUEUE: outboundQueue,
+        // Inbound delivery produces the mail.received webhook event.
+        WEBHOOK_QUEUE: webhookQueue,
         MAIL_EVENTS: Cloudflare.DurableObject("MailEventsHub", {
           className: "MailEventHub",
           scriptName: mailJobsWorker.workerName,
@@ -180,6 +191,8 @@ export default Alchemy.Stack(
         MAIL_RAW: mailRawBucket,
         MAIL_QUEUE: inboundQueue,
         MAIL_OUT_QUEUE: outboundQueue,
+        // The web app enqueues a test delivery when an endpoint is created.
+        WEBHOOK_QUEUE: webhookQueue,
         MAIL_EVENTS: Cloudflare.DurableObject("MailEventsHub", {
           className: "MailEventHub",
           scriptName: mailJobsWorker.workerName,

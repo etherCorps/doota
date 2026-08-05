@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { handleOutboundQueue, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
 import { handleMailEventsQueue } from "@doota/mail-core/events-consumer";
+import { handleWebhookQueue } from "@doota/mail-core/webhooks";
 import { runScheduledSweeps } from "@doota/mail-core/cron";
 import { type OutboundEnv, type OutboundJob } from "@doota/mail-core/outbound";
 import { initLogLevel } from "@doota/mail-core/log";
@@ -33,6 +34,11 @@ export default {
       await handleMailEventsQueue(batch as any, env);
       return;
     }
+    if (batch.queue.startsWith("doota-webhooks")) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await handleWebhookQueue(batch as any, env);
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleOutboundQueue(batch as any, env);
   },
@@ -44,6 +50,7 @@ export default {
       MAIL_SEARCH_KEY: env.MAIL_SEARCH_KEY,
       MAIL_RAW: env.MAIL_RAW,
       MAIL_OUT_QUEUE: env.MAIL_OUT_QUEUE,
+      WEBHOOK_QUEUE: env.WEBHOOK_QUEUE,
     };
     ctx.waitUntil(runScheduledSweeps(db, outbound));
   },

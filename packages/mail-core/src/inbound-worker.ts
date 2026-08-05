@@ -32,6 +32,8 @@ export type MailEnv = {
   /** Outbound queue — the rules-engine `forward` action enqueues sends here.
    * Optional: forwards are log-skipped when the binding is absent. */
   MAIL_OUT_QUEUE?: Queue<import("./outbound").OutboundJob>;
+  /** Webhook queue — a delivered inbound thread fans out mail.received. */
+  WEBHOOK_QUEUE?: Queue<{ deliveryId: string }>;
   /** Web app's contact-candidate cache — busted when a new correspondent lands. */
   AUTH_KV?: KVNamespace;
   /** Web Push (Phase B) — new_mail sends an OS push for the app-closed case. */

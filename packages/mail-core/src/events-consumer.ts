@@ -6,6 +6,7 @@ import * as mail from "@doota/db/mail.schema";
 import { suppress, rollupToWorst } from "./bounce";
 import { setRecipient, rollup } from "./outbound-consumer";
 import { notifySubmissionState, type EventHubNamespace } from "./events-hub";
+import { emitSubmissionWebhook } from "./webhooks";
 import { log } from "./log";
 
 /**
@@ -27,6 +28,7 @@ import { log } from "./log";
 export type MailEventsEnv = {
   DB: D1Database;
   MAIL_EVENTS?: EventHubNamespace;
+  WEBHOOK_QUEUE?: Queue<{ deliveryId: string }>;
   LOG_LEVEL?: string;
 };
 
@@ -57,7 +59,7 @@ export async function handleMailEventsQueue(batch: QueueBatch, env: MailEventsEn
 
 export async function applyProviderEvent(
   db: ReturnType<typeof drizzle<typeof schema>>,
-  env: Pick<MailEventsEnv, "MAIL_EVENTS">,
+  env: Pick<MailEventsEnv, "MAIL_EVENTS" | "WEBHOOK_QUEUE">,
   evt: ProviderEvent,
 ): Promise<void> {
   const kind = (evt.type ?? evt.event ?? "").replace(/^message\./, "");
@@ -163,6 +165,7 @@ export async function applyProviderEvent(
   await notifySubmissionState(db, env.MAIL_EVENTS, submission.id, notifyStatus, {
     userId: submission.createdByUserId,
   });
+  await emitSubmissionWebhook(db, env.WEBHOOK_QUEUE, submission.id, notifyStatus);
 }
 
 // ---- helpers -----------------------------------------------------------------
