@@ -12,6 +12,7 @@
 	import { accountLimits } from '$lib/rpc/cf-insights.remote';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { resolve } from '$app/paths';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const isSuperadmin = $derived(data.user.role === 'superadmin');
@@ -50,7 +51,7 @@
 			if (res.success) toast.success(res.message);
 			else toast.error(res.message);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not send verification email.');
+			toast.error(errorMessage(err, 'Could not send verification email.'));
 		} finally {
 			verifying = false;
 		}

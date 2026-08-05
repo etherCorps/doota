@@ -8,6 +8,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { myApiKeys, revokeApiKeyById } from '$lib/rpc/api-keys.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// Read-only: new keys are issued by org admins against service mailboxes (a
 	// leaked send key hurts the whole domain's reputation). Users may still revoke
@@ -20,7 +21,7 @@
 			toast.success('Key revoked.');
 			await keysQ.refresh();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not revoke the key.');
+			toast.error(errorMessage(err, 'Could not revoke the key.'));
 		}
 	}
 

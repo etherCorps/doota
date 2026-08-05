@@ -9,6 +9,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import { orgRemoteContent, setOrgRemoteContent } from '$lib/rpc/domains.remote.js';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { orgId }: { orgId: string } = $props();
 
@@ -30,7 +31,7 @@
 			await q.refresh();
 			toast.success('Remote-content policy saved.');
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not save.');
+			toast.error(errorMessage(e, 'Could not save.'));
 		} finally {
 			pending = null;
 			saving = false;

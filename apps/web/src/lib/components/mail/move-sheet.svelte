@@ -12,6 +12,7 @@
 	import { toast } from 'svelte-sonner';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	type Folder = { id: string; name: string; color: string | null; parentId: string | null };
 
@@ -73,7 +74,7 @@
 			newName = '';
 			creating = false;
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create the folder.');
+			toast.error(errorMessage(err, 'Could not create the folder.'));
 		} finally {
 			busy = false;
 		}

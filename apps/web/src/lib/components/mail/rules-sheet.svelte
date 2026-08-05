@@ -22,6 +22,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		open = false,
@@ -57,7 +58,7 @@
 			await rulesQ?.refresh();
 			onChanged?.();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not update rules.');
+			toast.error(errorMessage(e, 'Could not update rules.'));
 		} finally {
 			busy = false;
 		}

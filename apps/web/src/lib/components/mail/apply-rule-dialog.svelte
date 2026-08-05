@@ -9,6 +9,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import { backfillPreview, applyRuleToExisting } from '$lib/rpc/rules.remote';
 	import { toast } from 'svelte-sonner';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		mailboxId,
@@ -34,7 +35,7 @@
 			ruleId = null;
 			onApplied?.();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not apply the rule.');
+			toast.error(errorMessage(e, 'Could not apply the rule.'));
 		} finally {
 			busy = false;
 		}
@@ -59,7 +60,7 @@
 				await apply(mb, rule, false);
 			}
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not check existing mail.');
+			toast.error(errorMessage(e, 'Could not check existing mail.'));
 			ruleId = null;
 		}
 	}

@@ -19,6 +19,7 @@
 	import { createSharedMailbox } from '$lib/rpc/mailbox.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import BotIcon from '@lucide/svelte/icons/bot';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -93,7 +94,7 @@
 				toast.error(res.message);
 			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not create the mailbox.');
+			toast.error(errorMessage(err, 'Could not create the mailbox.'));
 		} finally {
 			saving = false;
 		}

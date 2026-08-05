@@ -16,6 +16,7 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	type WhyInfo = {
 		placement: string;
@@ -59,7 +60,7 @@
 			onRuleDisabled?.();
 			open = false;
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not pause the rule.');
+			toast.error(errorMessage(e, 'Could not pause the rule.'));
 		} finally {
 			busy = false;
 		}

@@ -12,6 +12,7 @@
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { mailRoutingConfig, refreshDomain } from '$lib/rpc/domains.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { orgId, domain }: { orgId: string; domain: string } = $props();
 
@@ -36,7 +37,7 @@
 			if (!detached) toast.success('Inbound routing reattached.');
 			else toast.error('Still not attached — is the mail worker deployed?');
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not reattach routing.');
+			toast.error(errorMessage(err, 'Could not reattach routing.'));
 		} finally {
 			fixing = false;
 		}

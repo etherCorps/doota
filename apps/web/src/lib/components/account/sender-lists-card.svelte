@@ -18,6 +18,7 @@
 	// cache resolves late or transiently undefined during hydration.
 	const mailboxesQ = myMailboxes();
 	import { senderLists, addSenderEntry, removeSenderEntry } from '$lib/rpc/sender-list.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// Page-level mailbox scope (see signatures-card): only that mailbox's lists
 	// render and the address heading drops.
@@ -52,7 +53,7 @@
 			await senderLists({ mailboxId }).refresh();
 			toast.success(kind === 'allow' ? `${address} is now allowed.` : `${address} is now blocked.`);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update the list.');
+			toast.error(errorMessage(err, 'Could not update the list.'));
 		} finally {
 			busy = null;
 		}
@@ -64,7 +65,7 @@
 			await removeSenderEntry({ mailboxId, address });
 			await senderLists({ mailboxId }).refresh();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not remove the entry.');
+			toast.error(errorMessage(err, 'Could not remove the entry.'));
 		} finally {
 			busy = null;
 		}

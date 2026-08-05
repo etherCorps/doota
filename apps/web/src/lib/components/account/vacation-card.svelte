@@ -19,6 +19,7 @@
 	import WhenPicker from '$lib/components/account/when-picker.svelte';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
 	import { vacationSettings, setVacationSettings } from '$lib/rpc/vacation.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// The form as edited; startsAt/endsAt are epoch ms (null = unset), the same
 	// shape the server holds and setVacationSettings takes — no string round-trip.
@@ -101,7 +102,7 @@
 			await vacationSettings({ mailboxId }).refresh();
 			toast.success('Auto-reply settings saved.');
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not save the auto-reply.');
+			toast.error(errorMessage(err, 'Could not save the auto-reply.'));
 		} finally {
 			saving = null;
 		}

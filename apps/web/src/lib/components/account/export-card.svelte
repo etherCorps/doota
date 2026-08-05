@@ -16,6 +16,7 @@
 	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
 	import { myMailboxes } from '$lib/rpc/mailbox.remote';
 	import { startExport, exportStatus, exportDownloadUrl } from '$lib/rpc/export.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// Page-level mailbox scope (see signatures-card): only that mailbox's export
 	// section renders and the address heading drops.
@@ -59,7 +60,7 @@
 			toast.success('Export started. It will appear below when it finishes.');
 		} catch (err) {
 			// A 403 carries "Re-authentication required: sign in again…" — show it as-is.
-			toast.error(err instanceof Error ? err.message : 'Could not start the export.');
+			toast.error(errorMessage(err, 'Could not start the export.'));
 		} finally {
 			busy = null;
 		}
@@ -75,7 +76,7 @@
 			anchor.click();
 			anchor.remove();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not get the download link.');
+			toast.error(errorMessage(err, 'Could not get the download link.'));
 		} finally {
 			busy = null;
 		}

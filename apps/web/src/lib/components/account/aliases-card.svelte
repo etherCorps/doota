@@ -17,6 +17,7 @@
 	// cache resolves late or transiently undefined during hydration.
 	const mailboxesQ = myMailboxes();
 	import { listAliases, generateAlias, toggleAlias, deleteAlias } from '$lib/rpc/alias.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// Page-level mailbox scope (see signatures-card). Aliases exist only on
 	// personal mailboxes — a scoped non-personal mailbox gets a one-line note.
@@ -39,7 +40,7 @@
 		toast.promise(req, {
 			loading: 'Creating alias…',
 			success: (res) => `Created ${res.address}`,
-			error: (err) => (err instanceof Error ? err.message : 'Could not create an alias.')
+			error: (err) => (errorMessage(err, 'Could not create an alias.'))
 		});
 		try {
 			await req;
@@ -57,7 +58,7 @@
 			await toggleAlias({ aliasId, enabled });
 			await listAliases(mailboxId).refresh();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update the alias.');
+			toast.error(errorMessage(err, 'Could not update the alias.'));
 		} finally {
 			busy = null;
 		}
@@ -69,7 +70,7 @@
 		toast.promise(req, {
 			loading: 'Deleting alias…',
 			success: 'Alias deleted.',
-			error: (err) => (err instanceof Error ? err.message : 'Could not delete the alias.')
+			error: (err) => (errorMessage(err, 'Could not delete the alias.'))
 		});
 		try {
 			await req;

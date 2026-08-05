@@ -12,6 +12,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		passkeys
@@ -45,7 +46,7 @@
 			toast.success('Passkey added.');
 			await invalidateAll();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not add passkey.');
+			toast.error(errorMessage(err, 'Could not add passkey.'));
 		} finally {
 			passkeyLoading = false;
 		}

@@ -14,6 +14,7 @@
 	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import RemoteContentCard from '$lib/components/admin/remote-content-card.svelte';
 	import { updateOrgProfile, bimiStatus, publishBimi } from '$lib/rpc/domains.remote.js';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -57,7 +58,7 @@
 			toast.success('Organization updated.');
 			await invalidateAll();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not save.');
+			toast.error(errorMessage(err, 'Could not save.'));
 		} finally {
 			saving = false;
 		}
@@ -137,7 +138,7 @@
 			toast.success('BIMI record published.');
 			bimi = await bimiStatus(org.id);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not publish the record.');
+			toast.error(errorMessage(err, 'Could not publish the record.'));
 		} finally {
 			publishing = false;
 		}

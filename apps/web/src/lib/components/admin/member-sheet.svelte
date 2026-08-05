@@ -27,6 +27,7 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	type MemberSummary = { id: string; name: string; email: string; role: string; status: string };
 	let {
@@ -75,7 +76,7 @@
 			await detailQuery?.refresh();
 			onChanged();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not save the profile.');
+			toast.error(errorMessage(err, 'Could not save the profile.'));
 		} finally {
 			saving = false;
 		}
@@ -98,7 +99,7 @@
 			await detailQuery?.refresh();
 			onChanged();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not change the role.');
+			toast.error(errorMessage(err, 'Could not change the role.'));
 		} finally {
 			applyingRole = false;
 		}
@@ -114,7 +115,7 @@
 			await detailQuery?.refresh();
 			onChanged();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update login access.');
+			toast.error(errorMessage(err, 'Could not update login access.'));
 		} finally {
 			pausing = false;
 		}
@@ -130,7 +131,7 @@
 			await detailQuery?.refresh();
 			onChanged();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not revoke sessions.');
+			toast.error(errorMessage(err, 'Could not revoke sessions.'));
 		} finally {
 			revoking = false;
 		}
@@ -146,7 +147,7 @@
 			onClose();
 			onChanged();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not remove user.');
+			toast.error(errorMessage(err, 'Could not remove user.'));
 		} finally {
 			removing = false;
 		}

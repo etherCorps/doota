@@ -30,6 +30,7 @@
 	import BotIcon from '@lucide/svelte/icons/bot';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	type Member = { id: string; name: string; email: string };
 	let {
@@ -73,7 +74,7 @@
 			toast.success('Display name updated.');
 			await invalidateAll();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not rename the mailbox.');
+			toast.error(errorMessage(err, 'Could not rename the mailbox.'));
 		} finally {
 			savingName = false;
 		}
@@ -88,7 +89,7 @@
 			toast.success(mb.isActive ? 'Mailbox deactivated.' : 'Mailbox activated.');
 			await invalidateAll();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update the mailbox.');
+			toast.error(errorMessage(err, 'Could not update the mailbox.'));
 		} finally {
 			togglingActive = false;
 		}
@@ -118,7 +119,7 @@
 		toast.promise(req, {
 			loading: 'Updating access…',
 			success: 'Access updated.',
-			error: (err) => (err instanceof Error ? err.message : 'Could not update access.')
+			error: (err) => (errorMessage(err, 'Could not update access.'))
 		});
 		try {
 			await req;
@@ -173,7 +174,7 @@
 		toast.promise(req, {
 			loading: 'Creating key…',
 			success: 'Service key created.',
-			error: (err) => (err instanceof Error ? err.message : 'Could not create the key.')
+			error: (err) => (errorMessage(err, 'Could not create the key.'))
 		});
 		try {
 			const res = await req;
@@ -193,7 +194,7 @@
 		toast.promise(req, {
 			loading: 'Revoking key…',
 			success: 'Key revoked.',
-			error: (err) => (err instanceof Error ? err.message : 'Could not revoke the key.')
+			error: (err) => (errorMessage(err, 'Could not revoke the key.'))
 		});
 		try {
 			await req;

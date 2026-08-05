@@ -14,6 +14,7 @@
 	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import { addSuppression, removeSuppression } from '$lib/rpc/suppressions.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -55,7 +56,7 @@
 				toast.error(res.message);
 			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not add the address.');
+			toast.error(errorMessage(err, 'Could not add the address.'));
 		} finally {
 			saving = false;
 		}
@@ -68,7 +69,7 @@
 			toast.success(`Removed ${addr}`);
 			await invalidateAll();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not remove the address.');
+			toast.error(errorMessage(err, 'Could not remove the address.'));
 		} finally {
 			const next = { ...removing };
 			delete next[addr];

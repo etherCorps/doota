@@ -7,6 +7,7 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import { onboardDomain, linkDomain, listCloudflareZones } from '$lib/rpc/domains.remote.js';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	// Called after a successful onboard/link so the host can refresh (e.g. invalidateAll).
 	let { onChange }: { onChange?: () => void } = $props();
@@ -54,7 +55,7 @@
 				res.status === 'active'
 					? `${d} is active — mail is wired.`
 					: `${d} added. Delegate the nameservers, then Refresh in its DNS tab.`,
-			error: (err) => (err instanceof Error ? err.message : 'Onboarding failed.')
+			error: (err) => (errorMessage(err, 'Onboarding failed.'))
 		});
 		try {
 			const res = await req;
@@ -79,7 +80,7 @@
 		toast.promise(req, {
 			loading: `Linking ${domain}…`,
 			success: `${domain} linked — synced from Cloudflare.`,
-			error: (err) => (err instanceof Error ? err.message : 'Link failed.')
+			error: (err) => (errorMessage(err, 'Link failed.'))
 		});
 		try {
 			await req;

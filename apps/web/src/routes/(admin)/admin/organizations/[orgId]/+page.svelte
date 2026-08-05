@@ -25,6 +25,7 @@
 	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import CheckCircle2Icon from '@lucide/svelte/icons/circle-check-big';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -71,7 +72,7 @@
 		mailLoading = true;
 		Promise.all([zoneAnalytics({ orgId: org.id, days: 7 }), zoneUsage(org.id)])
 			.then(([rows, usage]) => (mail = { rows, usage }))
-			.catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load mail analytics.'))
+			.catch((err) => toast.error(errorMessage(err, 'Could not load mail analytics.')))
 			.finally(() => {
 				mailLoaded = true;
 				mailLoading = false;
@@ -86,7 +87,7 @@
 					reputation = rep;
 					repCache.set(org.id, { at: Date.now(), val: rep });
 				})
-				.catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load sending reputation.'))
+				.catch((err) => toast.error(errorMessage(err, 'Could not load sending reputation.')))
 				.finally(() => (repLoaded = true));
 		}
 	});

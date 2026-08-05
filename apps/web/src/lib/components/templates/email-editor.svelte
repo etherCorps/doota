@@ -81,6 +81,7 @@
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
 	import { page } from '$app/state';
 	import { unsubscribeUrlFor } from '@doota/mail-core/unsubscribe';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		orgId,
@@ -353,7 +354,7 @@
 				if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { message?: string }).message ?? 'Upload failed.');
 				return (await response.json()) as { url: string };
 			});
-			toast.promise(req, { loading: 'Uploading…', success: 'Uploaded.', error: (e) => (e instanceof Error ? e.message : 'Upload failed.') });
+			toast.promise(req, { loading: 'Uploading…', success: 'Uploaded.', error: (e) => (errorMessage(e, 'Upload failed.')) });
 			try {
 				setAttr(key, (await req).url);
 			} catch {
@@ -407,7 +408,7 @@
 				codeHtml = await compileMjml(tiptapToMjml(currentDoc(), settings()));
 				view = 'code';
 			} catch (e) {
-				toast.error(e instanceof Error ? e.message : 'Could not compile.');
+				toast.error(errorMessage(e, 'Could not compile.'));
 			}
 		} else view = 'edit';
 	}
@@ -423,7 +424,7 @@
 			compiledHtml = await compileMjml(tiptapToMjml(doc, settings()));
 		} catch (e) {
 			saving = false;
-			toast.error(e instanceof Error ? e.message : 'Could not compile the template.');
+			toast.error(errorMessage(e, 'Could not compile the template.'));
 			return;
 		}
 		const variablesSchema = variablesSchemaJson(tiptapVariables(doc, subject));
@@ -433,7 +434,7 @@
 		toast.promise(req as Promise<unknown>, {
 			loading: 'Publishing…',
 			success: 'Template saved.',
-			error: (e) => (e instanceof Error ? e.message : 'Could not save the template.')
+			error: (e) => (errorMessage(e, 'Could not save the template.'))
 		});
 		try {
 			await req;
@@ -509,7 +510,7 @@
 		toast.promise(req as Promise<unknown>, {
 			loading: 'Sending test…',
 			success: 'Test email sent.',
-			error: (e) => (e instanceof Error ? e.message : 'Could not send the test.')
+			error: (e) => (errorMessage(e, 'Could not send the test.'))
 		});
 		try {
 			await req;
@@ -531,7 +532,7 @@
 			previewSubject = renderJinja(subject || '', { ...sampleData });
 			previewError = '';
 		} catch (e) {
-			previewError = e instanceof Error ? e.message : 'Could not render the preview.';
+			previewError = errorMessage(e, 'Could not render the preview.');
 		}
 	}
 	const previewVars = $derived(Object.keys(sampleData));

@@ -19,6 +19,7 @@
 	import TiptapEditor from '$lib/components/mail/tiptap-editor.svelte';
 	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
 	import { myMailboxSignatures, setMailboxSignature, type MailboxSignature } from '$lib/rpc/signature.remote';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	type SigContext = 'new' | 'reply';
 
@@ -70,7 +71,7 @@
 			await q.refresh();
 			toast.success(ctx === 'reply' ? 'Reply signature saved.' : 'Signature saved.');
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not save the signature.');
+			toast.error(errorMessage(err, 'Could not save the signature.'));
 		} finally {
 			saving = null;
 		}

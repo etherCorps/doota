@@ -33,6 +33,7 @@
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -83,7 +84,7 @@
 					dnsRecords = await domainDnsRecords(org.id);
 					dnsCache.set(org.id, { at: Date.now(), rows: dnsRecords });
 				} catch (err) {
-					toast.error(err instanceof Error ? err.message : 'Could not load DNS records.');
+					toast.error(errorMessage(err, 'Could not load DNS records.'));
 				} finally {
 					dnsLoading = false;
 				}
@@ -94,7 +95,7 @@
 			try {
 				routing = await mailRoutingConfig(org.id);
 			} catch (err) {
-				toast.error(err instanceof Error ? err.message : 'Could not load routing.');
+				toast.error(errorMessage(err, 'Could not load routing.'));
 			} finally {
 				routingLoading = false;
 			}
@@ -111,7 +112,7 @@
 			// Re-read routing so the catch-all banner reflects the re-wire attempt.
 			if (ready) routing = await mailRoutingConfig(org.id);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Refresh failed.');
+			toast.error(errorMessage(err, 'Refresh failed.'));
 		} finally {
 			refreshing = false;
 		}
@@ -129,7 +130,7 @@
 			routing.supportSubaddress = on;
 			toast.success(`Subaddressing ${on ? 'enabled' : 'disabled'}.`);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not update subaddressing.');
+			toast.error(errorMessage(err, 'Could not update subaddressing.'));
 		} finally {
 			subaddrBusy = false;
 		}
@@ -151,7 +152,7 @@
 			subInput = '';
 			toast.success(`Added ${res.subdomain}.`);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not add subdomain.');
+			toast.error(errorMessage(err, 'Could not add subdomain.'));
 		} finally {
 			addingSub = false;
 		}
@@ -165,7 +166,7 @@
 			routing.subdomains = routing.subdomains.filter((subdomain) => subdomain !== host);
 			toast.success(`Removed ${host}.`);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not remove subdomain.');
+			toast.error(errorMessage(err, 'Could not remove subdomain.'));
 		} finally {
 			removingSub = null;
 		}

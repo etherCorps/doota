@@ -11,6 +11,7 @@
 	import DeliveryChart from '$lib/components/admin/delivery-chart.svelte';
 	import { zoneAnalytics, zoneEmailLogs, zoneAudit } from '$lib/rpc/cf-insights.remote';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -43,7 +44,7 @@
 			else if (targetView === 'logs') logs = await zoneEmailLogs({ orgId: org.id, days });
 			else audit = await zoneAudit({ orgId: org.id, days });
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not load from Cloudflare.');
+			toast.error(errorMessage(err, 'Could not load from Cloudflare.'));
 		} finally {
 			loaded = { ...loaded, [targetView]: true };
 			loading = { ...loading, [targetView]: false };
