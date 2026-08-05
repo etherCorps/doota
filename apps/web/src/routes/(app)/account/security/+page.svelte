@@ -6,6 +6,7 @@
 	import RecoveryEmailCard from '$lib/components/account/recovery-email-card.svelte';
 	import TwoFactorCard from '$lib/components/account/two-factor-card.svelte';
 	import PasskeyCard from '$lib/components/account/passkey-card.svelte';
+	import DevicesCard from '$lib/components/account/devices-card.svelte';
 	import ChangePasswordDialog from '$lib/components/account/change-password-dialog.svelte';
 
 	let { data } = $props();
@@ -15,7 +16,7 @@
 <!-- One column on phones; two tracks from lg so a big screen is used instead of
      a narrow centered scroll (matches the Mail tab). items-start keeps each card
      at its natural height; priority order reads left→right, top→bottom:
-     Password · Passkeys / Two-factor · Recovery email. -->
+     Password · Passkeys / Two-factor · Devices / Recovery email. -->
 <div class="grid w-full grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
 	<Card.Card>
 		<Card.CardHeader>
@@ -33,6 +34,7 @@
 
 	<PasskeyCard passkeys={data.passkeys} />
 	<TwoFactorCard enabled={data.user.twoFactorEnabled} email={data.user.email} />
+	<DevicesCard />
 	<RecoveryEmailCard
 		recoveryEmail={data.user.recoveryEmail}
 		recoveryEmailVerified={data.user.recoveryEmailVerified}

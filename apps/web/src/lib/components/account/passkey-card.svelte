@@ -4,6 +4,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { invalidateAll } from '$app/navigation';
 	import { authClient } from '$lib/client/auth-client';
+	import { deviceLabel } from '$lib/utils/device-label';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -16,8 +17,15 @@
 		passkeys
 	}: { passkeys: { id: string; name: string | null; createdAt?: Date | null }[] } = $props();
 
+	// Prefill a device-derived name — an empty field reads as optional homework;
+	// a ready suggestion ("Mac \u00b7 Chrome") invites a one-click add. Editable.
+	function suggestedName(): string {
+		if (typeof navigator === 'undefined') return '';
+		return deviceLabel(navigator.userAgent);
+	}
+
 	let showAdd = $state(false);
-	let passkeyName = $state('');
+	let passkeyName = $state(suggestedName());
 	let passkeyLoading = $state(false);
 	let deletingId = $state<string | null>(null);
 
@@ -32,7 +40,7 @@
 				toast.error(res.error.message ?? 'Could not add passkey.');
 				return;
 			}
-			passkeyName = '';
+			passkeyName = suggestedName();
 			showAdd = false;
 			toast.success('Passkey added.');
 			await invalidateAll();

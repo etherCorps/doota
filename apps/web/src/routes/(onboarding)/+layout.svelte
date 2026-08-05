@@ -7,6 +7,7 @@
 	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import Logo from '$lib/components/Logo.svelte';
 
 	let { data, children } = $props();
 
@@ -20,11 +21,7 @@
 <div class="bg-background flex min-h-svh flex-col">
 	<header class="flex h-14 items-center justify-between border-b px-4 md:px-6">
 		<div class="flex items-center gap-2">
-			<div
-				class="bg-primary text-primary-foreground font-heading flex size-7 items-center justify-center rounded-md text-base font-bold"
-			>
-				D
-			</div>
+			<Logo size={26} />
 			<span class="font-heading text-lg font-semibold tracking-tight">Doota</span>
 		</div>
 		<div class="flex items-center gap-3">
