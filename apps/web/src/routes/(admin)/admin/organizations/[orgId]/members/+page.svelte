@@ -4,10 +4,8 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as InputGroup from '$lib/components/ui/input-group/index.js';
-	import { ButtonGroup } from '$lib/components/ui/button-group/index.js';
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -16,10 +14,10 @@
 	import StatusChip from '$lib/components/admin/status-chip.svelte';
 	import PageHeader from '$lib/components/admin/page-header.svelte';
 	import HostSelect from '$lib/components/admin/host-select.svelte';
-	import { createUser, pauseUser, removeUser } from '$lib/rpc/manage-users.remote';
+	import MemberSheet from '$lib/components/admin/member-sheet.svelte';
+	import { createUser } from '$lib/rpc/manage-users.remote';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-	import PauseIcon from '@lucide/svelte/icons/pause';
-	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 
 	let { data } = $props();
 	const org = $derived(data.org);
@@ -30,8 +28,10 @@
 		{ accessorKey: 'name', header: 'Member', cell: ({ row }) => renderSnippet(memberCell, row.original) },
 		{ accessorKey: 'role', header: 'Role', cell: ({ row }) => renderSnippet(roleCell, row.original) },
 		{ accessorKey: 'status', header: 'Status', cell: ({ row }) => renderSnippet(statusCell, row.original) },
-		{ id: 'actions', header: '', enableSorting: false, cell: ({ row }) => renderSnippet(actionsCell, row.original) }
+		{ id: 'actions', header: '', enableSorting: false, cell: () => renderSnippet(chevronCell) }
 	];
+
+	let selectedMember = $state<Member | null>(null);
 
 	let addOpen = $state(false);
 	let host = $derived(data.mailHosts[0]);
@@ -49,30 +49,6 @@
 			}
 		}
 	});
-
-	async function pause(userId: string) {
-		const { paused } = await pauseUser(userId);
-		toast.success(paused ? 'Login paused.' : 'Login resumed.');
-		await invalidateAll();
-	}
-
-	let confirmRemove = $state<{ id: string; name: string } | null>(null);
-	let removing = $state(false);
-
-	async function remove() {
-		if (!confirmRemove) return;
-		removing = true;
-		try {
-			await removeUser(confirmRemove.id);
-			toast.success('User removed.');
-			confirmRemove = null;
-			await invalidateAll();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Could not remove user.');
-		} finally {
-			removing = false;
-		}
-	}
 </script>
 
 {#snippet memberCell(member: Member)}
@@ -90,47 +66,8 @@
 	<StatusChip status={member.status} />
 {/snippet}
 
-{#snippet actionsCell(member: Member)}
-	<ButtonGroup class="justify-end">
-		{#if member.status === 'paused'}
-			<Button variant="outline" size="sm" onclick={() => pause(member.id)}>
-				<PauseIcon class="size-3.5" />
-				Resume
-			</Button>
-		{:else}
-			<AlertDialog.Root>
-				<AlertDialog.Trigger>
-					{#snippet child({ props })}
-						<Button {...props} variant="outline" size="sm">
-							<PauseIcon class="size-3.5" />
-							Pause
-						</Button>
-					{/snippet}
-				</AlertDialog.Trigger>
-				<AlertDialog.Content>
-					<AlertDialog.Header>
-						<AlertDialog.Title>Pause {member.name}?</AlertDialog.Title>
-						<AlertDialog.Description>
-							They'll be signed out of all sessions and can't log in again until you resume their
-							access.
-						</AlertDialog.Description>
-					</AlertDialog.Header>
-					<AlertDialog.Footer>
-						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-						<AlertDialog.Action onclick={() => pause(member.id)}>Pause</AlertDialog.Action>
-					</AlertDialog.Footer>
-				</AlertDialog.Content>
-			</AlertDialog.Root>
-		{/if}
-		<Button
-			variant="outline"
-			size="sm"
-			class="text-destructive hover:text-destructive"
-			onclick={() => (confirmRemove = { id: member.id, name: member.name })}
-		>
-			<Trash2Icon class="size-3.5" /> Remove
-		</Button>
-	</ButtonGroup>
+{#snippet chevronCell()}
+	<ChevronRightIcon class="text-muted-foreground ml-auto size-4" />
 {/snippet}
 
 <div class="flex flex-col gap-4">
@@ -147,8 +84,16 @@
 		filterColumn="name"
 		filterPlaceholder="Search members…"
 		empty="No members yet. Add one to send an invite."
+		onRowClick={(member) => (selectedMember = member)}
 	/>
 </div>
+
+<MemberSheet
+	member={selectedMember}
+	organizationId={org.id}
+	onClose={() => (selectedMember = null)}
+	onChanged={invalidateAll}
+/>
 
 <Dialog.Root bind:open={addOpen}>
 	<Dialog.Content class="sm:max-w-md">
@@ -224,29 +169,3 @@
 		</form>
 	</Dialog.Content>
 </Dialog.Root>
-
-<AlertDialog.Root open={!!confirmRemove} onOpenChange={(open) => !open && (confirmRemove = null)}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Remove {confirmRemove?.name}?</AlertDialog.Title>
-			<AlertDialog.Description>
-				This deletes the account, its mailbox membership and all active sessions. This can't be
-				undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={removing}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action
-				disabled={removing}
-				onclick={(event) => {
-					event.preventDefault();
-					remove();
-				}}
-				class="bg-destructive text-white hover:bg-destructive/90"
-			>
-				{#if removing}<Spinner class="mr-1" />{/if}
-				Remove
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>

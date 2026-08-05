@@ -35,6 +35,8 @@
 		/** When set, the whole row is clickable and navigates here. A real link
 		 *  inside a cell (e.g. the name) stays the keyboard/screen-reader target. */
 		rowHref?: (row: TData) => string;
+		/** Like rowHref but calls a handler instead of navigating. Ignored when rowHref is set. */
+		onRowClick?: (row: TData) => void;
 	};
 	let {
 		columns,
@@ -44,7 +46,8 @@
 		pageSize = 10,
 		empty = 'No results.',
 		actions,
-		rowHref
+		rowHref,
+		onRowClick
 	}: Props = $props();
 
 	let sorting = $state<SortingState>([]);
@@ -139,11 +142,12 @@
 			<Table.Body>
 				{#each table.getRowModel().rows as row (row.id)}
 					<Table.Row
-						class={rowHref ? 'cursor-pointer' : undefined}
-						onclick={rowHref
+						class={rowHref || onRowClick ? 'cursor-pointer' : undefined}
+						onclick={rowHref || onRowClick
 							? (e) => {
 									if ((e.target as HTMLElement).closest('a,button,input,[role="button"]')) return;
-									goto(rowHref(row.original));
+									if (rowHref) goto(rowHref(row.original));
+									else onRowClick?.(row.original);
 								}
 							: undefined}
 					>
