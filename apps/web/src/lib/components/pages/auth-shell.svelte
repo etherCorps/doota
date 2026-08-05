@@ -16,7 +16,7 @@
 
 <div
 	class={cn(
-		'relative flex h-screen w-full items-center justify-center overflow-hidden px-6 md:px-8',
+		'relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden px-6 md:px-8',
 		className
 	)}
 	{...restProps}

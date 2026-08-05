@@ -28,6 +28,7 @@
 	import PaletteIcon from '@lucide/svelte/icons/palette';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -196,6 +197,71 @@
 		void goto(`${resolve('/app')}?${sp}`);
 	}
 </script>
+
+<!-- New-folder trigger + form body, shared between the desktop popover and the
+     mobile drawer. -->
+{#snippet newFolderTrigger(triggerProps: Record<string, unknown>)}
+	<Sidebar.MenuButton tooltipContent="New folder">
+		{#snippet child({ props })}
+			<button type="button" {...mergeProps(props, triggerProps, { class: 'text-muted-foreground' })}>
+				<PlusIcon class="size-4" />
+				<span>New folder</span>
+			</button>
+		{/snippet}
+	</Sidebar.MenuButton>
+{/snippet}
+
+{#snippet newFolderBody()}
+	<Input
+		class="h-8 text-xs pointer-coarse:text-base"
+		placeholder="Name"
+		aria-label="Folder name"
+		bind:value={newName}
+		disabled={creatingFolder}
+		onkeydown={(event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				void submitNewFolder();
+			}
+		}}
+	/>
+	<div class="mt-2 flex items-center gap-1.5">
+		{#each PALETTE as color (color)}
+			<button
+				type="button"
+				title="Folder color"
+				aria-label="Folder color {color}"
+				aria-pressed={newColor === color}
+				onclick={() => (newColor = newColor === color ? null : color)}
+				class="focus-visible:ring-ring/50 size-5 rounded-full border outline-none transition-transform focus-visible:ring-2 {newColor === color ? 'ring-ring scale-110 ring-2' : ''}"
+				style="background: {color}"
+			></button>
+		{/each}
+	</div>
+	{#if rootFolders.length}
+		<Select.Root type="single" bind:value={newParent} disabled={creatingFolder}>
+			<Select.Trigger size="sm" class="mt-2 w-full text-xs" aria-label="Parent folder">
+				<span class="truncate">
+					{rootFolders.find((root) => root.id === newParent)?.name ?? 'No parent'}
+				</span>
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="" label="No parent" />
+				{#each rootFolders as root (root.id)}
+					<Select.Item value={root.id} label={root.name} />
+				{/each}
+			</Select.Content>
+		</Select.Root>
+	{/if}
+	<Button
+		size="sm"
+		class="mt-2 h-8 w-full"
+		disabled={!newName.trim() || creatingFolder}
+		onclick={submitNewFolder}
+	>
+		Create
+	</Button>
+{/snippet}
 
 <!-- collapsible="icon": desktop collapse leaves an icon rail (tooltips carry the
      labels) instead of removing navigation entirely. -->
@@ -381,72 +447,31 @@
 							</Sidebar.MenuItem>
 						{/each}
 						<Sidebar.MenuItem>
-							<Popover.Root bind:open={newOpen}>
-								<Popover.Trigger>
-									{#snippet child({ props: triggerProps })}
-										<Sidebar.MenuButton tooltipContent="New folder">
-											{#snippet child({ props })}
-												<button type="button" {...mergeProps(props, triggerProps, { class: 'text-muted-foreground' })}>
-													<PlusIcon class="size-4" />
-													<span>New folder</span>
-												</button>
-											{/snippet}
-										</Sidebar.MenuButton>
-									{/snippet}
-								</Popover.Trigger>
-								<Popover.Content class="w-64 p-3" side="right" align="start">
-									<p class="mb-2 text-xs font-medium">New folder</p>
-									<Input
-										class="h-8 text-xs pointer-coarse:text-base"
-										placeholder="Name"
-										aria-label="Folder name"
-										bind:value={newName}
-										disabled={creatingFolder}
-										onkeydown={(event) => {
-											if (event.key === 'Enter') {
-												event.preventDefault();
-												void submitNewFolder();
-											}
-										}}
-									/>
-									<div class="mt-2 flex items-center gap-1.5">
-										{#each PALETTE as color (color)}
-											<button
-												type="button"
-												title="Folder color"
-												aria-label="Folder color {color}"
-												aria-pressed={newColor === color}
-												onclick={() => (newColor = newColor === color ? null : color)}
-												class="focus-visible:ring-ring/50 size-5 rounded-full border outline-none transition-transform focus-visible:ring-2 {newColor === color ? 'ring-ring scale-110 ring-2' : ''}"
-												style="background: {color}"
-											></button>
-										{/each}
-									</div>
-									{#if rootFolders.length}
-										<Select.Root type="single" bind:value={newParent} disabled={creatingFolder}>
-											<Select.Trigger size="sm" class="mt-2 w-full text-xs" aria-label="Parent folder">
-												<span class="truncate">
-													{rootFolders.find((root) => root.id === newParent)?.name ?? 'No parent'}
-												</span>
-											</Select.Trigger>
-											<Select.Content>
-												<Select.Item value="" label="No parent" />
-												{#each rootFolders as root (root.id)}
-													<Select.Item value={root.id} label={root.name} />
-												{/each}
-											</Select.Content>
-										</Select.Root>
-									{/if}
-									<Button
-										size="sm"
-										class="mt-2 h-8 w-full"
-										disabled={!newName.trim() || creatingFolder}
-										onclick={submitNewFolder}
-									>
-										Create
-									</Button>
-								</Popover.Content>
-							</Popover.Root>
+							<!-- Mobile: a right-side popover from the near-full-width sidebar
+							     sheet spills off-screen, so open the create form as a drawer. -->
+							{#if sidebar.isMobile}
+								<Drawer.Root bind:open={newOpen}>
+									<Drawer.Trigger>
+										{#snippet child({ props: triggerProps })}{@render newFolderTrigger(triggerProps)}{/snippet}
+									</Drawer.Trigger>
+									<Drawer.Content class="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+										<Drawer.Header class="p-0 pb-3 text-left">
+											<Drawer.Title class="text-sm font-medium">New folder</Drawer.Title>
+										</Drawer.Header>
+										{@render newFolderBody()}
+									</Drawer.Content>
+								</Drawer.Root>
+							{:else}
+								<Popover.Root bind:open={newOpen}>
+									<Popover.Trigger>
+										{#snippet child({ props: triggerProps })}{@render newFolderTrigger(triggerProps)}{/snippet}
+									</Popover.Trigger>
+									<Popover.Content class="w-64 p-3" side="right" align="start">
+										<p class="mb-2 text-xs font-medium">New folder</p>
+										{@render newFolderBody()}
+									</Popover.Content>
+								</Popover.Root>
+							{/if}
 						</Sidebar.MenuItem>
 						<!-- Always-visible entry to the rules surface. Rules are authored in
 						     the move sheet's "always file mail from…" row, so without this a

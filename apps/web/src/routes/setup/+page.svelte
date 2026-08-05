@@ -6,7 +6,7 @@
 </script>
 
 {#if data.locked}
-	<div class="flex h-screen w-full items-center justify-center px-6">
+	<div class="flex min-h-[100dvh] w-full items-center justify-center px-6">
 		<div class="max-w-md space-y-3 text-center">
 			<h1 class="text-2xl font-bold tracking-wide">Doota setup</h1>
 			{#if data.reason === 'no-token'}

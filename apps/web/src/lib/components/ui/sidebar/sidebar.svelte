@@ -55,7 +55,11 @@
 				<Sheet.Title>Sidebar</Sheet.Title>
 				<Sheet.Description>Displays the mobile sidebar.</Sheet.Description>
 			</Sheet.Header>
-			<div class="flex h-full w-full flex-col">
+			<!-- iOS: pad the sheet's own top/bottom into the safe area so the
+			     header (logo, mailbox switcher) and footer clear the notch/home bar. -->
+			<div
+				class="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+			>
 				{@render children?.()}
 			</div>
 		</Sheet.Content>
