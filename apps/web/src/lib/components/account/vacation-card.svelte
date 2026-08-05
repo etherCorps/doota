@@ -16,17 +16,18 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import SettingsCollapsibleCard from '$lib/components/account/settings-collapsible-card.svelte';
+	import WhenPicker from '$lib/components/account/when-picker.svelte';
 	import { myMailboxSignatures } from '$lib/rpc/signature.remote';
 	import { vacationSettings, setVacationSettings } from '$lib/rpc/vacation.remote';
-	import { toLocalDatetime } from '$lib/utils/parse-when';
 
-	// The form as edited; startsAt/endsAt are datetime-local strings ('' = unset).
+	// The form as edited; startsAt/endsAt are epoch ms (null = unset), the same
+	// shape the server holds and setVacationSettings takes — no string round-trip.
 	type VacationForm = {
 		enabled: boolean;
 		subject: string;
 		bodyText: string;
-		startsAt: string;
-		endsAt: string;
+		startsAt: number | null;
+		endsAt: number | null;
 		intervalDays: number;
 	};
 	type ServerSettings = {
@@ -73,8 +74,8 @@
 		enabled: server.enabled,
 		subject: server.subject,
 		bodyText: server.bodyText,
-		startsAt: server.startsAt ? toLocalDatetime(new Date(server.startsAt)) : '',
-		endsAt: server.endsAt ? toLocalDatetime(new Date(server.endsAt)) : '',
+		startsAt: server.startsAt,
+		endsAt: server.endsAt,
 		intervalDays: server.intervalDays
 	});
 
@@ -91,8 +92,8 @@
 				enabled: form.enabled,
 				subject: form.subject,
 				bodyText: form.bodyText,
-				startsAt: form.startsAt ? new Date(form.startsAt).getTime() : null,
-				endsAt: form.endsAt ? new Date(form.endsAt).getTime() : null,
+				startsAt: form.startsAt,
+				endsAt: form.endsAt,
 				intervalDays: form.intervalDays
 			});
 			delete drafts[mailboxId];
@@ -194,22 +195,22 @@
 									<Label for="vacation-starts-{box.mailboxId}">
 										Starts <span class="text-muted-foreground font-normal">(optional)</span>
 									</Label>
-									<Input
+									<WhenPicker
 										id="vacation-starts-{box.mailboxId}"
-										type="datetime-local"
+										label="Auto-reply starts"
 										value={form.startsAt}
-										onchange={(event) => patch(box.mailboxId, { startsAt: event.currentTarget.value })}
+										onChange={(next) => patch(box.mailboxId, { startsAt: next })}
 									/>
 								</div>
 								<div class="flex flex-col gap-1.5">
 									<Label for="vacation-ends-{box.mailboxId}">
 										Ends <span class="text-muted-foreground font-normal">(optional)</span>
 									</Label>
-									<Input
+									<WhenPicker
 										id="vacation-ends-{box.mailboxId}"
-										type="datetime-local"
+										label="Auto-reply ends"
 										value={form.endsAt}
-										onchange={(event) => patch(box.mailboxId, { endsAt: event.currentTarget.value })}
+										onChange={(next) => patch(box.mailboxId, { endsAt: next })}
 									/>
 								</div>
 							</div>
