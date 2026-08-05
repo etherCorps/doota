@@ -40,6 +40,7 @@
 	import { notifPerm, enableOsNotifications } from '$lib/client/os-notify.svelte.js';
 	import { pwa, installApp } from '$lib/client/pwa-install.svelte.js';
 	import { toast } from 'svelte-sonner';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		user,
@@ -114,7 +115,7 @@
 			newColor = null;
 			newParent = '';
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not create the folder.');
+			toast.error(errorMessage(e, 'Could not create the folder.'));
 		} finally {
 			creatingFolder = false;
 		}
@@ -130,7 +131,7 @@
 			await updateFolder({ mailboxId: mb, labelId, ...patch });
 			await foldersQ?.refresh();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not update the folder.');
+			toast.error(errorMessage(e, 'Could not update the folder.'));
 		}
 	}
 
@@ -167,7 +168,7 @@
 			// Viewing the folder we just deleted — fall back to the inbox.
 			if (activeLabel === target.id) void goto(folderHref('inbox'));
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not delete the folder.');
+			toast.error(errorMessage(e, 'Could not delete the folder.'));
 		} finally {
 			deleteBusy = false;
 		}
@@ -273,7 +274,12 @@
 											href={labelHref(orgFolder.id)}
 											{...mergeProps(props, {
 												onclick: closeMobile,
-												style: orgFolder.depth ? 'padding-left: 1.625rem' : ''
+												// Child rows carry a left guide line (border-l) so nesting reads
+												// as a tree, not just a subtle indent; contiguous children share
+												// one continuous rail.
+												class: orgFolder.depth
+													? 'relative ml-[0.9rem] border-l border-sidebar-border !pl-[0.75rem]'
+													: ''
 											})}
 										>
 											<span
@@ -441,6 +447,15 @@
 									</Button>
 								</Popover.Content>
 							</Popover.Root>
+						</Sidebar.MenuItem>
+						<!-- Always-visible entry to the rules surface. Rules are authored in
+						     the move sheet's "always file mail from…" row, so without this a
+						     rule not tied to a badged folder would be unreachable. -->
+						<Sidebar.MenuItem>
+							<Sidebar.MenuButton tooltipContent="Rules" onclick={openRules}>
+								<SparklesIcon class="size-4" />
+								<span>Rules</span>
+							</Sidebar.MenuButton>
 						</Sidebar.MenuItem>
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>

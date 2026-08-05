@@ -96,6 +96,12 @@ export const setMailboxSignature = command(
       const sanitized = sanitizeEmailHtml(bodyHtml);
       if (!sanitized.ok) error(400, "Signature is too large.");
       clean = sanitized.html;
+      // A cleared editor still sends full markup (<html>…<p></p>…</html>), which
+      // is non-empty as a string — normalize a content-empty signature back to ""
+      // so it reads "Not set" and the composer doesn't inject a blank paragraph.
+      const hasText = clean.replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "").length > 0;
+      const hasMedia = /<(img|hr|table|blockquote)\b/i.test(clean);
+      if (!hasText && !hasMedia) clean = "";
     }
     await locals.db
       .insert(mail.mailboxSignature)

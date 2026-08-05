@@ -131,6 +131,7 @@
 	import { slide } from 'svelte/transition';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	const FOLDERS = [
 		{ id: 'inbox', name: 'Inbox', icon: InboxIcon },
@@ -991,7 +992,7 @@
 				}
 			});
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Moved, but the rule could not be created.');
+			toast.error(errorMessage(e, 'Moved, but the rule could not be created.'));
 		}
 	}
 	// "Labels…" — additive labels for the cross-cutting case ("belongs in two
@@ -1007,7 +1008,7 @@
 			await loadRowLabels(mb, [id]);
 			void foldersQ?.refresh();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not update labels.');
+			toast.error(errorMessage(e, 'Could not update labels.'));
 		}
 	}
 
@@ -1021,7 +1022,7 @@
 			void foldersQ?.refresh();
 			await moveToLabel(res.id, opts);
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not create the folder.');
+			toast.error(errorMessage(e, 'Could not create the folder.'));
 		}
 	}
 
@@ -2321,7 +2322,12 @@
 									type="button"
 									class="hover:text-foreground focus-visible:ring-ring/50 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2"
 									onclick={() => openContactCard(ctx.target)}
-								>{nameFor(ctx.target)}</button>{/if}
+								>{nameFor(ctx.target)}</button>{/if}<!--
+								Folder chips for the open thread, mirroring the list-row chips so
+								the reading pane shows the same membership.
+								-->{#each rowLabels.get(threadId) ?? [] as folder (folder.labelId)}<!--
+								-->&nbsp;·&nbsp;<span class="inline-flex items-center gap-1">
+									<span class="inline-block size-1.5 rounded-full align-middle" style="background: {folder.color ?? 'var(--color-muted-foreground)'}"></span>{folder.name}</span>{/each}
 							</p>
 						</div>
 						<!-- Who's on the thread, at a glance (group threads read instantly). -->

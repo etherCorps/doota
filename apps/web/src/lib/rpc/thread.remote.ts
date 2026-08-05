@@ -139,7 +139,10 @@ const PAGE_SIZE = 30;
 export const mailboxThreads = query(
   z.object({
     mailboxId: z.string().min(1),
-    placement: z.enum(VIEW_PLACEMENTS).default("inbox"),
+    // .catch (not .default): an unknown ?folder= value (e.g. "archive" vs
+    // "archived", or a stale bookmark) clamps to inbox instead of failing the
+    // enum — a rejected view query throws client-side and paints a blank list.
+    placement: z.enum(VIEW_PLACEMENTS).catch("inbox"),
     offset: z.number().int().min(0).default(0),
     /** Folder view: threads carrying this label (placement is ignored). */
     labelId: z.string().min(1).optional(),
@@ -298,6 +301,11 @@ export const moveThread = command(
       .set({
         placement,
         hiddenAt: null, // moving un-hides
+        // An explicit move ends any snooze — a snoozed thread parks in the inbox
+        // (placement 'inbox' + snoozedUntil), so "move to inbox" would otherwise
+        // no-op and leave it hidden in the Snoozed view; and archiving/junking a
+        // snoozed thread shouldn't let the cron wake it back.
+        snoozedUntil: null,
         // Explicit user decision: rules may never re-file this thread, and a
         // new reply returns it to the inbox. Records WHO for the "why is this
         // here?" sheet on shared mailboxes.
@@ -390,6 +398,7 @@ export const bulkMoveThreads = command(
       .set({
         placement,
         hiddenAt: null, // moving un-hides
+        snoozedUntil: null, // an explicit move ends any snooze (see moveThread)
         placementOrigin: "user",
         placementUserId: user?.id ?? null,
         placementRuleId: null,

@@ -20,6 +20,7 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import AlarmClockOffIcon from '@lucide/svelte/icons/alarm-clock-off';
+	import { errorMessage } from '$lib/utils/error-message';
 
 	let {
 		mailboxId,
@@ -104,7 +105,7 @@
 		toast.promise(req, {
 			loading: 'Snoozing…',
 			success: `Snoozed until ${fmt(until)}.`,
-			error: (e) => (e instanceof Error ? e.message : 'Could not snooze.')
+			error: (e) => (errorMessage(e, 'Could not snooze.'))
 		});
 		try {
 			await req;
@@ -127,7 +128,7 @@
 		toast.promise(req, {
 			loading: 'Moving to inbox…',
 			success: 'Back in your inbox.',
-			error: (e) => (e instanceof Error ? e.message : 'Could not unsnooze.')
+			error: (e) => (errorMessage(e, 'Could not unsnooze.'))
 		});
 		try {
 			await req;
@@ -219,17 +220,22 @@
 		<ul class="p-1">
 			{#each PRESETS as preset (preset.label)}
 				{@const when = parseWhen(preset.phrase)}
-				<li>
-					<button
-						type="button"
-						disabled={busy || !when}
-						onclick={() => when && snooze(when)}
-						class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
-					>
-						<span>{preset.label}</span>
-						{#if when}<span class="text-muted-foreground text-[11px] tabular-nums">{fmt(when)}</span>{/if}
-					</button>
-				</li>
+				<!-- Hide a preset whose time has already passed (e.g. "Later today" =
+				     tonight 6pm, once it's after 6pm) — snoozing to the past silently
+				     no-ops. Tomorrow/weekend/next week are always future. -->
+				{#if when && when.getTime() > Date.now()}
+					<li>
+						<button
+							type="button"
+							disabled={busy}
+							onclick={() => snooze(when)}
+							class="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
+						>
+							<span>{preset.label}</span>
+							<span class="text-muted-foreground text-[11px] tabular-nums">{fmt(when)}</span>
+						</button>
+					</li>
+				{/if}
 			{/each}
 		</ul>
 		{#if isMobile.current}

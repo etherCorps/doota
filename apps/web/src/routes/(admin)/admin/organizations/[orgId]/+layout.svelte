@@ -8,6 +8,10 @@
 
 	let { data, children } = $props();
 
+	// org.logo may hold a BIMI URL that 404s when no logo SVG is stored — fall
+	// back to the globe icon on load error instead of a broken-image slot.
+	let logoFailed = $state(false);
+
 	const STATUS_CHIP: Record<string, string> = {
 		pending_zone: 'pending',
 		pending_nameservers: 'pending',
@@ -38,8 +42,13 @@
 <div class="flex w-full flex-col gap-6 p-4 sm:p-6 md:p-8">
 	<div class="flex min-w-0 items-center gap-3">
 		<div class="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md">
-			{#if data.org.logo}
-				<img src={data.org.logo} alt="" class="size-full object-cover" />
+			{#if data.org.logo && !logoFailed}
+				<img
+					src={data.org.logo}
+					alt=""
+					class="size-full object-cover"
+					onerror={() => (logoFailed = true)}
+				/>
 			{:else}
 				<GlobeIcon class="size-5" />
 			{/if}

@@ -3,8 +3,8 @@
 	// Labeled optional date+time field (vacation card): an outline trigger button
 	// opens a popover (desktop) / drawer (mobile) with the shared NLP phrase input
 	// and DateTimeFields (calendar + half-hour slots) — the schedule-picker idiom.
-	// Value is epoch ms; null = unset. NLP hides on mobile, same as the other
-	// DateTimeFields parents (see the comment in date-time-fields.svelte).
+	// Value is epoch ms; null = unset. NLP shows on mobile too (schedule-picker is
+	// NLP-first there); the drawer body scrolls so the phrase input + calendar coexist.
 	import DateTimeFields from '$lib/components/mail/date-time-fields.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -92,29 +92,28 @@
 {/snippet}
 
 {#snippet body()}
-	{#if !isMobile.current}
-		<!-- Natural-language quick entry (desktop only, like the other parents). -->
-		<div class="border-b p-2">
-			<div class="relative">
-				<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
-				<Input
-					class="h-8 pl-7 text-xs pointer-coarse:text-base"
-					placeholder="Type a time — “next monday 9am”"
-					bind:value={nlp}
-					onkeydown={onNlpKey}
-				/>
-			</div>
-			{#if nlp.trim()}
-				<p class="text-muted-foreground mt-1 px-1 text-[11px]">
-					{#if nlpPreview}
-						→ {fmt(nlpPreview)} · press Enter
-					{:else}
-						Couldn’t read that time
-					{/if}
-				</p>
-			{/if}
+	<!-- Natural-language quick entry — shown on desktop and mobile (schedule-picker
+	     is NLP-first on touch). -->
+	<div class="border-b p-2">
+		<div class="relative">
+			<SparklesIcon class="text-brand pointer-events-none absolute top-2.5 left-2 size-3.5" />
+			<Input
+				class="h-8 pl-7 text-xs pointer-coarse:text-base"
+				placeholder="Type a time — “next monday 9am”"
+				bind:value={nlp}
+				onkeydown={onNlpKey}
+			/>
 		</div>
-	{/if}
+		{#if nlp.trim()}
+			<p class="text-muted-foreground mt-1 px-1 text-[11px]">
+				{#if nlpPreview}
+					→ {fmt(nlpPreview)} · press Enter
+				{:else}
+					Couldn’t read that time
+				{/if}
+			</p>
+		{/if}
+	</div>
 	<DateTimeFields date={cal} {time} {open} onDate={setDate} onTime={setTime} />
 	<div class="bg-popover sticky bottom-0 flex items-center gap-2 border-t p-2">
 		{#if value !== null}
