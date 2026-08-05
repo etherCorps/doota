@@ -17,8 +17,11 @@
 
 <CommandSearch bind:open={searchOpen} />
 
+<!-- iOS notch (viewport-fit=cover): pad the bar below the status bar and grow
+     its height by the same inset so the controls stay tappable; the blurred
+     background still extends up behind the notch. -->
 <header
-	class="bg-background/80 sticky top-0 z-10 flex h-14 items-center gap-3 border-b px-3 backdrop-blur md:px-4"
+	class="bg-background/80 sticky top-0 z-10 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 border-b px-3 pt-[env(safe-area-inset-top)] backdrop-blur md:px-4"
 >
 	<!-- Thumb-sized on touch (40px), back to the compact 32px once a pointer exists. -->
 	<Sidebar.Trigger
