@@ -11,6 +11,9 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as InputOTP from '$lib/components/ui/input-otp/index.js';
 	import { InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui/input-group';
@@ -24,6 +27,26 @@
 	let backupCodes = $state<string[]>([]);
 	let totpCode = $state('');
 	let totpLoading = $state(false);
+	let codesSaved = $state(false);
+	let codesConfirmed = $state(false);
+
+	// otpauth:// URIs parse fine with WHATWG URL (verified); regex is the
+	// belt-and-braces fallback if a runtime trips on the scheme.
+	const totpSecret = $derived.by(() => {
+		if (!totpUri) return '';
+		try {
+			return new URL(totpUri).searchParams.get('secret') ?? '';
+		} catch {
+			return /[?&]secret=([^&#]+)/i.exec(totpUri)?.[1] ?? '';
+		}
+	});
+	// Display-only grouping in 4-char blocks; copy always uses the raw secret.
+	const totpSecretDisplay = $derived(totpSecret.replace(/(.{4})/g, '$1 ').trim());
+
+	async function copySetupKey() {
+		await navigator.clipboard.writeText(totpSecret);
+		toast.success('Setup key copied to clipboard.');
+	}
 
 	async function enableTotp(e: SubmitEvent) {
 		e.preventDefault();
@@ -37,6 +60,8 @@
 		}
 		totpUri = res.totpURI;
 		backupCodes = res.backupCodes;
+		codesSaved = false;
+		codesConfirmed = false;
 	}
 
 	async function confirmTotp(e: SubmitEvent) {
@@ -55,6 +80,7 @@
 
 	async function copyBackupCodes() {
 		await navigator.clipboard.writeText(backupCodes.join('\n'));
+		codesSaved = true;
 		toast.success('Backup codes copied to clipboard.');
 	}
 
@@ -68,6 +94,7 @@
 		a.download = 'doota-backup-codes.txt';
 		a.click();
 		URL.revokeObjectURL(url);
+		codesSaved = true;
 	}
 </script>
 
@@ -109,6 +136,33 @@
 						Open your authenticator app (1Password, Authy, Google Authenticator) and scan this QR
 						code to add Doota.
 					</p>
+					<Collapsible.Root class="pt-1">
+						<Collapsible.Trigger
+							class="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2"
+						>
+							Can't scan the code?
+						</Collapsible.Trigger>
+						<Collapsible.Content class="space-y-1.5 pt-2">
+							<p class="text-muted-foreground text-xs">
+								Enter this setup key manually — Doota · {email}
+							</p>
+							<div class="flex items-center gap-1.5">
+								<span
+									class="bg-muted/30 select-all rounded-md border px-2 py-1 font-mono text-xs tracking-wide"
+								>
+									{totpSecretDisplay}
+								</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Copy setup key"
+									onclick={copySetupKey}
+								>
+									<CopyIcon />
+								</Button>
+							</div>
+						</Collapsible.Content>
+					</Collapsible.Root>
 				</div>
 			</div>
 
@@ -131,12 +185,33 @@
 						<DownloadIcon /> Download
 					</Button>
 				</div>
+				<div class="flex items-start gap-2 pt-1">
+					<Checkbox
+						id="totp-codes-saved"
+						bind:checked={codesConfirmed}
+						disabled={!codesSaved}
+						aria-describedby="totp-codes-saved-hint"
+					/>
+					<div class="grid gap-0.5">
+						<Label for="totp-codes-saved" class="text-sm font-normal">
+							I've saved my backup codes somewhere safe.
+						</Label>
+						{#if !codesSaved}
+							<p id="totp-codes-saved-hint" class="text-muted-foreground text-xs">
+								Copy or download them first.
+							</p>
+						{/if}
+					</div>
+				</div>
 			</div>
 
 			<!-- Step 3 — confirm -->
 			<form onsubmit={confirmTotp} class="space-y-3 border-t pt-4">
 				<p class="text-sm font-medium">3 · Enter the 6-digit code to finish</p>
-				<InputOTP.Root maxlength={6} bind:value={totpCode}>
+				{#if !codesConfirmed}
+					<p class="text-muted-foreground text-xs">Save your backup codes above to continue.</p>
+				{/if}
+				<InputOTP.Root maxlength={6} bind:value={totpCode} disabled={!codesConfirmed}>
 					{#snippet children({ cells })}
 						<InputOTP.Group>
 							{#each cells as cell (cell)}
@@ -145,7 +220,11 @@
 						</InputOTP.Group>
 					{/snippet}
 				</InputOTP.Root>
-				<Button type="submit" class="self-start" disabled={totpLoading || totpCode.length < 6}>
+				<Button
+					type="submit"
+					class="self-start"
+					disabled={totpLoading || totpCode.length < 6 || !codesConfirmed}
+				>
 					{#if totpLoading}<Spinner class="mr-1" />{/if}
 					Confirm &amp; enable
 				</Button>

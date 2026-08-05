@@ -30,7 +30,14 @@
             A few steps before you can access Doota. {doneCount} of {steps.length}
             done.
         </p>
-        <div class="bg-muted mt-1 h-1.5 w-full overflow-hidden rounded-full">
+        <div
+            class="bg-muted mt-1 h-1.5 w-full overflow-hidden rounded-full"
+            role="progressbar"
+            aria-label="Onboarding progress"
+            aria-valuemin={0}
+            aria-valuemax={steps.length}
+            aria-valuenow={doneCount}
+        >
             <div
                 class="bg-ok h-full rounded-full transition-all"
                 style="width:{steps.length
@@ -81,7 +88,9 @@
                 </span>
                 <div class="flex flex-col">
                     <span class="text-sm font-medium">{step.title}</span>
-                    <span class="text-muted-foreground text-xs">Locked</span>
+                    <span class="text-muted-foreground text-xs"
+                        >Locked — verify your email first</span
+                    >
                 </div>
             </div>
         {:else}
