@@ -1,19 +1,28 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
 	import FingerprintIcon from '@lucide/svelte/icons/fingerprint';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { invalidateAll } from '$app/navigation';
 	import { authClient } from '$lib/client/auth-client';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
-	let { passkeys }: { passkeys: { id: string; name: string | null }[] } = $props();
+	let {
+		passkeys
+	}: { passkeys: { id: string; name: string | null; createdAt?: Date | null }[] } = $props();
 
+	let showAdd = $state(false);
 	let passkeyName = $state('');
 	let passkeyLoading = $state(false);
+	let deletingId = $state<string | null>(null);
+
+	const shortDate = (date: Date) =>
+		date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 	async function addPasskey() {
 		passkeyLoading = true;
@@ -24,6 +33,7 @@
 				return;
 			}
 			passkeyName = '';
+			showAdd = false;
 			toast.success('Passkey added.');
 			await invalidateAll();
 		} catch (err) {
@@ -31,6 +41,18 @@
 		} finally {
 			passkeyLoading = false;
 		}
+	}
+
+	async function removePasskey(passkey: { id: string; name: string | null }) {
+		deletingId = passkey.id;
+		const { error } = await authClient.passkey.deletePasskey({ id: passkey.id });
+		deletingId = null;
+		if (error) {
+			toast.error(error.message ?? 'Could not delete passkey.');
+			return;
+		}
+		toast.success('Passkey deleted.');
+		await invalidateAll();
 	}
 </script>
 
@@ -45,26 +67,76 @@
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col gap-4">
 		{#if passkeys.length}
-			<ul class="flex flex-col gap-1 text-sm">
+			<ul class="flex flex-col gap-2 text-sm">
 				{#each passkeys as pk (pk.id)}
+					{@const pkName = pk.name ?? 'Unnamed passkey'}
 					<li class="flex items-center gap-2">
-						<FingerprintIcon class="text-muted-foreground size-3.5" />
-						{pk.name ?? 'Unnamed passkey'}
+						<FingerprintIcon class="text-muted-foreground size-3.5 shrink-0" />
+						<div class="min-w-0 flex-1">
+							<p class="truncate">{pkName}</p>
+							{#if pk.createdAt}
+								<p class="text-muted-foreground text-xs">Added {shortDate(pk.createdAt)}</p>
+							{/if}
+						</div>
+						<AlertDialog.Root>
+							<AlertDialog.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										size="icon"
+										variant="ghost"
+										class="text-destructive hover:text-destructive size-8"
+										title="Delete"
+										aria-label="Delete passkey {pkName}"
+										disabled={deletingId === pk.id}
+									>
+										{#if deletingId === pk.id}
+											<Spinner class="size-3.5" />
+										{:else}
+											<Trash2Icon class="size-3.5" />
+										{/if}
+									</Button>
+								{/snippet}
+							</AlertDialog.Trigger>
+							<AlertDialog.Content>
+								<AlertDialog.Header>
+									<AlertDialog.Title>Delete passkey '{pkName}'?</AlertDialog.Title>
+									<AlertDialog.Description>
+										You'll no longer be able to sign in with it.
+									</AlertDialog.Description>
+								</AlertDialog.Header>
+								<AlertDialog.Footer>
+									<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+									<AlertDialog.Action
+										onclick={() => removePasskey(pk)}
+										class="bg-destructive text-white hover:bg-destructive/90"
+									>
+										Delete
+									</AlertDialog.Action>
+								</AlertDialog.Footer>
+							</AlertDialog.Content>
+						</AlertDialog.Root>
 					</li>
 				{/each}
 			</ul>
 		{:else}
 			<p class="text-muted-foreground text-sm">No passkeys yet.</p>
 		{/if}
-		<div class="flex items-end gap-2">
-			<Field.Field class="flex-1">
-				<Field.Label>Passkey name (optional)</Field.Label>
-				<Input type="text" placeholder="e.g. MacBook Touch ID" bind:value={passkeyName} />
-			</Field.Field>
-			<Button variant="outline" onclick={addPasskey} disabled={passkeyLoading}>
-				{#if passkeyLoading}<Spinner class="mr-1" />{/if}
-				Add passkey
+		{#if showAdd}
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+				<Field.Field class="flex-1">
+					<Field.Label>Passkey name (optional)</Field.Label>
+					<Input type="text" placeholder="e.g. MacBook Touch ID" bind:value={passkeyName} />
+				</Field.Field>
+				<Button variant="outline" onclick={addPasskey} disabled={passkeyLoading}>
+					{#if passkeyLoading}<Spinner class="mr-1" />{/if}
+					Add passkey
+				</Button>
+			</div>
+		{:else}
+			<Button variant="outline" class="self-start" onclick={() => (showAdd = true)}>
+				Add passkey…
 			</Button>
-		</div>
+		{/if}
 	</Card.CardContent>
 </Card.Card>

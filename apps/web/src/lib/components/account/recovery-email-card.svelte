@@ -13,6 +13,7 @@
 		recoveryEmail,
 		recoveryEmailVerified
 	}: { recoveryEmail: string | null; recoveryEmailVerified: boolean } = $props();
+	let showForm = $state(false);
 </script>
 
 <Card.Card>
@@ -34,8 +35,8 @@
 	</Card.CardHeader>
 	<Card.CardContent class="flex flex-col gap-4">
 		{#if recoveryEmail}
-			<p class="text-sm">
-				<span class="font-mono">{recoveryEmail}</span>
+			<p class="min-w-0 text-sm">
+				<span class="font-mono break-all">{recoveryEmail}</span>
 				{#if !recoveryEmailVerified}
 					<span class="text-muted-foreground">— check that inbox for the confirmation link.</span>
 				{/if}
@@ -46,7 +47,11 @@
 				password.
 			</p>
 		{/if}
-		{#if !recoveryEmailVerified}
+		{#if !recoveryEmailVerified && !showForm}
+			<Button variant="outline" class="self-start" onclick={() => (showForm = true)}>
+				{recoveryEmail ? 'Change recovery email…' : 'Add recovery email…'}
+			</Button>
+		{:else if !recoveryEmailVerified}
 			<form {...setRecoveryEmail} class="flex flex-col gap-3">
 				<Field.Field>
 					<Field.Label>External recovery email</Field.Label>

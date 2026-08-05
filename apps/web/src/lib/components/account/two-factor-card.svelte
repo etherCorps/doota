@@ -18,6 +18,7 @@
 	import { renderSVG } from 'uqr';
 
 	let { enabled, email }: { enabled: boolean; email: string } = $props();
+	let showEnroll = $state(false);
 	let totpPassword = $state('');
 	let totpUri = $state('');
 	let backupCodes = $state<string[]>([]);
@@ -149,7 +150,7 @@
 					Confirm &amp; enable
 				</Button>
 			</form>
-		{:else}
+		{:else if showEnroll}
 			<form onsubmit={enableTotp} class="flex flex-col gap-3">
 				<Field.Field>
 					<Field.Label>Confirm your password</Field.Label>
@@ -171,6 +172,10 @@
 					Enable 2FA
 				</Button>
 			</form>
+		{:else}
+			<Button variant="outline" class="self-start" onclick={() => (showEnroll = true)}>
+				Enable two-factor…
+			</Button>
 		{/if}
 	</Card.CardContent>
 </Card.Card>
