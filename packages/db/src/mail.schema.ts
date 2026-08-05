@@ -403,6 +403,10 @@ export const label = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
+    // Labels are MAILBOX-scoped (privacy: folder names must not leak across
+    // mailboxes). Nullable only because SQLite ADD COLUMN can't be NOT NULL
+    // without a default — code treats it as required post-0045.
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     color: text("color"),
     // Folder nesting, max depth 2 (parent → child, no grandchildren) —
@@ -416,7 +420,7 @@ export const label = sqliteTable(
     notifyNewMail: integer("notify_new_mail", { mode: "boolean" }).default(true).notNull(),
     createdAt: now(),
   },
-  (t) => [uniqueIndex("label_org_name_uidx").on(t.orgId, t.name)],
+  (t) => [uniqueIndex("label_mailbox_name_uidx").on(t.mailboxId, t.name)],
 );
 
 /**

@@ -129,7 +129,6 @@ export async function handleRuleBackfill(db: Db, env: MailEnv, job: RuleBackfill
       removeLabelIds: outcome.removeLabelIds,
     };
     await applyRuleOutcome(db, {
-      orgId: rule.orgId,
       mailboxId: rule.mailboxId,
       threadId: message.threadId,
       outcome: filed,

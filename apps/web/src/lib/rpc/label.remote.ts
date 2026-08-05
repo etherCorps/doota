@@ -21,11 +21,11 @@ import {
 import { countUnreadByLabel } from "@doota/mail-core/read";
 
 /**
- * Folders (labels) rpc. `label` is org-scoped — the vocabulary is shared across
- * the org — while application (`thread_label`) is per (thread, mailbox). Any
- * mailbox GRANT in the org is enough to manage the shared folder list; thread
- * filing additionally requires a grant on that mailbox (same chokepoints as
- * thread.remote.ts, never a parallel permission path).
+ * Folders (labels) rpc. `label` is MAILBOX-scoped — folder names are private
+ * to their mailbox (a personal mailbox's folders must not leak to the rest of
+ * the org) — and application (`thread_label`) is per (thread, mailbox). A
+ * grant on the mailbox gates both the folder list and thread filing (same
+ * chokepoints as thread.remote.ts, never a parallel permission path).
  */
 
 async function grantOn(mailboxId: string) {
@@ -48,11 +48,11 @@ function rethrow(e: unknown): never {
   throw e;
 }
 
-/** Org folder tree + per-mailbox unread counts, one call for the sidebar. */
+/** Mailbox folder tree + unread counts, one call for the sidebar. */
 export const myFolders = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
-  const { box, user, db } = await grantOn(mailboxId);
+  const { user, db } = await grantOn(mailboxId);
   const [labels, unread, rules] = await Promise.all([
-    listLabels(db, box.orgId),
+    listLabels(db, mailboxId),
     countUnreadByLabel(db, { mailboxId, userId: user.id }),
     db.query.rule.findMany({
       where: and(eq(schema.rule.mailboxId, mailboxId), eq(schema.rule.enabled, true)),
@@ -95,7 +95,7 @@ export const createFolder = command(
   async ({ mailboxId, name, color, parentId }) => {
     const { box, db } = await grantOn(mailboxId);
     try {
-      const row = await createLabel(db, { orgId: box.orgId, name, color, parentId });
+      const row = await createLabel(db, { mailboxId: box.id, orgId: box.orgId, name, color, parentId });
       return { ok: true as const, id: row.id };
     } catch (e) {
       rethrow(e);
@@ -115,7 +115,7 @@ export const updateFolder = command(
   async ({ mailboxId, labelId, name, color, parentId, notifyNewMail }) => {
     const { box, db } = await grantOn(mailboxId);
     try {
-      await updateLabel(db, { orgId: box.orgId, labelId, name, color, parentId, notifyNewMail });
+      await updateLabel(db, { mailboxId: box.id, labelId, name, color, parentId, notifyNewMail });
       return { ok: true as const };
     } catch (e) {
       rethrow(e);
@@ -134,7 +134,7 @@ export const deleteFolder = command(
   async ({ mailboxId, labelId, moveContentsToLabelId }) => {
     const { box, db } = await grantOn(mailboxId);
     try {
-      await deleteLabel(db, { orgId: box.orgId, labelId, moveContentsToLabelId });
+      await deleteLabel(db, { mailboxId: box.id, labelId, moveContentsToLabelId });
       return { ok: true as const };
     } catch (e) {
       rethrow(e);
@@ -156,9 +156,9 @@ export const threadFolders = query(
 export const addThreadLabel = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), labelId: z.string().min(1) }),
   async ({ mailboxId, threadId, labelId }) => {
-    const { box, db } = await grantOn(mailboxId);
+    const { db } = await grantOn(mailboxId);
     try {
-      await applyLabel(db, { orgId: box.orgId, threadId, mailboxId, labelId });
+      await applyLabel(db, { threadId, mailboxId, labelId });
       return { ok: true as const };
     } catch (e) {
       rethrow(e);
@@ -184,10 +184,9 @@ export const moveToFolder = command(
     labelId: z.string().min(1).nullable(),
   }),
   async ({ mailboxId, threadId, labelId }) => {
-    const { box, user, db } = await grantOn(mailboxId);
+    const { user, db } = await grantOn(mailboxId);
     try {
       const snapshot = await moveThreadToFolder(db, {
-        orgId: box.orgId,
         threadId,
         mailboxId,
         labelId,

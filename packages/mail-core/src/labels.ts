@@ -10,10 +10,11 @@ type Db = DrizzleD1Database<typeof schema>;
  * Folders = labels (build guide, Phase 1). The schema is multi-membership
  * (`thread_label`); folder-LIKE behaviour lives in ONE action — moveToFolder
  * REPLACES a thread's labels — so relaxing it later is a UI change, not a
- * migration. `label` is org-scoped (shared vocabulary), application is per
- * (thread, mailbox). Placement stays system-only (inbox/archived/spam/trash).
- * Nesting caps at depth 2; deeper trees are where folder UIs become
- * unnavigable.
+ * migration. `label` is MAILBOX-scoped (privacy: folder names must not leak
+ * across mailboxes — a personal mailbox's folders are nobody else's business);
+ * application is per (thread, mailbox). Placement stays system-only
+ * (inbox/archived/spam/trash). Nesting caps at depth 2; deeper trees are where
+ * folder UIs become unnavigable.
  */
 
 export class LabelError extends Error {
@@ -26,31 +27,37 @@ export class LabelError extends Error {
   }
 }
 
-async function orgLabel(db: Db, orgId: string, labelId: string) {
+async function mailboxLabel(db: Db, mailboxId: string, labelId: string) {
   const row = await db.query.label.findFirst({
-    where: and(eq(schema.label.id, labelId), eq(schema.label.orgId, orgId)),
+    where: and(eq(schema.label.id, labelId), eq(schema.label.mailboxId, mailboxId)),
   });
   if (!row) throw new LabelError("Folder not found.", "not_found");
   return row;
 }
 
-export async function listLabels(db: Db, orgId: string) {
+export async function listLabels(db: Db, mailboxId: string) {
   return db.query.label.findMany({
-    where: eq(schema.label.orgId, orgId),
+    where: eq(schema.label.mailboxId, mailboxId),
     orderBy: asc(schema.label.name),
   });
 }
 
 export async function createLabel(
   db: Db,
-  input: { orgId: string; name: string; color?: string | null; parentId?: string | null },
+  input: {
+    mailboxId: string;
+    orgId: string; // denormalized org check, stored alongside mailboxId
+    name: string;
+    color?: string | null;
+    parentId?: string | null;
+  },
 ) {
   if (input.parentId) {
-    const parent = await orgLabel(db, input.orgId, input.parentId);
+    const parent = await mailboxLabel(db, input.mailboxId, input.parentId);
     if (parent.parentId) throw new LabelError("Folders nest at most two levels.", "depth");
   }
   const existing = await db.query.label.findFirst({
-    where: and(eq(schema.label.orgId, input.orgId), eq(schema.label.name, input.name)),
+    where: and(eq(schema.label.mailboxId, input.mailboxId), eq(schema.label.name, input.name)),
     columns: { id: true },
   });
   if (existing) throw new LabelError("A folder with that name already exists.", "duplicate");
@@ -58,6 +65,7 @@ export async function createLabel(
     .insert(mail.label)
     .values({
       orgId: input.orgId,
+      mailboxId: input.mailboxId,
       name: input.name,
       color: input.color ?? null,
       parentId: input.parentId ?? null,
@@ -69,7 +77,7 @@ export async function createLabel(
 export async function updateLabel(
   db: Db,
   input: {
-    orgId: string;
+    mailboxId: string;
     labelId: string;
     name?: string;
     color?: string | null;
@@ -77,11 +85,11 @@ export async function updateLabel(
     notifyNewMail?: boolean;
   },
 ) {
-  const current = await orgLabel(db, input.orgId, input.labelId);
+  const current = await mailboxLabel(db, input.mailboxId, input.labelId);
   const set: Record<string, unknown> = {};
   if (input.name !== undefined && input.name !== current.name) {
     const dupe = await db.query.label.findFirst({
-      where: and(eq(schema.label.orgId, input.orgId), eq(schema.label.name, input.name)),
+      where: and(eq(schema.label.mailboxId, input.mailboxId), eq(schema.label.name, input.name)),
       columns: { id: true },
     });
     if (dupe && dupe.id !== input.labelId)
@@ -93,10 +101,10 @@ export async function updateLabel(
   if (input.parentId !== undefined) {
     if (input.parentId === input.labelId) throw new LabelError("A folder can't contain itself.", "cycle");
     if (input.parentId) {
-      const parent = await orgLabel(db, input.orgId, input.parentId);
+      const parent = await mailboxLabel(db, input.mailboxId, input.parentId);
       if (parent.parentId) throw new LabelError("Folders nest at most two levels.", "depth");
       const child = await db.query.label.findFirst({
-        where: and(eq(schema.label.orgId, input.orgId), eq(schema.label.parentId, input.labelId)),
+        where: and(eq(schema.label.mailboxId, input.mailboxId), eq(schema.label.parentId, input.labelId)),
         columns: { id: true },
       });
       if (child) throw new LabelError("Folders nest at most two levels.", "depth");
@@ -107,7 +115,7 @@ export async function updateLabel(
   const [row] = await db
     .update(mail.label)
     .set(set)
-    .where(and(eq(mail.label.id, input.labelId), eq(mail.label.orgId, input.orgId)))
+    .where(and(eq(mail.label.id, input.labelId), eq(mail.label.mailboxId, input.mailboxId)))
     .returning();
   return row;
 }
@@ -120,38 +128,43 @@ export async function updateLabel(
  */
 export async function deleteLabel(
   db: Db,
-  input: { orgId: string; labelId: string; moveContentsToLabelId?: string | null },
+  input: { mailboxId: string; labelId: string; moveContentsToLabelId?: string | null },
 ): Promise<void> {
-  const current = await orgLabel(db, input.orgId, input.labelId);
+  const current = await mailboxLabel(db, input.mailboxId, input.labelId);
   const target = input.moveContentsToLabelId
-    ? await orgLabel(db, input.orgId, input.moveContentsToLabelId)
+    ? await mailboxLabel(db, input.mailboxId, input.moveContentsToLabelId)
     : null;
   if (target) {
+    // A mailbox-scoped label's rows are all in its own mailbox already.
     const rows = await db
-      .select({ threadId: mail.threadLabel.threadId, mailboxId: mail.threadLabel.mailboxId })
+      .select({ threadId: mail.threadLabel.threadId })
       .from(mail.threadLabel)
       .where(eq(mail.threadLabel.labelId, input.labelId));
     if (rows.length) {
       await db
         .insert(mail.threadLabel)
-        .values(rows.map((r) => ({ threadId: r.threadId, mailboxId: r.mailboxId, labelId: target.id })))
+        .values(rows.map((r) => ({ threadId: r.threadId, mailboxId: input.mailboxId, labelId: target.id })))
         .onConflictDoNothing();
     }
   }
   await db
     .update(mail.label)
     .set({ parentId: current.parentId ?? null })
-    .where(and(eq(mail.label.orgId, input.orgId), eq(mail.label.parentId, input.labelId)));
+    .where(and(eq(mail.label.mailboxId, input.mailboxId), eq(mail.label.parentId, input.labelId)));
   // thread_label rows cascade via FK on label delete.
-  await db.delete(mail.label).where(and(eq(mail.label.id, input.labelId), eq(mail.label.orgId, input.orgId)));
+  await db
+    .delete(mail.label)
+    .where(and(eq(mail.label.id, input.labelId), eq(mail.label.mailboxId, input.mailboxId)));
 }
 
 /** "Add label" — the additive, cross-cutting action (multi-membership). */
 export async function applyLabel(
   db: Db,
-  input: { orgId: string; threadId: string; mailboxId: string; labelId: string },
+  input: { threadId: string; mailboxId: string; labelId: string },
 ): Promise<void> {
-  await orgLabel(db, input.orgId, input.labelId);
+  // Ownership check closes the cross-mailbox apply hole: a label id from
+  // another mailbox must read as nonexistent, not get silently attached.
+  await mailboxLabel(db, input.mailboxId, input.labelId);
   await db
     .insert(mail.threadLabel)
     .values({ threadId: input.threadId, mailboxId: input.mailboxId, labelId: input.labelId })
@@ -196,14 +209,13 @@ export type MoveSnapshot = {
 export async function moveThreadToFolder(
   db: Db,
   input: {
-    orgId: string;
     threadId: string;
     mailboxId: string;
     labelId: string | null;
     userId: string;
   },
 ): Promise<MoveSnapshot> {
-  if (input.labelId) await orgLabel(db, input.orgId, input.labelId);
+  if (input.labelId) await mailboxLabel(db, input.mailboxId, input.labelId);
   const state = await db.query.threadState.findFirst({
     where: and(
       eq(schema.threadState.threadId, input.threadId),

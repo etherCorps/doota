@@ -344,7 +344,6 @@ async function placementStage(ctx: InboundStageCtx): Promise<void> {
   });
   if (out) {
     await applyRuleOutcome(ctx.db, {
-      orgId: ctx.job.orgId,
       mailboxId: ctx.job.resolvedMailboxId,
       threadId: ctx.threadId!,
       outcome: out,

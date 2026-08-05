@@ -12,6 +12,7 @@ import { materializeMessage, materializeDelivery, type ParsedMessage } from "@do
 import {
   validateConditions,
   validateActions,
+  validateActionLabels,
   RuleValidationError,
   evalRules,
   applyRuleOutcome,
@@ -36,9 +37,10 @@ async function seed() {
   await db.insert(schema.user).values({
     id: "u1", name: "u1", email: "u1@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date(),
   });
-  await db.insert(schema.mailbox).values({
-    id: "mb1", orgId: ORG, localPart: "alice", address: "alice@acme.com", isActive: true, isPersonal: true,
-  });
+  await db.insert(schema.mailbox).values([
+    { id: "mb1", orgId: ORG, localPart: "alice", address: "alice@acme.com", isActive: true, isPersonal: true },
+    { id: "mb2", orgId: ORG, localPart: "bob", address: "bob@acme.com", isActive: true, isPersonal: true },
+  ]);
   await db.insert(schema.mailboxAccess).values({ id: "acc1", userId: "u1", mailboxId: "mb1", canSend: true });
 }
 
@@ -149,12 +151,12 @@ describe("evaluation semantics", () => {
 describe("user placement wins", () => {
   it("a rule never moves a user-placed thread, but still labels it", async () => {
     const { threadId } = await deliverPlain();
-    const label = await createLabel(db, { orgId: ORG, name: "A" });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
     await db.update(schema.threadState)
       .set({ placement: "inbox", placementOrigin: "user", placementUserId: "u1" })
       .where(eq(schema.threadState.threadId, threadId));
     const moved = await applyRuleOutcome(db, {
-      orgId: ORG, mailboxId: "mb1", threadId,
+      mailboxId: "mb1", threadId,
       outcome: {
         matchedRuleIds: ["r1"], moveToLabelId: label.id, winningMoveRuleId: "r1", ignoredMoves: [],
         junk: false, junkRuleId: null, markRead: false, markFlagged: false, snoozeMinutes: null,
@@ -170,12 +172,12 @@ describe("user placement wins", () => {
 
   it("the backfill override moves even user-placed threads", async () => {
     const { threadId } = await deliverPlain();
-    const label = await createLabel(db, { orgId: ORG, name: "A" });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
     await db.update(schema.threadState)
       .set({ placement: "inbox", placementOrigin: "user", placementUserId: "u1" })
       .where(eq(schema.threadState.threadId, threadId));
     const moved = await applyRuleOutcome(db, {
-      orgId: ORG, mailboxId: "mb1", threadId, overrideUserPlacement: true,
+      mailboxId: "mb1", threadId, overrideUserPlacement: true,
       outcome: {
         matchedRuleIds: ["r1"], moveToLabelId: label.id, winningMoveRuleId: "r1", ignoredMoves: [],
         junk: false, junkRuleId: null, markRead: false, markFlagged: false, snoozeMinutes: null,
@@ -184,6 +186,33 @@ describe("user placement wins", () => {
     });
     expect(moved.moved).toBe(true);
     expect((await state(threadId))).toMatchObject({ placement: "archived", placementOrigin: "rule", placementRuleId: "r1" });
+  });
+});
+
+describe("mailbox-scoped label references", () => {
+  it("rule save validation rejects a labelId from another mailbox", async () => {
+    const foreign = await createLabel(db, { mailboxId: "mb2", orgId: ORG, name: "Foreign" });
+    await expect(
+      validateActionLabels(db, "mb1", [{ type: "moveTo", labelId: foreign.id }]),
+    ).rejects.toThrow(RuleValidationError);
+    const own = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Mine" });
+    await expect(
+      validateActionLabels(db, "mb1", [{ type: "addLabel", labelId: own.id }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("the engine backstop skips a foreign label instead of attaching it", async () => {
+    const { threadId } = await deliverPlain();
+    const foreign = await createLabel(db, { mailboxId: "mb2", orgId: ORG, name: "Foreign" });
+    await applyRuleOutcome(db, {
+      mailboxId: "mb1", threadId,
+      outcome: {
+        matchedRuleIds: ["r1"], moveToLabelId: null, winningMoveRuleId: null, ignoredMoves: [],
+        junk: false, junkRuleId: null, markRead: false, markFlagged: false, snoozeMinutes: null,
+        addLabelIds: [foreign.id], removeLabelIds: [], forwards: [],
+      },
+    });
+    expect((await labelsForThreads(db, { mailboxId: "mb1", threadIds: [threadId] })).get(threadId)).toBeUndefined();
   });
 });
 
@@ -240,7 +269,7 @@ async function runStages(pm: ParsedMessage, pmHeaders: { key: string; value: str
 
 describe("ingest integration (stage pipeline)", () => {
   it("a moveTo rule files new mail ON ARRIVAL — never inbox first — and stamps rule origin", async () => {
-    const label = await createLabel(db, { orgId: ORG, name: "Invoices" });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Invoices" });
     await db.update(schema.label).set({ notifyNewMail: false }).where(eq(schema.label.id, label.id));
     await db.insert(schema.rule).values({
       id: "r1", orgId: ORG, mailboxId: "mb1", name: "acme invoices", createdByUserId: "u1", position: 0,
@@ -328,7 +357,7 @@ describe("backfill — resumable, idempotent, tier-gated", () => {
 
   it("processes in batches via the cursor, resumes, finishes, and is idempotent — zero R2 for a tier-1 rule", async () => {
     await seedMailboxMail(120);
-    const label = await createLabel(db, { orgId: ORG, name: "Invoices" });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Invoices" });
     await db.insert(schema.rule).values({
       id: "rb", orgId: ORG, mailboxId: "mb1", name: "bf", createdByUserId: "u1", position: 0,
       conditions: JSON.stringify({ op: "AND", conditions: [{ field: "from", operator: "contains", value: "@acme-corp.com" }] }),
@@ -383,7 +412,7 @@ describe("backfill — resumable, idempotent, tier-gated", () => {
     await materializeDelivery(db, {
       orgId: ORG, ...ids, mailboxId: "mb1", role: "to", viaAliasId: null, subaddressTag: null, sentAt: pm.sentAt,
     });
-    const label = await createLabel(db, { orgId: ORG, name: "Magic" });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Magic" });
     await db.insert(schema.rule).values({
       id: "rbody", orgId: ORG, mailboxId: "mb1", name: "body", createdByUserId: "u1", position: 0,
       conditions: JSON.stringify({ op: "AND", conditions: [{ field: "body", operator: "contains", value: "magic word" }] }),

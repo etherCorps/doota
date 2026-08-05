@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
@@ -130,6 +130,27 @@ export function validateActions(input: unknown): RuleAction[] {
     }
   }
   return out;
+}
+
+/** Labels are mailbox-scoped: every labelId a rule references must belong to
+ * the rule's own mailbox, or the rule would leak/act on another mailbox's
+ * folders. Enforced at rule save; applyRuleOutcome's ownership skip is only
+ * the backstop for labels deleted/moved after save. */
+export async function validateActionLabels(
+  db: Db,
+  mailboxId: string,
+  actions: RuleAction[],
+): Promise<void> {
+  const labelIds = actions
+    .filter((action): action is Extract<RuleAction, { labelId: string }> => "labelId" in action)
+    .map((action) => action.labelId);
+  if (!labelIds.length) return;
+  const owned = await db
+    .select({ id: mail.label.id })
+    .from(mail.label)
+    .where(and(inArray(mail.label.id, labelIds), eq(mail.label.mailboxId, mailboxId)));
+  if (owned.length !== new Set(labelIds).size)
+    throw new RuleValidationError("That folder belongs to a different mailbox.");
 }
 
 /** What one message looks like to the evaluator (tier 1 in memory; body lazy). */
@@ -341,7 +362,6 @@ export async function evalRules(
 export async function applyRuleOutcome(
   db: Db,
   input: {
-    orgId: string;
     mailboxId: string;
     threadId: string;
     outcome: RuleOutcome;
@@ -354,11 +374,13 @@ export async function applyRuleOutcome(
   if (out.moveToLabelId) addIds.add(out.moveToLabelId);
   for (const labelId of addIds) {
     try {
-      await applyLabel(db, { orgId: input.orgId, threadId: input.threadId, mailboxId: input.mailboxId, labelId });
+      await applyLabel(db, { threadId: input.threadId, mailboxId: input.mailboxId, labelId });
     } catch (e) {
       if (e instanceof LabelError) {
+        // Deleted label OR a label belonging to another mailbox (applyLabel's
+        // ownership backstop) — skip, never fail the delivery.
         log.warn("rules.label_missing", { labelId, threadId: input.threadId });
-        continue; // rule references a deleted label — skip, never fail the delivery
+        continue;
       }
       throw e;
     }

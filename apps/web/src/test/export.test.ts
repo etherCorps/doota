@@ -92,8 +92,8 @@ describe("mailbox export", () => {
   it("batches with a D1 cursor, resumes, finishes, carries X-Doota state + sidecar", async () => {
     const first = await deliver(0, true);
     for (let i = 1; i < 60; i++) await deliver(i);
-    const label = await createLabel(db, { orgId: ORG, name: "Invoices" });
-    await applyLabel(db, { orgId: ORG, threadId: first.threadId, mailboxId: "mb1", labelId: label.id });
+    const label = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Invoices" });
+    await applyLabel(db, { threadId: first.threadId, mailboxId: "mb1", labelId: label.id });
     await db.update(schema.threadState)
       .set({ assigneeUserId: "u1", snoozedUntil: new Date("2027-01-01T00:00:00Z") })
       .where(eq(schema.threadState.threadId, first.threadId));

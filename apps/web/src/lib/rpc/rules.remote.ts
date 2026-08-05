@@ -9,6 +9,7 @@ import { getAuthz } from "$lib/server/authz.js";
 import {
   validateConditions,
   validateActions,
+  validateActionLabels,
   RuleValidationError,
   type RuleAction,
 } from "@doota/mail-core/rules";
@@ -54,6 +55,15 @@ function filedLabelIds(actions: RuleAction[]): string[] {
     .map((a) => a.labelId);
 }
 
+async function assertLabelsInMailbox(db: App.Locals["db"], mailboxId: string, actions: RuleAction[]) {
+  try {
+    await validateActionLabels(db, mailboxId, actions);
+  } catch (e) {
+    if (e instanceof RuleValidationError) error(400, e.message);
+    throw e;
+  }
+}
+
 export const mailboxRules = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
   const { db } = await grantOn(mailboxId);
   const rows = await db.query.rule.findMany({
@@ -87,6 +97,7 @@ export const createRule = command(
   async (input) => {
     const { box, user, db } = await grantOn(input.mailboxId);
     const { conditions, actions } = validated(input.conditions, input.actions);
+    await assertLabelsInMailbox(db, input.mailboxId, actions);
     const [{ maxPos }] = await db
       .select({ maxPos: max(mail.rule.position) })
       .from(mail.rule)
@@ -112,7 +123,7 @@ export const createRule = command(
       await db
         .update(mail.label)
         .set({ notifyNewMail: false })
-        .where(and(eq(mail.label.orgId, box.orgId), eq(mail.label.id, fed[0])));
+        .where(and(eq(mail.label.mailboxId, input.mailboxId), eq(mail.label.id, fed[0])));
     }
     return { ok: true as const, id: row.id };
   },
@@ -143,6 +154,7 @@ export const updateRule = command(
         input.conditions ?? JSON.parse(existing.conditions),
         input.actions ?? JSON.parse(existing.actions),
       );
+      await assertLabelsInMailbox(db, input.mailboxId, actions);
       set.conditions = JSON.stringify(conditions);
       set.actions = JSON.stringify(actions);
     }

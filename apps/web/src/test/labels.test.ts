@@ -16,6 +16,7 @@ import {
   moveThreadToFolder,
   undoMoveToFolder,
   labelsForThreads,
+  listLabels,
   LabelError,
 } from "@doota/mail-core/labels";
 import { listThreads, countUnread, countUnreadByLabel } from "@doota/mail-core/read";
@@ -35,9 +36,10 @@ async function seed() {
   await db.insert(schema.user).values({
     id: "u1", name: "u1", email: "u1@x.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date(),
   });
-  await db.insert(schema.mailbox).values({
-    id: "mb1", orgId: ORG, localPart: "alice", address: "alice@acme.com", isActive: true, isPersonal: true,
-  });
+  await db.insert(schema.mailbox).values([
+    { id: "mb1", orgId: ORG, localPart: "alice", address: "alice@acme.com", isActive: true, isPersonal: true },
+    { id: "mb2", orgId: ORG, localPart: "bob", address: "bob@acme.com", isActive: true, isPersonal: true },
+  ]);
   await db.insert(schema.mailboxAccess).values({ id: "acc1", userId: "u1", mailboxId: "mb1", canSend: true });
 }
 
@@ -75,37 +77,37 @@ beforeEach(async () => {
 
 describe("folder tree (depth 2)", () => {
   it("rejects a third nesting level, on create and on reparent", async () => {
-    const root = await createLabel(db, { orgId: ORG, name: "Clients" });
-    const child = await createLabel(db, { orgId: ORG, name: "Acme", parentId: root.id });
-    await expect(createLabel(db, { orgId: ORG, name: "Deep", parentId: child.id })).rejects.toThrow(LabelError);
+    const root = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Clients" });
+    const child = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Acme", parentId: root.id });
+    await expect(createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Deep", parentId: child.id })).rejects.toThrow(LabelError);
     // Reparent that would create depth 3: a parent-with-children can't gain a parent…
-    const other = await createLabel(db, { orgId: ORG, name: "Other" });
+    const other = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Other" });
     await expect(
-      updateLabel(db, { orgId: ORG, labelId: root.id, parentId: other.id }),
+      updateLabel(db, { mailboxId: "mb1", labelId: root.id, parentId: other.id }),
     ).rejects.toThrow(LabelError);
     // …and a valid reparent works.
-    const moved = await updateLabel(db, { orgId: ORG, labelId: child.id, parentId: other.id });
+    const moved = await updateLabel(db, { mailboxId: "mb1", labelId: child.id, parentId: other.id });
     expect(moved.parentId).toBe(other.id);
   });
 
   it("rejects duplicate names and self-parenting", async () => {
-    const a = await createLabel(db, { orgId: ORG, name: "Invoices" });
-    await expect(createLabel(db, { orgId: ORG, name: "Invoices" })).rejects.toThrow(LabelError);
-    await expect(updateLabel(db, { orgId: ORG, labelId: a.id, parentId: a.id })).rejects.toThrow(LabelError);
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Invoices" });
+    await expect(createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Invoices" })).rejects.toThrow(LabelError);
+    await expect(updateLabel(db, { mailboxId: "mb1", labelId: a.id, parentId: a.id })).rejects.toThrow(LabelError);
   });
 });
 
 describe("move replaces, add label doesn't", () => {
   it("moveToFolder leaves exactly one folder; addLabel is additive", async () => {
     const { threadId } = await deliver();
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    const b = await createLabel(db, { orgId: ORG, name: "B" });
-    await applyLabel(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: a.id });
-    await applyLabel(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: b.id });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    const b = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "B" });
+    await applyLabel(db, { threadId, mailboxId: "mb1", labelId: a.id });
+    await applyLabel(db, { threadId, mailboxId: "mb1", labelId: b.id });
     expect((await labelsForThreads(db, { mailboxId: "mb1", threadIds: [threadId] })).get(threadId)).toHaveLength(2);
 
-    const c = await createLabel(db, { orgId: ORG, name: "C" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: c.id, userId: "u1" });
+    const c = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "C" });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: c.id, userId: "u1" });
     const after = (await labelsForThreads(db, { mailboxId: "mb1", threadIds: [threadId] })).get(threadId)!;
     expect(after.map((l) => l.labelId)).toEqual([c.id]);
     // Filing IS moving: the thread left the inbox and is stamped user-origin.
@@ -116,17 +118,17 @@ describe("move replaces, add label doesn't", () => {
 
   it("moveToFolder(null) returns the thread to Inbox and clears its folders", async () => {
     const { threadId } = await deliver();
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: null, userId: "u1" });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: null, userId: "u1" });
     expect((await labelsForThreads(db, { mailboxId: "mb1", threadIds: [threadId] })).get(threadId)).toBeUndefined();
     expect((await state(threadId)).placement).toBe("inbox");
   });
 
   it("the folder view lists the filed thread; undo restores labels AND origin", async () => {
     const { threadId } = await deliver();
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    const snap = await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    const snap = await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
     const view = await listThreads(db, { mailboxId: "mb1", placement: "inbox", labelId: a.id, ck });
     expect(view.map((t) => t.threadId)).toEqual([threadId]);
 
@@ -141,25 +143,25 @@ describe("move replaces, add label doesn't", () => {
 describe("delete folder never loses mail", () => {
   it("re-files contents to the target folder when given", async () => {
     const { threadId } = await deliver();
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    const b = await createLabel(db, { orgId: ORG, name: "B" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
-    await deleteLabel(db, { orgId: ORG, labelId: a.id, moveContentsToLabelId: b.id });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    const b = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "B" });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
+    await deleteLabel(db, { mailboxId: "mb1", labelId: a.id, moveContentsToLabelId: b.id });
     const labels = (await labelsForThreads(db, { mailboxId: "mb1", threadIds: [threadId] })).get(threadId)!;
     expect(labels.map((l) => l.labelId)).toEqual([b.id]);
   });
 
   it("without a target the thread keeps its placement — never hidden or deleted", async () => {
     const { threadId } = await deliver();
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
-    await deleteLabel(db, { orgId: ORG, labelId: a.id });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
+    await deleteLabel(db, { mailboxId: "mb1", labelId: a.id });
     expect((await state(threadId)).placement).toBe("archived");
     expect((await state(threadId)).hiddenAt).toBeNull();
     // Children hop up to root instead of dangling.
-    const root = await createLabel(db, { orgId: ORG, name: "R" });
-    const kid = await createLabel(db, { orgId: ORG, name: "K", parentId: root.id });
-    await deleteLabel(db, { orgId: ORG, labelId: root.id });
+    const root = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "R" });
+    const kid = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "K", parentId: root.id });
+    await deleteLabel(db, { mailboxId: "mb1", labelId: root.id });
     expect((await db.query.label.findFirst({ where: eq(schema.label.id, kid.id) })).parentId).toBeNull();
   });
 });
@@ -219,16 +221,43 @@ describe("resurfacing by placement_origin (Phase 1 core)", () => {
 describe("per-folder notification setting", () => {
   it("a thread filed only into notify-off folders is silent; mixed folders notify", async () => {
     const { threadId } = await deliver();
-    const quiet = await createLabel(db, { orgId: ORG, name: "Quiet" });
-    await updateLabel(db, { orgId: ORG, labelId: quiet.id, notifyNewMail: false });
-    await moveThreadToFolder(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: quiet.id, userId: "u1" });
+    const quiet = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Quiet" });
+    await updateLabel(db, { mailboxId: "mb1", labelId: quiet.id, notifyNewMail: false });
+    await moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: quiet.id, userId: "u1" });
     await recordNewMail(db, { orgId: ORG, mailboxId: "mb1", threadId });
     expect(await db.query.notification.findMany({ where: eq(schema.notification.threadId, threadId) })).toHaveLength(0);
 
-    const loud = await createLabel(db, { orgId: ORG, name: "Loud" });
-    await applyLabel(db, { orgId: ORG, threadId, mailboxId: "mb1", labelId: loud.id });
+    const loud = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Loud" });
+    await applyLabel(db, { threadId, mailboxId: "mb1", labelId: loud.id });
     await recordNewMail(db, { orgId: ORG, mailboxId: "mb1", threadId });
     expect((await db.query.notification.findMany({ where: eq(schema.notification.threadId, threadId) })).length).toBe(1);
+  });
+});
+
+describe("mailbox scoping (privacy)", () => {
+  it("listLabels shows a mailbox only its own folders — the org's other mailbox sees nothing", async () => {
+    await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Private" });
+    expect((await listLabels(db, "mb1")).map((l) => l.name)).toEqual(["Private"]);
+    expect(await listLabels(db, "mb2")).toHaveLength(0);
+  });
+
+  it("applyLabel rejects a label from another mailbox", async () => {
+    const { threadId } = await deliver();
+    const foreign = await createLabel(db, { mailboxId: "mb2", orgId: ORG, name: "Foreign" });
+    await expect(
+      applyLabel(db, { threadId, mailboxId: "mb1", labelId: foreign.id }),
+    ).rejects.toThrow(LabelError);
+    await expect(
+      moveThreadToFolder(db, { threadId, mailboxId: "mb1", labelId: foreign.id, userId: "u1" }),
+    ).rejects.toThrow(LabelError);
+  });
+
+  it("duplicate names are allowed across mailboxes, rejected within one", async () => {
+    await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Receipts" });
+    await createLabel(db, { mailboxId: "mb2", orgId: ORG, name: "Receipts" });
+    await expect(
+      createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "Receipts" }),
+    ).rejects.toThrow(LabelError);
   });
 });
 
@@ -238,8 +267,8 @@ describe("unread counts", () => {
     const t2 = await deliver();
     expect(await countUnread(db, { mailboxId: "mb1", userId: "u1" })).toBe(2);
 
-    const a = await createLabel(db, { orgId: ORG, name: "A" });
-    await moveThreadToFolder(db, { orgId: ORG, threadId: t1.threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
+    const a = await createLabel(db, { mailboxId: "mb1", orgId: ORG, name: "A" });
+    await moveThreadToFolder(db, { threadId: t1.threadId, mailboxId: "mb1", labelId: a.id, userId: "u1" });
     expect(await countUnread(db, { mailboxId: "mb1", userId: "u1" })).toBe(1);
     const byLabel = await countUnreadByLabel(db, { mailboxId: "mb1", userId: "u1" });
     expect(byLabel.get(a.id)).toBe(1);

@@ -131,23 +131,24 @@ describe("change_log triggers — Thread (thread_state)", () => {
 });
 
 describe("change_log triggers — Mailbox (label / thread_label)", () => {
-  it("label create/rename fans out one row per mailbox in the org", async () => {
-    await db.insert(schema.label).values({ id: "lb1", orgId: ORG, name: "Invoices" });
-    for (const mb of ["mb_a", "mb_b"]) {
-      const rows = (await rowsFor(db, mb)).filter((r: any) => r.type === "Mailbox");
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ action: "created", objectId: "lb1" });
-    }
+  it("label create/rename logs only to the label's own mailbox (never the org's others)", async () => {
+    await db.insert(schema.label).values({ id: "lb1", orgId: ORG, mailboxId: "mb_a", name: "Invoices" });
+    const rows = (await rowsFor(db, "mb_a")).filter((r: any) => r.type === "Mailbox");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "created", objectId: "lb1" });
+    // Privacy: the other mailbox never even learns the folder exists.
+    expect((await rowsFor(db, "mb_b")).filter((r: any) => r.type === "Mailbox")).toHaveLength(0);
     await db.update(schema.label).set({ name: "Bills" }).where(eq(schema.label.id, "lb1"));
     const updated = (await rowsFor(db, "mb_a")).filter(
       (r: any) => r.type === "Mailbox" && r.action === "updated",
     );
     expect(updated).toHaveLength(1);
+    expect((await rowsFor(db, "mb_b")).filter((r: any) => r.type === "Mailbox")).toHaveLength(0);
   });
 
   it("thread_label apply/remove logs against the one mailbox it belongs to", async () => {
     const { threadId } = await deliverOne();
-    await db.insert(schema.label).values({ id: "lb1", orgId: ORG, name: "Invoices" });
+    await db.insert(schema.label).values({ id: "lb1", orgId: ORG, mailboxId: "mb_a", name: "Invoices" });
     const baseline = (await rowsFor(db, "mb_b")).length;
     await db.insert(schema.threadLabel).values({ id: "tl1", threadId, mailboxId: "mb_a", labelId: "lb1" });
     const applied = (await rowsFor(db, "mb_a")).filter(
