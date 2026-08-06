@@ -29,9 +29,10 @@
 		onJump: (id: string, isLast: boolean) => void;
 	} = $props();
 
-	// Click → scan → then act. Same gate as the tile: clean downloads straight
-	// through, matched/skipped/error fail OPEN behind a confirm.
-	function onOpen(e: MouseEvent, att: { id: string; filename: string | null }) {
+	// Click → scan → then act. Same gate as the tile: viewable types open the
+	// sandboxed viewer after the verdict, everything else downloads; clean goes
+	// straight through, matched/skipped/error fail OPEN behind a confirm.
+	function onOpen(e: MouseEvent, att: { id: string; filename: string | null; contentType: string | null }) {
 		e.preventDefault();
 		void openAttachment(att, () => {
 			const anchor = document.createElement('a');

@@ -7,6 +7,7 @@
 import type { ScanVerdict } from "@doota/mail-core/attachment-scan";
 import { scanAttachment } from "$lib/client/scan-attachment";
 import { attachmentScanState } from "$lib/rpc/attachment.remote";
+import { isViewable } from "$lib/client/attachment-viewable";
 
 export type TileVerdict = "checking" | ScanVerdict | null;
 
@@ -26,6 +27,23 @@ export const confirm = $state({
 	verdict: "error" as ScanVerdict,
 	proceed: () => {},
 });
+
+// The one sandboxed viewer, rendered once by <AttachmentGate/>. Only ever opened
+// from inside the gate AFTER a verdict (see openAttachment) — there is no code
+// path that reaches it without a scan having run.
+export const viewer = $state({
+	open: false,
+	id: "",
+	filename: "",
+	contentType: "",
+});
+
+function openViewer(att: { id: string; filename: string | null; contentType: string | null }) {
+	viewer.id = att.id;
+	viewer.filename = att.filename ?? "file";
+	viewer.contentType = att.contentType ?? "";
+	viewer.open = true;
+}
 
 const CONFIRM_COPY: Record<Exclude<ScanVerdict, "clean">, string> = {
 	matched: "This file matched a known threat pattern.",
@@ -54,21 +72,31 @@ async function ensureVerdict(attachmentId: string): Promise<ScanVerdict> {
 }
 
 /**
- * Gate an attachment open/download. `download` performs the real action (an
- * anchor click, a lightbox). Returns after the action is taken or the confirm is
- * dismissed. Fail-open: a non-clean verdict asks first, then proceeds if allowed.
+ * Gate an attachment open/download. Scans first (persisted verdict wins), then
+ * acts. For a VIEWABLE type (image/text/pdf/svg — see isViewable) the action is
+ * to OPEN THE SANDBOXED VIEWER; otherwise it downloads via `download`. Either way
+ * the act happens only AFTER a verdict: a `clean` verdict proceeds straight
+ * through; a non-clean verdict fails OPEN behind the confirm. The viewer is
+ * unreachable without a verdict — that is the security invariant.
+ *
+ * `att.contentType` decides viewable-vs-download. Callers that pass no
+ * contentType (or a non-viewable one) get the download-after-gate behavior, so
+ * existing download-only call sites are unchanged.
  */
 export async function openAttachment(
-	att: { id: string; filename: string | null },
+	att: { id: string; filename: string | null; contentType?: string | null },
 	download: () => void,
 ): Promise<void> {
+	const act = isViewable(att.contentType)
+		? () => openViewer({ id: att.id, filename: att.filename, contentType: att.contentType ?? null })
+		: download;
 	const verdict = await ensureVerdict(att.id);
 	if (verdict === "clean") {
-		download();
+		act();
 		return;
 	}
 	confirm.filename = att.filename ?? "file";
 	confirm.verdict = verdict;
-	confirm.proceed = download;
+	confirm.proceed = act;
 	confirm.open = true;
 }

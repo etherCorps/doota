@@ -26,16 +26,12 @@
 	let {
 		att,
 		variant,
-		tone = 'default',
-		onpreview
+		tone = 'default'
 	}: {
 		att: Att;
 		variant: 'grid' | 'row' | 'strip';
 		/** inverse = inside the dark outbound bubble */
 		tone?: 'default' | 'inverse';
-		/** Image tiles: click opens a lightbox instead of downloading (the
-		 * lightbox carries its own Download). Non-images always download. */
-		onpreview?: (att: Att) => void;
 	} = $props();
 
 
@@ -88,20 +84,15 @@
 	let pdfLoading = $state(false);
 	// Broken image/video sources fall back to the typed tile.
 	let broken = $state(false);
-	const previews = $derived(!!onpreview && kind === 'image' && !broken);
 
-	// Click → scan → then act. Images open the lightbox (served inline, safe).
-	// Every download routes through the gate: a clean verdict downloads straight
-	// through; matched/skipped/error fail OPEN behind a confirm. The <a download>
-	// stays the real action so JS-off / middle-click still work — we only
-	// intercept the primary click to interpose the check.
+	// Click → scan → then act. Every click routes through the gate: it scans, then
+	// for a VIEWABLE type (image/text/pdf/svg) opens the in-house SANDBOXED viewer,
+	// otherwise downloads. A clean verdict proceeds straight through; matched/
+	// skipped/error fail OPEN behind a confirm. The viewer never opens without a
+	// verdict. The <a download> stays the real fallback so JS-off / middle-click
+	// still work — we only intercept the primary click to interpose the check.
 	const verdict = $derived(tileVerdict(att.id));
 	function onTileClick(e: MouseEvent) {
-		if (previews) {
-			e.preventDefault();
-			onpreview?.(att);
-			return;
-		}
 		e.preventDefault();
 		void openAttachment(att, () => triggerDownload());
 	}

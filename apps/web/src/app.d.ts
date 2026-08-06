@@ -67,8 +67,6 @@ declare global {
     interface PageState {
       /** Shallow-routed "view entire message" overlay (clipped-message notice). */
       fullMessage?: { id: string; images: boolean };
-      /** Shallow-routed image-attachment lightbox. */
-      lightbox?: { id: string; name: string };
       /** iOS full-screen composer as a history entry (back-gesture closes it). */
       compose?: true;
     }

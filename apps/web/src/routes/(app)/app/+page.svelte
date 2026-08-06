@@ -31,6 +31,7 @@
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import AttachmentGate from '$lib/components/mail/attachment-gate.svelte';
+	import AttachmentViewer from '$lib/components/mail/attachment-viewer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import MoveSheet from '$lib/components/mail/move-sheet.svelte';
 	import RulesSheet from '$lib/components/mail/rules-sheet.svelte';
@@ -126,7 +127,6 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import Rows3Icon from '@lucide/svelte/icons/rows-3';
-	import DownloadIcon from '@lucide/svelte/icons/download';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -1312,10 +1312,6 @@
 	// "[Message clipped] View entire message" — shallow-routed (back button/swipe
 	// closes it): desktop gets a dialog, mobile the drawer, both loading the
 	// raised-cap ?full=1 render in the same sandboxed frame.
-	// Image-attachment lightbox — shallow-routed like the full-message view.
-	function openLightbox(att: { id: string; filename: string | null }) {
-		pushState('', { lightbox: { id: att.id, name: att.filename ?? 'image' } });
-	}
 
 	function openFullView(id: string, images: boolean) {
 		pushState('', { fullMessage: { id, images } });
@@ -2812,7 +2808,7 @@
 														<!-- Capped like WhatsApp media: tiles never span the full bubble. -->
 														<div class="mt-2 grid gap-1.5 {media.length === 1 ? 'max-w-[min(15rem,calc(80cqi-2.5rem))] grid-cols-1' : 'max-w-[min(20rem,calc(80cqi-2.5rem))] grid-cols-2'}">
 															{#each media as attachment (attachment.id)}
-																<AttachmentTile att={attachment} variant="grid" onpreview={openLightbox} />
+																<AttachmentTile att={attachment} variant="grid" />
 															{/each}
 														</div>
 													{/if}
@@ -2948,7 +2944,7 @@
 												{#if shown.length}
 													<div class="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto overscroll-x-contain">
 														{#each shown as attachment (attachment.id)}
-															<AttachmentTile att={attachment} variant="strip" onpreview={openLightbox} />
+															<AttachmentTile att={attachment} variant="strip" />
 														{/each}
 													</div>
 												{/if}
@@ -3138,30 +3134,6 @@
 
 <!-- "[Message clipped] → View entire message" — shallow-routed full render
      (?full=1, raised caps, same sandbox). Back button/gesture closes it. -->
-<!-- Image-attachment lightbox — shallow-routed; Esc/backdrop (Dialog) or Back closes. -->
-{#if page.state.lightbox}
-	{@const img = page.state.lightbox}
-	<Dialog.Root open={true} onOpenChange={(open) => { if (!open) history.back(); }}>
-		<Dialog.Content class="w-auto max-w-[94vw] border-0 bg-transparent p-0 shadow-none" showCloseButton={false}>
-			<Dialog.Header class="sr-only"><Dialog.Title>{img.name}</Dialog.Title></Dialog.Header>
-			<img
-				src={`/api/attachments/${img.id}`}
-				alt={img.name}
-				class="max-h-[86vh] max-w-full rounded-lg object-contain"
-			/>
-			<div class="mt-2 flex items-center justify-between gap-3 px-1">
-				<span class="truncate text-xs font-medium text-white/90">{img.name}</span>
-				<a
-					href={`/api/attachments/${img.id}`}
-					download={img.name}
-					class="focus-visible:ring-ring/50 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white outline-none backdrop-blur transition-colors hover:bg-white/20 focus-visible:ring-2"
-				>
-					<DownloadIcon class="size-3.5" /> Download
-				</a>
-			</div>
-		</Dialog.Content>
-	</Dialog.Root>
-{/if}
 
 <!-- Contact card for the sender tapped in the thread header (Drawer/Dialog). -->
 {#if contactCardTarget}
@@ -3197,3 +3169,7 @@
 
 <!-- One confirm dialog behind the attachment open/download gate (scan then act). -->
 <AttachmentGate />
+
+<!-- One sandboxed viewer for viewable attachments — only ever opened by the gate
+     after a scan verdict (see attachment-gate.svelte.ts openAttachment). -->
+<AttachmentViewer />
