@@ -9,8 +9,12 @@
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
+	import ShieldQuestionIcon from '@lucide/svelte/icons/shield-question';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import { senderName, senderEmail, fmtTime, isImage, fileExt, fmtSize } from '$lib/mail/format';
+	import { openAttachment, tileVerdict } from '$lib/client/attachment-gate.svelte';
 
 	type Group = { day: string; entries: { msg: MessageDTO; atts: MessageDTO['attachments'] }[] };
 
@@ -24,6 +28,19 @@
 		/** Jump to a message in the conversation (id + whether it's the newest). */
 		onJump: (id: string, isLast: boolean) => void;
 	} = $props();
+
+	// Click → scan → then act. Same gate as the tile: clean downloads straight
+	// through, matched/skipped/error fail OPEN behind a confirm.
+	function onOpen(e: MouseEvent, att: { id: string; filename: string | null }) {
+		e.preventDefault();
+		void openAttachment(att, () => {
+			const anchor = document.createElement('a');
+			anchor.href = resolve('/api/attachments/[id]', { id: att.id });
+			anchor.download = att.filename ?? 'file';
+			anchor.rel = 'noopener';
+			anchor.click();
+		});
+	}
 
 	// Type-tinted icon tile for non-image files (PDF reads red, archives amber, …).
 	function fileTile(att: { contentType: string | null }) {
@@ -61,9 +78,11 @@
 				<div class="space-y-1">
 					{#each atts as att (att.id)}
 						{@const tile = fileTile(att)}
+						{@const verdict = tileVerdict(att.id)}
 						<a
 							href={resolve('/api/attachments/[id]', { id: att.id })}
 							download={att.filename ?? 'file'}
+							onclick={(e) => onOpen(e, att)}
 							class="group hover:bg-muted/60 focus-visible:ring-ring/50 flex items-center gap-2.5 rounded-lg p-1 transition-colors outline-none focus-visible:ring-2"
 						>
 							<span class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border {isImage(att) ? 'bg-muted' : tile.cls}">
@@ -75,7 +94,18 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate text-sm font-medium">{att.filename ?? 'file'}</span>
-								<span class="text-faint block text-[11px]">{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
+								<span class="text-faint flex items-center gap-1.5 text-[11px]">
+									<span>{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
+									{#if verdict === 'checking'}
+										<span class="border-muted-foreground/40 border-t-muted-foreground size-2.5 animate-spin rounded-full border motion-reduce:animate-none" title="Checking…"></span>
+									{:else if verdict === 'clean'}
+										<span class="text-muted-foreground inline-flex items-center gap-0.5" title="Checked against known threat patterns"><CheckIcon class="size-3" /> Checked</span>
+									{:else if verdict === 'matched'}
+										<span class="text-destructive inline-flex items-center gap-0.5" title="Matched a known threat pattern"><ShieldAlertIcon class="size-3" /> Matched</span>
+									{:else if verdict === 'skipped' || verdict === 'error'}
+										<span class="text-warn inline-flex items-center gap-0.5" title="Couldn't check against known threat patterns"><ShieldQuestionIcon class="size-3" /> Couldn't check</span>
+									{/if}
+								</span>
 							</span>
 							<DownloadIcon class="text-muted-foreground pointer-coarse:opacity-100 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
 						</a>

@@ -30,6 +30,7 @@
 	import MailFrame from '$lib/components/mail/mail-frame.svelte';
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
+	import AttachmentGate from '$lib/components/mail/attachment-gate.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import MoveSheet from '$lib/components/mail/move-sheet.svelte';
 	import RulesSheet from '$lib/components/mail/rules-sheet.svelte';
@@ -3193,3 +3194,6 @@
 		</Dialog.Root>
 	{/if}
 {/if}
+
+<!-- One confirm dialog behind the attachment open/download gate (scan then act). -->
+<AttachmentGate />
