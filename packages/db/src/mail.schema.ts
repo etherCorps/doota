@@ -597,6 +597,16 @@ export const attachment = sqliteTable(
     // cid-referenced by the body → hidden from the attachment list (shown inline).
     // Computed at ingest so the read path doesn't need the HTML body.
     inline: integer("inline", { mode: "boolean" }).default(false).notNull(),
+    // Client-side scan result (Phase D). Shared on the (deduped) attachment row so
+    // one teammate's scan is visible to everyone — nobody quietly misses a warning.
+    // The verdict is ADVISORY (client-reported): a display signal, NEVER an
+    // authorization input. `clean | matched | skipped | error` — fail-closed:
+    // a timeout/oversize/crash records skipped/error, never clean.
+    sha256: text("sha256"),
+    scanVerdict: text("scan_verdict"),
+    scanRule: text("scan_rule"), // the matched rule name, when matched
+    scannedAt: integer("scanned_at", { mode: "timestamp_ms" }),
+    scannerVersion: text("scanner_version"), // engine + ruleset version
   },
   (t) => [index("attachment_message_idx").on(t.messageId)],
 );

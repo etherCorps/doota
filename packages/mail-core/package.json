@@ -5,6 +5,8 @@
   "type": "module",
   "//": "The mail pipeline: inbound parse/materialize, outbound submission/provider send, drafts, collab, cron sweeps, crypto. Consumed by apps/web and the workers/* (mail-in, mail-jobs) via subpath imports (@doota/mail-core/inbound-worker, ...). The SvelteKit-coupled dev bridge stays in apps/web.",
   "exports": {
+    "./attachment-scan": "./src/attachment-scan.ts",
+    "./attachment-scan-rules": "./src/attachment-scan-rules.ts",
     "./bounce": "./src/bounce.ts",
     "./calendar": "./src/calendar.ts",
     "./change-log": "./src/change-log.ts",

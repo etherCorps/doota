@@ -197,6 +197,9 @@ importers:
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.2
       harper.js:
         specifier: ^2.4.0
         version: 2.4.0
@@ -264,6 +267,9 @@ importers:
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
+      '@virustotal/yara-x':
+        specifier: 1.19.0
+        version: 1.19.0
       auth:
         specifier: ~1.6.25
         version: 1.6.25(901137358a7f155f25179af213b40dc3)
@@ -3136,6 +3142,9 @@ packages:
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
+
+  '@virustotal/yara-x@1.19.0':
+    resolution: {integrity: sha512-yCVb8hLVYB6Yb6uFLmndDZL12/O1C28knNFSzarmKupMt+dLQwr5FjsA26mBDY0bBbPT6GkUGMe2bzXIVNM/oQ==}
 
   '@vitest/expect@4.1.8':
     resolution: {integrity: sha512-h3nDO677RDLEGlBxyQ5CW8RlMThSKSRLUePLOx09gNIWRL40edgA1GCZSZgf1W55MFAG6/Sw14KeaAnqv0NKdQ==}
@@ -8334,6 +8343,8 @@ snapshots:
     dependencies:
       '@types/node': 22.20.1
     optional: true
+
+  '@virustotal/yara-x@1.19.0': {}
 
   '@vitest/expect@4.1.8':
     dependencies:

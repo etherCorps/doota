@@ -351,6 +351,13 @@
       "when": 1785865500000,
       "tag": "0049_org_require_2fa",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1785866000000,
+      "tag": "0050_attachment_scan",
+      "breakpoints": true
     }
   ]
 }
