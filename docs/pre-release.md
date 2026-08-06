@@ -89,6 +89,18 @@ non-secret var in each `wrangler.jsonc` `vars` block so config is reproducible.
 Track remaining dashboard-only vars and migrate them in. See memory
 `cloudflare-vars-deploy-wipe`.
 
+### 0.45 Break-glass — clear an org's 2FA mandate
+
+Org-wide 2FA enforcement (`docs/2fa.md`) can lock out an owner who enables it and
+then loses their 2FA device. Recovery codes issued at enrollment are the first
+line; if those are gone, an operator clears the mandate directly in D1:
+
+```
+wrangler d1 execute doota --remote --command "UPDATE org_mail_settings SET require_2fa = 0, require_2fa_from = NULL WHERE org_id = '<org-id>';"
+```
+
+Full procedure and rationale (including the API-key exemption): `docs/2fa.md`.
+
 ### 0.5 Infrastructure (IaC + provisioning prereqs)
 
 Each Worker's `wrangler.jsonc` is the **declarative source of truth for bindings**

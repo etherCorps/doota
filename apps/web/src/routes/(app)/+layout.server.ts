@@ -22,5 +22,8 @@ export const load = async ({ locals, platform }) => {
       role: user.role ?? "member",
       image: user.image ?? null,
     },
+    // Set by hooks.server.ts when this member's org now requires 2FA and they're
+    // still inside the grace window — drives the nudge banner (docs/2fa.md).
+    enroll2faBy: locals.enroll2faBy ?? null,
   };
 };

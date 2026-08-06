@@ -364,6 +364,53 @@ export const setOrgRemoteContent = command(
   },
 );
 
+/** Read the org's 2FA mandate: whether it's on and the grace deadline (ms). */
+export const orgRequire2fa = query(z.string().min(1), async (orgId) => {
+  const user = requireActor();
+  if (user.role !== "superadmin") {
+    const adminOf = (await getAuthz()).orgAdminOf;
+    if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
+  }
+  const row = await getRequestEvent().locals.db.query.orgMailSettings.findFirst({
+    where: eq(schema.orgMailSettings.orgId, orgId),
+    columns: { require2fa: true, require2faFrom: true },
+  });
+  return {
+    required: row?.require2fa ?? false,
+    /** Grace deadline (ms) — before it members are prompted; after it, blocked. */
+    from: row?.require2faFrom ? row.require2faFrom.getTime() : null,
+  };
+});
+
+// Existing members need time to enroll — enabling never locks out instantly.
+const REQUIRE_2FA_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Toggle the org-wide 2FA mandate (owner/admin only). Enabling sets a 7-day
+ * grace deadline so existing members are prompted first, then blocked at the
+ * guard — flipping to instant lockout would be a support incident. Disabling
+ * clears the deadline. API keys are exempt by construction (docs/2fa.md).
+ */
+export const setOrgRequire2fa = command(
+  z.object({ orgId: z.string().min(1), required: z.boolean() }),
+  async ({ orgId, required }) => {
+    const user = requireActor();
+    if (user.role !== "superadmin") {
+      const adminOf = (await getAuthz()).orgAdminOf;
+      if (!adminOf.includes(orgId)) error(403, "You don't manage this organization");
+    }
+    const from = required ? new Date(Date.now() + REQUIRE_2FA_GRACE_MS) : null;
+    await getRequestEvent()
+      .locals.db.insert(schema.orgMailSettings)
+      .values({ orgId, require2fa: required, require2faFrom: from })
+      .onConflictDoUpdate({
+        target: schema.orgMailSettings.orgId,
+        set: { require2fa: required, require2faFrom: from },
+      });
+    return { required, from: from ? from.getTime() : null };
+  },
+);
+
 /**
  * Every DNS record in the org's Cloudflare zone — the apex and all subdomains —
  * for the operator's full view of what's published. Superadmin only; fetched

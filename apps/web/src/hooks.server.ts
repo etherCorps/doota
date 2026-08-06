@@ -11,6 +11,7 @@ import {
   markOnboarded,
   notifyOnboardingComplete,
   onboardingHome,
+  orgTwoFactorGate,
 } from "$lib/server/onboarding.js";
 import { initLogLevel } from "@doota/mail-core/log";
 
@@ -63,14 +64,24 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     const inOnboarding = p.startsWith("/onboarding");
 
     if (!bypass) {
+      // Org-wide 2FA mandate (Phase C): a member of a require_2fa org past the
+      // grace deadline must enroll TOTP too. Only checked when 2FA is off — free
+      // for everyone already enrolled. `grace` sets a soft flag for a UI nudge;
+      // `block` reopens onboarding just like an elevated security debt.
+      const orgGate = user.twoFactorEnabled
+        ? ({ kind: "none" } as const)
+        : await orgTwoFactorGate(db, user, session.session.activeOrganizationId);
+      if (orgGate.kind === "grace") event.locals.enroll2faBy = orgGate.deadline;
+      const mustEnroll2fa = orgGate.kind === "block";
+
       // Security mandate: an admin/superadmin whose session says 2FA is off can
       // be signed in with bare credentials — even if already onboarded, they go
       // back through the secure-account step before anything else is reachable.
-      if (user.onboardedAt && !hasSecurityDebt(user)) {
+      if (user.onboardedAt && !hasSecurityDebt(user) && !mustEnroll2fa) {
         // Fast path: finished. Don't let them wander back into the flow.
         if (inOnboarding) redirect(302, onboardingHome(user.role));
       } else {
-        const status = await getOnboardingStatus(db, user);
+        const status = await getOnboardingStatus(db, user, mustEnroll2fa);
         if (status.complete) {
           await markOnboarded(auth, user.id);
           // First completion only (the 2FA-reopen path re-enters here with

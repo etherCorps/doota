@@ -10,6 +10,8 @@
 	import ComposePanel from '$lib/components/mail/compose-panel.svelte';
 	import ShortcutsDialog from '$lib/components/app/shortcuts-dialog.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
+	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
+	import XIcon from '@lucide/svelte/icons/x';
 	import { onMount, untrack } from 'svelte';
 	import { pushState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -53,6 +55,22 @@
 			}
 		});
 	});
+
+	// Org 2FA grace nudge — shown when this member's org now requires 2FA and
+	// they're still inside the grace window (deadline ms from hooks.server.ts).
+	// Dismissible per session so it stops nagging after they've seen it.
+	let enroll2faDismissed = $state(false);
+	const enroll2faBy = $derived(data.enroll2faBy as number | null);
+	const enroll2faDeadline = $derived(
+		enroll2faBy ? new Date(enroll2faBy).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''
+	);
+	onMount(() => {
+		if (sessionStorage.getItem('doota:enroll2fa-dismissed')) enroll2faDismissed = true;
+	});
+	function dismissEnroll2fa() {
+		enroll2faDismissed = true;
+		sessionStorage.setItem('doota:enroll2fa-dismissed', '1');
+	}
 
 	// Global keyboard help — opened by `?` or the palette's "Keyboard shortcuts".
 	let shortcutsOpen = $state(false);
@@ -100,6 +118,24 @@
 				</Button>
 			{/snippet}
 		</TopBar>
+		{#if enroll2faBy && !enroll2faDismissed}
+			<div class="border-warn/40 bg-warn/10 text-foreground flex items-start gap-2 border-b px-4 py-2 text-sm">
+				<ShieldAlertIcon class="text-warn mt-0.5 size-4 shrink-0" />
+				<p class="min-w-0 flex-1">
+					Your organization now requires two-factor authentication. Enable it by
+					<span class="font-medium">{enroll2faDeadline}</span> —
+					<a href="/account/security" class="text-brand underline underline-offset-2">set it up now</a>.
+				</p>
+				<button
+					type="button"
+					onclick={dismissEnroll2fa}
+					aria-label="Dismiss"
+					class="text-muted-foreground hover:text-foreground -m-1 shrink-0 rounded-md p-1"
+				>
+					<XIcon class="size-4" />
+				</button>
+			</div>
+		{/if}
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and contains itself
 		     (panes scroll internally), but document-flow pages like /account scroll here.
 		     overscroll-contain: no iOS rubber-band bleeding to the document.

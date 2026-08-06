@@ -344,6 +344,13 @@
       "when": 1785865000000,
       "tag": "0048_thread_pin",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1785865500000,
+      "tag": "0049_org_require_2fa",
+      "breakpoints": true
     }
   ]
 }

@@ -50,6 +50,60 @@ export function hasSecurityDebt(user: SessionUser): boolean {
   return isElevatedRole(user.role) && !user.twoFactorEnabled;
 }
 
+export type OrgTwoFactorGate =
+  | { kind: "none" }
+  | { kind: "grace"; deadline: number } // required, but the grace window is open
+  | { kind: "block" }; // deadline passed, TOTP still off → block interactive access
+
+/**
+ * Org-wide 2FA mandate check (Phase C), evaluated per request in the guard for
+ * users who have NOT enrolled TOTP. Resolves the user's active org (the session
+ * value, else their first mailbox's org, else their first membership) and reads
+ * its mandate. `block` past the grace deadline; `grace` before it (the UI nudges
+ * but access continues). Cheap: only called when twoFactorEnabled is false, and
+ * a no-op the moment the user enrolls. API keys never reach here (they bypass
+ * the interactive guard), so they're exempt by construction.
+ */
+export async function orgTwoFactorGate(
+  db: DrizzleD1Database<typeof schema>,
+  user: SessionUser,
+  activeOrganizationId?: string | null,
+): Promise<OrgTwoFactorGate> {
+  if (user.twoFactorEnabled) return { kind: "none" };
+
+  let orgId = activeOrganizationId ?? null;
+  if (!orgId) {
+    const access = await db.query.mailboxAccess.findFirst({
+      where: eq(schema.mailboxAccess.userId, user.id),
+      columns: { mailboxId: true },
+    });
+    if (access) {
+      const box = await db.query.mailbox.findFirst({
+        where: eq(schema.mailbox.id, access.mailboxId),
+        columns: { orgId: true },
+      });
+      orgId = box?.orgId ?? null;
+    }
+  }
+  if (!orgId) {
+    const membership = await db.query.member.findFirst({
+      where: eq(schema.member.userId, user.id),
+      columns: { organizationId: true },
+    });
+    orgId = membership?.organizationId ?? null;
+  }
+  if (!orgId) return { kind: "none" };
+
+  const settings = await db.query.orgMailSettings.findFirst({
+    where: eq(schema.orgMailSettings.orgId, orgId),
+    columns: { require2fa: true, require2faFrom: true },
+  });
+  if (!settings?.require2fa) return { kind: "none" };
+  // The toggle always writes a future deadline; a missing one enforces now.
+  const deadline = settings.require2faFrom?.getTime() ?? Date.now();
+  return Date.now() >= deadline ? { kind: "block" } : { kind: "grace", deadline };
+}
+
 const HOME_BY_ROLE: Record<string, string> = { superadmin: "/admin" };
 export function onboardingHome(role?: string | null): string {
   return HOME_BY_ROLE[role ?? ""] ?? "/app";
@@ -71,10 +125,14 @@ const DONE: OnboardingStatus = { steps: [], complete: true, nextStep: null };
 export async function getOnboardingStatus(
   db: DrizzleD1Database<typeof schema>,
   user: SessionUser,
+  /** Org-2FA mandate past its grace deadline (Phase C): a plain member must
+   * enroll TOTP too, so reopen secure-account for them like an elevated debt. */
+  mustEnroll2fa = false,
 ): Promise<OnboardingStatus> {
-  // Onboarded users normally skip re-derivation — EXCEPT an elevated account
-  // with security debt: the 2FA+passkey mandate reopens secure-account for them.
-  if (user.onboardedAt && !hasSecurityDebt(user)) return DONE;
+  // Onboarded users normally skip re-derivation — EXCEPT an account owing a
+  // security factor: elevated (2FA+passkey) or org-mandated 2FA reopens it.
+  const mustSecure = hasSecurityDebt(user) || mustEnroll2fa;
+  if (user.onboardedAt && !mustSecure) return DONE;
 
   const role = user.role ?? "member";
   const isElevated = isElevatedRole(role);
@@ -96,7 +154,8 @@ export async function getOnboardingStatus(
   // BOTH factors are mandatory for elevated roles. Passkey-only is not enough:
   // password sign-in never consults passkeys, so an admin with a passkey but no
   // TOTP could be logged in with bare credentials — that exact hole shipped once.
-  const secured = !!fresh?.twoFactorEnabled && passkeys > 0;
+  // An org-2FA member owes ONLY TOTP (the mandate is "require 2FA", not a passkey).
+  const secured = !!fresh?.twoFactorEnabled && (isElevated ? passkeys > 0 : true);
   const steps: OnboardingStep[] = [];
 
   // The super-admin onboards the first mail domain here: at genesis no domain is
@@ -139,12 +198,13 @@ export async function getOnboardingStatus(
     });
   }
 
-  if (isElevated) {
+  if (isElevated || mustEnroll2fa) {
     steps.push({
       id: "secure-account",
       title: "Secure your account",
-      description:
-        "Admin accounts require both two-factor authentication and a passkey.",
+      description: isElevated
+        ? "Admin accounts require both two-factor authentication and a passkey."
+        : "Your organization requires two-factor authentication.",
       done: secured,
     });
   }

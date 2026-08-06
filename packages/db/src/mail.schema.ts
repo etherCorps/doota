@@ -63,6 +63,14 @@ export const orgMailSettings = sqliteTable("org_mail_settings", {
   // the body route) — for privacy-strict orgs.
   remoteContentMode: text("remote_content_mode").default("block").notNull(), // block | allow
   remoteContentLocked: integer("remote_content_locked", { mode: "boolean" }).default(false).notNull(),
+  // Org-wide 2FA mandate (Phase C). When set, every interactive member must have
+  // TOTP enrolled — enforced in the request guard, not the UI. `require_2fa_from`
+  // is the grace deadline: before it members are prompted, after it unenrolled
+  // sessions are blocked. Flipping this to instant-lockout would be a support
+  // incident, so enabling always sets a future deadline. API keys are exempt by
+  // construction (they never hit the interactive guard) — see docs/2fa.md.
+  require2fa: integer("require_2fa", { mode: "boolean" }).default(false).notNull(),
+  require2faFrom: integer("require_2fa_from", { mode: "timestamp_ms" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .$onUpdate(() => new Date())
