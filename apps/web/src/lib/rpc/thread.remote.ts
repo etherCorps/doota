@@ -2,7 +2,7 @@
 import { query, command, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, isNotNull, count } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { can } from "@doota/db/can";
@@ -161,6 +161,33 @@ export const mailboxThreads = query(
       userId: locals.user!.id,
       assignedTo,
       labelId,
+    });
+  },
+);
+
+/**
+ * The pinned threads of a view — a SEPARATE small list (partial index), merged
+ * atop the main list client-side. Not folded into the main sort, so the list
+ * index's backward-scan-to-LIMIT is preserved.
+ */
+export const mailboxThreadsPinned = query(
+  z.object({
+    mailboxId: z.string().min(1),
+    placement: z.enum(VIEW_PLACEMENTS).catch("inbox"),
+    labelId: z.string().min(1).optional(),
+  }),
+  async ({ mailboxId, placement, labelId }) => {
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const { locals } = getRequestEvent();
+    return listThreads(locals.db, {
+      mailboxId,
+      placement,
+      ck: await contentKey(),
+      includeCollab: hasGrant,
+      userId: locals.user!.id,
+      assignedTo,
+      labelId,
+      pinnedOnly: true,
     });
   },
 );
@@ -534,6 +561,31 @@ export const starThread = command(
         and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)),
       );
     return { ok: true as const };
+  },
+);
+
+/** Max pins per mailbox — keeps the pinned-list query (and its partial index) a
+ * small set the client cheaply merges atop the main list. Enforced HERE, not
+ * just in the UI. */
+const MAX_PINS = 10;
+
+export const pinThread = command(
+  z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), pinned: z.boolean() }),
+  async ({ mailboxId, threadId, pinned }) => {
+    await assertThreadGrant(mailboxId, threadId);
+    const { locals } = getRequestEvent();
+    if (pinned) {
+      const [{ count: pinnedCount }] = await locals.db
+        .select({ count: count() })
+        .from(mail.threadState)
+        .where(and(eq(mail.threadState.mailboxId, mailboxId), isNotNull(mail.threadState.pinnedAt)));
+      if (pinnedCount >= MAX_PINS) error(409, `You can pin up to ${MAX_PINS} conversations per mailbox.`);
+    }
+    await locals.db
+      .update(mail.threadState)
+      .set({ pinnedAt: pinned ? new Date() : null })
+      .where(and(eq(mail.threadState.threadId, threadId), eq(mail.threadState.mailboxId, mailboxId)));
+    return { ok: true as const, pinned };
   },
 );
 

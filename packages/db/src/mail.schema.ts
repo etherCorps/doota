@@ -331,6 +331,12 @@ export const threadState = sqliteTable(
     // resurfaces or notifies. Per-user mute, if ever needed, is a new table
     // alongside thread_read — additive, no rewrite.
     muted: integer("muted", { mode: "boolean" }).default(false).notNull(),
+    // Pin (Phase B): shared across the mailbox, like is_starred. Pinned threads
+    // sort to the top of any list containing them. Orthogonal to placement —
+    // survives archive/move, never cleared on a placement change. Queried as a
+    // separate small list (the partial index below), NOT a tiebreaker on the
+    // list sort, so thread_state_list_idx's backward-scan-to-LIMIT is preserved.
+    pinnedAt: integer("pinned_at", { mode: "timestamp_ms" }),
     createdAt: now(),
   },
   (t) => [
@@ -352,6 +358,11 @@ export const threadState = sqliteTable(
     index("thread_state_snoozed_idx")
       .on(t.snoozedUntil)
       .where(sql`${t.snoozedUntil} is not null`),
+    // Pin: partial index over only the (capped ~10) pinned set per mailbox —
+    // serves the separate pinned-list query without touching the list index.
+    index("thread_state_pinned_idx")
+      .on(t.mailboxId, t.pinnedAt)
+      .where(sql`${t.pinnedAt} is not null`),
   ],
 );
 

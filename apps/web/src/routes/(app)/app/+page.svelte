@@ -53,10 +53,12 @@
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import {
 		mailboxThreads,
+		mailboxThreadsPinned,
 		openThread,
 		markThreadRead,
 		moveThread,
 		starThread,
+		pinThread,
 		mailboxMembers,
 		assignThread,
 		editNoteById,
@@ -103,6 +105,8 @@
 	import ReplyIcon from '@lucide/svelte/icons/reply';
 	import ReplyAllIcon from '@lucide/svelte/icons/reply-all';
 	import StarIcon from '@lucide/svelte/icons/star';
+	import PinIcon from '@lucide/svelte/icons/pin';
+	import PinOffIcon from '@lucide/svelte/icons/pin-off';
 	import AlarmClockIcon from '@lucide/svelte/icons/alarm-clock';
 	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -335,6 +339,17 @@
 	// or folder changes. Common actions patch `items` in place (no refetch/flash).
 	const PAGE = 30;
 	let items = $state<ThreadSummary[]>([]);
+	// Pins are a SEPARATE small list (server partial index), merged atop the main
+	// list — never folded into the main sort, so the list index's backward-scan is
+	// preserved. Reloaded on every reset, appended never (pins don't paginate).
+	let pinnedItems = $state<ThreadSummary[]>([]);
+	const pinnedIds = $derived(new Set(pinnedItems.map((thread) => thread.threadId)));
+	// Pinned rows on top, then the main list with any duplicates dropped. A stable
+	// filter over this keeps pinned-first order within the filtered set.
+	const merged = $derived([
+		...pinnedItems,
+		...items.filter((thread) => !pinnedIds.has(thread.threadId))
+	]);
 	let nextOffset = $state(0);
 	let reachedEnd = $state(false);
 	let loadingList = $state(false);
@@ -365,7 +380,23 @@
 			items = reset ? page : [...items, ...page];
 			nextOffset = offset + page.length;
 			reachedEnd = page.length < PAGE;
-			if (reset) rowLabels.clear();
+			if (reset) {
+				rowLabels.clear();
+				// Reload the pinned list alongside the reset (same triggers/stale-guard).
+				// Drafts/scheduled are virtual (never reached here); Snoozed etc. have no
+				// pins server-side and simply come back empty.
+				void (async () => {
+					const pinnedQ = mailboxThreadsPinned({
+						mailboxId: forMailbox,
+						placement: forPlacement as never,
+						labelId: forLabel ?? undefined
+					});
+					const pinned = (await pinnedQ.refresh(), pinnedQ.current) ?? [];
+					if (forMailbox !== mailboxId || forPlacement !== placement || forLabel !== labelId) return;
+					pinnedItems = pinned;
+					void loadRowLabels(forMailbox, pinned.map((thread) => thread.threadId));
+				})();
+			}
 			void loadRowLabels(forMailbox, page.map((thread) => thread.threadId));
 		} finally {
 			loadingList = false;
@@ -404,6 +435,7 @@
 			// not stale mail. Live-event refreshes call loadThreads directly (not via
 			// this watch), so in-place updates never flash.
 			items = [];
+			pinnedItems = [];
 			nextOffset = 0;
 			reachedEnd = false;
 			if (mb && !virt) loadThreads(true);
@@ -605,13 +637,18 @@
 	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
 		items = items.map((thread) => (thread.threadId === id ? { ...thread, ...patch } : thread));
+		// Pinned rows render from their own list — patch there too so a pinned row's
+		// star/read/assignee flip stays coherent with the main list.
+		pinnedItems = pinnedItems.map((thread) =>
+			thread.threadId === id ? { ...thread, ...patch } : thread
+		);
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: ONE
 	// source, patched in place — never a full thread refetch to flip a boolean.
 	// Priority: optimistic override → the list row (when the open thread is
 	// loaded) → the thread DTO (direct-URL case). Override resets per thread.
-	const openThreadItem = $derived(items.find((thread) => thread.threadId === threadId));
+	const openThreadItem = $derived(merged.find((thread) => thread.threadId === threadId));
 	let openFlagOverride = $state<{ isStarred?: boolean; assigneeUserId?: string | null }>({});
 	$effect(() => {
 		void threadId;
@@ -625,6 +662,11 @@
 	const openStarred = $derived(
 		openFlagOverride.isStarred ?? openThreadItem?.isStarred ?? openDto?.isStarred ?? false
 	);
+	// Pin state for the open thread — sourced from its loaded list row (patchItem
+	// keeps it live). ThreadDTO carries no pinnedAt, so the header Pin item shows
+	// only once the row is loaded (the normal in-app case); a direct-URL open with
+	// no row treats it as unpinned until a reset pulls the pinned list.
+	const openPinned = $derived(openThreadItem?.pinnedAt != null);
 	const openAssignee = $derived(
 		'assigneeUserId' in openFlagOverride
 			? (openFlagOverride.assigneeUserId ?? null)
@@ -1085,6 +1127,30 @@
 		} catch {
 			patchItem(id, { isStarred: current });
 			if (id === threadId) openFlagOverride = { ...openFlagOverride, isStarred: current };
+		}
+	}
+
+	// Pin / unpin (mirrors the star pattern): optimistically move the row in/out of
+	// the separate pinnedItems list AND patch its pinnedAt, then reconcile with the
+	// server. Rolls back both surfaces on failure — the 409 cap message surfaces
+	// through errorMessage. A later reset re-pulls the exact server order.
+	async function togglePin(id: string, current: boolean) {
+		if (!mailboxId) return;
+		const next = !current;
+		const prevPinned = pinnedItems;
+		if (next) {
+			const row = merged.find((thread) => thread.threadId === id);
+			if (row) pinnedItems = [{ ...row, pinnedAt: Date.now() }, ...pinnedItems];
+		} else {
+			pinnedItems = pinnedItems.filter((thread) => thread.threadId !== id);
+		}
+		patchItem(id, { pinnedAt: next ? Date.now() : null });
+		try {
+			await pinThread({ mailboxId, threadId: id, pinned: next });
+		} catch (err) {
+			pinnedItems = prevPinned;
+			patchItem(id, { pinnedAt: current ? Date.now() : null });
+			toast.error(errorMessage(err, 'Could not update the pin.'));
 		}
 	}
 
@@ -1905,7 +1971,7 @@
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
 				? (myDrafts().current ?? []).map((draft) => draft.id)
-				: applyListFilters(items).map((thread) => thread.threadId)}
+				: applyListFilters(merged).map((thread) => thread.threadId)}
 			{@const sel = inDrafts ? draftSel : threadSel}
 			{@const n = sel.size}
 			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
@@ -2132,8 +2198,8 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{#if applyListFilters(items).length}
-						{#each applyListFilters(items) as thread (thread.threadId)}
+					{#if applyListFilters(merged).length}
+						{#each applyListFilters(merged) as thread (thread.threadId)}
 							{@const selected = (navCursor ?? threadId) === thread.threadId}
 							{@const checked = threadSel.has(thread.threadId)}
 							{@const fx = rowFx.get(thread.threadId)}
@@ -2191,6 +2257,7 @@
 											</span>
 										{/each}
 										<span class="min-w-0 flex-1 truncate text-[13px] {thread.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}">{thread.subject ?? '(no subject)'}</span>
+										{#if thread.pinnedAt != null}<PinIcon class="text-brand size-3.5 shrink-0 fill-current" />{/if}
 										{#if thread.hasNotes}<StickyNoteIcon class="text-warn size-3.5 shrink-0" />{/if}
 										{#if thread.assigneeUserId}<UserRoundIcon class="text-brand size-3.5 shrink-0" />{/if}
 									</div>
@@ -2229,6 +2296,18 @@
 											<ArchiveIcon class="size-4" />
 										</button>
 									{/if}
+										<button
+										type="button"
+										title={thread.pinnedAt != null ? 'Unpin' : 'Pin'}
+										aria-label={thread.pinnedAt != null ? 'Unpin' : 'Pin'}
+										aria-pressed={thread.pinnedAt != null}
+										onclick={() => togglePin(thread.threadId, thread.pinnedAt != null)}
+										class="focus-visible:ring-ring/50 grid size-8 pointer-coarse:size-10 place-items-center rounded-md outline-none transition duration-150 ease-out focus-visible:ring-2 motion-reduce:transition-none {thread.pinnedAt != null
+											? 'text-brand'
+											: 'text-faint hover:text-brand pointer-fine:opacity-55 pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100'}"
+									>
+										{#if thread.pinnedAt != null}<PinOffIcon class="size-4" />{:else}<PinIcon class="size-4" />{/if}
+									</button>
 									<button
 										type="button"
 										title={thread.isStarred ? 'Unstar' : 'Star'}
@@ -2248,7 +2327,7 @@
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
-						{:else if reachedEnd && applyListFilters(items).length}
+						{:else if reachedEnd && applyListFilters(merged).length}
 							<ListEndCat name={folder.name} />
 						{/if}
 					{:else if loadingList}
@@ -2526,6 +2605,9 @@
 										<SearchIcon class="size-4" /> Find
 									</DropdownMenu.Item>
 								{/if}
+								<DropdownMenu.Item onSelect={() => togglePin(thread.id, openPinned)}>
+									{#if openPinned}<PinOffIcon class="size-4" /> Unpin{:else}<PinIcon class="size-4" /> Pin{/if}
+								</DropdownMenu.Item>
 								<DropdownMenu.Item onSelect={() => openMoveSheet([thread.id])}>
 									<FolderInputIcon class="size-4" /> Move to folder…
 								</DropdownMenu.Item>

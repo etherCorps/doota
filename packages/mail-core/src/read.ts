@@ -52,6 +52,8 @@ export type ThreadSummary = {
   /** The thread's actual placement (inbox/archived/…). The Sent view is a
    * cross-cut, so a sent row can still live in Inbox — the UI badges that. */
   placement: string;
+  /** Pin timestamp (ms) or null. Non-null = shown pinned atop its list. */
+  pinnedAt: number | null;
 };
 
 // stripHtmlTags: stored stripped bodies are plain text by construction, but
@@ -88,6 +90,9 @@ export async function listThreads(
     /** Folder view: threads carrying this label (any placement short of
      * spam/trash), like `sent` a VIEW — `placement` is ignored when set. */
     labelId?: string;
+    /** Pinned-list mode: only pinned threads of this view, newest-pin first.
+     * Served by the partial pinned index, so the main list index is untouched. */
+    pinnedOnly?: boolean;
   },
 ): Promise<ThreadSummary[]> {
   // `snoozed` is a VIEW like `sent`: any non-spam/trash thread with a pending
@@ -144,6 +149,7 @@ export async function listThreads(
       placement: schema.threadState.placement,
       lastInboundAt: schema.threadState.lastInboundAt,
       lastActivityAt: schema.threadState.lastActivityAt,
+      pinnedAt: schema.threadState.pinnedAt,
     })
     .from(schema.threadState)
     .where(
@@ -153,18 +159,22 @@ export async function listThreads(
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
         // Snoozed threads are hidden from every other view until they wake.
         isSnoozedView ? undefined : isNull(schema.threadState.snoozedUntil),
+        // Pinned-list mode: restrict to the pinned set (partial index).
+        input.pinnedOnly ? isNotNull(schema.threadState.pinnedAt) : undefined,
         input.assignedTo
           ? eq(schema.threadState.assigneeUserId, input.assignedTo)
           : undefined,
       ),
     )
     .orderBy(
-      isSnoozedView
-        ? asc(schema.threadState.snoozedUntil) // next to wake at the top
-        : desc(schema.threadState.lastActivityAt),
+      input.pinnedOnly
+        ? desc(schema.threadState.pinnedAt) // newest pin on top
+        : isSnoozedView
+          ? asc(schema.threadState.snoozedUntil) // next to wake at the top
+          : desc(schema.threadState.lastActivityAt),
     )
-    .limit(input.limit ?? 30)
-    .offset(input.offset ?? 0);
+    .limit(input.pinnedOnly ? 50 : (input.limit ?? 30))
+    .offset(input.pinnedOnly ? 0 : (input.offset ?? 0));
 
   // Unread keys on the mailbox mode (same model as unreadCount below):
   // personal → last_inbound_at (an own send never marks unread), shared →
@@ -290,6 +300,7 @@ export async function listThreads(
       hasNotes: notedThreads.has(s.threadId),
       assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
       placement: s.placement,
+      pinnedAt: s.pinnedAt?.getTime() ?? null,
     });
   }
   return out;

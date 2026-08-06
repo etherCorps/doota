@@ -337,6 +337,13 @@
       "when": 1785864500000,
       "tag": "0047_webhook_mailbox_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1785865000000,
+      "tag": "0048_thread_pin",
+      "breakpoints": true
     }
   ]
 }
