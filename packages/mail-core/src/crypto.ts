@@ -130,12 +130,12 @@ export async function packBlob(ck: ContentKey, data: Uint8Array): Promise<Uint8A
   return encryptBytes(ck, await pipe(data, "gzip"));
 }
 
-/** Read shape: decrypt → gunzip. Inverse of packBlob. Legacy-tolerant: a blob
- * written BEFORE at-rest encryption is plaintext (RFC822 raw / JSON) and never
- * starts with our 0x01 version byte, so it's passed through unchanged — a deploy
- * of encryption over existing plaintext mail keeps rendering it. */
+/** Read shape: decrypt → gunzip. Inverse of packBlob. ENCRYPTED-ONLY: a blob
+ * without our 0x01 envelope byte is rejected by decryptBytes (fail closed), so
+ * a plaintext or tampered-down blob can never be served as content — the
+ * zero-access-at-rest guarantee holds. (Legacy plaintext must be re-encrypted
+ * before release; see docs/pre-release.md re-materialize step.) */
 export async function unpackBlob(ck: ContentKey, blob: Uint8Array): Promise<Uint8Array> {
-  if (blob[0] !== BLOB_V1) return blob; // pre-encryption plaintext (un-gzipped)
   return pipe(await decryptBytes(ck, blob), "gunzip");
 }
 

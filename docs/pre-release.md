@@ -15,26 +15,19 @@ Two kinds of item live here:
 
 ## 0. One-time hardening (before first release)
 
-### 0.1 Remove the R2 plaintext-tolerance patch — **fail closed**
+### 0.1 Remove the R2 plaintext-tolerance patch — **fail closed** — ✅ DONE
 
-`packages/mail-core/src/crypto.ts` `unpackBlob` still tolerates un-encrypted blobs
-so mail written *before* at-rest encryption keeps rendering:
+`unpackBlob` in `packages/mail-core/src/crypto.ts` is now **encrypted-only**: the
+`if (blob[0] !== BLOB_V1) return blob` passthrough is gone, so any non-`BLOB_V1`
+blob is rejected by `decryptBytes` (fail closed). A reader can no longer accept a
+plaintext or attacker-swapped-to-plaintext blob — the zero-access-at-rest
+guarantee holds. `crypto-blob.test.ts` now asserts a plaintext blob is *rejected*.
 
-```ts
-// crypto.ts (~line 138)
-if (blob[0] !== BLOB_V1) return blob; // pre-encryption plaintext (un-gzipped)
-```
-
-**Security gate, not cleanup — release-blocker.** While the shim is in, a reader
-*accepts unencrypted blobs*, so anyone who can write to R2 can bypass encryption
-by writing plaintext (or swap ciphertext for attacker-chosen plaintext). Before
-release, delete that line so `unpackBlob` throws on any non-`BLOB_V1` envelope —
-the fail-closed behaviour `getDecryptedBlob`/`decryptBytes` already enforce. After
-the test-data wipe there is no legacy plaintext left in R2.
-
-Gate: `crypto-blob.test.ts` currently asserts the tolerance path *works* — when
-you remove the shim, **flip that test to assert an unencrypted blob is rejected**.
-See memory `remove-r2-plaintext-tolerance-before-release`.
+**Operator step that MUST accompany this:** any blob written before at-rest
+encryption is now unreadable. Either launch fresh (wipe R2 content prefixes
+`raw/`, `attachments/`, `outbound/`, body-cache) or run the re-encrypt backfill
+BEFORE deploying this build. On the doota staging stack the pre-encryption test
+messages will 500 on open until wiped/re-encrypted — expected.
 
 ### 0.2 Known gap — draft-staged attachments are still plaintext in R2
 
