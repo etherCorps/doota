@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
-    "prepare": "node scripts/copy-pdfjs.mjs && (svelte-kit sync || echo '')",
+    "prepare": "node scripts/copy-pdfjs.mjs && node scripts/copy-file-viewer.mjs && (svelte-kit sync || echo '')",
     "check": "node scripts/check-auth-boundary.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",

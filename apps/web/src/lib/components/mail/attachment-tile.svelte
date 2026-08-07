@@ -17,10 +17,12 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import ShieldQuestionIcon from '@lucide/svelte/icons/shield-question';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import { pdfThumb } from '$lib/client/pdf-thumb';
 	import { sanitizeFilename } from '$lib/utils/filename';
 	import { fmtSize } from '$lib/mail/format';
-	import { openAttachment, tileVerdict } from '$lib/client/attachment-gate.svelte';
+	import { openAttachment, downloadAttachment, tileVerdict, prefetchVerdict } from '$lib/client/attachment-gate.svelte';
+	import { isViewable } from '$lib/client/attachment-viewable';
 
 	type Att = { id: string; filename: string | null; contentType: string | null; size: number | null };
 	let {
@@ -92,9 +94,23 @@
 	// verdict. The <a download> stays the real fallback so JS-off / middle-click
 	// still work — we only intercept the primary click to interpose the check.
 	const verdict = $derived(tileVerdict(att.id));
+	// The tile's signifiers (title, corner badge) must promise the action the
+	// primary click actually takes: preview for viewable types, download else.
+	const viewable = $derived(isViewable(att.contentType, att.filename));
+	const actionLabel = $derived(viewable ? 'Preview' : 'Download');
+	// Scan-in-flight: the click already registered — show progress at the cursor
+	// (the gate swallows re-entrant clicks meanwhile).
+	const checking = $derived(verdict === 'checking');
 	function onTileClick(e: MouseEvent) {
 		e.preventDefault();
 		void openAttachment(att, () => triggerDownload());
+	}
+	// Explicit per-tile download (the tile's primary click previews viewable
+	// types) — same scan gate, never opens the viewer.
+	function onDownloadClick(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		void downloadAttachment(att, () => triggerDownload());
 	}
 	function triggerDownload() {
 		const anchor = document.createElement('a');
@@ -104,6 +120,9 @@
 		anchor.click();
 	}
 	onMount(() => {
+		// Eager check: start the threat analysis when the tile appears (mail
+		// opened), so the verdict is usually in before the user clicks.
+		prefetchVerdict(att.id);
 		if (kind === 'pdf' && variant !== 'row') {
 			pdfLoading = true;
 			void pdfThumb(att.id).then((u) => {
@@ -124,19 +143,20 @@
      means "checked against known threat patterns", nothing more. -->
 {#snippet verdictBadge()}
 	{#if verdict === 'checking'}
-		<span class="text-faint inline-flex items-center gap-1 text-[10px]" title="Checking…">
+		<span class="text-faint inline-flex items-center gap-1 text-[11px]" role="status" title="Checking…">
 			<span class="border-muted-foreground/40 border-t-muted-foreground size-2.5 animate-spin rounded-full border motion-reduce:animate-none"></span>
+			<span class="sr-only">Checking file</span>
 		</span>
 	{:else if verdict === 'clean'}
-		<span class="text-muted-foreground inline-flex items-center gap-0.5 text-[10px]" title="Checked against known threat patterns">
+		<span class="text-muted-foreground inline-flex items-center gap-0.5 text-[11px]" title="Checked against known threat patterns">
 			<CheckIcon class="size-3" /> Checked
 		</span>
 	{:else if verdict === 'matched'}
-		<span class="text-destructive inline-flex items-center gap-0.5 text-[10px]" title="Matched a known threat pattern">
-			<ShieldAlertIcon class="size-3" /> Matched
+		<span class="text-destructive inline-flex items-center gap-0.5 text-[11px]" title="A threat was found in this file">
+			<ShieldAlertIcon class="size-3" /> Threat found
 		</span>
 	{:else if verdict === 'skipped' || verdict === 'error'}
-		<span class="text-warn inline-flex items-center gap-0.5 text-[10px]" title="Couldn't check against known threat patterns">
+		<span class="text-warn inline-flex items-center gap-0.5 text-[11px]" title="Couldn't check against known threat patterns">
 			<ShieldQuestionIcon class="size-3" /> Couldn't check
 		</span>
 	{/if}
@@ -167,81 +187,118 @@
 {/snippet}
 
 {#if variant === 'row'}
-	<a
-		{href}
-		download={name}
-		target="_blank"
-		rel="noopener"
-		title="Download {name}"
-		onclick={onTileClick}
-		class="focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {rowTone}"
-	>
-		<span class="{tone === 'inverse' ? 'bg-background/20' : 'bg-card border'} grid size-9 shrink-0 place-items-center overflow-hidden rounded-md">
-			{#if kind === 'image' && !broken}
-				<img src={href} alt="" loading="lazy" class="h-full w-full object-cover" onerror={() => (broken = true)} />
-			{:else}
-				<Icon class="{tone === 'inverse' ? 'text-background/80' : 'text-muted-foreground'} size-4" />
-			{/if}
-		</span>
-		<span class="min-w-0 flex-1">
-			<span class="block truncate text-xs font-medium">{name}</span>
-			<span class="{tone === 'inverse' ? 'text-background/70' : 'text-faint'} flex items-center gap-1.5 text-[10px]">
-				<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
-				{@render verdictBadge()}
+	<!-- Wrapper so the explicit download control is a real sibling BUTTON, not an
+	     interactive element nested inside the anchor (invalid + unreachable). -->
+	<div class="relative">
+		<a
+			{href}
+			download={name}
+			target="_blank"
+			rel="noopener"
+			title="{actionLabel} {name}"
+			onclick={onTileClick}
+			aria-busy={checking}
+			class="focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg py-1.5 pr-10 pl-2 transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {rowTone} {checking ? 'cursor-progress opacity-70' : ''}"
+		>
+			<span class="{tone === 'inverse' ? 'bg-background/20' : 'bg-card border'} grid size-9 shrink-0 place-items-center overflow-hidden rounded-md">
+				{#if kind === 'image' && !broken}
+					<img src={href} alt="" loading="lazy" class="h-full w-full object-cover" onerror={() => (broken = true)} />
+				{:else}
+					<Icon class="{tone === 'inverse' ? 'text-background/80' : 'text-muted-foreground'} size-4" />
+				{/if}
 			</span>
-		</span>
-		<DownloadIcon class="{tone === 'inverse' ? 'text-background/70' : 'text-muted-foreground'} size-3.5 shrink-0" />
-	</a>
+			<span class="min-w-0 flex-1">
+				<span class="block truncate text-xs font-medium">{name}</span>
+				<span class="{tone === 'inverse' ? 'text-background/70' : 'text-faint'} flex items-center gap-1.5 text-[10px]">
+					<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
+					{@render verdictBadge()}
+				</span>
+			</span>
+		</a>
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			title="Download {name}"
+			aria-label="Download {name}"
+			onclick={onDownloadClick}
+			class="{tone === 'inverse'
+				? 'text-background/80 hover:bg-background/20 hover:text-background'
+				: 'text-muted-foreground'} pointer-coarse:size-11 absolute top-1/2 right-1 -translate-y-1/2"
+		>
+			<DownloadIcon class="size-3.5" />
+		</Button>
+	</div>
 {:else if variant === 'grid'}
-	<a
-		{href}
-		download={name}
-		target="_blank"
-		rel="noopener"
-		title="Download {name}"
-		onclick={onTileClick}
-		class="focus-visible:ring-ring/50 bg-muted group/att relative block aspect-[4/3] overflow-hidden rounded-lg border outline-none focus-visible:ring-2 active:scale-[0.99]"
-	>
-		{@render previewFace()}
-		<!-- download badge: click = download, say so up front -->
-		<span class="bg-scrim/55 pointer-events-none absolute top-1 right-1 grid size-6 place-items-center rounded-full text-white">
-			<DownloadIcon class="size-3" />
-		</span>
-		{#if verdict}
-			<span class="bg-scrim/70 pointer-events-none absolute top-1 left-1 rounded-full px-1.5 py-0.5 text-white">
-				{@render verdictBadge()}
-			</span>
-		{/if}
-		<!-- name scrim, WhatsApp-style: only over real pixels -->
-		{#if (kind === 'image' || kind === 'video' || (kind === 'pdf' && pdfUrl)) && !broken}
-			<span class="from-scrim/60 pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-4 pb-1">
-				<span class="block truncate text-[10px] font-medium text-white">{name}</span>
-			</span>
-		{/if}
-	</a>
+	<div class="relative">
+		<a
+			{href}
+			download={name}
+			target="_blank"
+			rel="noopener"
+			title="{actionLabel} {name}"
+			onclick={onTileClick}
+			aria-busy={checking}
+			class="focus-visible:ring-ring/50 bg-muted group/att relative block aspect-[4/3] overflow-hidden rounded-lg border outline-none focus-visible:ring-2 active:scale-[0.99] {checking ? 'cursor-progress opacity-70' : ''}"
+		>
+			{@render previewFace()}
+			{#if verdict}
+				<span class="bg-scrim/70 pointer-events-none absolute top-1 left-1 rounded-full px-1.5 py-0.5 text-white">
+					{@render verdictBadge()}
+				</span>
+			{/if}
+			<!-- name scrim, WhatsApp-style: only over real pixels -->
+			{#if (kind === 'image' || kind === 'video' || (kind === 'pdf' && pdfUrl)) && !broken}
+				<span class="from-scrim/60 pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-4 pb-1">
+					<span class="block truncate text-[10px] font-medium text-white">{name}</span>
+				</span>
+			{/if}
+		</a>
+		<!-- explicit download; the tile itself previews viewable types -->
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			title="Download {name}"
+			aria-label="Download {name}"
+			onclick={onDownloadClick}
+			class="bg-scrim/55 hover:bg-scrim/75 pointer-coarse:size-11 absolute top-1 right-1 text-white hover:text-white"
+		>
+			<DownloadIcon class="size-3.5" />
+		</Button>
+	</div>
 {:else}
 	<!-- strip: Gmail attachment card -->
-	<a
-		{href}
-		download={name}
-		target="_blank"
-		rel="noopener"
-		title="Download {name}"
-		onclick={onTileClick}
-		class="focus-visible:ring-ring/50 bg-card hover:bg-muted/60 block w-36 shrink-0 overflow-hidden rounded-lg border transition-colors outline-none focus-visible:ring-2 active:scale-[0.99]"
-	>
-		<span class="bg-muted relative block h-20 w-full overflow-hidden border-b">
-			{@render previewFace()}
-			<span class="bg-scrim/55 pointer-events-none absolute top-1 right-1 grid size-6 place-items-center rounded-full text-white">
-				<DownloadIcon class="size-3" />
+	<div class="relative w-36 shrink-0">
+		<a
+			{href}
+			download={name}
+			target="_blank"
+			rel="noopener"
+			title="{actionLabel} {name}"
+			onclick={onTileClick}
+			aria-busy={checking}
+			class="focus-visible:ring-ring/50 bg-card hover:bg-muted/60 block w-full overflow-hidden rounded-lg border transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {checking ? 'cursor-progress opacity-70' : ''}"
+		>
+			<span class="bg-muted relative block h-20 w-full overflow-hidden border-b">
+				{@render previewFace()}
 			</span>
-		</span>
-		<span class="block px-2 py-1.5">
-			<span class="block truncate text-[11px] font-medium">{name}</span>
-			<span class="text-faint flex items-center gap-1.5 text-[10px]">
-				<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
-				{@render verdictBadge()}
+			<span class="block px-2 py-1.5">
+				<span class="block truncate text-[11px] font-medium">{name}</span>
+				<span class="text-faint flex items-center gap-1.5 text-[10px]">
+					<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
+					{@render verdictBadge()}
+				</span>
 			</span>
-		</span>
-	</a>
+		</a>
+		<!-- explicit download; the card itself previews viewable types -->
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			title="Download {name}"
+			aria-label="Download {name}"
+			onclick={onDownloadClick}
+			class="bg-scrim/55 hover:bg-scrim/75 pointer-coarse:size-11 absolute top-1 right-1 text-white hover:text-white"
+		>
+			<DownloadIcon class="size-3.5" />
+		</Button>
+	</div>
 {/if}

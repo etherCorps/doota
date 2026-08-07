@@ -1,0 +1,9 @@
+{
+  "name": "file-viewer-assets",
+  "private": true,
+  "//": "STANDALONE (own lockfile, NOT a workspace member — tools/* is outside pnpm-workspace globs). The file-viewer packages exist only to be COPIED from (runtime IIFE + renderer assets → apps/web/static at prepare time, see apps/web/scripts/copy-file-viewer.mjs). Keeping them out of root resolution matters: their data renderer's sql.js/pg peers forked drizzle-orm into two type-incompatible instances when they lived in apps/web (same failure mode as apps/docs — see pnpm-workspace.yaml).",
+  "devDependencies": {
+    "@file-viewer/web-full": "2.2.5",
+    "file-viewer-copy-assets": "2.2.5"
+  }
+}

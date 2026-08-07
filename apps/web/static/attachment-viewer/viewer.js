@@ -8,9 +8,10 @@
 //    is connect-src 'none' — this frame can't phone home.
 //  - NEVER uses innerHTML on attacker data. Images/SVG load as non-scriptable
 //    <img src="blob:">, text goes in via textContent, PDF paints to <canvas>.
-//  - PDF is parsed on the MAIN THREAD (disableWorker) inside THIS isolated frame,
-//    with font-face/CMap/standard-font network fetches disabled so pdfjs makes
-//    NO requests (CSP worker-src 'none', connect-src 'none' would block them).
+//  - PDF is parsed on the MAIN THREAD (pdfjs "fake worker" — the real Worker is
+//    blocked by CSP worker-src 'none') inside THIS isolated frame, with
+//    font-face/CMap/standard-font network fetches disabled so pdfjs makes no
+//    requests beyond importing its own self-hosted bundles via the ACAO shim.
 //
 // The parent's origin is opaque here too (we can't know it), so we postMessage
 // with targetOrigin '*'; the parent validates by event.source, and we accept
@@ -60,12 +61,23 @@ function renderText(text) {
 
 async function renderPdf(data) {
 	clear();
-	const pdfjs = await import("/pdfjs/pdf.min.mjs");
+	// Via the ACAO shim routes, NOT the bare assets: this frame's origin is opaque
+	// ('null'), so module imports are CORS fetches the plain assets would fail.
+	// ABSOLUTE URLs are required: this file loads as a classic no-cors script,
+	// and import() from a CORS-cross-origin classic script has base URL
+	// about:blank — a path specifier doesn't resolve (found live). The document
+	// URL is still real even though the origin is opaque.
+	const pdfjs = await import(new URL("/api/attachment-view/pdfjs", location.href).href);
+	// pdfjs ≥5 requires workerSrc. CSP worker-src 'none' blocks the real Worker
+	// (intentionally — nothing leaves this frame), so pdfjs falls back to its
+	// "fake worker": it dynamic-imports this same bundle on THIS thread. A slow/
+	// hostile PDF hangs only the sandbox.
+	pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+		"/api/attachment-view/pdfjs-worker",
+		location.href,
+	).href;
 	const task = pdfjs.getDocument({
 		data,
-		// No worker: parse on THIS thread, inside the isolated frame. A slow/hostile
-		// PDF hangs only the sandbox, and CSP worker-src 'none' would block a worker.
-		disableWorker: true,
 		isEvalSupported: false,
 		// Keep it fully offline — no CMap/standard-font/font-face network fetches
 		// (connect-src 'none' would block them, and we never want the sandbox to
@@ -79,14 +91,24 @@ async function renderPdf(data) {
 		for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
 			const page = await doc.getPage(pageNo);
 			const base = page.getViewport({ scale: 1 });
-			const width = Math.min(root.clientWidth || 800, 1400) || 800;
-			const viewport = page.getViewport({ scale: width / base.width });
+			const cssWidth = Math.min(root.clientWidth || 800, 1400) || 800;
+			// Render at devicePixelRatio (capped — a hostile ratio can't balloon the
+			// bitmap) and display at CSS size, else retina screens get a blurry,
+			// hard-to-read page. Cap the backing bitmap at ~16M pixels.
+			const ratio = Math.min(Math.max(globalThis.devicePixelRatio || 1, 1), 3);
+			const viewport = page.getViewport({ scale: (cssWidth / base.width) * ratio });
 			const canvas = document.createElement("canvas");
 			canvas.className = "page";
 			canvas.width = Math.ceil(viewport.width);
 			canvas.height = Math.ceil(viewport.height);
+			canvas.style.width = `${cssWidth}px`;
+			canvas.style.height = `${Math.ceil(viewport.height / ratio)}px`;
 			root.appendChild(canvas);
-			await page.render({ canvasContext: canvas.getContext("2d"), canvas, viewport }).promise;
+			// intent "print": renders in one pass WITHOUT requestAnimationFrame
+			// chunking. Chrome throttles rAF in sandboxed/OOPIF iframes, which
+			// left "display"-intent renders hanging forever (found live).
+			await page.render({ canvasContext: canvas.getContext("2d"), canvas, viewport, intent: "print" })
+				.promise;
 			reportHeight();
 		}
 	} finally {
@@ -112,6 +134,9 @@ async function render(bytes, mime, name) {
 			showMessage("This file type can't be previewed. Download it to open.");
 		}
 	} catch (err) {
+		// Console-only: the sandbox has no telemetry path (by design), but the
+		// error must be visible in devtools when a document fails in the field.
+		console.error("[attachment-viewer] render failed:", err);
 		showMessage("This document couldn't be displayed.");
 	}
 	reportHeight();

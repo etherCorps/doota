@@ -7,8 +7,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ATTACHMENT_VIEWER_SANDBOX } from "$lib/client/attachment-viewer-sandbox";
-import { isViewable } from "$lib/client/attachment-viewable";
+import { ATTACHMENT_VIEWER_SANDBOX, RICH_VIEWER_SANDBOX } from "$lib/client/attachment-viewer-sandbox";
+import { isViewable, isBaseViewable } from "$lib/client/attachment-viewable";
 
 describe("attachment viewer sandbox", () => {
 	it("grants allow-scripts", () => {
@@ -19,16 +19,24 @@ describe("attachment viewer sandbox", () => {
 		expect(ATTACHMENT_VIEWER_SANDBOX).not.toContain("allow-same-origin");
 	});
 
-	it("is applied to the iframe via the shared constant, not an inline string", () => {
-		// The component must APPLY the constant (whose value the two tests above
-		// pin) rather than an inline attribute that could drift out of sync. Pin
-		// the exact binding on the iframe element (ignore the doc comment, which
-		// legitimately names allow-same-origin when explaining why it's excluded).
+	it("is applied to the iframe via the shared constants, not an inline string", () => {
+		// The component must APPLY the constants (whose values the tests here pin)
+		// rather than inline attributes that could drift out of sync.
 		const componentPath = fileURLToPath(
 			new URL("../lib/components/mail/attachment-viewer.svelte", import.meta.url),
 		);
 		const source = readFileSync(componentPath, "utf8");
-		expect(source).toContain("sandbox={ATTACHMENT_VIEWER_SANDBOX}");
+		expect(source).toContain("sandbox={frameSandbox}");
+		// RICH (allow-same-origin, weaker) may pair ONLY with rich-only formats;
+		// base types (pdf/images/text) MUST keep the opaque sandbox + route.
+		expect(source).toContain("rich ? RICH_VIEWER_SANDBOX : ATTACHMENT_VIEWER_SANDBOX");
+		expect(source).toContain("rich ? '/viewer' : '/api/attachment-view'");
+		expect(source).toContain("!isBaseViewable(viewer.contentType)");
+	});
+
+	it("rich sandbox grants allow-same-origin (compensated by /viewer's CSP)", () => {
+		expect(RICH_VIEWER_SANDBOX).toContain("allow-scripts");
+		expect(RICH_VIEWER_SANDBOX).toContain("allow-same-origin");
 	});
 });
 
@@ -51,9 +59,7 @@ describe("isViewable", () => {
 
 	it("leaves non-viewable types to download", () => {
 		for (const type of [
-			"application/zip",
 			"application/octet-stream",
-			"application/msword",
 			"video/mp4",
 			"audio/mpeg",
 			null,
@@ -61,6 +67,30 @@ describe("isViewable", () => {
 			"",
 		]) {
 			expect(isViewable(type), String(type)).toBe(false);
+		}
+	});
+});
+
+describe("isViewable — rich formats (same-origin file-viewer shell)", () => {
+	it("adds office/archive types on top of the base set", () => {
+		for (const [type, name] of [
+			["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "r.docx"],
+			["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "s.xlsx"],
+			["application/zip", "z.zip"],
+			["application/octet-stream", "notes.md"], // extension fallback
+		] as const) {
+			expect(isViewable(type, name), name).toBe(true);
+			// ...but they are NOT base-viewable: they must ride the rich shell.
+			expect(isBaseViewable(type), name).toBe(false);
+		}
+		// Unknown binaries still download.
+		expect(isViewable("application/octet-stream", "blob.bin")).toBe(false);
+		expect(isViewable("video/mp4", "clip.mp4")).toBe(false);
+	});
+
+	it("base types stay base-viewable (opaque hard-isolated viewer)", () => {
+		for (const type of ["application/pdf", "image/png", "text/plain", "image/svg+xml"]) {
+			expect(isBaseViewable(type), type).toBe(true);
 		}
 	});
 });

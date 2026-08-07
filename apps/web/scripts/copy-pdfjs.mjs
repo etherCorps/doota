@@ -10,14 +10,17 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = resolve(here, "../node_modules/pdfjs-dist/build/pdf.min.mjs");
+const buildDir = resolve(here, "../node_modules/pdfjs-dist/build");
 const destDir = resolve(here, "../static/pdfjs");
-const dest = resolve(destDir, "pdf.min.mjs");
+// pdf.worker.min.mjs too: pdfjs ≥5 REQUIRES workerSrc; with CSP worker-src
+// 'none' it falls back to a main-thread "fake worker" that dynamic-imports this
+// same file — so it must be self-hosted alongside the main bundle.
+const files = ["pdf.min.mjs", "pdf.worker.min.mjs"];
 
-if (!existsSync(src)) {
+if (!existsSync(resolve(buildDir, files[0]))) {
 	console.warn("[copy-pdfjs] pdfjs-dist not installed yet; skipping (committed copy stays).");
 	process.exit(0);
 }
 mkdirSync(destDir, { recursive: true });
-copyFileSync(src, dest);
-console.log("[copy-pdfjs] static/pdfjs/pdf.min.mjs refreshed.");
+for (const file of files) copyFileSync(resolve(buildDir, file), resolve(destDir, file));
+console.log("[copy-pdfjs] static/pdfjs refreshed:", files.join(", "));

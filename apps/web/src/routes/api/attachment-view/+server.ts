@@ -34,7 +34,7 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		"default-src 'none'",
 		`script-src ${url.origin}`, // our glue module + self-hosted pdfjs, nothing else
 		"connect-src 'none'", // never fetches — bytes arrive via postMessage
-		"worker-src 'none'", // pdfjs runs disableWorker on the main thread
+		"worker-src 'none'", // blocks a real Worker → pdfjs falls back to its main-thread fake worker
 		"img-src blob: data:", // rendered images/SVG only
 		"style-src 'unsafe-inline'",
 		"object-src 'none'",
@@ -68,7 +68,12 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		".msg{padding:24px 12px;text-align:center;color:#666}" +
 		"</style></head><body>" +
 		'<div id="root"><div class="msg">Loading preview…</div></div>' +
-		'<script type="module" src="/attachment-viewer/viewer.js"></script>' +
+		// CLASSIC script, not type=module: module scripts are CORS-fetched, and
+		// this doc's origin is opaque ('null') — the bare asset has no ACAO header
+		// so the browser would block our own glue (found live). Classic scripts
+		// load no-cors; CSP script-src still pins it to our origin. The glue's one
+		// module need (pdfjs) goes through the ACAO shim at /api/attachment-view/pdfjs.
+		'<script src="/attachment-viewer/viewer.js" defer></script>' +
 		"</body></html>";
 
 	return new Response(doc, {
