@@ -353,21 +353,34 @@ export const setInviteRsvp = command(
         set: { status, updatedAt: now },
       });
 
-    // Send the iTIP REPLY only when there's a valid organizer to reply to, and
-    // only if we haven't already emailed this exact answer.
+    // Decrypt details for the REPLY subject AND to see whether the invite
+    // carried the PROVIDER's own Yes/Maybe/No link for this answer (Google/MS).
+    let summary: string | null = null;
+    let hasProviderLink = false;
+    try {
+      const raw = event.detailsEnc ? await decryptContent(await contentKey(), event.detailsEnc) : null;
+      if (raw) {
+        const d = JSON.parse(raw) as {
+          summary?: string;
+          rsvpLinks?: Record<string, string | null>;
+        };
+        summary = d.summary ?? null;
+        hasProviderLink = !!d.rsvpLinks?.[status];
+      }
+    } catch {
+      summary = null;
+    }
+
+    // Send our iTIP REPLY only when: a valid organizer exists, we haven't already
+    // emailed this exact answer, AND the invite has NO provider RSVP link for this
+    // answer. When Google/Microsoft supplied their own link, the card opens THAT
+    // flow (new page) — sending our email too would be a duplicate/conflicting
+    // response, so the provider flow owns it.
     const organizerValid =
       !!event.organizerEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(event.organizerEmail);
     const wantPartstat = { accepted: "ACCEPTED", declined: "DECLINED", tentative: "TENTATIVE" }[status];
     let replySent = false;
-    if (organizerValid && prior?.lastSentPartstat !== wantPartstat) {
-      // Decrypt the summary for the REPLY subject/SUMMARY (best-effort).
-      let summary: string | null = null;
-      try {
-        const raw = event.detailsEnc ? await decryptContent(await contentKey(), event.detailsEnc) : null;
-        if (raw) summary = (JSON.parse(raw) as { summary?: string }).summary ?? null;
-      } catch {
-        summary = null;
-      }
+    if (organizerValid && !hasProviderLink && prior?.lastSentPartstat !== wantPartstat) {
       await tryLog(
         "invite.rsvp_reply_failed",
         (async () => {
