@@ -56,6 +56,25 @@ describe("attachment scanner — rules", () => {
     expect(r.rule).toBe("embedded_pe_executable");
   });
 
+  it("passes an ordinary PDF with /OpenAction as clean (rules-2 false-positive fix)", () => {
+    // Nearly every Word/LaTeX/print-to-PDF document carries an /OpenAction
+    // goto-page action; rules-1 flagged them all as threats.
+    const pdf = "%PDF-1.7\n1 0 obj<</Type/Catalog/OpenAction[3 0 R /Fit]/AA<<>>>>endobj\ntrailer";
+    expect(scanBuffer(scanner, inflate, bytes(pdf), "report.pdf").verdict).toBe("clean");
+  });
+
+  it("still matches a PDF carrying JavaScript", () => {
+    const pdf = "%PDF-1.7\n1 0 obj<</OpenAction<</S/JavaScript/JS(app.alert(1))>>>>endobj";
+    const r = scanBuffer(scanner, inflate, bytes(pdf), "invoice.pdf");
+    expect(r.verdict).toBe("matched");
+    expect(r.rule).toBe("pdf_active_content");
+  });
+
+  it("still matches a PDF with a Launch action", () => {
+    const pdf = "%PDF-1.7\n1 0 obj<</S/Launch/F(cmd.exe)>>endobj";
+    expect(scanBuffer(scanner, inflate, bytes(pdf), "x.pdf").rule).toBe("pdf_active_content");
+  });
+
   it("passes a plain-text file as clean", () => {
     expect(scanBuffer(scanner, inflate, bytes("just a normal note, nothing here"), "note.txt").verdict).toBe("clean");
   });

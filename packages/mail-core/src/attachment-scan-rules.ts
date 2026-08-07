@@ -13,7 +13,8 @@
 
 // Engine + ruleset version — stamped on every verdict so a rules update is
 // visible and re-scans can be triggered. Bump the rules suffix when editing below.
-export const SCANNER_VERSION = "yara-x-1.19.0+rules-1";
+// (The gate rescans any persisted verdict whose version doesn't match this.)
+export const SCANNER_VERSION = "yara-x-1.19.0+rules-2";
 
 export const DEFAULT_YARA_RULES = String.raw`
 rule embedded_pe_executable {
@@ -45,16 +46,19 @@ rule ooxml_vba_macro {
 
 rule pdf_active_content {
   meta:
-    description = "PDF with embedded JavaScript or an auto-run action"
+    description = "PDF with embedded JavaScript or a launch action"
   strings:
     $js = "/JavaScript"
-    $js2 = "/JS"
-    $aa = "/OpenAction"
+    $js2 = /\/JS\s*[\[(<]/
     $launch = "/Launch"
-    $aa2 = "/AA"
   condition:
-    uint32(0) == 0x46445025 and any of ($js, $js2, $aa, $launch, $aa2)
+    uint32(0) == 0x46445025 and any of ($js, $js2, $launch)
 }
+// NOT flagged: /OpenAction and /AA alone. Nearly every benign PDF (Word/LaTeX/
+// print-to-PDF) carries an /OpenAction goto-page action — flagging it marked
+// ordinary documents as threats (rules-1 false positive, found live). The
+// dangerous auto-run payloads are JavaScript and Launch actions, both of which
+// still match above regardless of how they're triggered.
 
 rule script_bearing_svg {
   meta:
