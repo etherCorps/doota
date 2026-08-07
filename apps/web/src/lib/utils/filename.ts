@@ -20,3 +20,15 @@ export function sanitizeFilename(name: string | null | undefined): string {
   const clean = base.replace(/^\.+/, "").replace(/["\\]/g, "_").trim();
   return clean || "attachment";
 }
+
+/**
+ * Split a (sanitized) filename for display so truncation can eat the MIDDLE
+ * and keep the extension visible — the extension is the trust signal
+ * (`Quarterly-report…xlsx`, never `Quarterly-report-fin…`). Extensions longer
+ * than 8 chars are treated as part of the base (not a real extension).
+ */
+export function splitExt(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || name.length - dot > 9) return { base: name, ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
+}

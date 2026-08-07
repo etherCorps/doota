@@ -31,6 +31,8 @@
 	import InviteCard from '$lib/components/mail/invite-card.svelte';
 	import AttachmentTile from '$lib/components/mail/attachment-tile.svelte';
 	import AttachmentGate from '$lib/components/mail/attachment-gate.svelte';
+	import { setViewerContext } from '$lib/client/attachment-gate.svelte';
+	import { isViewable } from '$lib/client/attachment-viewable';
 	import AttachmentViewer from '$lib/components/mail/attachment-viewer.svelte';
 	import NoteComposer from '$lib/components/mail/note-composer.svelte';
 	import MoveSheet from '$lib/components/mail/move-sheet.svelte';
@@ -669,6 +671,24 @@
 	);
 	// Pin state for the open thread: optimistic override → the loaded list row
 	// (patchItem keeps it live) → the thread DTO (direct-URL open, no row yet).
+	// Lightbox prev/next context: the open thread's viewable attachments in
+	// thread order (Gmail-pattern navigation inside the preview).
+	$effect(() => {
+		const items = openDto?.items ?? [];
+		const atts = items.flatMap((item) =>
+			'attachments' in item && Array.isArray(item.attachments) ? item.attachments : []
+		);
+		setViewerContext(
+			atts
+				.filter((attachment) => isViewable(attachment.contentType, attachment.filename))
+				.map((attachment) => ({
+					id: attachment.id,
+					filename: attachment.filename,
+					contentType: attachment.contentType
+				}))
+		);
+	});
+
 	const openPinned = $derived(
 		'pinnedAt' in openFlagOverride
 			? openFlagOverride.pinnedAt != null

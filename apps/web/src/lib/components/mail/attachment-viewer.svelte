@@ -16,15 +16,24 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import XIcon from '@lucide/svelte/icons/x';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import { ATTACHMENT_VIEWER_SANDBOX, RICH_VIEWER_SANDBOX } from '$lib/client/attachment-viewer-sandbox';
 	import { isBaseViewable } from '$lib/client/attachment-viewable';
-	import { viewer, downloadAttachment } from '$lib/client/attachment-gate.svelte';
+	import {
+		viewer,
+		viewerContext,
+		openAttachment,
+		downloadAttachment
+	} from '$lib/client/attachment-gate.svelte';
 
 	// Shell choice is PER DOCUMENT: pdf/images/text keep the opaque hard-isolated
 	// viewer; only rich-only formats (Office/archives/…) use the same-origin
 	// file-viewer shell — deliberately weaker isolation, see /viewer's CSP notes.
-	const rich = $derived(viewer.open && !isBaseViewable(viewer.contentType));
+	// (Not gated on viewer.open: flipping the src during the close animation
+	// would reload the frame mid-outro.)
+	const rich = $derived(!isBaseViewable(viewer.contentType));
 	const frameSrc = $derived(rich ? '/viewer' : '/api/attachment-view');
 	const frameSandbox = $derived(rich ? RICH_VIEWER_SANDBOX : ATTACHMENT_VIEWER_SANDBOX);
 	let frame = $state<HTMLIFrameElement>();
@@ -41,6 +50,26 @@
 
 	function close() {
 		viewer.open = false;
+	}
+
+	// Prev/next across the open thread's viewable attachments (Gmail-pattern).
+	// Navigation goes through the GATE — an unscanned neighbor scans first, a
+	// non-clean one gets its confirm; nothing renders without a verdict.
+	const navItems = $derived(viewerContext.items);
+	const navIndex = $derived(navItems.findIndex((item) => item.id === viewer.id));
+	const prevItem = $derived(navIndex > 0 ? navItems[navIndex - 1] : null);
+	const nextItem = $derived(
+		navIndex >= 0 && navIndex < navItems.length - 1 ? navItems[navIndex + 1] : null
+	);
+	function goTo(item: { id: string; filename: string | null; contentType: string | null } | null) {
+		if (!item) return;
+		// Viewable by construction — the download fallback is unreachable.
+		void openAttachment(item, () => {});
+	}
+	function onNavKeys(event: KeyboardEvent) {
+		if (!viewer.open) return;
+		if (event.key === 'ArrowLeft') goTo(prevItem);
+		else if (event.key === 'ArrowRight') goTo(nextItem);
 	}
 
 	// Re-download through the SAME gate — a verdict already exists (cached), so
@@ -113,6 +142,10 @@
 				void handOffBytes();
 			} else if (data.type === 'height' && typeof data.value === 'number' && Number.isFinite(data.value)) {
 				contentH = Math.max(0, Math.ceil(data.value));
+			} else if (data.type === 'close-request') {
+				// Esc pressed while focus lived inside the frame — the shells
+				// forward it because the parent dialog never sees iframe keydowns.
+				close();
 			}
 		}
 		window.addEventListener('message', onMessage);
@@ -125,9 +158,10 @@
 </script>
 
 <!-- One full-screen surface for every form factor (Gmail-pattern): a single
-     chrome bar, then the document owns the rest of the viewport. -->
-{#if viewer.open}
-	<Dialog.Root open={true} onOpenChange={(open) => { if (!open) close(); }}>
+     chrome bar, then the document owns the rest of the viewport. Root stays
+     mounted (no {#if}) so the close animation actually plays. -->
+<svelte:window onkeydown={onNavKeys} />
+<Dialog.Root open={viewer.open} onOpenChange={(open) => { if (!open) close(); }}>
 		<Dialog.Content
 			showCloseButton={false}
 			class="data-open:zoom-in-100 data-closed:zoom-out-100 flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none"
@@ -146,6 +180,32 @@
 					<ShieldCheckIcon class="size-3.5 shrink-0" />
 					<span>Sandboxed preview</span>
 				</p>
+				{#if navItems.length > 1 && navIndex >= 0}
+					<!-- Walk the thread's attachments without closing (Gmail-pattern). -->
+					<div class="flex shrink-0 items-center gap-0.5">
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							disabled={!prevItem}
+							onclick={() => goTo(prevItem)}
+							aria-label="Previous attachment"
+						>
+							<ChevronLeftIcon />
+						</Button>
+						<span class="text-muted-foreground text-xs tabular-nums">
+							{navIndex + 1} of {navItems.length}
+						</span>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							disabled={!nextItem}
+							onclick={() => goTo(nextItem)}
+							aria-label="Next attachment"
+						>
+							<ChevronRightIcon />
+						</Button>
+					</div>
+				{/if}
 				<Button variant="secondary" size="sm" onclick={download}>
 					<DownloadIcon data-icon="inline-start" /> Download
 				</Button>
@@ -155,8 +215,10 @@
 			</Dialog.Header>
 
 			<!-- Document surface: fills the viewport below the bar; transparent so the
-			     overlay's scrim reads through around the document. -->
+			     overlay's scrim reads through around the document. Keyed by id so
+			     prev/next remounts a fresh frame per document. -->
 			<div class="relative min-h-0 flex-1">
+				{#key viewer.id}
 				{#if failed}
 					<div class="text-muted-foreground grid h-full place-items-center p-8 text-center text-sm">
 						This document couldn't be loaded. Download it to open.
@@ -189,6 +251,7 @@
 						</div>
 					</div>
 				{/if}
+				{/key}
 				{#if loading && !failed}
 					<!-- boot + fetch + first paint all pre-height — show progress, not a blank box -->
 					<div role="status" class="text-muted-foreground pointer-events-none absolute inset-0 grid place-items-center">
@@ -200,4 +263,3 @@
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
-{/if}

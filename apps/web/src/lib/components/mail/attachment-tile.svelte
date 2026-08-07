@@ -19,7 +19,7 @@
 	import ShieldQuestionIcon from '@lucide/svelte/icons/shield-question';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { pdfThumb } from '$lib/client/pdf-thumb';
-	import { sanitizeFilename } from '$lib/utils/filename';
+	import { sanitizeFilename, splitExt } from '$lib/utils/filename';
 	import { fmtSize } from '$lib/mail/format';
 	import { openAttachment, downloadAttachment, tileVerdict, prefetchVerdict } from '$lib/client/attachment-gate.svelte';
 	import { isViewable } from '$lib/client/attachment-viewable';
@@ -80,6 +80,8 @@
 	const Icon = $derived(kind === 'audio' ? FileAudioIcon : (EXT_ICON[rawExt] ?? FileIcon));
 
 	const name = $derived(sanitizeFilename(att.filename)); // strip bidi-override spoofing
+	// Middle-truncation parts: the extension stays visible when the name clips.
+	const nameParts = $derived(splitExt(name));
 
 	// PDF page-1 thumb — lazy client render; rows keep the icon (cheap).
 	let pdfUrl = $state<string | null>(null);
@@ -122,8 +124,13 @@
 	onMount(() => {
 		// Eager check: start the threat analysis when the tile appears (mail
 		// opened), so the verdict is usually in before the user clicks.
-		prefetchVerdict(att.id);
-		if (kind === 'pdf' && variant !== 'row') {
+		prefetchVerdict(att.id, att.size);
+	});
+	// PDF page-1 thumb only AFTER a clean verdict: the thumb parses the PDF with
+	// pdfjs in the APP context (no sandbox) — exactly the surface the viewer
+	// isolates. Unscanned/matched/skipped PDFs keep the typed icon tile.
+	$effect(() => {
+		if (verdict === 'clean' && kind === 'pdf' && variant !== 'row' && !pdfUrl && !pdfLoading) {
 			pdfLoading = true;
 			void pdfThumb(att.id).then((u) => {
 				pdfUrl = u;
@@ -198,7 +205,7 @@
 			title="{actionLabel} {name}"
 			onclick={onTileClick}
 			aria-busy={checking}
-			class="focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg py-1.5 pr-10 pl-2 transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {rowTone} {checking ? 'cursor-progress opacity-70' : ''}"
+			class="focus-visible:ring-ring/50 pointer-coarse:py-2.5 flex items-center gap-2 rounded-lg py-1.5 pr-10 pl-2 transition-colors outline-none focus-visible:ring-2 active:scale-[0.99] {rowTone} {checking ? 'cursor-progress opacity-70' : ''}"
 		>
 			<span class="{tone === 'inverse' ? 'bg-background/20' : 'bg-card border'} grid size-9 shrink-0 place-items-center overflow-hidden rounded-md">
 				{#if kind === 'image' && !broken}
@@ -208,7 +215,9 @@
 				{/if}
 			</span>
 			<span class="min-w-0 flex-1">
-				<span class="block truncate text-xs font-medium">{name}</span>
+				<span class="flex min-w-0 text-xs font-medium">
+					<span class="truncate">{nameParts.base}</span><span class="shrink-0">{nameParts.ext}</span>
+				</span>
 				<span class="{tone === 'inverse' ? 'text-background/70' : 'text-faint'} flex items-center gap-1.5 text-[10px]">
 					<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
 					{@render verdictBadge()}
@@ -282,7 +291,9 @@
 				{@render previewFace()}
 			</span>
 			<span class="block px-2 py-1.5">
-				<span class="block truncate text-[11px] font-medium">{name}</span>
+				<span class="flex min-w-0 text-[11px] font-medium">
+					<span class="truncate">{nameParts.base}</span><span class="shrink-0">{nameParts.ext}</span>
+				</span>
 				<span class="text-faint flex items-center gap-1.5 text-[10px]">
 					<span>{ext}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
 					{@render verdictBadge()}

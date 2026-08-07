@@ -47,6 +47,17 @@ export const viewer = $state({
 	contentType: "",
 });
 
+// Prev/next context for the lightbox: the open thread's viewable attachments,
+// in thread order. Set by the page whenever a thread loads; the viewer walks it.
+export const viewerContext = $state({
+	items: [] as { id: string; filename: string | null; contentType: string | null }[],
+});
+export function setViewerContext(
+	items: { id: string; filename: string | null; contentType: string | null }[],
+): void {
+	viewerContext.items = items;
+}
+
 function openViewer(att: { id: string; filename: string | null; contentType: string | null }) {
 	viewer.id = att.id;
 	viewer.filename = sanitizeFilename(att.filename); // strip bidi-override spoofing
@@ -99,13 +110,24 @@ function ensureVerdict(attachmentId: string): Promise<ScanVerdict> {
  * Eagerly start the check the moment an attachment becomes visible (thread
  * open), so the verdict is usually ready before the user clicks. Fire-and-
  * forget; dedupes with any in-flight or persisted check. Never throws.
+ *
+ * Budgeted: prefetch downloads the full bytes, so it skips files over the cap
+ * (a thread of ten 20 MB files must not pull 200 MB on open — the click path
+ * still scans them) and runs ONE at a time so a many-attachment thread doesn't
+ * burst-fetch. Clicks bypass the queue via ensureVerdict's dedupe.
  */
-export function prefetchVerdict(attachmentId: string): void {
-	void ensureVerdict(attachmentId).catch(() => {
-		// Prefetch failure is not an outcome — the click path retries and the
-		// tile shows "couldn't check" only from a real scan result.
-		verdicts.delete(attachmentId);
-	});
+const PREFETCH_MAX_BYTES = 8 * 1024 * 1024;
+let prefetchChain: Promise<unknown> = Promise.resolve();
+
+export function prefetchVerdict(attachmentId: string, size?: number | null): void {
+	if (size != null && size > PREFETCH_MAX_BYTES) return;
+	prefetchChain = prefetchChain.then(() =>
+		ensureVerdict(attachmentId).catch(() => {
+			// Prefetch failure is not an outcome — the click path retries and the
+			// tile shows "couldn't check" only from a real scan result.
+			verdicts.delete(attachmentId);
+		}),
+	);
 }
 
 /**

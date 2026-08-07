@@ -154,6 +154,14 @@ window.addEventListener("message", (event) => {
 	render(data.bytes, data.mime, data.name, data.theme);
 });
 
+// Esc must close the lightbox even when focus lives INSIDE this frame (the
+// parent dialog never sees iframe keydowns). Skip when a renderer already
+// handled it (e.g. closing its own search box).
+window.addEventListener("keydown", (event) => {
+	if (event.key !== "Escape" || event.defaultPrevented) return;
+	parent.postMessage({ __attview: 1, type: "close-request" }, "*");
+});
+
 // Re-measure on late layout shifts (image decode, font paint).
 try {
 	new ResizeObserver(reportHeight).observe(document.documentElement);

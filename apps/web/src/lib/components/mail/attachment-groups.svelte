@@ -16,6 +16,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MessageDTO } from '@doota/mail-core/mail-thread-contract';
 	import { senderName, senderEmail, fmtTime, isImage, fileExt, fmtSize } from '$lib/mail/format';
+	import { sanitizeFilename, splitExt } from '$lib/utils/filename';
 	import { openAttachment, downloadAttachment, tileVerdict, prefetchVerdict } from '$lib/client/attachment-gate.svelte';
 
 	type Group = { day: string; entries: { msg: MessageDTO; atts: MessageDTO['attachments'] }[] };
@@ -38,7 +39,7 @@
 	$effect(() => {
 		const all = groups.flatMap((group) => group.entries.flatMap((entry) => entry.atts));
 		untrack(() => {
-			for (const att of all) prefetchVerdict(att.id);
+			for (const att of all) prefetchVerdict(att.id, att.size);
 		});
 	});
 
@@ -100,13 +101,15 @@
 					{#each atts as att (att.id)}
 						{@const tile = fileTile(att)}
 						{@const verdict = tileVerdict(att.id)}
+						{@const name = sanitizeFilename(att.filename)}
+						{@const parts = splitExt(name)}
 						<div class="group relative">
 						<a
 							href={resolve('/api/attachments/[id]', { id: att.id })}
 							download={att.filename ?? 'file'}
 							onclick={(e) => onOpen(e, att)}
 							aria-busy={verdict === 'checking'}
-							class="hover:bg-muted/60 focus-visible:ring-ring/50 flex items-center gap-2.5 rounded-lg p-1 pr-10 transition-colors outline-none focus-visible:ring-2 {verdict === 'checking' ? 'cursor-progress opacity-70' : ''}"
+							class="hover:bg-muted/60 focus-visible:ring-ring/50 pointer-coarse:py-2.5 flex items-center gap-2.5 rounded-lg p-1 pr-10 transition-colors outline-none focus-visible:ring-2 {verdict === 'checking' ? 'cursor-progress opacity-70' : ''}"
 						>
 							<span class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border {isImage(att) ? 'bg-muted' : tile.cls}">
 								{#if isImage(att)}
@@ -116,7 +119,10 @@
 								{/if}
 							</span>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate text-sm font-medium">{att.filename ?? 'file'}</span>
+								<!-- middle-truncate: base shrinks, extension (the trust signal) stays -->
+								<span class="flex min-w-0 text-sm font-medium">
+									<span class="truncate">{parts.base}</span><span class="shrink-0">{parts.ext}</span>
+								</span>
 								<span class="text-faint flex items-center gap-1.5 text-[11px]">
 									<span>{fileExt(att.filename)}{att.size != null ? ` · ${fmtSize(att.size)}` : ''}</span>
 									{#if verdict === 'checking'}
@@ -138,8 +144,8 @@
 						<Button
 							variant="ghost"
 							size="icon-sm"
-							title="Download {att.filename ?? 'file'}"
-							aria-label="Download {att.filename ?? 'file'}"
+							title="Download {sanitizeFilename(att.filename)}"
+							aria-label="Download {sanitizeFilename(att.filename)}"
 							onclick={(e) => onDownload(e, att)}
 							class="text-muted-foreground pointer-coarse:size-11 pointer-coarse:opacity-100 absolute top-1/2 right-1 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
 						>
