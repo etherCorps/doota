@@ -67,6 +67,11 @@
 	let creating = $state(false);
 	// Set once the endpoint is created — flips the form into the copy-secret view.
 	let newSecret = $state<string | null>(null);
+	// The secret is shown ONCE: until the user has actually copied it, the
+	// dialog/drawer refuses to dismiss (Esc/backdrop/swipe) and Done stays locked —
+	// one stray tap must not discard an unrecoverable credential.
+	let secretCopied = $state(false);
+	const guardingSecret = $derived(newSecret !== null && !secretCopied);
 
 	function toggleEvent(event: string, on: boolean) {
 		selectedEvents = on
@@ -78,6 +83,7 @@
 		url = '';
 		selectedEvents = [...WEBHOOK_EVENTS];
 		newSecret = null;
+		secretCopied = false;
 	}
 
 	async function create() {
@@ -94,9 +100,20 @@
 		}
 	}
 
+	// Clipboard writes can reject (iOS permission, focus loss) — a silent failure
+	// here means the user closes believing they copied an unrecoverable secret.
+	let secretInput = $state<HTMLInputElement | null>(null);
 	async function copy(text: string) {
-		await navigator.clipboard.writeText(text);
-		toast.success('Secret copied.');
+		try {
+			await navigator.clipboard.writeText(text);
+			secretCopied = true;
+			toast.success('Secret copied.');
+		} catch {
+			// Fallback: select the text so a manual ⌘C still works.
+			secretInput?.focus();
+			secretInput?.select();
+			toast.error("Couldn't copy automatically — the secret is selected, copy it manually.");
+		}
 	}
 
 	// ---- Per-endpoint mutations ----
@@ -187,13 +204,22 @@
 				endpoint.
 			</p>
 			<div class="flex items-center gap-2">
-				<Input readonly value={newSecret} class="font-mono text-xs" />
+				<Input
+					readonly
+					value={newSecret}
+					class="font-mono text-xs"
+					bind:ref={secretInput}
+					oncopy={() => (secretCopied = true)}
+				/>
 				<Button size="icon" variant="outline" onclick={() => copy(newSecret!)} aria-label="Copy secret">
 					<CopyIcon class="size-4" />
 				</Button>
 			</div>
-			<div class="flex justify-end">
-				<Button onclick={() => (addOpen = false)}>Done</Button>
+			<div class="flex items-center justify-end gap-3">
+				{#if !secretCopied}
+					<span class="text-muted-foreground text-xs">Copy the secret first — it won't be shown again.</span>
+				{/if}
+				<Button disabled={!secretCopied} onclick={() => (addOpen = false)}>Done</Button>
 			</div>
 		</div>
 	{:else}
@@ -283,7 +309,8 @@
 									{endpoint.secretPrefix}… · created {fmtDate(endpoint.createdAt)}
 								</span>
 							</div>
-							<div class="flex items-center gap-2">
+							<!-- label wraps the switch so the state text is a click target too -->
+							<label class="flex cursor-pointer items-center gap-2">
 								<span class="text-muted-foreground text-xs">
 									{endpoint.isEnabled ? 'Enabled' : 'Disabled'}
 								</span>
@@ -293,7 +320,7 @@
 									onCheckedChange={(on) => toggleEnabled(endpoint.id, on)}
 									aria-label="Toggle endpoint"
 								/>
-							</div>
+							</label>
 						</div>
 
 						{#if endpoint.disabledAt && !endpoint.isEnabled && endpoint.failureCount > 0}
@@ -311,10 +338,10 @@
 						<div class="flex flex-wrap items-center gap-1.5">
 							{#if endpoint.events.length}
 								{#each endpoint.events as event (event)}
-									<Badge variant="secondary" class="text-[10px]">{event}</Badge>
+									<Badge variant="secondary" class="text-[11px]">{event}</Badge>
 								{/each}
 							{:else}
-								<Badge variant="outline" class="text-[10px]">all events</Badge>
+								<Badge variant="outline" class="text-[11px]">all events</Badge>
 							{/if}
 						</div>
 
@@ -382,7 +409,7 @@
 							onOpenChange={(on) => toggleDeliveries(endpoint.id, on)}
 						>
 							<Collapsible.Trigger
-								class="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+								class="text-muted-foreground hover:text-foreground pointer-coarse:min-h-11 flex min-h-8 items-center gap-1 text-xs"
 							>
 								<ChevronDownIcon
 									class="size-3.5 transition-transform {openDeliveries[endpoint.id]
@@ -399,7 +426,7 @@
 											{#each rows as row (row.id)}
 												<li class="flex items-center justify-between gap-2 py-1.5">
 													<div class="flex min-w-0 items-center gap-2">
-														<Badge variant={STATUS[row.status] ?? 'outline'} class="text-[10px]">
+														<Badge variant={STATUS[row.status] ?? 'outline'} class="text-[11px]">
 															{row.status}
 														</Badge>
 														<span class="text-muted-foreground truncate font-mono">
@@ -446,7 +473,11 @@
 
 <!-- Create / copy-secret: dialog (desktop) / drawer (mobile) -->
 {#if isMobile.current}
-	<Drawer.Root bind:open={addOpen} onOpenChange={(open) => !open && resetAdd()}>
+	<Drawer.Root
+		bind:open={addOpen}
+		dismissible={!guardingSecret}
+		onOpenChange={(open) => !open && resetAdd()}
+	>
 		<Drawer.Content class="pb-[env(safe-area-inset-bottom)]">
 			<Drawer.Header class="text-left">
 				<Drawer.Title class="font-heading">
@@ -458,7 +489,12 @@
 	</Drawer.Root>
 {:else}
 	<Dialog.Root bind:open={addOpen} onOpenChange={(open) => !open && resetAdd()}>
-		<Dialog.Content class="sm:max-w-md">
+		<Dialog.Content
+			class="sm:max-w-md"
+			showCloseButton={!guardingSecret}
+			interactOutsideBehavior={guardingSecret ? 'ignore' : 'close'}
+			escapeKeydownBehavior={guardingSecret ? 'ignore' : 'close'}
+		>
 			<Dialog.Header>
 				<Dialog.Title class="font-heading">
 					{newSecret ? 'Copy your signing secret' : 'Add endpoint'}

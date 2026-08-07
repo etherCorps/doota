@@ -532,7 +532,7 @@ export async function getThread(
         eq(schema.threadState.threadId, input.threadId),
         eq(schema.threadState.mailboxId, input.mailboxId),
       ),
-      columns: { placement: true, isStarred: true, assigneeUserId: true },
+      columns: { placement: true, isStarred: true, pinnedAt: true, assigneeUserId: true },
     }),
     input.userId
       ? db.query.threadRead.findFirst({
@@ -930,6 +930,7 @@ export async function getThread(
     lastMessageAt,
     placement: state.placement,
     isStarred: state.isStarred,
+    pinnedAt: state.pinnedAt?.getTime() ?? null,
     assigneeUserId: state.assigneeUserId,
     items: timeline,
   };

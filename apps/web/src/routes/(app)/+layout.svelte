@@ -58,9 +58,14 @@
 
 	// Org 2FA grace nudge — shown when this member's org now requires 2FA and
 	// they're still inside the grace window (deadline ms from hooks.server.ts).
-	// Dismissible per session so it stops nagging after they've seen it.
+	// Dismissible per session so it stops nagging after they've seen it — EXCEPT
+	// inside the final 48h, when the hard block is imminent and hiding the
+	// deadline would be worse than the nag (the X is hidden then too).
 	let enroll2faDismissed = $state(false);
 	const enroll2faBy = $derived(data.enroll2faBy as number | null);
+	const enroll2faUrgent = $derived(
+		enroll2faBy != null && enroll2faBy - Date.now() < 48 * 60 * 60 * 1000
+	);
 	const enroll2faDeadline = $derived(
 		enroll2faBy ? new Date(enroll2faBy).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''
 	);
@@ -118,22 +123,27 @@
 				</Button>
 			{/snippet}
 		</TopBar>
-		{#if enroll2faBy && !enroll2faDismissed}
-			<div class="border-warn/40 bg-warn/10 text-foreground flex items-start gap-2 border-b px-4 py-2 text-sm">
+		{#if enroll2faBy && (!enroll2faDismissed || enroll2faUrgent)}
+			<div
+				role="status"
+				class="border-warn/40 bg-warn/10 text-foreground flex items-start gap-2 border-b px-4 py-2 text-sm"
+			>
 				<ShieldAlertIcon class="text-warn mt-0.5 size-4 shrink-0" />
 				<p class="min-w-0 flex-1">
 					Your organization now requires two-factor authentication. Enable it by
 					<span class="font-medium">{enroll2faDeadline}</span> —
 					<a href="/account/security" class="text-brand underline underline-offset-2">set it up now</a>.
 				</p>
-				<button
-					type="button"
-					onclick={dismissEnroll2fa}
-					aria-label="Dismiss"
-					class="text-muted-foreground hover:text-foreground -m-1 shrink-0 rounded-md p-1"
-				>
-					<XIcon class="size-4" />
-				</button>
+				{#if !enroll2faUrgent}
+					<button
+						type="button"
+						onclick={dismissEnroll2fa}
+						aria-label="Dismiss"
+						class="text-muted-foreground hover:text-foreground -m-1 shrink-0 rounded-md p-1"
+					>
+						<XIcon class="size-4" />
+					</button>
+				{/if}
 			</div>
 		{/if}
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and contains itself

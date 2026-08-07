@@ -183,6 +183,9 @@ export type ThreadDTO = {
   lastMessageAt: number | null;
   placement: string;
   isStarred: boolean;
+  /** Pin timestamp (ms) or null — lets a direct-URL open render the pin state
+   * without waiting for the list row. */
+  pinnedAt: number | null;
   assigneeUserId: string | null;
   items: TimelineItem[];
 };

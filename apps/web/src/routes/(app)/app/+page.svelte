@@ -650,7 +650,11 @@
 	// Priority: optimistic override → the list row (when the open thread is
 	// loaded) → the thread DTO (direct-URL case). Override resets per thread.
 	const openThreadItem = $derived(merged.find((thread) => thread.threadId === threadId));
-	let openFlagOverride = $state<{ isStarred?: boolean; assigneeUserId?: string | null }>({});
+	let openFlagOverride = $state<{
+		isStarred?: boolean;
+		assigneeUserId?: string | null;
+		pinnedAt?: number | null;
+	}>({});
 	$effect(() => {
 		void threadId;
 		untrack(() => {
@@ -663,11 +667,13 @@
 	const openStarred = $derived(
 		openFlagOverride.isStarred ?? openThreadItem?.isStarred ?? openDto?.isStarred ?? false
 	);
-	// Pin state for the open thread — sourced from its loaded list row (patchItem
-	// keeps it live). ThreadDTO carries no pinnedAt, so the header Pin item shows
-	// only once the row is loaded (the normal in-app case); a direct-URL open with
-	// no row treats it as unpinned until a reset pulls the pinned list.
-	const openPinned = $derived(openThreadItem?.pinnedAt != null);
+	// Pin state for the open thread: optimistic override → the loaded list row
+	// (patchItem keeps it live) → the thread DTO (direct-URL open, no row yet).
+	const openPinned = $derived(
+		'pinnedAt' in openFlagOverride
+			? openFlagOverride.pinnedAt != null
+			: (openThreadItem?.pinnedAt ?? openDto?.pinnedAt) != null
+	);
 	const openAssignee = $derived(
 		'assigneeUserId' in openFlagOverride
 			? (openFlagOverride.assigneeUserId ?? null)
@@ -1146,11 +1152,16 @@
 			pinnedItems = pinnedItems.filter((thread) => thread.threadId !== id);
 		}
 		patchItem(id, { pinnedAt: next ? Date.now() : null });
+		// Direct-URL open may have no list row — the header pin state reads the
+		// override first, so the toggle reflects immediately either way.
+		if (id === threadId) openFlagOverride = { ...openFlagOverride, pinnedAt: next ? Date.now() : null };
 		try {
 			await pinThread({ mailboxId, threadId: id, pinned: next });
 		} catch (err) {
 			pinnedItems = prevPinned;
 			patchItem(id, { pinnedAt: current ? Date.now() : null });
+			if (id === threadId)
+				openFlagOverride = { ...openFlagOverride, pinnedAt: current ? Date.now() : null };
 			toast.error(errorMessage(err, 'Could not update the pin.'));
 		}
 	}
@@ -2195,8 +2206,9 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{#if applyListFilters(merged).length}
-						{#each applyListFilters(merged) as thread (thread.threadId)}
+					{@const filteredThreads = applyListFilters(merged)}
+					{#if filteredThreads.length}
+						{#each filteredThreads as thread, threadIndex (thread.threadId)}
 							{@const selected = (navCursor ?? threadId) === thread.threadId}
 							{@const checked = threadSel.has(thread.threadId)}
 							{@const fx = rowFx.get(thread.threadId)}
@@ -2208,6 +2220,17 @@
 								out:exitFx={{ kind: fx }}
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
+								<!-- Section boundary for pins — INSIDE the row wrapper because
+								     animate:flip requires the row to be the each block's only child.
+								     Pinned rows sit atop the chronological list; without a visible
+								     boundary the list reads as mis-sorted (old mail above new). -->
+								{#if thread.pinnedAt != null && threadIndex === 0}
+									<div class="text-faint flex items-center gap-1.5 px-4 pt-2 pb-1 text-[11px] font-medium">
+										<PinIcon class="size-3" /> Pinned
+									</div>
+								{:else if thread.pinnedAt == null && filteredThreads[threadIndex - 1]?.pinnedAt != null}
+									<div class="text-faint px-4 pt-2 pb-1 text-[11px] font-medium">Everything else</div>
+								{/if}
 								<!-- Swipe action reveal — rendered only mid-gesture, never idle. -->
 								{#if prog > 0}
 									<div class="absolute inset-0 flex items-center {rightTarget === 'inbox' ? 'bg-brand/15' : 'bg-ok/15'} pl-5">
@@ -2324,7 +2347,7 @@
 						{/each}
 						{#if loadingList}
 							<div class="flex justify-center py-3"><Spinner class="text-muted-foreground size-4" /></div>
-						{:else if reachedEnd && applyListFilters(merged).length}
+						{:else if reachedEnd && filteredThreads.length}
 							<ListEndCat name={folder.name} />
 						{/if}
 					{:else if loadingList}
