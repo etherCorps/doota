@@ -71,10 +71,13 @@
 		const bootTimer = setTimeout(() => {
 			if (!booted) failed = true;
 		}, 8000);
+		// Closing mid-fetch must stop the transfer — a 20 MB attachment would
+		// otherwise keep downloading after the lightbox is gone.
+		const aborter = new AbortController();
 
 		async function handOffBytes() {
 			try {
-				const res = await fetch(`/api/attachments/${id}`);
+				const res = await fetch(`/api/attachments/${id}`, { signal: aborter.signal });
 				if (!res.ok) throw new Error(`attachment ${res.status}`);
 				const bytes = await res.arrayBuffer();
 				const win = frame?.contentWindow;
@@ -115,6 +118,7 @@
 		window.addEventListener('message', onMessage);
 		return () => {
 			clearTimeout(bootTimer);
+			aborter.abort();
 			window.removeEventListener('message', onMessage);
 		};
 	});
@@ -126,7 +130,7 @@
 	<Dialog.Root open={true} onOpenChange={(open) => { if (!open) close(); }}>
 		<Dialog.Content
 			showCloseButton={false}
-			class="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none"
+			class="data-open:zoom-in-100 data-closed:zoom-out-100 flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none"
 		>
 			<!-- Chrome bar: identity left, actions right. Safe-area padded for iOS. -->
 			<!-- Translucent chrome + surface: the dimmed app stays visible behind the

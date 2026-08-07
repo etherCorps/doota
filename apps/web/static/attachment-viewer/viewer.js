@@ -116,7 +116,10 @@ async function renderPdf(data) {
 	}
 }
 
-async function render(bytes, mime, name) {
+async function render(bytes, mime, name, theme) {
+	// Theme-aware ink (the shell CSS keys on this) — PDF pages/images carry
+	// their own paper, but text previews inherit the document color.
+	document.documentElement.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
 	const type = (mime || "").toLowerCase().split(";")[0].trim();
 	try {
 		if (type === "application/pdf") {
@@ -148,7 +151,7 @@ window.addEventListener("message", (event) => {
 	if (event.source !== window.parent) return;
 	const data = event.data;
 	if (!data || data.type !== "render") return;
-	render(data.bytes, data.mime, data.name);
+	render(data.bytes, data.mime, data.name, data.theme);
 });
 
 // Re-measure on late layout shifts (image decode, font paint).

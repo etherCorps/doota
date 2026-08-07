@@ -57,15 +57,26 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		"<!doctype html><html><head><meta charset=utf-8>" +
 		'<meta name=viewport content="width=device-width,initial-scale=1">' +
 		`<meta http-equiv="Content-Security-Policy" content="${csp}">` +
+		// Hardcoded hex values are a deliberate deviation from the app's token
+		// discipline: this shell is a static document with no access to the token
+		// pipeline. Theme comes with the render message — the glue stamps
+		// data-theme on <html> so text previews stay readable in dark mode
+		// (unconditional #111 ink on the parent's dark bg-card was unreadable).
 		"<style>" +
+		// color-scheme MUST cover both: an embedded doc whose scheme mismatches
+		// the embedder's gets an OPAQUE WHITE canvas behind its "transparent"
+		// background (spec behavior; found live — it's why dark ink used to be
+		// readable by accident, on a white canvas the app never asked for).
+		"html{color-scheme:light dark}" +
 		"html,body{margin:0;padding:0;background:transparent;color:#111;" +
 		"font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}" +
+		'[data-theme="dark"] body{color:#dfe3ea}' +
 		"#root{padding:8px;box-sizing:border-box}" +
 		".media{max-width:100%;height:auto;display:block;margin:0 auto}" +
 		".page{max-width:100%;height:auto;display:block;margin:0 auto 8px;box-shadow:0 1px 4px rgba(0,0,0,.15)}" +
 		".text{margin:0;white-space:pre-wrap;word-break:break-word;" +
 		"font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}" +
-		".msg{padding:24px 12px;text-align:center;color:#666}" +
+		".msg{padding:24px 12px;text-align:center;color:#8a8f98}" +
 		"</style></head><body>" +
 		'<div id="root"><div class="msg">Loading preview…</div></div>' +
 		// CLASSIC script, not type=module: module scripts are CORS-fetched, and

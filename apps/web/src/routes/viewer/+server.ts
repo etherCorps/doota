@@ -55,14 +55,21 @@ export const GET: RequestHandler = ({ url, locals }) => {
   const doc =
     "<!doctype html><html><head><meta charset=utf-8>" +
     '<meta name=viewport content="width=device-width,initial-scale=1">' +
+    // Hardcoded hex values are a deliberate deviation from the app's token
+    // discipline: this shell is a static document with no access to the token
+    // pipeline (theme-matched values arrive via the render message).
     "<style>" +
+    // color-scheme both: a scheme-mismatched embedded doc gets an opaque white
+    // canvas behind its transparent background (the pre-surfaceBackground light
+    // flash came from exactly this).
+    "html{color-scheme:light dark}" +
     "html,body{margin:0;padding:0;height:100%;background:transparent;" +
     "font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}" +
     // Fixed viewport, NOT grow-to-content: file-viewer lays out like an app
     // (toolbar + internally-scrolled, virtualized content). A height-growing
     // frame left the pdf pipeline's virtualized pages unpainted (found live).
     "#root{box-sizing:border-box;height:100vh;overflow:hidden}" +
-    ".msg{padding:24px 12px;text-align:center;color:#666}" +
+    ".msg{padding:24px 12px;text-align:center;color:#8a8f98}" + // readable on both papers
     "</style></head><body>" +
     '<div id="root"><div class="msg">Loading preview…</div></div>' +
     '<script src="/file-viewer-runtime.iife.js" defer></script>' +
