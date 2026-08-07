@@ -385,6 +385,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@cloudflare/workers-types@4.20260615.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.8.0)(kysely@0.29.2)(mysql2@3.23.2(@types/node@22.20.1))(pg@8.20.0)(sql.js@1.14.1)
+      ical.js:
+        specifier: ^2.2.1
+        version: 2.2.1
       neosanitize:
         specifier: ^0.3.0
         version: 0.3.0(htmlparser2@10.1.0)(parse5@7.3.0)
@@ -4236,6 +4239,9 @@ packages:
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
+
+  ical.js@2.2.1:
+    resolution: {integrity: sha512-yK/UlPbEs316igb/tjRgbFA8ZV75rCsBJp/hWOatpyaPNlgw0dGDmU+FoicOcwX4xXkeXOkYiOmCqNPFpNPkQg==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -9573,6 +9579,8 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
+
+  ical.js@2.2.1: {}
 
   iconv-lite@0.6.3:
     dependencies:

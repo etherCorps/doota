@@ -19,6 +19,7 @@
     "./events-consumer": "./src/events-consumer.ts",
     "./events-hub": "./src/events-hub.ts",
     "./identities": "./src/identities.ts",
+    "./ical": "./src/ical.ts",
     "./inbound-worker": "./src/inbound-worker.ts",
     "./inline-images": "./src/inline-images.ts",
     "./labels": "./src/labels.ts",
@@ -55,6 +56,7 @@
     "@doota/db": "workspace:*",
     "@doota/utils": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "ical.js": "^2.2.1",
     "neosanitize": "^0.3.0",
     "postal-mime": "^2.7.5"
   },
@@ -67,7 +69,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@sveltejs/kit": "^2.69.2",
-    "typescript": "^5.9.3",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "typescript": "^5.9.3"
   }
 }

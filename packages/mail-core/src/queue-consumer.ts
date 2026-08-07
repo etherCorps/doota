@@ -12,7 +12,8 @@ import { handleRuleBackfill, type RuleBackfillJob } from "./rules-backfill";
 import { handleExportJob, type MailboxExportJob } from "./export";
 import { enqueueSend, type OutboundEnv } from "./outbound";
 import { maybeVacationReply } from "./vacation";
-import { parseIcs, extractRsvpLinks, findCalendarPart } from "./calendar";
+import { extractRsvpLinks, findCalendarPart } from "./calendar";
+import { parseCalendar } from "./ical";
 import { looksLikeBounce, parseBounce, applyBounce, isDeliveryReport } from "./bounce";
 import { notifyInboundMail, notifySubmissionState } from "./events-hub";
 import { emitInboundWebhook } from "./webhooks";
@@ -168,59 +169,97 @@ async function stageInboundAttachments(
 }
 
 /**
- * Parse any calendar part on the message and persist a calendar_event row.
- * Structural fields stay cleartext; the sensitive free-text (summary/location/
- * description/joinUrl/rsvpLinks) is encrypted into details_enc with the same DEK
- * as the subject/body. Idempotent: unique on message_id, so a redelivered job
- * no-ops. Never throws into the delivery path — a malformed invite must not lose
- * the mail (it still lands as a normal message with its .ics attachment).
+ * Parse any calendar part on the message and persist a calendar_event row per
+ * VEVENT. Structural fields stay cleartext; the sensitive free-text (summary/
+ * location/description/joinUrl/rsvpLinks) is encrypted into details_enc with the
+ * same DEK as the subject/body. The RAW ICS is kept in R2 (encrypted) as the
+ * source of truth — stored BEFORE parsing, so a malformed invite still leaves
+ * the bytes recoverable.
+ *
+ * Identity is (message, uid, recurrence_id); message-level idempotency collapses
+ * "fires once per recipient", and SEQUENCE supersede + CANCEL are resolved at
+ * READ (highest sequence wins, is_cancelled shows "Cancelled") — history-
+ * preserving and D1-transaction-free. NEVER throws into the delivery path: a bad
+ * invite must not lose the mail (it still lands as a normal message).
  */
 async function persistInvite(
   db: ReturnType<typeof drizzle<typeof schema>>,
+  env: { MAIL_RAW: R2Bucket },
   ck: ContentKey,
   orgId: string,
   messageId: string,
   parsed: PMParsed,
 ): Promise<void> {
+  let rawIcsR2Key: string | null = null;
   try {
     const raw = findCalendarPart(parsed.attachments);
     if (!raw) return;
-    const inv = parseIcs(raw);
-    if (!inv) return;
+
+    // Raw ICS → R2 (encrypted at rest), FIRST — survives even a parse failure so
+    // a future export/re-parse has the bytes.
+    rawIcsR2Key = `calendar/${orgId}/${crypto.randomUUID()}.ics`;
+    await putEncryptedBlob(env.MAIL_RAW, rawIcsR2Key, ck, new TextEncoder().encode(raw), {
+      httpMetadata: { contentType: "text/calendar" },
+    });
+
+    const cal = parseCalendar(raw);
+    if (!cal.ok) {
+      // Unparseable VCALENDAR: raw is kept above; nothing to key a row on.
+      log.warn("in.invite_unparseable", { messageId, reason: cal.reason });
+      return;
+    }
+    // Provider's own Yes/Maybe/No links (message-level) — same for every event.
     const rsvpLinks = extractRsvpLinks(parsed.html);
-    const detailsEnc = await encryptContent(
-      ck,
-      JSON.stringify({
-        summary: inv.summary,
-        description: inv.description,
-        location: inv.location,
-        joinUrl: inv.joinUrl,
-        rsvpLinks,
-      }),
-    );
-    await db
-      .insert(schema.calendarEvent)
-      .values({
-        orgId,
-        messageId,
-        uid: inv.uid,
-        method: inv.method,
-        sequence: inv.sequence,
-        status: inv.status,
-        startMs: inv.startMs,
-        endMs: inv.endMs,
-        tz: inv.tz,
-        allDay: inv.allDay,
-        organizerEmail: inv.organizer.email,
-        organizerName: inv.organizer.name,
-        attendeesJson: JSON.stringify(inv.attendees),
-        meetingPlatform: inv.meetingPlatform,
-        calOrigin: inv.calOrigin,
-        detailsEnc,
-      })
-      .onConflictDoNothing({ target: schema.calendarEvent.messageId });
+    const isCancelMethod = cal.method === "CANCEL";
+
+    for (const ev of cal.events) {
+      if (!ev.uid) continue; // can't dedupe/RSVP without a UID — skip (raw kept)
+      const detailsEnc = await encryptContent(
+        ck,
+        JSON.stringify({
+          summary: ev.summary,
+          description: ev.description,
+          location: ev.location,
+          // join URL detection lives in calendar.ts; ical.ts carries platform only.
+          joinUrl: null,
+          rsvpLinks,
+        }),
+      );
+      await db
+        .insert(schema.calendarEvent)
+        .values({
+          orgId,
+          messageId,
+          uid: ev.uid,
+          recurrenceId: ev.recurrenceId ?? "",
+          method: cal.method,
+          sequence: ev.sequence,
+          status: ev.status,
+          isCancelled: isCancelMethod || ev.status === "CANCELLED",
+          unparseable: ev.incomplete,
+          startMs: ev.startMs,
+          endMs: ev.endMs,
+          tz: ev.tz,
+          allDay: ev.allDay,
+          rrule: ev.rrule,
+          organizerEmail: ev.organizer.email,
+          organizerName: ev.organizer.name,
+          attendeesJson: JSON.stringify(ev.attendees),
+          meetingPlatform: ev.meetingPlatform,
+          calOrigin: ev.calOrigin,
+          detailsEnc,
+          rawIcsR2Key,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.calendarEvent.messageId,
+            schema.calendarEvent.uid,
+            schema.calendarEvent.recurrenceId,
+          ],
+        });
+    }
   } catch (e) {
-    log.warn("in.invite_parse_failed", { messageId, ...errInfo(e) });
+    log.warn("in.invite_parse_failed", { messageId, rawIcsR2Key, ...errInfo(e) });
   }
 }
 
@@ -268,7 +307,7 @@ async function metadataStage(ctx: InboundStageCtx): Promise<void> {
   ctx.threadId = threadId;
   // Calendar invite (iMIP): parse + store alongside the message, before the
   // delivery so the invite is present the first time the thread is opened.
-  await persistInvite(ctx.db, ctx.deps.ck, ctx.job.orgId, messageId, ctx.parsed);
+  await persistInvite(ctx.db, { MAIL_RAW: ctx.env.MAIL_RAW }, ctx.deps.ck, ctx.job.orgId, messageId, ctx.parsed);
   const recipientBase = baseAddress(ctx.job.recipient, ctx.job.subaddressTag);
   ctx.role = deriveRole(ctx.parsed, recipientBase);
 }

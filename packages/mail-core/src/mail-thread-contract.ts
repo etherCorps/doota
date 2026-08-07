@@ -136,6 +136,9 @@ export type CalendarInviteDTO = {
   uid: string;
   method: string; // REQUEST | REPLY | CANCEL | PUBLISH
   status: string | null; // CONFIRMED | CANCELLED | TENTATIVE
+  /** Effective across the thread's messages: a CANCEL (at ≥ the winning
+   * sequence) supersedes. The card reads "Cancelled" and hides RSVP. */
+  cancelled: boolean;
   summary: string | null;
   description: string | null;
   location: string | null;
@@ -149,8 +152,14 @@ export type CalendarInviteDTO = {
   calOrigin: "google" | "microsoft" | "apple" | "other" | null;
   joinUrl: string | null;
   rsvpLinks: { accepted: string | null; declined: string | null; tentative: string | null };
-  /** The viewer's own recorded answer (local; organizer not notified). */
+  /** The viewer's own recorded answer, folded from calendar_rsvp. */
   myRsvp: InviteRsvpStatus | null;
+  /** RSVP allowed only when the viewer is an attendee AND a valid organizer
+   * exists AND the event isn't cancelled/a REPLY. The card shows buttons only
+   * when true; the server re-checks on send. */
+  canRsvp: boolean;
+  /** Human reason the RSVP row is hidden (null when canRsvp). */
+  rsvpDisabledReason: string | null;
 };
 
 /** A team-internal note in the timeline (Task 5). Never transmitted; visually

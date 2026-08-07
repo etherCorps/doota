@@ -12,7 +12,10 @@ import {
   assignedOnlyMailboxIds,
   manageGrantUserIds,
 } from "@doota/mail-core/mailbox";
-import { importKey } from "@doota/mail-core/crypto";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { sendRsvpReply } from "$lib/server/mail/itip-reply.js";
+import { outboundEnv } from "$lib/server/mail/outbound-env.js";
+import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
 import { tryLog, log } from "@doota/mail-core/log";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
@@ -276,11 +279,15 @@ export const markThreadRead = command(
 );
 
 /**
- * Record the viewer's LOCAL RSVP for a calendar invite (yes/no/maybe). This is
- * the app's own status only — it does NOT notify the organizer (that needs an
- * iMIP reply the provider can't emit yet, or the invite's own RSVP links). Authz:
- * the user must be able to see the thread AND the uid must belong to an invite in
- * it. Keyed per (user, uid) so the latest answer wins across the event's messages.
+ * Record the viewer's RSVP for a calendar invite (yes/no/maybe) AND, when a
+ * valid organizer exists, send a proper iTIP REPLY email to the organizer.
+ *
+ * Guards (all server-authoritative — the card mirrors them, but this is the
+ * gate): the uid must belong to an invite in THIS thread; the viewer's mailbox
+ * address must be an ATTENDEE (never RSVP as someone else); the REPLY goes to
+ * the ORGANIZER ONLY, carrying EXACTLY the replying attendee; a cancelled event
+ * or a REPLY-method notification can't be answered; re-answering with the SAME
+ * partstat does NOT re-send (lastSentPartstat + enqueueSend idempotency).
  */
 export const setInviteRsvp = command(
   z.object({
@@ -290,18 +297,54 @@ export const setInviteRsvp = command(
     status: z.enum(["accepted", "declined", "tentative"]),
   }),
   async ({ mailboxId, threadId, uid, status }) => {
-    await assertThreadGrant(mailboxId, threadId);
+    const { box } = await assertThreadGrant(mailboxId, threadId);
     const { locals } = getRequestEvent();
-    // The uid must name an invite actually carried by a message in this thread —
-    // never let a client write RSVP for an arbitrary uid.
-    const owns = await locals.db
-      .select({ id: mail.calendarEvent.id })
+
+    // The uid must name an invite carried by a message in THIS thread. Pull the
+    // EFFECTIVE event (highest SEQUENCE) so the REPLY echoes the current invite.
+    const rows = await locals.db
+      .select({
+        sequence: mail.calendarEvent.sequence,
+        recurrenceId: mail.calendarEvent.recurrenceId,
+        method: mail.calendarEvent.method,
+        isCancelled: mail.calendarEvent.isCancelled,
+        organizerEmail: mail.calendarEvent.organizerEmail,
+        organizerName: mail.calendarEvent.organizerName,
+        attendeesJson: mail.calendarEvent.attendeesJson,
+        detailsEnc: mail.calendarEvent.detailsEnc,
+      })
       .from(mail.calendarEvent)
       .innerJoin(mail.message, eq(mail.message.id, mail.calendarEvent.messageId))
-      .where(and(eq(mail.calendarEvent.uid, uid), eq(mail.message.threadId, threadId)))
-      .limit(1);
-    if (!owns.length) error(404, "Invite not found");
+      .where(and(eq(mail.calendarEvent.uid, uid), eq(mail.message.threadId, threadId)));
+    if (!rows.length) error(404, "Invite not found");
+    const event = rows.reduce((best, r) => (r.sequence > best.sequence ? r : best));
+    if (rows.some((r) => r.isCancelled)) error(409, "This event was cancelled.");
+    if (event.method === "REPLY") error(409, "That's a reply notification, not an invitation.");
+
+    // ATTENDEE GATE: the viewer's mailbox address must be on the guest list.
+    // Never let a user RSVP as an attendee they are not.
+    const mbox = await locals.db.query.mailbox.findFirst({
+      where: eq(mail.mailbox.id, mailboxId),
+      columns: { address: true, displayName: true },
+    });
+    const viewerAddr = (mbox?.address ?? "").toLowerCase();
+    let attendees: { email: string; name: string | null }[] = [];
+    try {
+      const parsed = JSON.parse(event.attendeesJson);
+      if (Array.isArray(parsed)) attendees = parsed;
+    } catch {
+      attendees = [];
+    }
+    if (!viewerAddr || !attendees.some((a) => (a.email ?? "").toLowerCase() === viewerAddr)) {
+      error(403, "You're not on the guest list for this event.");
+    }
+
+    // Record the local RSVP first (optimistic; the card already flipped).
     const now = new Date();
+    const prior = await locals.db.query.calendarRsvp.findFirst({
+      where: and(eq(mail.calendarRsvp.userId, locals.user!.id), eq(mail.calendarRsvp.uid, uid)),
+      columns: { lastSentPartstat: true },
+    });
     await locals.db
       .insert(mail.calendarRsvp)
       .values({ userId: locals.user!.id, uid, status, updatedAt: now })
@@ -309,7 +352,50 @@ export const setInviteRsvp = command(
         target: [mail.calendarRsvp.userId, mail.calendarRsvp.uid],
         set: { status, updatedAt: now },
       });
-    return { ok: true as const, status };
+
+    // Send the iTIP REPLY only when there's a valid organizer to reply to, and
+    // only if we haven't already emailed this exact answer.
+    const organizerValid =
+      !!event.organizerEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(event.organizerEmail);
+    const wantPartstat = { accepted: "ACCEPTED", declined: "DECLINED", tentative: "TENTATIVE" }[status];
+    let replySent = false;
+    if (organizerValid && prior?.lastSentPartstat !== wantPartstat) {
+      // Decrypt the summary for the REPLY subject/SUMMARY (best-effort).
+      let summary: string | null = null;
+      try {
+        const raw = event.detailsEnc ? await decryptContent(await contentKey(), event.detailsEnc) : null;
+        if (raw) summary = (JSON.parse(raw) as { summary?: string }).summary ?? null;
+      } catch {
+        summary = null;
+      }
+      await tryLog(
+        "invite.rsvp_reply_failed",
+        (async () => {
+          const submissionId = await sendRsvpReply(locals.db, outboundEnv(), {
+            orgId: box.orgId,
+            mailboxId,
+            userId: locals.user!.id,
+            fromAddress: viewerAddr,
+            fromName: mbox?.displayName ?? null,
+            organizerEmail: event.organizerEmail!,
+            organizerName: event.organizerName,
+            uid,
+            recurrenceId: event.recurrenceId,
+            sequence: event.sequence,
+            status,
+            summary,
+          });
+          deliverInBackground(submissionId, 0);
+          await locals.db
+            .update(mail.calendarRsvp)
+            .set({ lastSentPartstat: wantPartstat, replySentAt: new Date() })
+            .where(and(eq(mail.calendarRsvp.userId, locals.user!.id), eq(mail.calendarRsvp.uid, uid)));
+        })(),
+        { uid, status },
+      );
+      replySent = true;
+    }
+    return { ok: true as const, status, replySent };
   },
 );
 

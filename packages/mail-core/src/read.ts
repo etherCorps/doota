@@ -3,6 +3,7 @@ import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, notInAr
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import { decryptContent, type ContentKey } from "./crypto";
+import { resolveEffectiveEvent } from "./ical";
 import { listNotes } from "./notes";
 import { listSystemEvents } from "./collab";
 import {
@@ -546,7 +547,7 @@ export async function getThread(
       : Promise.resolve(null),
     db.query.mailbox.findFirst({
       where: eq(schema.mailbox.id, input.mailboxId),
-      columns: { isPersonal: true },
+      columns: { isPersonal: true, address: true },
     }),
   ]);
   tPreamble = Date.now();
@@ -674,6 +675,10 @@ export async function getThread(
     }
   };
   // Decrypt + hydrate invites, folding in the viewer's local RSVP (keyed by UID).
+  // Multiple rows can share an event (uid,recurrence_id) across the thread's
+  // messages — a re-invite (higher SEQUENCE) or a CANCEL. The EFFECTIVE state is
+  // resolved here (highest sequence wins; is_cancelled overlaid) so every message
+  // carrying that event shows the current state, never a stale earlier one.
   const inviteByMsg = new Map<string, CalendarInviteDTO>();
   if (calendarRows.length) {
     const uids = [...new Set(calendarRows.map((c) => c.uid))];
@@ -686,38 +691,89 @@ export async function getThread(
           )
       : [];
     const rsvpByUid = new Map(rsvpRows.map((r) => [r.uid, r.status as InviteRsvpStatus]));
+
+    type CalRow = (typeof calendarRows)[number];
+    const eventKey = (c: CalRow) => `${c.uid} ${c.recurrenceId}`;
+    // Group rows by (uid,recurrence_id); pick the winner (max sequence, then
+    // newest) and whether the event was cancelled at or after that sequence.
+    const groups = new Map<string, CalRow[]>();
+    for (const c of calendarRows) {
+      const k = eventKey(c);
+      (groups.get(k) ?? groups.set(k, []).get(k)!).push(c);
+    }
+    const effectiveByKey = new Map<string, { row: CalRow; cancelled: boolean }>();
+    for (const [k, rows] of groups) {
+      const { winner, cancelled } = resolveEffectiveEvent(
+        rows.map((r) => ({ ...r, createdAtMs: r.createdAt.getTime() })),
+      );
+      // winner carries the extra createdAtMs; strip back to the original row.
+      const row = rows.find((r) => r.id === winner.id) ?? rows[0];
+      effectiveByKey.set(k, { row, cancelled });
+    }
+    // Decrypt every winning row's details once.
+    const detailsByKey = new Map<string, { summary?: string; description?: string; location?: string; joinUrl?: string; rsvpLinks?: CalendarInviteDTO["rsvpLinks"] }>();
     await Promise.all(
-      calendarRows.map(async (c) => {
-        // details_enc is a JSON blob of the sensitive free-text; a decrypt failure
-        // (rotated key / tamper) must not sink the whole thread — degrade to null.
-        let details: { summary?: string; description?: string; location?: string; joinUrl?: string; rsvpLinks?: CalendarInviteDTO["rsvpLinks"] } = {};
+      [...effectiveByKey.entries()].map(async ([k, { row }]) => {
+        // A decrypt failure (rotated key / tamper) must not sink the whole
+        // thread — degrade to empty.
         try {
-          const raw = await decryptContent(input.ck, c.detailsEnc);
-          if (raw) details = JSON.parse(raw);
+          const raw = await decryptContent(input.ck, row.detailsEnc);
+          detailsByKey.set(k, raw ? JSON.parse(raw) : {});
         } catch {
-          details = {};
+          detailsByKey.set(k, {});
         }
-        inviteByMsg.set(c.messageId, {
-          uid: c.uid,
-          method: c.method,
-          status: c.status,
-          summary: details.summary ?? null,
-          description: details.description ?? null,
-          location: details.location ?? null,
-          startMs: c.startMs,
-          endMs: c.endMs,
-          tz: c.tz,
-          allDay: c.allDay,
-          organizer: { email: c.organizerEmail, name: c.organizerName },
-          attendees: parseAttendees(c.attendeesJson),
-          meetingPlatform: c.meetingPlatform as CalendarInviteDTO["meetingPlatform"],
-          calOrigin: c.calOrigin as CalendarInviteDTO["calOrigin"],
-          joinUrl: details.joinUrl ?? null,
-          rsvpLinks: details.rsvpLinks ?? { accepted: null, declined: null, tentative: null },
-          myRsvp: rsvpByUid.get(c.uid) ?? null,
-        });
       }),
     );
+
+    const viewerAddr = (mbox?.address ?? "").toLowerCase();
+    // Emit ONE card per message — the first event that message carries, resolved
+    // to its effective state. (Multi-VEVENT invites are rare; all events are
+    // stored, one card renders the primary — matches Gmail's one-card-per-invite.)
+    const seenMsg = new Set<string>();
+    for (const c of calendarRows) {
+      if (seenMsg.has(c.messageId)) continue;
+      seenMsg.add(c.messageId);
+      const k = eventKey(c);
+      const eff = effectiveByKey.get(k)!;
+      const row = eff.row;
+      const details = detailsByKey.get(k) ?? {};
+      const attendees = parseAttendees(row.attendeesJson);
+      // RSVP is allowed only when the viewer's mailbox address is an ATTENDEE and
+      // a valid organizer exists to reply to (server re-checks; card just hides).
+      const organizerValid = !!row.organizerEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.organizerEmail);
+      const isAttendee = !!viewerAddr && attendees.some((a) => a.email.toLowerCase() === viewerAddr);
+      const rsvpDisabledReason = eff.cancelled
+        ? "This event was cancelled."
+        : row.method === "REPLY"
+          ? null // a REPLY notification — card suppresses RSVP by method anyway
+          : !isAttendee
+            ? "You're not on the guest list."
+            : !organizerValid
+              ? "No organizer to reply to."
+              : null;
+      inviteByMsg.set(c.messageId, {
+        uid: row.uid,
+        method: row.method,
+        status: row.status,
+        cancelled: eff.cancelled,
+        summary: details.summary ?? null,
+        description: details.description ?? null,
+        location: details.location ?? null,
+        startMs: row.startMs,
+        endMs: row.endMs,
+        tz: row.tz,
+        allDay: row.allDay,
+        organizer: { email: row.organizerEmail, name: row.organizerName },
+        attendees,
+        meetingPlatform: row.meetingPlatform as CalendarInviteDTO["meetingPlatform"],
+        calOrigin: row.calOrigin as CalendarInviteDTO["calOrigin"],
+        joinUrl: details.joinUrl ?? null,
+        rsvpLinks: details.rsvpLinks ?? { accepted: null, declined: null, tentative: null },
+        myRsvp: rsvpByUid.get(row.uid) ?? null,
+        canRsvp: rsvpDisabledReason === null && row.method !== "REPLY",
+        rsvpDisabledReason,
+      });
+    }
   }
 
   const deliveryByMsg = new Map(deliveries.map((d) => [d.messageId, d]));

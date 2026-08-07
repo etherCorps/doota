@@ -190,11 +190,30 @@ function detectOrigin(prodId: string, organizerEmail: string | null): CalOrigin 
   if (p.includes("google")) return "google";
   if (p.includes("microsoft") || p.includes("exchange") || p.includes("outlook")) return "microsoft";
   if (p.includes("apple") || p.includes("mac os") || p.includes("icloud")) return "apple";
-  const dom = organizerEmail?.split("@")[1] ?? "";
-  if (/google/.test(dom)) return "google";
-  if (/(outlook|microsoft|office365)/.test(dom)) return "microsoft";
-  if (/icloud|me\.com|mac\.com/.test(dom)) return "apple";
+  // Match a DOMAIN COMPONENT, not a bare substring — "acme.com" must not read as
+  // Apple via the "me.com" substring. Anchor each to a start/dot boundary + end.
+  const dom = organizerEmail?.split("@")[1]?.toLowerCase() ?? "";
+  if (/(^|\.)(google\.com|gmail\.com|googlemail\.com)$/.test(dom)) return "google";
+  if (/(^|\.)(outlook\.com|hotmail\.com|live\.com|microsoft\.com|office365\.com)$/.test(dom))
+    return "microsoft";
+  if (/(^|\.)(icloud\.com|me\.com|mac\.com)$/.test(dom)) return "apple";
   return prodId ? "other" : null;
+}
+
+/**
+ * Meeting platform + calendar origin from a PRODID, organizer address, and a
+ * text blob (LOCATION/DESCRIPTION) to scan for a join URL. Shared by the ical.js
+ * parser so both parsers agree on detection without duplicating the regexes.
+ */
+export function detectMeetingAndOrigin(
+  prodId: string,
+  organizerEmail: string | null,
+  blob: string,
+): { meetingPlatform: MeetingPlatform; calOrigin: CalOrigin } {
+  return {
+    meetingPlatform: findJoinUrl(blob)?.platform ?? null,
+    calOrigin: detectOrigin(prodId, organizerEmail),
+  };
 }
 
 /**

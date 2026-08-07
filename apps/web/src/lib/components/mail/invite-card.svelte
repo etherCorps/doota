@@ -33,7 +33,11 @@
 		onRsvp: (status: InviteRsvpStatus) => void | Promise<void>;
 	} = $props();
 
-	const cancelled = $derived(invite.method === 'CANCEL' || invite.status === 'CANCELLED');
+	// `cancelled` is resolved server-side across the thread (a later CANCEL
+	// supersedes an earlier REQUEST); fall back to the raw method/status.
+	const cancelled = $derived(
+		invite.cancelled || invite.method === 'CANCEL' || invite.status === 'CANCELLED'
+	);
 	// A REPLY is someone else's RSVP notification (e.g. "X accepted") — the viewer
 	// can't RSVP to a reply, so the Yes/Maybe/No row is suppressed (Join + calendar
 	// actions stay). The eyebrow already reads "RSVP" to signal the card's nature.
@@ -376,9 +380,10 @@
 	{#if !cancelled}
 		<div class="space-y-2.5 border-t p-3">
 			<!-- Full-width segmented pill: the three answers split the row evenly; the
-			     selected segment fills as a coloured pill (Yes/Maybe/No). Hidden on a
-			     REPLY — you don't RSVP to someone else's response. -->
-			{#if !isReply}
+			     selected segment fills as a coloured pill (Yes/Maybe/No). Shown ONLY
+			     when the viewer is an attendee with a valid organizer to reply to
+			     (server-gated, canRsvp); otherwise a quiet reason. Hidden on a REPLY. -->
+			{#if invite.canRsvp}
 			<div role="group" aria-label="RSVP" class="border-border bg-muted flex w-full items-center gap-1 rounded-full border p-1">
 				{#each RSVP as opt (opt.key)}
 					{@const Icon = opt.icon}
@@ -410,6 +415,8 @@
 					{/if}
 				{/each}
 			</div>
+			{:else if !isReply && invite.rsvpDisabledReason}
+				<p class="text-muted-foreground text-[11px]">{invite.rsvpDisabledReason}</p>
 			{/if}
 
 			{#if invite.joinUrl}

@@ -1268,9 +1268,10 @@
 		await threadQ?.refresh();
 	}
 
-	// Local RSVP for calendar invites (organizer NOT notified). Optimistic: the
-	// override map flips the card's pressed state instantly; a failed persist
-	// reverts. Keyed by event UID so every message of the same event agrees.
+	// RSVP for calendar invites: records local status AND (server-side) emails an
+	// iTIP REPLY to the organizer. Optimistic: the override map flips the card's
+	// pressed state instantly; a failed persist reverts. Keyed by event UID so
+	// every message of the same event agrees.
 	const inviteRsvp = new SvelteMap<string, InviteRsvpStatus>();
 	function inviteFor(m: MessageDTO): CalendarInviteDTO {
 		const inv = m.calendarInvite!;

@@ -632,23 +632,43 @@ export const calendarEvent = sqliteTable(
       .notNull()
       .references(() => message.id, { onDelete: "cascade" }),
     uid: text("uid").notNull(),
+    // RECURRENCE-ID (single-instance override of a recurring series). '' = the
+    // series/master (no override). Part of the composite identity
+    // `(uid, recurrence_id)` — empty-string sentinel (NOT NULL) so the unique
+    // index dedupes (SQLite treats NULLs as distinct).
+    recurrenceId: text("recurrence_id").default("").notNull(),
     method: text("method").notNull(), // REQUEST | REPLY | CANCEL | PUBLISH
     sequence: integer("sequence").default(0).notNull(),
     status: text("status"), // CONFIRMED | CANCELLED | TENTATIVE
+    // METHOD:CANCEL received for this (uid,recurrence_id). Kept as history — the
+    // event is never hard-deleted; the card reads "Cancelled".
+    isCancelled: integer("is_cancelled", { mode: "boolean" }).default(false).notNull(),
+    // ICS parsed but structurally incomplete (missing UID/DTSTART). The email
+    // still ingested normally; raw ICS is kept in R2 for later.
+    unparseable: integer("unparseable", { mode: "boolean" }).default(false).notNull(),
     startMs: integer("start_ms").notNull(),
     endMs: integer("end_ms"),
     tz: text("tz"), // event timezone label (IANA) when the value carried a TZID
     allDay: integer("all_day", { mode: "boolean" }).default(false).notNull(),
+    // RAW recurrence rule, verbatim — NEVER expanded. rdate/exdate stay in the
+    // raw ICS blob (raw_ics_r2_key), not surfaced as columns.
+    rrule: text("rrule"),
     organizerEmail: text("organizer_email"),
     organizerName: text("organizer_name"),
     attendeesJson: text("attendees_json").default("[]").notNull(),
     meetingPlatform: text("meeting_platform"), // zoom | teams | meet | webex
     calOrigin: text("cal_origin"), // google | microsoft | apple | other
     detailsEnc: text("details_enc"), // encrypted {summary,description,location,joinUrl,rsvpLinks}
+    // Encrypted raw ICS bytes in R2 (calendar/<id>.ics) — source of truth a
+    // future export/create path re-reads. Null only when there was no ICS blob.
+    rawIcsR2Key: text("raw_ics_r2_key"),
     createdAt: now(),
   },
   (t) => [
-    uniqueIndex("calendar_event_message_uidx").on(t.messageId),
+    // One row per VEVENT per message: (message, uid, recurrence_id). Allows
+    // multiple VEVENTs in one VCALENDAR + per-instance overrides, while
+    // message-level idempotency collapses "fires once per recipient".
+    uniqueIndex("calendar_event_msg_uid_recur_uidx").on(t.messageId, t.uid, t.recurrenceId),
     index("calendar_event_uid_idx").on(t.uid),
   ],
 );
@@ -669,6 +689,10 @@ export const calendarRsvp = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     uid: text("uid").notNull(),
     status: text("status").notNull(), // accepted | declined | tentative
+    // The PARTSTAT we last emailed the organizer, and when — so re-answering
+    // with the SAME value doesn't re-send an iTIP REPLY.
+    lastSentPartstat: text("last_sent_partstat"),
+    replySentAt: integer("reply_sent_at", { mode: "timestamp_ms" }),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
