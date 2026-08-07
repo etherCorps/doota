@@ -41,11 +41,13 @@ describe("attachment viewer sandbox", () => {
 });
 
 describe("isViewable", () => {
-	it("routes images, svg, text, and pdf to the viewer", () => {
+	it("routes images, svg, text, pdf, and media to the viewer", () => {
 		for (const type of [
 			"image/png",
 			"image/jpeg",
 			"image/svg+xml",
+			"video/mp4",
+			"audio/mpeg",
 			"text/plain",
 			"text/csv",
 			"application/pdf",
@@ -58,14 +60,7 @@ describe("isViewable", () => {
 	});
 
 	it("leaves non-viewable types to download", () => {
-		for (const type of [
-			"application/octet-stream",
-			"video/mp4",
-			"audio/mpeg",
-			null,
-			undefined,
-			"",
-		]) {
+		for (const type of ["application/octet-stream", null, undefined, ""]) {
 			expect(isViewable(type), String(type)).toBe(false);
 		}
 	});
@@ -85,11 +80,17 @@ describe("isViewable — rich formats (same-origin file-viewer shell)", () => {
 		}
 		// Unknown binaries still download.
 		expect(isViewable("application/octet-stream", "blob.bin")).toBe(false);
-		expect(isViewable("video/mp4", "clip.mp4")).toBe(false);
 	});
 
 	it("base types stay base-viewable (opaque hard-isolated viewer)", () => {
-		for (const type of ["application/pdf", "image/png", "text/plain", "image/svg+xml"]) {
+		for (const type of [
+			"application/pdf",
+			"image/png",
+			"text/plain",
+			"image/svg+xml",
+			"video/mp4",
+			"audio/mpeg",
+		]) {
 			expect(isBaseViewable(type), type).toBe(true);
 		}
 	});

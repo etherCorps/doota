@@ -39,13 +39,16 @@ const RICH_MIME = new Set([
 const normalize = (contentType: string | null | undefined) =>
 	(contentType ?? "").toLowerCase().split(";")[0].trim();
 
-/** Renderable by the opaque hard-isolated viewer. */
+/** Renderable by the opaque hard-isolated viewer (media bytes are inert — the
+ * browser decodes them, no script runs — so audio/video are safe here). */
 export function isBaseViewable(contentType: string | null | undefined): boolean {
 	const type = normalize(contentType);
 	return (
 		type === "application/pdf" ||
 		type === "image/svg+xml" ||
 		type.startsWith("image/") ||
+		type.startsWith("video/") ||
+		type.startsWith("audio/") ||
 		type.startsWith("text/") ||
 		type === "application/json" ||
 		type === "application/xml"

@@ -50,6 +50,24 @@ function renderImage(blob) {
 	root.appendChild(img);
 }
 
+function renderMedia(blob, kind) {
+	// <audio>/<video> from a blob URL — media bytes are inert data (the browser
+	// decodes them; no script can run from a media file). controls only, no
+	// autoplay. CSP media-src blob: permits the source; connect-src 'none' still
+	// blocks any subresource fetch.
+	clear();
+	const el = document.createElement(kind); // "audio" | "video"
+	el.className = `player ${kind}`;
+	el.controls = true;
+	el.preload = "metadata";
+	if (kind === "video") el.playsInline = true;
+	el.src = URL.createObjectURL(blob);
+	el.onloadedmetadata = reportHeight;
+	el.onerror = () => showMessage("This file couldn't be played. Download it to open.");
+	root.appendChild(el);
+	reportHeight();
+}
+
 function renderText(text) {
 	clear();
 	const pre = document.createElement("pre");
@@ -127,6 +145,8 @@ async function render(bytes, mime, name, theme) {
 		} else if (type.startsWith("image/")) {
 			// covers image/svg+xml too — as a non-scriptable <img>
 			renderImage(new Blob([bytes], { type: type || "application/octet-stream" }));
+		} else if (type.startsWith("video/") || type.startsWith("audio/")) {
+			renderMedia(new Blob([bytes], { type }), type.startsWith("video/") ? "video" : "audio");
 		} else if (
 			type.startsWith("text/") ||
 			type === "application/json" ||

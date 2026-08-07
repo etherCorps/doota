@@ -193,6 +193,47 @@ describe("bounce parsing (Part F)", () => {
     // No content-type at all.
     expect(isDeliveryReport("Subject: hi\r\n\r\nhello")).toBe(false);
   });
+
+  // RCA regression guard (memory: mail-inbound-rca-todo). The historical bug
+  // dropped real replies as bounces whenever looksLikeBounce fired — a reply
+  // addressed to the return-path subdomain, or with a "failure notice"-ish
+  // subject, was eaten. The consumer now DROPS only when the message is BOTH a
+  // structural report (multipart/report) AND parses failures; this composes the
+  // two gates the way queue-consumer does, and asserts the reply survives.
+  it("does NOT classify a real reply on the return-path subdomain as a droppable bounce", () => {
+    // A genuine reply that tripped the address heuristic (recipient on the
+    // return-path subdomain) but is ordinary text/plain mail.
+    const reply = {
+      envelopeFrom: "human@ext.com",
+      fromAddress: "human@ext.com",
+      subject: "Re: your quote", // not a DSN subject
+      recipient: "reply+abc@bounce.acme.com",
+      returnPathDomain: "bounce.acme.com",
+    };
+    const raw = "Content-Type: text/plain\r\n\r\nThanks, looks good — let's proceed.";
+    const heuristic = looksLikeBounce(reply); // true: recipient on return-path subdomain
+    const bounce = parseBounce(raw);
+    const wouldDrop = heuristic && isDeliveryReport(raw) && (bounce.failures.length > 0 || bounce.isComplaint);
+    expect(heuristic).toBe(true); // the heuristic still fires…
+    expect(wouldDrop).toBe(false); // …but the structural gate keeps the reply
+  });
+
+  it("still drops a genuine multipart/report DSN with parseable failures", () => {
+    const raw =
+      'Content-Type: multipart/report; report-type=delivery-status;\r\n\tboundary="b"\r\n\r\n' +
+      "Message-ID: <orig@acme.com>\r\nFinal-Recipient: rfc822; dead@x.com\r\nAction: failed\r\nStatus: 5.1.1\r\n";
+    const heuristic = looksLikeBounce({
+      envelopeFrom: "",
+      fromAddress: "MAILER-DAEMON@mx",
+      subject: "Undeliverable",
+      recipient: "reply+abc@bounce.acme.com",
+      returnPathDomain: "bounce.acme.com",
+    });
+    const bounce = parseBounce(raw);
+    const wouldDrop = heuristic && isDeliveryReport(raw) && (bounce.failures.length > 0 || bounce.isComplaint);
+    expect(wouldDrop).toBe(true);
+    expect(bounce.failures).toEqual([{ address: "dead@x.com", kind: "hard" }]);
+  });
 });
 
 // ---- integration -------------------------------------------------------------

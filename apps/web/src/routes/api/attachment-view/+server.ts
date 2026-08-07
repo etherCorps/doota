@@ -36,6 +36,7 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		"connect-src 'none'", // never fetches — bytes arrive via postMessage
 		"worker-src 'none'", // blocks a real Worker → pdfjs falls back to its main-thread fake worker
 		"img-src blob: data:", // rendered images/SVG only
+		"media-src blob:", // <audio>/<video> play from the postMessage'd blob
 		"style-src 'unsafe-inline'",
 		"object-src 'none'",
 		"base-uri 'none'",
@@ -73,6 +74,9 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		'[data-theme="dark"] body{color:#dfe3ea}' +
 		"#root{padding:8px;box-sizing:border-box}" +
 		".media{max-width:100%;height:auto;display:block;margin:0 auto}" +
+		".player{width:100%;display:block;margin:0 auto}" +
+		".player.audio{max-width:32rem;margin-top:24px}" +
+		".player.video{max-height:80vh;background:#000;border-radius:8px}" +
 		".page{max-width:100%;height:auto;display:block;margin:0 auto 8px;box-shadow:0 1px 4px rgba(0,0,0,.15)}" +
 		".text{margin:0;white-space:pre-wrap;word-break:break-word;" +
 		"font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}" +
