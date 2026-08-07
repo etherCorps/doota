@@ -1,0 +1,68 @@
+---
+title: Attachments
+description: How Doota checks files before you open them, what the little badges mean, and how preview and download work.
+audience: human
+sidebar:
+  order: 6
+---
+
+Every file in your mail gets a quick safety check, and most open right inside
+Doota so you never have to download them to take a look. This page explains the
+badges you'll see and what happens when you click a file.
+
+## The safety check
+
+When you open a conversation, Doota checks each attachment against a list of
+known dangerous patterns — the same kind of thing that hides malware inside a
+document or a zip. The check runs on your own device; the file isn't sent
+anywhere to be scanned.
+
+You'll see a small badge next to each file:
+
+- **Checked** — the file was compared against known threats and nothing matched.
+  This is not a promise it's safe; it means "nothing known-bad was found."
+- **Threat found** — the file matched a known dangerous pattern. Treat it with
+  care. You can still open or download it, but Doota asks you to confirm first.
+- **Couldn't check** — Doota wasn't able to finish the check (an unusual file,
+  or one that's very large). It isn't a verdict either way, so Doota asks you to
+  confirm before opening.
+
+A file that's still being checked shows a small spinner for a moment.
+
+<Aside type="note">
+"Checked" is honest, not a guarantee. It means the file didn't match anything on
+the known-threats list — new or disguised threats can still slip past any
+scanner. Use the same judgement you would with any email attachment.
+</Aside>
+
+## Opening a file
+
+Click a file to open it. What happens depends on the type:
+
+- **Images, PDFs, text, audio, and video** open in a **preview** that runs in an
+  isolated window inside Doota. Nothing in the file can reach your account or the
+  rest of the page.
+- **Office documents, spreadsheets, slideshows, markdown, and archives (zips)**
+  open in a richer preview that can show their formatting, page through slides,
+  or list what's inside a zip.
+- **Anything Doota can't preview** downloads instead.
+
+If a file came up as **Threat found** or **Couldn't check**, Doota asks you to
+confirm before it opens or downloads — the button says exactly what it will do
+(*Preview anyway* or *Download anyway*).
+
+## Preview vs download
+
+- The **file itself** opens the preview.
+- The **download button** on each file (a small ⬇ icon) always downloads,
+  without opening the preview — handy when you just want the file on your device.
+
+Inside a preview you also get a **Download** button in the top bar, and — when a
+message has several files you can preview — arrows to step **through them** (or
+your keyboard's left/right arrows) without closing and reopening.
+
+## Why preview instead of just downloading?
+
+Downloading a file puts it on your device before you've seen it. Previewing lets
+you look first, in a walled-off window, and only download the ones you actually
+want. It's faster, and it keeps risky files at arm's length.

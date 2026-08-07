@@ -20,7 +20,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import { ATTACHMENT_VIEWER_SANDBOX, RICH_VIEWER_SANDBOX } from '$lib/client/attachment-viewer-sandbox';
-	import { isBaseViewable } from '$lib/client/attachment-viewable';
+	import { viewerFor } from '$lib/client/attachment-viewable';
 	import {
 		viewer,
 		viewerContext,
@@ -28,12 +28,12 @@
 		downloadAttachment
 	} from '$lib/client/attachment-gate.svelte';
 
-	// Shell choice is PER DOCUMENT: pdf/images/text keep the opaque hard-isolated
-	// viewer; only rich-only formats (Office/archives/…) use the same-origin
-	// file-viewer shell — deliberately weaker isolation, see /viewer's CSP notes.
-	// (Not gated on viewer.open: flipping the src during the close animation
-	// would reload the frame mid-outro.)
-	const rich = $derived(!isBaseViewable(viewer.contentType));
+	// Shell choice is PER DOCUMENT: pdf/images/text/media keep the opaque
+	// hard-isolated viewer; rich-only formats (Office/archives/markdown/…) use
+	// the same-origin file-viewer shell — deliberately weaker isolation, see
+	// /viewer's CSP notes. (Not gated on viewer.open: flipping the src during
+	// the close animation would reload the frame mid-outro.)
+	const rich = $derived(viewerFor(viewer.contentType, viewer.filename) === 'rich');
 	const frameSrc = $derived(rich ? '/viewer' : '/api/attachment-view');
 	const frameSandbox = $derived(rich ? RICH_VIEWER_SANDBOX : ATTACHMENT_VIEWER_SANDBOX);
 	let frame = $state<HTMLIFrameElement>();

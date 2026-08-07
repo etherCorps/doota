@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ATTACHMENT_VIEWER_SANDBOX, RICH_VIEWER_SANDBOX } from "$lib/client/attachment-viewer-sandbox";
-import { isViewable, isBaseViewable } from "$lib/client/attachment-viewable";
+import { isViewable, isBaseViewable, viewerFor } from "$lib/client/attachment-viewable";
 
 describe("attachment viewer sandbox", () => {
 	it("grants allow-scripts", () => {
@@ -31,7 +31,9 @@ describe("attachment viewer sandbox", () => {
 		// base types (pdf/images/text) MUST keep the opaque sandbox + route.
 		expect(source).toContain("rich ? RICH_VIEWER_SANDBOX : ATTACHMENT_VIEWER_SANDBOX");
 		expect(source).toContain("rich ? '/viewer' : '/api/attachment-view'");
-		expect(source).toContain("!isBaseViewable(viewer.contentType)");
+		// Shell decided by the single source of truth (viewerFor), not an ad-hoc
+		// inline check — so markdown-to-rich stays consistent with the gate.
+		expect(source).toContain("viewerFor(viewer.contentType, viewer.filename) === 'rich'");
 	});
 
 	it("rich sandbox grants allow-same-origin (compensated by /viewer's CSP)", () => {
@@ -93,5 +95,16 @@ describe("isViewable — rich formats (same-origin file-viewer shell)", () => {
 		]) {
 			expect(isBaseViewable(type), type).toBe(true);
 		}
+	});
+
+	it("markdown routes to the RICH shell, not base text — by MIME or extension", () => {
+		// text/markdown MIME.
+		expect(viewerFor("text/markdown", "notes.md")).toBe("rich");
+		// text/plain MIME with a .md name (common) — must beat the base text branch.
+		expect(viewerFor("text/plain", "notes.md")).toBe("rich");
+		expect(viewerFor("application/octet-stream", "README.markdown")).toBe("rich");
+		expect(isBaseViewable("text/markdown", "notes.md")).toBe(false);
+		// A plain .txt still renders as flat text in the base viewer.
+		expect(viewerFor("text/plain", "notes.txt")).toBe("base");
 	});
 });
