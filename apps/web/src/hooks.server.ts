@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { redirect, type Handle } from "@sveltejs/kit";
-import { building } from "$app/env";
+import { building, dev } from "$app/env";
 import { createAuth } from "$lib/server/auth.js";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { drizzle } from "drizzle-orm/d1";
@@ -14,6 +14,31 @@ import {
   orgTwoFactorGate,
 } from "$lib/server/onboarding.js";
 import { initLogLevel } from "@doota/mail-core/log";
+
+// Enabling Secure cookies renamed the auth cookies to `__Secure-better-auth.*`.
+// Users who signed in BEFORE that change still carry the old, non-prefixed
+// `better-auth.session_token` (+ `session_data` and the `_multi-<id>` account-
+// switch cookies). better-auth now looks up only the prefixed names, so those
+// stale cookies read as no-session — but the browser keeps sending them, which
+// leaves an insecure token on the wire and confuses the multi-session account
+// switcher. Expire any legacy (non-`__Secure-`) auth session cookie so the
+// browser drops it and the user gets a clean re-login. Prod only: in dev
+// `useSecureCookies` is off, so the non-prefixed name IS the current cookie.
+function expireLegacySessionCookies(request: Request, response: Response): void {
+  if (dev) return;
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return;
+  const legacyNames = new Set(
+    [...cookieHeader.matchAll(/(?:^|;\s*)(better-auth\.session_(?:token|data)(?:_multi-[^=\s;]+)?)=/g)].map(
+      (match) => match[1],
+    ),
+  );
+  for (const name of legacyNames) {
+    // Match the original Path so the browser deletes the right cookie. No Secure
+    // needed to delete a non-`__Secure-` cookie.
+    response.headers.append("Set-Cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  }
+}
 
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
   if (building) return resolve(event);
@@ -139,6 +164,7 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
         "max-age=63072000; includeSubDomains; preload",
       );
       response.headers.set("X-Content-Type-Options", "nosniff");
+      expireLegacySessionCookies(innerEvent.request, response);
       return response;
     },
     auth,
