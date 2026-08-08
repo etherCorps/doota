@@ -7,14 +7,13 @@ import { b64ToBytes } from "./crypto";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Blind-token search. Each content word is turned into an HMAC token with a
- * SEARCH_KEY that NEVER touches D1, so the FTS5 index (message_fts) reveals
- * nothing about the plaintext. Search hashes the query words the same way and
- * matches tokens — exact word AND/OR only (no prefix/fuzzy on blind tokens).
+ * Blind-token search for NOTES (note_fts). Each word is turned into an HMAC token
+ * with a SEARCH_KEY that never touches D1, so the notes index reveals nothing
+ * about the plaintext. Notes stay blind because they're private annotations.
  *
- * Results are message ids; callers scope to a mailbox via a deliveries join
- * (the index itself is org-wide). SEARCH_KEY is an instance secret, distinct
- * from the content DEK (crypto.ts).
+ * MESSAGE search moved to `search-index.ts` (plaintext FTS5, readable index) —
+ * a deliberate posture choice for real ranking/prefix/phrase; see SECURITY docs.
+ * SEARCH_KEY is an instance secret, distinct from the content DEK (crypto.ts).
  */
 
 const WORD_RE = /[a-z0-9]+/g;
@@ -53,26 +52,8 @@ export async function tokensFor(searchKeyB64: string, texts: string[]): Promise<
 }
 
 /**
- * Index a message's blind tokens into message_fts. Idempotent: deletes any prior
- * row for the message first (FTS5 has no unique constraint), so a redelivered
- * job converges instead of duplicating.
- */
-export async function indexMessage(
-  db: Db,
-  input: { messageId: string; orgId: string; tokens: string[] },
-): Promise<void> {
-  await db.run(sql`DELETE FROM message_fts WHERE message_id = ${input.messageId}`);
-  if (input.tokens.length === 0) return;
-  const blob = input.tokens.join(" ");
-  await db.run(
-    sql`INSERT INTO message_fts (message_id, org_id, tokens) VALUES (${input.messageId}, ${input.orgId}, ${blob})`,
-  );
-}
-
-/**
- * Index a note's blind tokens into note_fts (Task 5). Separate table from
- * message_fts: notes scope by mailbox_id directly (no deliveries join). Same
- * idempotent DELETE-then-INSERT pattern.
+ * Index a note's blind tokens into note_fts. Notes scope by mailbox_id directly
+ * (no deliveries join). Idempotent DELETE-then-INSERT (FTS5 has no unique key).
  */
 export async function indexNote(
   db: Db,
@@ -107,26 +88,4 @@ export async function searchNotes(
     WHERE mailbox_id = ${input.mailboxId} AND note_fts MATCH ${match}
   `);
   return [...new Set(rows.map((r) => r.note_id))];
-}
-
-/**
- * Search within a mailbox: FTS5 matches blind tokens, scoped to the mailbox via
- * a deliveries join. `mode` AND (default) requires every query word; OR any.
- * Returns matching message ids.
- */
-export async function searchMailbox(
-  db: Db,
-  input: { searchKeyB64: string; mailboxId: string; queryText: string; mode?: "and" | "or" },
-): Promise<string[]> {
-  const toks = await tokensFor(input.searchKeyB64, [input.queryText]);
-  if (toks.length === 0) return [];
-  const match = toks.join(input.mode === "or" ? " OR " : " AND ");
-  const rows = await db.all<{ message_id: string }>(sql`
-    SELECT f.message_id AS message_id
-    FROM message_fts f
-    JOIN delivery d ON d.message_id = f.message_id
-    WHERE d.mailbox_id = ${input.mailboxId}
-      AND message_fts MATCH ${match}
-  `);
-  return [...new Set(rows.map((r) => r.message_id))];
 }

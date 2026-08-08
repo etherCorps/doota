@@ -104,6 +104,11 @@ export const mailbox = sqliteTable(
     // mailbox (RFC 5322 From ≠ Sender; DMARC aligns on From, so it's free).
     // Off by default — Outlook renders it as "on behalf of".
     revealSender: integer("reveal_sender", { mode: "boolean" }).default(false).notNull(),
+    // Full-text search keeps a READABLE index of subject + body (see search.ts /
+    // SECURITY docs). Set false to exclude a sensitive mailbox from that index
+    // entirely — its mail is then not searchable and never enters the readable
+    // index. Honored at index time. Default on.
+    searchIndexed: integer("search_indexed", { mode: "boolean" }).default(true).notNull(),
     createdAt: now(),
   },
   (t) => [

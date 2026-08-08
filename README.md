@@ -21,10 +21,16 @@ Doota (say _DOO-tah_ — it means **messenger**) is a self-hosted email app that
 runs entirely on your own [Cloudflare](https://cloudflare.com) account. No mail
 server to babysit, no company sitting in the middle of your inbox. Mail arrives
 through Cloudflare Email Routing, gets threaded into a WhatsApp-style
-conversation, and is stored **fully encrypted at rest** — the raw message,
+conversation, and is stored **encrypted at rest** — the raw message,
 attachments, sent mail, and the derived render cache are all encrypted, with the
-raw message kept whole as the source of truth. There is no plaintext copy of your
-mail anywhere in storage.
+raw message kept whole as the source of truth.
+
+**One deliberate exception:** to provide fast full-text search, Doota keeps a
+**readable search index** of your mail's subjects and body text. A database dump
+could therefore recover the words in your mail via this index (not formatting or
+attachments). This is the Fastmail posture — a reasonable trade for a self-hosted
+tool where the operator already has legitimate access to their own box. Set a
+mailbox to non-indexed to exclude it from search and the index entirely.
 
 It still speaks plain email underneath, so you can write to anyone on Gmail or
 Outlook, and they can write back.
@@ -508,8 +514,9 @@ See `.env.example` for the full list. The essentials:
 - `MAIL_DEK` — the 32-byte (base64) data-encryption key for all mail content.
   Set as a Worker **secret** on `web`, `mail-in`, and `mail-jobs` — the same
   value on all three. See the warning below.
-- `MAIL_SEARCH_KEY` — HMAC key for blind search tokens and signed image/resource
-  tokens. Also a secret on all three Workers.
+- `MAIL_SEARCH_KEY` — HMAC key for blind **note** search tokens and signed
+  image/resource tokens. (Message search is a plaintext FTS5 index and does not
+  use this key.) Also a secret on all three Workers.
 
 > [!CAUTION]
 > **Back up `MAIL_DEK` before you store a single message — losing it is permanent

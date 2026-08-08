@@ -44,6 +44,7 @@
     "./webhooks": "./src/webhooks.ts",
     "./signature-detect": "./src/signature-detect.ts",
     "./search": "./src/search.ts",
+    "./search-index": "./src/search-index.ts",
     "./send-log": "./src/send-log.ts",
     "./spam": "./src/spam.ts",
     "./snooze": "./src/snooze.ts",

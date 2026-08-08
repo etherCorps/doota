@@ -329,7 +329,18 @@ type InboundStageCtx = {
 
 async function metadataStage(ctx: InboundStageCtx): Promise<void> {
   await stageInboundAttachments(ctx.env, ctx.job.orgId, ctx.parsed, ctx.pm, ctx.deps.ck);
-  const { messageId, threadId } = await materializeMessage(ctx.db, ctx.job.orgId, ctx.pm, ctx.deps);
+  // Honor the recipient mailbox's search opt-out at index time (default on).
+  const box = await ctx.db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, ctx.job.resolvedMailboxId),
+    columns: { searchIndexed: true },
+  });
+  const { messageId, threadId } = await materializeMessage(
+    ctx.db,
+    ctx.job.orgId,
+    ctx.pm,
+    ctx.deps,
+    box?.searchIndexed ?? true,
+  );
   ctx.messageId = messageId;
   ctx.threadId = threadId;
   // Calendar invite (iMIP): parse + store alongside the message, before the

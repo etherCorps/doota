@@ -4,7 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import { encryptContent, type ContentKey } from "./crypto";
-import { indexMessage, tokensFor } from "./search";
+import { plaintextIndex } from "./search-index";
 import {
   candidateParentIds,
   deriveContentKind,
@@ -189,6 +189,10 @@ export async function materializeMessage(
   orgId: string,
   parsed: ParsedMessage,
   deps: MaterializeDeps,
+  // Whether the receiving mailbox opts into the readable search index. A
+  // non-indexed mailbox skips indexing; a message shared with an indexed mailbox
+  // still gets indexed via that mailbox's job (the FTS row is per-message).
+  searchIndexed = true,
 ): Promise<{ messageId: string; threadId: string }> {
   // Dedupe by header id — including the provider-minted wire id, so our own
   // message reflecting back (mailing list, CC to a hosted address) reuses the
@@ -197,7 +201,7 @@ export async function materializeMessage(
   if (existing) {
     // Converge attachments + search on re-run without duplicating the message.
     await writeAttachments(db, existing.id, parsed);
-    await indexContent(db, existing.id, orgId, parsed, deps);
+    await indexContent(db, existing.id, parsed, searchIndexed);
     return { messageId: existing.id, threadId: existing.threadId };
   }
 
@@ -272,7 +276,7 @@ export async function materializeMessage(
 
   await bumpThread(db, row.threadId, parsed.sentAt);
   await writeAttachments(db, row.id, parsed);
-  await indexContent(db, row.id, orgId, parsed, deps);
+  await indexContent(db, row.id, parsed, searchIndexed);
   return { messageId: row.id, threadId: row.threadId };
 }
 
@@ -349,21 +353,18 @@ async function writeAttachments(db: Db, messageId: string, parsed: ParsedMessage
 async function indexContent(
   db: Db,
   messageId: string,
-  orgId: string,
   parsed: ParsedMessage,
-  deps: MaterializeDeps,
+  searchIndexed: boolean,
 ): Promise<void> {
-  const tokens = await tokensFor(deps.searchKeyB64, [
-    parsed.subject ?? "",
-    parsed.text ?? "",
-    parsed.html ? stripHtmlTags(parsed.html) : "",
-    // Participants: lets plain-text queries find people ("alice") — the words()
-    // regex splits addresses into name/domain words. Indexed going forward only.
-    parsed.from ?? "",
-    ...(parsed.to ?? []),
-    ...(parsed.cc ?? []),
-  ]);
-  await indexMessage(db, { messageId, orgId, tokens });
+  // Per-mailbox escape valve: a non-indexed mailbox's mail never enters the
+  // readable index (skip = no-op; never removes another mailbox's index row).
+  if (!searchIndexed) return;
+  // Index the PLAINTEXT subject + STRIPPED body (not the quoted trail — no point
+  // re-indexing the same quote on every reply). Participant/date/flag filters are
+  // handled as query operators over plaintext columns, not FTS.
+  const strippedText = parsed.text ? stripQuotesText(parsed.text) : "";
+  const body = strippedText || (parsed.html ? stripHtmlTags(stripQuotesHtml(parsed.html)) : "");
+  await plaintextIndex(db).index({ messageId, subject: parsed.subject ?? "", body });
 }
 
 /**

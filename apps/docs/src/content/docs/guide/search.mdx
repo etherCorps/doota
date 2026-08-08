@@ -38,7 +38,14 @@ never one you don't.
 
 ## Private by design
 
-Doota is built so that **even search can't read your mail**. Your words are stored
-encrypted; the search index holds only scrambled, one-way tokens — enough to match
-what you type, not enough to reveal what a message says. The subject and snippet
-you see in results are decrypted on your side, for you, at the moment you search.
+To make search fast, Doota keeps a **readable index** of your mail's subjects and
+body text — this is the one place your message text is stored un-encrypted (the
+same approach Fastmail takes). Your mail bodies and attachments stay encrypted at
+rest; the search index is the deliberate exception that makes real full-text
+search possible.
+
+<Aside type="note" title="Turn it off for a sensitive mailbox">
+If a mailbox holds mail you'd rather never sat in a readable index, ask your
+admin to set it **non-indexed** — that mailbox is then excluded from search and
+from the index entirely. See [Security](/reference/security) for the full picture.
+</Aside>

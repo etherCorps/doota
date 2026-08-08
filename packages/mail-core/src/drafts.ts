@@ -9,6 +9,7 @@ import { sanitizeEmailHtml } from "./sanitize-email";
 import { messageRawHtml, type CacheLike } from "./mime";
 import { resolveSender } from "./resolver";
 import { enqueueSend, cancelSend, type OutboundEnv } from "./outbound";
+import { plaintextIndex } from "./search-index";
 import { notifySubmissionState } from "./events-hub";
 import { log, errInfo } from "./log";
 import { FAILED_SEND_STATUSES, RETRYABLE_SEND_STATUSES, htmlToText, stripHtmlTags } from "./mail-thread-contract";
@@ -840,6 +841,9 @@ export async function undoDraftSend(
     });
     await Promise.all(atts.map((a) => (a.r2Key ? env.MAIL_RAW.delete(a.r2Key) : Promise.resolve())));
     await db.delete(mail.message).where(eq(mail.message.id, sub.messageId));
+    // PURGE PARITY: a readable search-index row must never outlive the message it
+    // describes. FTS5 is a virtual table (no FK cascade), so remove it explicitly.
+    await plaintextIndex(db).remove(sub.messageId);
   }
 
   // Reopen the retained draft, if any.

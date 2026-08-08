@@ -24,15 +24,26 @@ code actually does.
 | Raw RFC 5322 message + attachments | R2 (`MAIL_RAW`) | **Encrypted** — AES-256-GCM with `MAIL_DEK`, written and read through the same envelope. Reads **fail closed** on a non-encrypted blob. |
 | Outbound message body + send-log payloads | R2 / D1 (`dataCipher`, TTL) | **Encrypted.** |
 | Routing + threading metadata (from, to, message-id, thread, timestamps) | D1 | **Cleartext by design** — the hot path and threading never decrypt. |
-| Search tokens | D1 (`message_fts`) | **HMAC blind tokens** (`MAIL_SEARCH_KEY`) — the index reveals no plaintext. |
-| Draft-staged attachments (file attached while composing, before send) | R2 (`draft/…`) | **Cleartext** — the one remaining plaintext content path (see below). |
+| **Search index** (subject + body) | D1 (`message_search`, FTS5) | **Readable plaintext by design** — a deliberate exception (see below). |
+| Note search tokens | D1 (`note_fts`) | **HMAC blind tokens** (`MAIL_SEARCH_KEY`) — reveals no plaintext. |
+| Draft-staged attachments (file attached while composing, before send) | R2 (`draft/…`) | **Cleartext** — a plaintext content path (see below). |
 
-<Aside type="caution" title="One plaintext content path: open-draft attachments">
-  A file you've attached to a **draft you haven't sent yet** is stored raw in R2
-  while the draft is open. It's transient (deleted when the draft closes) and
-  re-encrypted the moment the draft is sent, but until then it isn't encrypted.
-  Don't make a flat "all content is encrypted at rest" claim about your instance
-  without footnoting open drafts. Everything else in R2 — every received and sent
+<Aside type="danger" title="The search index holds your mail's words in the clear">
+  To give real full-text search (ranking, prefix, phrase), Doota keeps a
+  **readable** FTS5 index of every message's **subject and body text** — this is
+  the one place message content is stored un-encrypted (the Fastmail posture; it
+  fits a self-hosted tool where the operator already has legitimate access to
+  their own box). **A database dump could recover the words in your mail via this
+  index** (not formatting, not attachments). Attachment *contents* are never
+  indexed. Set a mailbox's **search-indexed** flag to false to exclude it from
+  search and from this index entirely. State this plainly in any posture claim you
+  make about your instance — do not claim "all content is encrypted at rest."
+</Aside>
+
+<Aside type="caution" title="Also plaintext: open-draft attachments">
+  A file attached to a **draft you haven't sent yet** is stored raw in R2 while
+  the draft is open — transient (deleted when the draft closes), re-encrypted the
+  moment the draft is sent. Everything else in R2 — every received and sent
   message and attachment — is encrypted.
 </Aside>
 
@@ -44,7 +55,9 @@ code actually does.
 - **The operator** — anyone with the Worker secrets (`MAIL_DEK`) can decrypt all
   content in D1 and R2. This is intended for operator oversight.
 - **A D1-only leak** — sees encrypted subjects/bodies (useless without
-  `MAIL_DEK`) but **cleartext routing metadata** and thread structure.
+  `MAIL_DEK`) and **cleartext routing metadata** + thread structure — **plus the
+  readable `message_search` index, which recovers the words** of subjects and
+  bodies for search-indexed mailboxes (not formatting or attachments).
 - **An R2-only leak** — sees ciphertext (useless without `MAIL_DEK`), **except**
   attachments on open, unsent drafts.
 
@@ -68,7 +81,9 @@ Two instance secrets, both Worker secrets, **never in D1**:
 - **`MAIL_DEK`** — content encryption key (AES-256-GCM). Versioned,
   key-id-tagged envelope (`v1.<keyId>.<iv>.<ciphertext>`) so rotation is
   additive.
-- **`MAIL_SEARCH_KEY`** — blind-token search HMAC key. Distinct from the DEK.
+- **`MAIL_SEARCH_KEY`** — HMAC key for blind **note** search tokens + signed
+  image/resource tokens. Distinct from the DEK. (Message search is a readable
+  FTS5 index and does not use this key.)
 
 <Aside type="danger" title="Losing MAIL_DEK is unrecoverable">
   Every encrypted column in D1 is permanently unreadable without `MAIL_DEK`. A

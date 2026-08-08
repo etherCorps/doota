@@ -36,10 +36,11 @@ already done it.)
 ## 4. Private by default — and honest about it
 
 The contents of your messages — subjects, bodies, attachments — are **encrypted
-when stored**, so a database or storage leak can't read them. Search works over
-scrambled one-way tokens, so [even search](/guide/search) can't see your words.
-Images in a message load *through* Doota, so senders can't track you by opening
-their mail.
+when stored**, so a database or storage leak can't read them. The one deliberate
+exception is the **search index**, which keeps your subjects and body text
+readable so full-text search is fast (see [Search](/guide/search); a mailbox can
+be set non-indexed to opt out). Images in a message load *through* Doota, so
+senders can't track you by opening their mail.
 
 <Aside type="caution" title="What this is — and isn't">
 Doota is **zero-access-at-rest**, not end-to-end encrypted — a real but limited

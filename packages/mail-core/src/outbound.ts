@@ -203,7 +203,18 @@ export async function enqueueSend(
       r2Key: a.r2Key,
     })),
   };
-  const { messageId, threadId } = await materializeMessage(db, req.orgId, pm, deps);
+  // Honor the sending mailbox's search opt-out (default on) for the Sent copy.
+  const senderBox = await db.query.mailbox.findFirst({
+    where: eq(schema.mailbox.id, req.mailboxId),
+    columns: { searchIndexed: true },
+  });
+  const { messageId, threadId } = await materializeMessage(
+    db,
+    req.orgId,
+    pm,
+    deps,
+    senderBox?.searchIndexed ?? true,
+  );
 
   // Sender's own copy (Part D): role `from`, placed in Sent for a new thread.
   await materializeDelivery(db, {

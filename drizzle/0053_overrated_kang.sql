@@ -1,0 +1,1 @@
+ALTER TABLE `mailbox` ADD `search_indexed` integer DEFAULT true NOT NULL;

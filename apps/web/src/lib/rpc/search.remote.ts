@@ -5,15 +5,19 @@ import { z } from "zod";
 import { and, desc, eq, gte, inArray, isNotNull, like, lte, or } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
-import { searchMailbox, words } from "@doota/mail-core/search";
+import { words } from "@doota/mail-core/search";
+import { plaintextIndex } from "@doota/mail-core/search-index";
 import { accessibleMailboxIds, assignedOnlyMailboxIds } from "@doota/mail-core/mailbox";
 import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
 
 /**
- * Mail search (command palette). Blind-token FTS over the user's OWN mailboxes
- * — access is the set of mailbox_access grants, so a search can never reach mail
- * the user can't already read. Matches are message ids; we roll them up to the
- * newest message per thread and decrypt just the subject/snippet for display.
+ * Mail search (command palette). Plaintext FTS5 (BM25-ranked, subject-weighted)
+ * over the user's OWN mailboxes — access is the set of mailbox_access grants, so a
+ * search can never reach mail the user can't already read; the index itself only
+ * holds mail from search-indexed mailboxes. Matches are message ids ranked by
+ * relevance; we roll them up to a thread and decrypt just the subject/snippet for
+ * display (the readable FTS index gives ranking/matching, the encrypted columns
+ * give what's shown).
  *
  * Gmail-style operators ride inside the query string: `from:` / `to:` match the
  * plaintext routing columns (from_addr / to_addrs / cc_addrs — substring, so
@@ -21,8 +25,8 @@ import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
  * thread_state, `is:unread` / `is:read` on the caller's thread_read state,
  * `has:attachment` on a filename'd attachment row, and `after:` / `before:`
  * (YYYY-MM-DD, YYYY/MM/DD, or a relative `7d`) on sent time. Remaining free text
- * goes through blind-token FTS. `terms` echoes the FTS words so the client can
- * bold matches; the snippet is centered on the first match, not the body head.
+ * goes through FTS. `terms` echoes the query words so the client can bold matches;
+ * the snippet is centered on the first match, not the body head.
  */
 
 export type SearchHit = {
@@ -36,10 +40,10 @@ export type SearchHit = {
   terms: string[];
 };
 
-function keys() {
+function dekOrThrow() {
   const env = getRequestEvent().platform?.env;
-  if (!env?.MAIL_DEK || !env?.MAIL_SEARCH_KEY) error(500, "Search is not configured.");
-  return { dek: env.MAIL_DEK, searchKeyB64: env.MAIL_SEARCH_KEY };
+  if (!env?.MAIL_DEK) error(500, "Search is not configured.");
+  return env.MAIL_DEK;
 }
 
 export const searchMail = query(
@@ -58,20 +62,28 @@ export const searchMail = query(
     const boxes = mailboxId && accessible.includes(mailboxId) ? [mailboxId] : accessible;
     if (!boxes.length) return [];
 
-    const { dek, searchKeyB64 } = keys();
+    const dek = dekOrThrow();
     const { text, from, to, starred, hasAttachment, unread, after, before } = parseSearchQuery(q);
     const terms = text.length >= 2 ? words(text) : [];
 
     // Candidate message ids, remembering which mailbox surfaced each (for nav).
     const msgToBox = new Map<string, string>();
+    // FTS relevance order (insertion order across boxes) — used to sort the final
+    // free-text results by BM25 rank instead of recency.
+    const rank = new Map<string, number>();
     // Thread → mailbox for the starred-only path (no message ids up front).
     let starredThreads: Map<string, string> | null = null;
 
     if (text.length >= 2) {
-      // Free text → blind-token FTS per mailbox (as before).
+      // Free text → plaintext FTS5 per mailbox, BM25-ranked (trash excluded).
+      const index = plaintextIndex(locals.db);
       for (const boxId of boxes) {
-        const ids = await searchMailbox(locals.db, { searchKeyB64, mailboxId: boxId, queryText: text });
-        for (const id of ids) if (!msgToBox.has(id)) msgToBox.set(id, boxId);
+        const found = await index.search(text, { mailboxId: boxId, limit: limit ?? 100 });
+        for (const { messageId } of found)
+          if (!msgToBox.has(messageId)) {
+            msgToBox.set(messageId, boxId);
+            rank.set(messageId, rank.size);
+          }
       }
     } else if (from || to || after != null || before != null || hasAttachment) {
       // No free text: candidates come from the plaintext columns. from/to (LIKE,
@@ -219,6 +231,12 @@ export const searchMail = query(
         const box = msgToBox.get(hit.id)!;
         return !restricted.includes(box) || ok.has(`${hit.threadId}|${box}`);
       });
+    }
+
+    // Free text: order by FTS relevance (BM25). Operator-only paths keep the
+    // recency order the candidate rows already carry.
+    if (terms.length) {
+      hits.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
     }
 
     const ck = await importKey(dek);
