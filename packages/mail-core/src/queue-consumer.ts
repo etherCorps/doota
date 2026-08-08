@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import PostalMime from "postal-mime";
 import * as schema from "@doota/db/schema";
@@ -211,9 +211,36 @@ async function persistInvite(
     // Provider's own Yes/Maybe/No links (message-level) — same for every event.
     const rsvpLinks = extractRsvpLinks(parsed.html);
     const isCancelMethod = cal.method === "CANCEL";
+    // iTIP methods directed AT the organizer (attendee → organizer). They're only
+    // actionable if the organizer is one of OUR mailboxes; otherwise the reply is
+    // misdirected or spoofed — drop it (never bounce a machine-generated reply, it
+    // risks a mail loop).
+    const isReplyClass = ["REPLY", "COUNTER", "DECLINECOUNTER", "REFRESH"].includes(
+      cal.method ?? "",
+    );
 
     for (const ev of cal.events) {
       if (!ev.uid) continue; // can't dedupe/RSVP without a UID — skip (raw kept)
+      if (isReplyClass) {
+        const organizer = ev.organizer.email?.toLowerCase() ?? "";
+        const ours =
+          organizer &&
+          (await db.query.mailbox.findFirst({
+            where: and(
+              eq(schema.mailbox.orgId, orgId),
+              eq(schema.mailbox.address, organizer),
+            ),
+            columns: { id: true },
+          }));
+        if (!ours) {
+          log.warn("in.invite_reply_unknown_organizer", {
+            messageId,
+            uid: ev.uid,
+            organizer: organizer || null,
+          });
+          continue; // organizer not in our DB — reject/drop, don't store or act
+        }
+      }
       const detailsEnc = await encryptContent(
         ck,
         JSON.stringify({
