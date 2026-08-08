@@ -412,8 +412,6 @@ flowchart TB
         web@{ icon: "doota:mail", label: "doota · web", form: "square", pos: "b" }
         mailin@{ icon: "logos:cloudflare-workers-icon", label: "mail-inbound", form: "square", pos: "b" }
         mailjobs@{ icon: "logos:cloudflare-workers-icon", label: "mail-jobs", form: "square", pos: "b" }
-        landing@{ icon: "logos:cloudflare-workers-icon", label: "landing", form: "square", pos: "b" }
-        docs@{ icon: "logos:cloudflare-workers-icon", label: "docs", form: "square", pos: "b" }
     end
 
     subgraph queues["Queues — each feeds one Worker"]

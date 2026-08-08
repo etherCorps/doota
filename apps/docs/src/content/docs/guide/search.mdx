@@ -1,0 +1,44 @@
+---
+title: Search
+description: "Find any conversation fast — free text plus Gmail-style filters (from:, has:attachment, after:) — without Doota ever reading your words."
+audience: human
+sidebar:
+  order: 13
+---
+
+Press **⌘K** (or **Ctrl+K**) anywhere to open search. Type a few words and Doota
+finds the conversations that match — subject and body — newest first.
+
+## Narrowing with filters
+
+Beyond free text, search understands a handful of **Gmail-style filters** you can
+mix and match:
+
+| Filter | Finds |
+| --- | --- |
+| `from:alice` | mail from an address (partial is fine) |
+| `to:support` | mail sent to an address (to **or** cc) |
+| `has:attachment` | messages with a real file attached |
+| `is:unread` / `is:read` | by whether you've read it |
+| `is:starred` | starred conversations |
+| `after:7d` · `before:2026-08-01` | a time range — relative (`7d` = the last 7 days) or an exact date |
+
+Combine them freely: `from:alice has:attachment after:30d invoice` finds recent
+mail from Alice with a file and the word *invoice*.
+
+Results show the subject and a snippet centred on your match, with the matching
+words highlighted. The palette shows the top hits; **View all results** opens the
+full list.
+
+<Aside type="note">
+Search covers the mailboxes you can read. If you're focused on one mailbox it
+searches there first; otherwise it looks across every inbox you have access to —
+never one you don't.
+</Aside>
+
+## Private by design
+
+Doota is built so that **even search can't read your mail**. Your words are stored
+encrypted; the search index holds only scrambled, one-way tokens — enough to match
+what you type, not enough to reveal what a message says. The subject and snippet
+you see in results are decrypted on your side, for you, at the moment you search.
