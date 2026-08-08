@@ -18,6 +18,18 @@ import { initLogLevel } from "@doota/mail-core/log";
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
   if (building) return resolve(event);
 
+  // The better-auth admin plugin's HTTP routes (/api/auth/admin/*: set-role,
+  // impersonate-user, ban, remove, etc.) are NOT used by the app — every
+  // privileged action goes through org-scoped, server-side auth.api.* in the RPC
+  // layer. Left reachable over HTTP, a logged-in instance admin could self-promote
+  // to superadmin or impersonate members across orgs (the plugin gates only on the
+  // instance role, bypassing our org scoping). Block the raw routes at the edge;
+  // server-side auth.api.* calls don't pass through this handler, so provisioning
+  // and the app's own admin actions keep working.
+  if (event.url.pathname.startsWith("/api/auth/admin/")) {
+    return new Response("Not found", { status: 404 });
+  }
+
   const env = event.platform?.env;
   if (!env?.DB) {
     throw new Error(
@@ -113,7 +125,25 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     }
   }
 
-  return svelteKitHandler({ event, resolve, auth, building });
+  return svelteKitHandler({
+    event,
+    // Attach transport-security headers to every resolved response. HSTS closes
+    // the SSL-strip downgrade path (paired with Secure cookies in auth.ts);
+    // nosniff blocks content-type confusion. No global X-Frame-Options — the app
+    // frames its own mail/attachment views same-origin (those routes set their
+    // own frame-ancestors CSP).
+    resolve: async (innerEvent) => {
+      const response = await resolve(innerEvent);
+      response.headers.set(
+        "Strict-Transport-Security",
+        "max-age=63072000; includeSubDomains; preload",
+      );
+      response.headers.set("X-Content-Type-Options", "nosniff");
+      return response;
+    },
+    auth,
+    building,
+  });
 };
 
 export const handle: Handle = handleBetterAuth;

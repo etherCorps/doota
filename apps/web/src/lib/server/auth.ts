@@ -8,7 +8,6 @@ import {
   twoFactor,
   organization,
   multiSession,
-  openAPI,
 } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
@@ -27,6 +26,7 @@ import {
 } from "@doota/db/org-domains";
 import { BETTER_AUTH_SECRET } from "$app/env/private";
 import { ORIGINS } from "$app/env/public";
+import { dev } from "$app/env";
 import { renderEmail } from "./email";
 import { kvSecondaryStorage } from "./auth/kv-secondary-storage.js";
 import { MAX_DEVICE_SESSIONS } from "$lib/auth-limits.js";
@@ -76,6 +76,10 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       ipAddress: {
         ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
       },
+      // Cloudflare Workers never set NODE_ENV, so better-auth can't auto-detect
+      // production and would ship session cookies WITHOUT Secure. Force it on
+      // outside local dev (paired with HSTS in hooks.server.ts).
+      useSecureCookies: !dev,
     },
     user: {
       modelName: "user",
@@ -339,7 +343,6 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       twoFactor(),
       // No TOTP after passkey login: a passkey is already two factors.
       passkey(),
-      openAPI(),
       sveltekitCookies(getRequestEvent),
     ], // sveltekitCookies must be last
   });
