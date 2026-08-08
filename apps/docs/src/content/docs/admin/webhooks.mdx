@@ -1,0 +1,54 @@
+---
+title: Webhooks
+description: Have Doota POST signed event payloads to your systems when mail is sent, delivered, bounces, or arrives.
+sidebar:
+  order: 4
+---
+
+Webhooks let your systems react to mail events in real time — log a delivery,
+retry on a bounce, or kick off a workflow when new mail arrives — without
+polling. They pair naturally with [API keys](/admin/api-keys) and the
+`POST /api/send` endpoint.
+
+Webhooks are configured **per mailbox**, under **Account → Mail → Integrations →
+Webhooks**.
+
+## Add an endpoint
+
+Hit **Add endpoint**, give it an **https URL** (e.g.
+`https://hooks.example.com/doota`), and pick the **events** you want. Doota
+sends a **test event** the moment you save so you can confirm the endpoint is
+reachable.
+
+### Events
+
+| Event | Fires when |
+| --- | --- |
+| `sent` | a message left Doota |
+| `delivered` | the receiving server accepted it |
+| `bounced` | it hard-bounced |
+| `complained` | the recipient marked it as spam |
+| `failed` | the send failed |
+| `inbound-mail` | new mail arrived at the mailbox |
+
+<Aside type="note">
+Payloads carry **references only — never message content**. A webhook tells your
+system *that* something happened (with IDs to look it up), not *what the message
+said*. Content stays encrypted in Doota.
+</Aside>
+
+## Verify the signature
+
+Every delivery is signed. On creation, Doota shows a **signing secret
+once** — copy it then; it isn't shown again. Use it to verify the
+**`Doota-Signature`** header on each incoming POST, so you can trust the request
+really came from Doota and wasn't tampered with. Reject any request whose
+signature doesn't match.
+
+## Managing endpoints
+
+Each endpoint shows its subscribed events, a running count of **delivered /
+failed** attempts, and a **Recent deliveries** log — event type, HTTP response
+code, attempt count, timestamp, and the last error if one occurred. You can
+**edit its events**, **disable** it without deleting (mail keeps flowing, the
+endpoint just stops receiving), or **delete** it.

@@ -386,85 +386,71 @@ erDiagram
 ## 2. Component & deployment — what runs where
 
 Five deployed Workers (plus the Tauri desktop/mobile app, which is a client, not a
-Worker), two core shared code packages, and one storage backbone (D1 · R2 · KV · an
-edge cache · a Durable Object). A queue feeds exactly **one** Worker, so the web app
-only *adds* jobs; the background work happens in the two mail Workers.
+Worker) and one storage backbone (D1 · R2 · KV · an edge cache · a Durable Object).
+A queue feeds exactly **one** Worker, so the web app only *adds* jobs; the
+background work happens in the two mail Workers.
+
+This diagram shows the **topology** — who talks to whom. To keep it readable, each
+Worker draws a single arrow to the whole **storage backbone**; exactly which store
+each one holds is in the [binding table](#which-worker-holds-which-binding) right
+below, and the step-by-step data flow is in [section 3](#3-mail-pipeline--step-by-step).
 
 ```mermaid
 flowchart TB
     subgraph client["Client"]
-        browser["Browser · Doota UI"]
-        native["Desktop + mobile app<br/>(Tauri · apps/native)"]
-        extapp["External app / agent<br/>(API key)"]
+        browser@{ icon: "ph:browser", label: "Browser", form: "square", pos: "b" }
+        native@{ icon: "ph:device-mobile", label: "Desktop + mobile", form: "square", pos: "b" }
+        extapp@{ icon: "ph:plugs", label: "API client", form: "square", pos: "b" }
     end
 
-    subgraph cf["Cloudflare"]
-        routing["Email Routing<br/>(inbound)"]
-        sending["Email Sending<br/>(outbound)"]
+    subgraph edge["Cloudflare mail"]
+        routing@{ icon: "ph:envelope", label: "Email Routing", form: "square", pos: "b" }
+        sending@{ icon: "ph:paper-plane-tilt", label: "Email Sending", form: "square", pos: "b" }
     end
 
-    subgraph workers["Workers (deployed)"]
-        web["doota · apps/web<br/>the app · adds jobs to queues"]
-        mailin["doota-mail-inbound · apps/mail-in<br/>receives mail"]
-        mailjobs["doota-mail-jobs · apps/mail-jobs<br/>sends mail · events · cron"]
-        landing["doota-landing"]
-        docs["doota-docs"]
+    subgraph workers["Workers — deployed on your Cloudflare account"]
+        web@{ icon: "doota:mail", label: "doota · web", form: "square", pos: "b" }
+        mailin@{ icon: "logos:cloudflare-workers-icon", label: "mail-inbound", form: "square", pos: "b" }
+        mailjobs@{ icon: "logos:cloudflare-workers-icon", label: "mail-jobs", form: "square", pos: "b" }
+        landing@{ icon: "logos:cloudflare-workers-icon", label: "landing", form: "square", pos: "b" }
+        docs@{ icon: "logos:cloudflare-workers-icon", label: "docs", form: "square", pos: "b" }
     end
 
-    subgraph pkgs["Shared code"]
-        db["@doota/db<br/>database schema"]
-        core["@doota/mail-core<br/>mail logic · crypto · search · notify"]
+    subgraph queues["Queues — each feeds one Worker"]
+        qin@{ icon: "ph:stack", label: "mail-inbound", form: "square", pos: "b" }
+        qout@{ icon: "ph:stack", label: "mail-outbound", form: "square", pos: "b" }
+        qev@{ icon: "ph:stack", label: "mail-events", form: "square", pos: "b" }
     end
 
-    subgraph storage["Storage & state"]
-        d1[("D1 · database<br/>+ blind-token search index")]
-        r2[("R2 · MAIL_RAW<br/>originals + attachments · encrypted")]
-        kv[("KV · AUTH_KV<br/>session cache")]
-        cache[("Edge cache · caches.default<br/>rendered mail + proxied images")]
-        hub{{"Durable Object · MailEventHub<br/>live updates + push"}}
+    subgraph storage["Shared storage & state"]
+        d1@{ icon: "ph:database", label: "D1 · database", form: "square", pos: "b" }
+        r2@{ icon: "ph:hard-drives", label: "R2 · encrypted", form: "square", pos: "b" }
+        kv@{ icon: "ph:key", label: "KV · sessions", form: "square", pos: "b" }
+        cache@{ icon: "ph:lightning", label: "Edge cache", form: "square", pos: "b" }
+        hub@{ icon: "ph:broadcast", label: "Event hub · DO", form: "square", pos: "b" }
     end
 
-    subgraph queues["Queues"]
-        qin[["mail-inbound"]]
-        qout[["mail-outbound"]]
-        qev[["mail-events"]]
-    end
+    %% Clients reach only the web app
+    browser --> web
+    native --> web
+    extapp -->|POST /api/send| web
 
-    browser -->|HTTPS / WS| web
-    native -->|HTTPS / WS| web
-    extapp -->|POST /api/send · Bearer| web
-
+    %% Inbound: routing → mail-inbound, via its queue
     routing -->|new mail| mailin
-    mailin -->|enqueue raw| qin
-    qin -->|consume| mailin
-    mailin -->|store original| r2
-    mailin -->|file message · deliveries · notifications| d1
-    mailin -->|notify + push| hub
+    mailin -->|enqueue · consume| qin --> mailin
 
-    web -->|enqueue send| qout
-    qout -->|consume| mailjobs
+    %% Outbound: web enqueues → mail-jobs sends → delivery events loop back
+    web -->|enqueue send| qout --> mailjobs
     mailjobs -->|send| sending
-    mailjobs -->|status + send log| d1
-    mailjobs -->|copy outbound blob| r2
-    mailjobs -->|live tick + push| hub
+    sending -->|events| qev --> mailjobs
 
-    sending -->|delivery / bounce events| qev
-    qev -->|consume| mailjobs
-    mailjobs -.->|"cron 5-min: scheduled sends · un-snooze · cleanup"| qout
+    %% Each Worker uses the shared backbone (which store → the table below)
+    web ==> storage
+    mailin ==> storage
+    mailjobs ==> storage
 
+    %% Live updates flow back to the client
     hub -->|live updates| web
-    web -.->|read/write · search| d1
-    web -.->|blobs| r2
-    web -.->|auth cache| kv
-    web -.->|"body render + image proxy · served from cache"| cache
-    cache -.->|"on miss → fetch + sanitize"| r2
-    web -->|send app mail| sending
-
-    web --- core
-    mailin --- core
-    mailjobs --- core
-    core --- db
-    web --- db
 ```
 
 ### Which Worker holds which binding
@@ -509,6 +495,39 @@ sequenceDiagram
     HUB-->>WEB: live update on your screen
 ```
 
+### What happens to a new message
+
+After parsing, the inbound worker runs a fixed **stage pipeline**
+(`@doota/mail-core/queue-consumer`). The order is structural, and a failure in a
+non-critical stage is logged without losing the mail:
+
+1. **metadata** — file the message, record deliveries, write the `change_log`,
+   and — if it carries a calendar part — parse the invite and store one
+   `calendar_event` row per event (raw ICS goes to R2 first, so a malformed
+   invite never breaks delivery). A misdirected iTIP **reply** whose organizer
+   isn't one of our mailboxes is dropped here.
+2. **rules** — evaluate the mailbox's [rules](/guide/organizing) and apply their
+   outcomes (label, move, star, forward, mark spam…).
+3. **spam** — built-in classification plus the mailbox's allow/block lists.
+4. **vacation** — send an [away reply](/guide/away-replies) if one is active
+   (loop-safe: once per sender per window, never to automated mail).
+5. **placement / notify** — land it in the right place, then push a live update
+   and Web Push to the recipient.
+
+Attachments aren't scanned here — scanning runs **on the reader's device** when a
+conversation is opened, so nothing is uploaded to a scanner (see
+[Security → Content safety](/reference/security#content-safety)).
+
+**Calendar RSVP.** Answering an invite records your choice and, for invites with
+no provider response link (Apple/Fastmail/plain), builds an iTIP `REPLY`,
+encrypts it to R2, and sends it to the **organizer only** — your response alone,
+never the guest list. Google/Outlook invites hand off to the provider's own link.
+
+**Webhooks.** Send/delivery/inbound events fan out from the event hub:
+`doota-mail-jobs` POSTs a **signed** (`Doota-Signature`) payload — **references
+only, never content** — to each [endpoint](/admin/webhooks) a mailbox registered,
+with per-endpoint delivery logging and retries.
+
 ### Sending (with undo + delivery events)
 
 ```mermaid
@@ -547,38 +566,57 @@ The mail logic used by the web app **and** both mail Workers (framework-free).
 ```mermaid
 flowchart LR
     subgraph inbound
-        iw[inbound-worker] --> qc[queue-consumer]
-        qc --> resolver
-        qc --> materialize
-        qc --> bounce
-        qc --> notify
-        materialize --> crypto
+        iw@{ icon: "ph:envelope", label: "inbound-worker", pos: "b" }
+        qc@{ icon: "ph:stack", label: "queue-consumer", pos: "b" }
+        resolver@{ icon: "ph:funnel", label: "resolver", pos: "b" }
+        materialize@{ icon: "ph:gear", label: "materialize", pos: "b" }
+        bounce@{ icon: "ph:paper-plane-tilt", label: "bounce", pos: "b" }
     end
     subgraph outbound
-        ob[outbound] --> oc[outbound-consumer]
-        oc --> provider
-        oc --> send-rate-limit
-        oc --> notify
-        oc --> send-log
-        drafts --> ob
+        ob@{ icon: "ph:paper-plane-tilt", label: "outbound", pos: "b" }
+        oc@{ icon: "ph:stack", label: "outbound-consumer", pos: "b" }
+        provider@{ icon: "ph:cloud-arrow-up", label: "provider", pos: "b" }
+        send-rate-limit@{ icon: "ph:gear", label: "send-rate-limit", pos: "b" }
+        send-log@{ icon: "ph:tray", label: "send-log", pos: "b" }
+        drafts@{ icon: "ph:gear", label: "drafts", pos: "b" }
     end
     subgraph read_layer["reading & threading"]
-        read --> mail-thread-contract
-        search
-        notes --> notify
-        collab --> notify
-        snooze
+        read@{ icon: "ph:tray", label: "read", pos: "b" }
+        mail-thread-contract@{ icon: "ph:gear", label: "thread-contract", pos: "b" }
+        search@{ icon: "ph:database", label: "search", pos: "b" }
+        notes@{ icon: "ph:bell", label: "notes", pos: "b" }
+        collab@{ icon: "ph:user", label: "collab", pos: "b" }
+        snooze@{ icon: "ph:calendar-check", label: "snooze", pos: "b" }
     end
     subgraph realtime
-        events-hub[events-hub · DO] --> events-consumer
-        notify --> web-push
+        events-hub@{ icon: "ph:broadcast", label: "events-hub · DO", pos: "b" }
+        events-consumer@{ icon: "ph:stack", label: "events-consumer", pos: "b" }
+        notify@{ icon: "ph:bell", label: "notify", pos: "b" }
+        web-push@{ icon: "ph:bell", label: "web-push", pos: "b" }
     end
     subgraph shared
-        crypto
-        unsubscribe
-        cron
+        crypto@{ icon: "ph:key", label: "crypto", pos: "b" }
+        unsubscribe@{ icon: "ph:envelope", label: "unsubscribe", pos: "b" }
+        cron@{ icon: "ph:gear", label: "cron", pos: "b" }
     end
 
+    iw --> qc
+    qc --> resolver
+    qc --> materialize
+    qc --> bounce
+    qc --> notify
+    materialize --> crypto
+    ob --> oc
+    oc --> provider
+    oc --> send-rate-limit
+    oc --> notify
+    oc --> send-log
+    drafts --> ob
+    read --> mail-thread-contract
+    notes --> notify
+    collab --> notify
+    events-hub --> events-consumer
+    notify --> web-push
     oc --> events-hub
     qc --> events-hub
     cron --> snooze

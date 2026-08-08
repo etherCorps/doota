@@ -29,7 +29,15 @@ encryption is now unreadable. Either launch fresh (wipe R2 content prefixes
 BEFORE deploying this build. On the doota staging stack the pre-encryption test
 messages will 500 on open until wiped/re-encrypted — expected.
 
-### 0.2 Known gap — draft-staged attachments are still plaintext in R2
+### 0.2 Accepted gap — draft-staged attachments are stored raw in R2
+
+**Decision (2026-08-08): accept, do NOT treat as a release-blocker.** Draft-staged
+attachments stay plaintext (raw) in R2 while a draft is open. It is transient
+(deleted when the draft closes), re-encrypted the moment the draft hits outbound
+(`copyToOutbound`), and off the hot path. The only remaining obligation is the
+claim caveat below — the encryption-at-rest wording must footnote drafts.
+
+<details><summary>Original blocker framing (superseded)</summary>
 
 Encrypted-at-rest today: inbound RFC822 raw, outbound JSON body, staged inbound
 attachments, **API-send attachments** (`resolveApiAttachments` → `putEncryptedBlob`).
@@ -40,8 +48,9 @@ path — but it is the **last plaintext content path**.
 
 Do **not** ship the flat claim "all mail content is encrypted at rest" while this
 gap exists — either close it (encrypt `stageDraftAttachment`, decrypt in
-`readDraftAttachment`, thread the `ck`) or footnote the claim. **Deferred,
-release-blocker, recorded here.**
+`readDraftAttachment`, thread the `ck`) or footnote the claim.
+
+</details>
 
 ### 0.3 Secrets & vars present in every environment
 

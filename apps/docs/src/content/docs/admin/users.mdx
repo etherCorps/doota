@@ -53,6 +53,23 @@ a suspected compromise. You can't pause yourself or a super-admin.
 and account rows. Like pause, it re-checks `can()` and refuses to act on
 yourself or a super-admin.
 
+## Require two-factor for everyone
+
+An organization can require **every member** to protect their account with a
+second factor. Open the org's **Settings** and turn on **Require 2FA**.
+
+- Members get a **7-day grace period** to enrol, then they're **blocked from the
+  app** until they do. The setting shows the exact deadline once enabled.
+- **API keys are exempt** — they authenticate without an interactive login, so
+  programmatic sending keeps working.
+- Turning the requirement **off** stops enforcing it; existing enrolments stay
+  in place.
+
+<Aside type="note" title="Admins are always covered">
+  Admins and super-admins must keep a second factor regardless of this
+  org-wide setting — it can't be turned off for them.
+</Aside>
+
 ## Suppressions
 
 Each org has a **suppression list** (`/admin/organizations/<org>/suppressions`)

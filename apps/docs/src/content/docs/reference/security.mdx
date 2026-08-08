@@ -21,16 +21,19 @@ code actually does.
 | Data | Where | At rest |
 | --- | --- | --- |
 | Subject, text body, HTML body | D1 (`*_enc` columns) | **Encrypted** — AES-256-GCM with `MAIL_DEK`. |
+| Raw RFC 5322 message + attachments | R2 (`MAIL_RAW`) | **Encrypted** — AES-256-GCM with `MAIL_DEK`, written and read through the same envelope. Reads **fail closed** on a non-encrypted blob. |
+| Outbound message body + send-log payloads | R2 / D1 (`dataCipher`, TTL) | **Encrypted.** |
 | Routing + threading metadata (from, to, message-id, thread, timestamps) | D1 | **Cleartext by design** — the hot path and threading never decrypt. |
 | Search tokens | D1 (`message_fts`) | **HMAC blind tokens** (`MAIL_SEARCH_KEY`) — the index reveals no plaintext. |
-| Raw RFC 5322 message + attachments | R2 (`MAIL_RAW`) | **Cleartext.** The canonical blob is stored as-is. |
+| Draft-staged attachments (file attached while composing, before send) | R2 (`draft/…`) | **Cleartext** — the one remaining plaintext content path (see below). |
 
-<Aside type="caution" title="R2 holds the plaintext of every message">
-  The raw MIME blob in R2 is **not** encrypted — it is the full plaintext of
-  every message and attachment, kept as the source of truth. D1 content
-  encryption does **not** protect what's in R2. Treat R2 access controls
-  (bucket permissions, API tokens) as security-critical, and say so in any
-  posture statement you make about your instance.
+<Aside type="caution" title="One plaintext content path: open-draft attachments">
+  A file you've attached to a **draft you haven't sent yet** is stored raw in R2
+  while the draft is open. It's transient (deleted when the draft closes) and
+  re-encrypted the moment the draft is sent, but until then it isn't encrypted.
+  Don't make a flat "all content is encrypted at rest" claim about your instance
+  without footnoting open drafts. Everything else in R2 — every received and sent
+  message and attachment — is encrypted.
 </Aside>
 
 ## Who can read what
@@ -38,11 +41,25 @@ code actually does.
 - **You (the user)** — your own mail, decrypted in the app after login.
 - **Teammates on a shared mailbox** — mail in that mailbox (that's the point of
   a shared inbox).
-- **The operator** — anyone with the Worker secrets (`MAIL_DEK`) and R2 access
-  can decrypt all content. This is intended for operator oversight.
+- **The operator** — anyone with the Worker secrets (`MAIL_DEK`) can decrypt all
+  content in D1 and R2. This is intended for operator oversight.
 - **A D1-only leak** — sees encrypted subjects/bodies (useless without
   `MAIL_DEK`) but **cleartext routing metadata** and thread structure.
-- **An R2-only leak** — sees **everything**, in plaintext.
+- **An R2-only leak** — sees ciphertext (useless without `MAIL_DEK`), **except**
+  attachments on open, unsent drafts.
+
+## Content safety
+
+- **Attachments are scanned on your device.** Every attachment is checked
+  against known-dangerous patterns in the browser (yara-x compiled to WASM) — the
+  file is never uploaded to a scanning service. A **Threat found** or
+  **Couldn't check** result forces a confirm before the file opens or downloads.
+- **Previews run in an isolated frame.** Rich previews (PDF, images, Office docs,
+  archives…) render in a sandboxed, session-gated viewer that can't reach your
+  account, cookies, or the rest of the page — so opening a file to look at it
+  doesn't expose your session to it.
+- **Remote images load through Doota.** Images in a message are proxied, so a
+  sender can't use them to see your IP or when you opened their mail.
 
 ## Key management
 
