@@ -182,7 +182,7 @@ async function stageInboundAttachments(
  * preserving and D1-transaction-free. NEVER throws into the delivery path: a bad
  * invite must not lose the mail (it still lands as a normal message).
  */
-async function persistInvite(
+export async function persistInvite(
   db: ReturnType<typeof drizzle<typeof schema>>,
   env: { MAIL_RAW: R2Bucket },
   ck: ContentKey,
