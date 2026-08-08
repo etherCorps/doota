@@ -998,7 +998,10 @@ export const submission = sqliteTable(
     createdAt: now(),
   },
   (t) => [
-    uniqueIndex("submission_idempotency_uidx").on(t.idempotencyKey),
+    // Scoped per org: the idempotency key is caller-supplied, so a global unique
+    // would let one tenant's key collide with another's and silently drop their
+    // send (and leak the other tenant's submission id back).
+    uniqueIndex("submission_idempotency_uidx").on(t.orgId, t.idempotencyKey),
     index("submission_mailbox_idx").on(t.mailboxId),
     index("submission_message_idx").on(t.messageId),
     index("submission_status_idx").on(t.status),

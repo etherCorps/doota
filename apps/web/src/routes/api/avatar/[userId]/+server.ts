@@ -10,10 +10,14 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   const obj = await env.MAIL_RAW.get(`avatars/${params.userId}`);
   if (!obj) error(404, "No avatar");
 
-  return new Response(obj.body, {
-    headers: {
-      "Content-Type": obj.httpMetadata?.contentType ?? "image/webp",
-      "Cache-Control": "private, max-age=86400",
-    },
-  });
+  const type = obj.httpMetadata?.contentType ?? "image/webp";
+  const headers: Record<string, string> = {
+    "Content-Type": type,
+    "Cache-Control": "private, max-age=86400",
+    "X-Content-Type-Options": "nosniff",
+  };
+  // Origin-served SVG is safety-checked at upload; the deny-all CSP is defence in depth.
+  if (type === "image/svg+xml") headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'";
+
+  return new Response(obj.body, { headers });
 };

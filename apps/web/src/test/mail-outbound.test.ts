@@ -295,6 +295,28 @@ describe("enqueue + sender copy (Parts B/D)", () => {
     const count = (await db.query.submission.findMany({ where: eq(schema.submission.orgId, ORG) })).length;
     expect(count).toBe(1);
   });
+
+  it("does NOT dedupe the same idempotency key across orgs (tenant isolation)", async () => {
+    // A second tenant reusing the same caller-supplied key must NOT collide with
+    // org1's send — otherwise one org could silently suppress another's mail.
+    await db.insert(schema.organization).values({
+      id: "org2", name: "Other", slug: "other-com", domain: "other.com", status: "active", createdAt: new Date(),
+    });
+    await db.insert(schema.orgMailSettings).values({ orgId: "org2", subaddressingEnabled: false, routingSubdomains: "[]" });
+    await db.insert(schema.mailbox).values({
+      id: "mb_o2", orgId: "org2", localPart: "carol", address: "carol@other.com", isActive: true, isPersonal: true,
+    });
+
+    const key = "shared-key";
+    const a = await enqueueSend(db, enqEnv(), baseReq({ to: ["out@ext.com"], idempotencyKey: key }));
+    const b = await enqueueSend(
+      db,
+      enqEnv(),
+      baseReq({ orgId: "org2", mailboxId: "mb_o2", fromAddress: "carol@other.com", to: ["out@ext.com"], idempotencyKey: key }),
+    );
+    expect(b.deduped).toBeFalsy();
+    expect(b.submissionId).not.toBe(a.submissionId);
+  });
 });
 
 describe("consumer send (Parts B/C/G)", () => {

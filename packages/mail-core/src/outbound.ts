@@ -112,7 +112,10 @@ export async function enqueueSend(
   // Double-send guard: a repeated idempotency_key returns the existing send
   // rather than creating a second one (also enforced by the unique index).
   const existing = await db.query.submission.findFirst({
-    where: eq(schema.submission.idempotencyKey, req.idempotencyKey),
+    where: and(
+      eq(schema.submission.orgId, req.orgId),
+      eq(schema.submission.idempotencyKey, req.idempotencyKey),
+    ),
     columns: { id: true, messageId: true },
   });
   if (existing) {
@@ -239,7 +242,10 @@ export async function enqueueSend(
   const submissionId =
     insertedSub[0]?.id ??
     (await db.query.submission.findFirst({
-      where: eq(schema.submission.idempotencyKey, req.idempotencyKey),
+      where: and(
+        eq(schema.submission.orgId, req.orgId),
+        eq(schema.submission.idempotencyKey, req.idempotencyKey),
+      ),
       columns: { id: true },
     }))!.id;
 
