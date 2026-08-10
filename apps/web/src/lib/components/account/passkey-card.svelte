@@ -38,7 +38,12 @@
 		try {
 			const res = await authClient.passkey.addPasskey({ name: passkeyName || undefined });
 			if (res?.error) {
-				toast.error(res.error.message ?? 'Could not add passkey.');
+				// Surface the discriminating code — iOS PWA failures land here as a
+				// bare WebAuthn error (NotAllowedError = activation/cancel, SecurityError
+				// = rpID), and the generic message alone can't tell them apart.
+				const errCode = 'code' in res.error ? res.error.code : '';
+				const code = errCode ? ` (${errCode})` : '';
+				toast.error((res.error.message ?? 'Could not add passkey.') + code);
 				return;
 			}
 			passkeyName = suggestedName();
@@ -46,7 +51,10 @@
 			toast.success('Passkey added.');
 			await invalidateAll();
 		} catch (err) {
-			toast.error(errorMessage(err, 'Could not add passkey.'));
+			// A rejected navigator.credentials.create surfaces as a DOMException whose
+			// .name (NotAllowedError, SecurityError, NotSupportedError) is the real signal.
+			const name = err instanceof Error && err.name ? ` (${err.name})` : '';
+			toast.error(errorMessage(err, 'Could not add passkey.') + name);
 		} finally {
 			passkeyLoading = false;
 		}

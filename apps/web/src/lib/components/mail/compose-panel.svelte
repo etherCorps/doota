@@ -972,9 +972,11 @@
 		</Drawer.Root>
 	{:else if iosPage}
 		<!-- iOS full-screen page: fixed to the visible viewport (keyboard-safe), no
-		     drawer. The layout owns the history entry so the back-gesture closes it. -->
+		     drawer. The layout owns the history entry so the back-gesture closes it.
+		     Top/bottom safe-area padding keeps the header (✕) clear of the status
+		     bar / Dynamic Island and the home indicator in standalone PWA mode. -->
 		<div
-			class="bg-background fixed inset-x-0 z-50 flex flex-col overflow-hidden overscroll-contain"
+			class="bg-background fixed inset-x-0 z-50 flex flex-col overflow-hidden overscroll-contain pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
 			style={iosPageStyle}
 		>
 			<div class="flex min-h-0 flex-1 items-stretch overflow-hidden">
