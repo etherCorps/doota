@@ -8,7 +8,7 @@ import {
 } from "@doota/mail-core/drafts";
 
 /**
- * Private attachment preview — streams a draft attachment to its OWNER for
+ * Private attachment preview — streams a draft attachment to its owner for
  * compose-time thumbnails. Auth-gated; never a public URL.
  * GET /api/drafts/attachments?draftId=…&key=…
  */

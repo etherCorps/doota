@@ -27,7 +27,7 @@
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;
-	// True while WE apply an external value change, so the update listener doesn't
+	// True while we apply an external value change, so the update listener doesn't
 	// echo it back to the parent.
 	let applyingExternal = false;
 

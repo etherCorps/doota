@@ -6,7 +6,7 @@ import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { svgSafetyProblem } from "$lib/server/bimi/validate.js";
 
 /**
- * Organization BRANDING logo (distinct from the BIMI logo). POST (superadmin or
+ * Organization branding logo (distinct from the BIMI logo). POST (superadmin or
  * an org admin) validates + stores the image in R2; GET serves it — the logo can
  * appear in email/app branding, so the read path is public. Set the org's
  * `logo` to the returned URL via the normal updateOrgProfile save.

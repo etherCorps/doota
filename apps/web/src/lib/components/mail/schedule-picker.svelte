@@ -28,7 +28,7 @@
 	// the calendar inline — there's room, so no extra tap.
 	const isMobile = new IsMobile();
 	let showCal = $state(false);
-	// Mobile only: an open calendar takes the WHOLE sheet — NLP is swapped out so the
+	// Mobile only: an open calendar takes the whole sheet — NLP is swapped out so the
 	// month grid + time list aren't crowded. Desktop shows the calendar inline.
 	const fullCal = $derived(isMobile.current && showCal);
 

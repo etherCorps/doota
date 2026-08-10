@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- The single subscriber to the mailEvents live stream, mounted once in the app
-     layout so realtime works on EVERY route (not just the mail page, which was
-     the old owner). Publishes each event to the shared bus for page-level
-     consumers, and owns the cross-route reactions: OS-notify on new mail (any
-     accessible mailbox, not just the active one) and refresh the unread badge
-     when it's the active mailbox's inbox. -->
+     layout so realtime works on every route, not just the mail page (the old
+     owner). Publishes each event to the shared bus for page-level consumers, and
+     owns the cross-route reactions: OS-notify on new mail (any accessible
+     mailbox, not just the active one) and refresh the unread badge when it's the
+     active mailbox's inbox. -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';

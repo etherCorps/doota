@@ -23,34 +23,34 @@ import { signResourceToken } from "$lib/server/resource-token.js";
 import { log } from "@doota/mail-core/log";
 
 /**
- * Serve ONE message's HTML body, sanitized, as an isolated document for the
+ * Serve one message's HTML body, sanitized, as an isolated document for the
  * <iframe src>. This is the security boundary for untrusted email HTML:
  *
- *  - Sanitize-at-READ, SERVER-side (here) — raw MIME in R2 + the encrypted body
+ *  - Sanitize at read, server-side (here) — raw MIME in R2 + the encrypted body
  *    stay canonical; a sanitizer fix protects all historical mail immediately.
- *  - The frame is loaded with sandbox="allow-scripts" and NO allow-same-origin,
- *    so despite being same-origin it runs in an OPAQUE origin and can't touch the
- *    app. We can therefore set a real CSP *header* (srcdoc can't) AND run our own
+ *  - The frame is loaded with sandbox="allow-scripts" and no allow-same-origin,
+ *    so despite being same-origin it runs in an opaque origin and can't touch the
+ *    app. We can therefore set a real CSP *header* (srcdoc can't) and run our own
  *    measuring/link script (allowed by a script-src sha256 hash; the email's
  *    scripts were removed by the sanitizer and would never match the hash).
  *  - Remote images never hit the browser directly: on opt-in they're rewritten to
  *    the same-origin image proxy, so img-src stays 'self' and the sender never
  *    sees the reader's IP.
  *
- * NEVER add allow-same-origin to the frame that loads this — combined with
+ * Don't add allow-same-origin to the frame that loads this — combined with
  * allow-scripts it lets the framed document strip its own sandbox and escape.
  */
 
-// Our own script, injected AFTER sanitization (the email's scripts are gone and
+// Our own script, injected after sanitization (the email's scripts are gone and
 // wouldn't match the script-src hash). It reports height and handles link clicks
-// IN the click gesture — opening in the frame, not via the parent, so the browser
+// in the click gesture — opening in the frame, not via the parent, so the browser
 // doesn't popup-block it. Only mailto: is handed up (to the composer). The link
 // security rules mirror lib/utils/mail-link.ts (classifyMailLink), kept in sync.
 const INJECTED_SCRIPT =
   "(function(){" +
   // Fit-to-width: a fixed-width email (600px provider card) in a narrow frame
   // would overflow and get clipped (scrolling=no). Scale the body down to fit
-  // the viewport — like Gmail on mobile — then report the SCALED height.
+  // the viewport — like Gmail on mobile — then report the scaled height.
   // scrollWidth/clientWidth are layout metrics (unaffected by transform), so
   // re-runs are stable and the ResizeObserver can't loop.
   "function h(){var b=document.body;if(!b)return;" +
@@ -106,7 +106,7 @@ const escapeAttr = (value: string) =>
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
  * 'self' and the browser never fetches from the sender directly. Each proxied URL
  * carries a signed token so the sandboxed (cookie-less) MailFrame can load it. */
-// Route EVERY remote resource (img/poster/background/srcset + CSS url()) through
+// Route every remote resource (img/poster/background/srcset + CSS url()) through
 // the same-origin privacy proxy with a per-URL signed token (the sandboxed frame
 // can't send the session cookie cross-site). Backgrounds + logos render; the
 // sender only ever sees Cloudflare. @import is stripped in the rewriter.
@@ -161,9 +161,9 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   // render the `-- ` block inline instead of collapsing it. Part of the URL, so
   // the browser's URL-keyed revalidation cache keeps both variants distinct.
   const sigsExpanded = url.searchParams.get("sigs") === "1";
-  // Org remote-content policy is SERVER-AUTHORITATIVE: a locked org can't be
+  // Org remote-content policy is server-authoritative: a locked org can't be
   // overridden by the reader's ?images=1, and an `allow` org auto-loads even
-  // without it. Key the ETag on the EFFECTIVE decision, not the raw request.
+  // without it. Key the ETag on the effective decision, not the raw request.
   const policy = await cachedRemoteContentPolicy(msg.orgId);
   const loadImages = remoteContentAllowed(policy, requestedImages);
   // Revalidation: auth passed above, so a 304 here is safe (a revoked user
@@ -178,8 +178,8 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const ck = await importKey(dek);
   // Derive the HTML body from the raw in R2 — it's not stored in D1 (golden:
   // raw is canonical). To keep R2 reads flat vs when the body lived in D1, the
-  // parsed html is held in a SHARED edge cache keyed on (message, cache-version):
-  // the R2 GET + postal-mime parse then happens ONCE per message globally, not
+  // parsed html is held in a shared edge cache keyed on (message, cache-version):
+  // the R2 GET + postal-mime parse then happens once per message globally, not
   // once per viewer/isolate. Auth ran above, so a post-auth cache read is safe;
   // a RENDER_CACHE_VERSION bump changes the key so patched renders don't serve
   // stale. (The browser's own ETag 304 already skips repeat views entirely.)
@@ -190,11 +190,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
   let rawHtml: string | null = null;
   // Full plain-text body from R2 for a text-only message (no HTML part). The D1
-  // text twins are CAPPED previews (see materialize.ts), so full fidelity comes
+  // text twins are capped previews (see materialize.ts), so full fidelity comes
   // from the raw — mirrors the HTML derive below. Only populated on a text-only
   // message's cache-miss path (text-only never caches HTML → always lands here).
   let rawText: string | null = null;
-  // The cache holds CIPHERTEXT (gzip+encrypted) — the CF edge never stores
+  // The cache holds ciphertext (gzip+encrypted) — the CF edge never stores
   // plaintext email. Decrypt on hit; a corrupt/legacy entry falls through to a
   // fresh derive.
   const cachedBody = bodyCache ? await bodyCache.match(bodyCacheKey) : null;
@@ -283,7 +283,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   // Collapse the sender's signature (last `-- ` delimiter) behind a Gmail-style
   // "···" control, per message, expandable inside the frame. The quoted trail
   // was stripped entirely above (stripQuotesHtml — prior messages live in the
-  // timeline), so this is the bubble's ONLY trimmed-content control; a message
+  // timeline), so this is the bubble's only trimmed-content control; a message
   // never shows two disclosures. Skipped in the full view, when the reader opted
   // into always-expanded signatures, and on a clipped render (the clipped notice
   // must never hide behind the toggle).
@@ -302,7 +302,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
 
   const scriptHash = await sha256Base64(INJECTED_SCRIPT);
   // Images load only same-origin (cid attachments + the remote-image proxy). We
-  // list the EXPLICIT origin, not just 'self': the frame is sandboxed without
+  // list the explicit origin, not just 'self': the frame is sandboxed without
   // allow-same-origin, so its origin is opaque — and Safari treats `'self'` as
   // "the opaque origin", which matches nothing, blocking even same-origin URLs.
   const directives = [
@@ -325,11 +325,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   ];
   const metaCsp = directives.join("; ");
   // Header-only directives (a <meta> CSP can't express these). The sandbox tokens
-  // MUST match the iframe's sandbox attribute (mail-frame.svelte): the browser
-  // applies the INTERSECTION of the two, so a narrower CSP would silently strip
+  // must match the iframe's sandbox attribute (mail-frame.svelte): the browser
+  // applies the intersection of the two, so a narrower CSP would silently strip
   // capabilities the attribute grants. allow-popups(+escape) lets a link/CTA open
   // in a real new tab (window.open '_blank'); allow-modals lets the phishing
-  // confirm() prompt work. Still NO allow-same-origin / allow-forms /
+  // confirm() prompt work. Still no allow-same-origin / allow-forms /
   // allow-top-navigation — the frame can't touch the app or self-navigate.
   const headerCsp = `${metaCsp}; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'`;
 
@@ -354,7 +354,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
       "Referrer-Policy": "no-referrer",
       // Private + always-revalidate (see render-cache.ts): the browser caches
       // the sanitized bytes but re-checks with us every view, so auth + a
-      // RENDER_CACHE_VERSION bump reach the user immediately. NOT edge/Workers
+      // RENDER_CACHE_VERSION bump reach the user immediately. Not edge/Workers
       // Cache: URL-keyed edge entries would serve decrypted bodies without the
       // per-user can() check running.
       ...revalidateHeaders(etag),

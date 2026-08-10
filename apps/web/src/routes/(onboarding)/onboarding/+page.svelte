@@ -13,7 +13,7 @@
     const steps = $derived(data.onboarding.steps);
     const doneCount = $derived(steps.filter((step) => step.done).length);
     // Later steps stay locked until the email/recovery step is verified. The
-    // super-admin has NO such step (email-free genesis) — nothing to gate on, so
+    // super-admin has no such step (email-free genesis), nothing to gate on, so
     // treat the prerequisite as satisfied and unlock the remaining steps.
     const verifyStep = $derived(
         steps.find((step) => step.id === "verify-email" || step.id === "verify-recovery"),

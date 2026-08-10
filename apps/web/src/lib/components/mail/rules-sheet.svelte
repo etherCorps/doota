@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	// Rules settings — the EDITING surface (authoring happens in the move sheet's
+	// Rules settings — the editing surface (authoring happens in the move sheet's
 	// "always file mail from…" row). List / enable / reorder / delete /
 	// apply-to-existing. Opened via ?rules=1 so the sidebar ✱ badges can link
 	// here from anywhere.

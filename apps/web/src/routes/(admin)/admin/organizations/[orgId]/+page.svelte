@@ -65,7 +65,7 @@
 	let mailLoaded = $state(false);
 	let repLoaded = $state(false);
 
-	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
+	// One-shot on mount, not a reactive $effect (which would retry forever if the
 	// fetch rejects, hanging the tab).
 	onMount(() => {
 		if (!org.zoneId) return;

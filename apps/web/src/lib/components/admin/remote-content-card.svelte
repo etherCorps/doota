@@ -2,7 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	// Org policy for remote content (images + fonts) in received mail. "Auto-load"
 	// on = allow (still same-origin proxied, never a direct sender fetch); off =
-	// block (readers opt in per message/sender). "Lock" prevents users overriding —
+	// block (readers opt in per message/sender). "Lock" stops users overriding it;
 	// enforced server-side in the message body route.
 	import { toast } from 'svelte-sonner';
 	import * as Card from '$lib/components/ui/card/index.js';

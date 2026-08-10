@@ -30,8 +30,8 @@
 	let logs = $state<Logs | null>(null);
 	let audit = $state<Audit | null>(null);
 	let loading = $state<Record<View, boolean>>({ analytics: false, logs: false, audit: false });
-	// Gate on "attempted" (set even on error) so a failed fetch does NOT re-trigger
-	// the effect forever — that was an infinite request loop / hang.
+	// Gate on "attempted" (set even on error) so a failed fetch does not re-trigger
+	// the effect forever, which was an infinite request loop / hang.
 	let loaded = $state<Record<View, boolean>>({ analytics: false, logs: false, audit: false });
 
 	// Live-fetch the active view on first open (and on manual refresh). Cached
@@ -51,7 +51,7 @@
 		}
 	}
 
-	// Refetch the active view whenever the view OR the range changes. Reading
+	// Refetch the active view whenever the view or the range changes. Reading
 	// `days` here registers it as a dependency; setDays() clears the flags.
 	$effect(() => {
 		days;

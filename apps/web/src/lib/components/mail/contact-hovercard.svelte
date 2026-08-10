@@ -86,14 +86,14 @@
 <HoverCard.Root bind:open openDelay={450} closeDelay={120}>
 	<HoverCard.Trigger>
 		{#snippet child({ props })}
-			<!-- The caller's sender text IS the trigger — a span carrying their
+			<!-- The caller's sender text is the trigger — a span carrying their
 			     classes, not the primitive's default anchor and not an extra wrapper. -->
 			<span {...props} onclick={onTriggerClick} class={cn('focus-visible:ring-ring/50 cursor-default rounded-sm outline-none focus-visible:ring-2', className)}>{@render children()}</span>
 		{/snippet}
 	</HoverCard.Trigger>
-	<!-- right-start: the thread column keeps its empty space to the RIGHT of
+	<!-- right-start: the thread column keeps its empty space to the right of
 	     the header row, so the card sits beside the sender instead of blanketing
-	     the message below. align="start" pins the TOP edge to the trigger — the
+	     the message below. align="start" pins the top edge to the trigger. The
 	     old default (center) re-centered vertically whenever content height
 	     changed, which is what made the card drift; with a pinned top the
 	     recent-conversations expansion only ever grows downward. -->

@@ -113,7 +113,7 @@
 		font-size: 0.9rem;
 		animation-delay: 1.5s;
 	}
-	/* Each pose has TWO moving parts so the motion always reads:
+	/* Each pose has two moving parts so the motion always reads:
 	   Sitting = whole-body rock + a big tail swish. Ball = breath + a tail-tip
 	   flick. Peek = a clear bob with a slight head tilt. */
 	.kitty-sit {

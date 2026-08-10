@@ -90,11 +90,11 @@
 	let broken = $state(false);
 
 	// Click → scan → then act. Every click routes through the gate: it scans, then
-	// for a VIEWABLE type (image/text/pdf/svg) opens the in-house SANDBOXED viewer,
+	// for a viewable type (image/text/pdf/svg) opens the in-house sandboxed viewer,
 	// otherwise downloads. A clean verdict proceeds straight through; matched/
-	// skipped/error fail OPEN behind a confirm. The viewer never opens without a
+	// skipped/error fail open behind a confirm. The viewer never opens without a
 	// verdict. The <a download> stays the real fallback so JS-off / middle-click
-	// still work — we only intercept the primary click to interpose the check.
+	// still work; we only intercept the primary click to interpose the check.
 	const verdict = $derived(tileVerdict(att.id));
 	// The tile's signifiers (title, corner badge) must promise the action the
 	// primary click actually takes: preview for viewable types, download else.
@@ -126,8 +126,8 @@
 		// opened), so the verdict is usually in before the user clicks.
 		prefetchVerdict(att.id, att.size);
 	});
-	// PDF page-1 thumb only AFTER a clean verdict: the thumb parses the PDF with
-	// pdfjs in the APP context (no sandbox) — exactly the surface the viewer
+	// PDF page-1 thumb only after a clean verdict: the thumb parses the PDF with
+	// pdfjs in the app context (no sandbox) — exactly the surface the viewer
 	// isolates. Unscanned/matched/skipped PDFs keep the typed icon tile.
 	$effect(() => {
 		if (verdict === 'clean' && kind === 'pdf' && variant !== 'row' && !pdfUrl && !pdfLoading) {
@@ -146,7 +146,7 @@
 	);
 </script>
 
-<!-- Advisory verdict indicator. Honest copy — never "safe"/"virus-free": clean
+<!-- Advisory verdict indicator. Copy avoids "safe"/"virus-free": clean
      means "checked against known threat patterns", nothing more. -->
 {#snippet verdictBadge()}
 	{#if verdict === 'checking'}

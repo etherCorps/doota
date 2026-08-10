@@ -28,7 +28,7 @@
 	import SpellCheckIcon from '@lucide/svelte/icons/spell-check';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 
-	// TipTap (ProseMirror) rich-text body — real document model, proper a11y, no
+	// TipTap (ProseMirror) rich-text body: real document model, proper a11y, no
 	// execCommand. Titled links, pasted/inserted inline images (base64), live
 	// toolbar state. The paperclip delegates real attachments to the parent.
 	let {
@@ -58,7 +58,7 @@
 		 * the control is sized to a few lines, not a full message composer. */
 		dense?: boolean;
 		/** Put the caret at the very start on mount. Composers seed the signature at
-		 * the end of the body, so the caret must land above it — otherwise clicking
+		 * the end of the body, so the caret must land above it. Otherwise clicking
 		 * the empty editor drops the caret after the signature and typing pushes the
 		 * user's text below their sign-off. */
 		focusStart?: boolean;
@@ -75,11 +75,11 @@
 	let editingLink = $state(false);
 
 	// Harper grammar check (lazy WASM). Underlines flag issues; clicking an
-	// underlined word opens a suggestion menu — pick one to apply + flash green.
+	// underlined word opens a suggestion menu — pick one to apply and flash green.
 	let harperStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let harperCount = $state(0);
 	let activeLint = $state<ActiveLint | null>(null);
-	// Only surface the grammar pill once there's text — a spinner on an empty
+	// Only surface the grammar pill once there's text; a spinner on an empty
 	// composer is meaningless.
 	let hasContent = $state(false);
 
@@ -244,7 +244,7 @@
 
 <div class="focus-within:ring-ring/40 flex h-full flex-col rounded-lg border focus-within:ring-2 {fill ? 'min-h-0' : dense ? 'min-h-[120px]' : 'min-h-[180px]'}">
 	<!-- Single row that never wraps: the formatting group scrolls horizontally
-	     when the composer is narrow — wrapped toolbar rows painted over the text
+	     when the composer is narrow. Wrapped toolbar rows painted over the text
 	     area (flex computes a wrapping row's min height as one line). The attach
 	     button stays pinned outside the scroll region. -->
 	<div class="text-muted-foreground flex shrink-0 items-center border-b">

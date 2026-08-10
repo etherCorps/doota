@@ -3,7 +3,7 @@
 	// Account → Mail: per-mailbox outbound webhook endpoints. A user with access
 	// to the scoped mailbox manages its own webhooks (mirrors sender-lists-card).
 	// Create opens a dialog (desktop) / drawer (mobile); the signing secret is
-	// shown ONCE on creation. Per endpoint: enable toggle, edit events, delete,
+	// shown once on creation. Per endpoint: enable toggle, edit events, delete,
 	// and an on-demand recent-deliveries list.
 	import WebhookIcon from '@lucide/svelte/icons/webhook';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -67,9 +67,9 @@
 	let creating = $state(false);
 	// Set once the endpoint is created — flips the form into the copy-secret view.
 	let newSecret = $state<string | null>(null);
-	// The secret is shown ONCE: until the user has actually copied it, the
-	// dialog/drawer refuses to dismiss (Esc/backdrop/swipe) and Done stays locked —
-	// one stray tap must not discard an unrecoverable credential.
+	// The secret is shown once. Until the user has actually copied it, the
+	// dialog/drawer refuses to dismiss (Esc/backdrop/swipe) and Done stays locked,
+	// so one stray tap can't discard an unrecoverable credential.
 	let secretCopied = $state(false);
 	const guardingSecret = $derived(newSecret !== null && !secretCopied);
 

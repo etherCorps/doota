@@ -4,7 +4,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 
 /**
  * CORS shim for the sandboxed viewer's pdfjs imports. The viewer frame runs in
- * an OPAQUE origin (sandbox without allow-same-origin), so its dynamic
+ * an opaque origin (sandbox without allow-same-origin), so its dynamic
  * `import()`s are CORS module fetches with `Origin: null` — the bare static
  * assets (/pdfjs/*) carry no ACAO header and the browser blocks them (found
  * live). This route re-serves the same self-hosted, public, data-free bundles
@@ -22,8 +22,8 @@ export const GET: RequestHandler = async ({ url, params, fetch, platform }) => {
   const path = ASSETS[params.asset ?? ""];
   if (!path) error(404, "Not found");
   // The ASSETS binding serves the static dir directly. (SvelteKit's server
-  // fetch does NOT reach static assets here — assets are served by the edge
-  // BEFORE the worker, so a same-origin server-side fetch 404s. Found live.)
+  // fetch does not reach static assets here — assets are served by the edge
+  // before the worker, so a same-origin server-side fetch 404s. Found live.)
   const assets = (platform?.env as { ASSETS?: { fetch: typeof fetch } } | undefined)?.ASSETS;
   const target = new URL(path, url.origin);
   const upstream = await (assets ? assets.fetch(new Request(target)) : fetch(target));

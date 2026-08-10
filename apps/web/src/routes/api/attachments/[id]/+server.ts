@@ -40,7 +40,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   if (!message) error(404, "Attachment not found");
 
   // Two ways in. (1) A signed token minted by the authenticated body route — the
-  // ONLY path that works from the sandboxed MailFrame, whose cross-site subresource
+  // only path that works from the sandboxed MailFrame, whose cross-site subresource
   // requests carry no session cookie. It authorizes this message's attachments and
   // nothing else. (2) A normal session (app UI, direct open) with delivery/org read.
   let allowed = await verifyResourceToken(env.MAIL_SEARCH_KEY, `att:msg:${att.messageId}`, url.searchParams.get("t"));

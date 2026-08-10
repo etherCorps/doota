@@ -20,7 +20,7 @@
 
 	// Rich-text body: contentEditable + execCommand (no editor dependency). Emits
 	// HTML on input; the send path derives a text fallback. Links are edited via an
-	// inline popover (never a native prompt); the toolbar reflects the caret's
+	// inline popover, not a native prompt; the toolbar reflects the caret's
 	// current formatting. Pasted images embed inline as data-URIs; the paperclip
 	// delegates to the parent for real R2 attachments.
 	let {

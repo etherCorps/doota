@@ -13,7 +13,7 @@ import { resolveApiAttachments, type ApiAttachmentInput } from "$lib/server/api-
 /**
  * Programmatic send via bearer API key (Part I). External/machine clients POST
  * here with `Authorization: Bearer dk_…`. The key resolves to its owning user and
- * is authorized against the SAME can() mailbox SEND capability as an interactive
+ * is authorized against the same can() mailbox send capability as an interactive
  * session — no parallel permission path. If the key is mailbox-scoped, that
  * mailbox is used and any body mailboxId must match.
  */
@@ -81,7 +81,7 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
     if (!tmpl) error(404, "Template not found for this account");
     // Built-in variables (recipient, sender, date…) are filled by us and win over
     // caller data of the same name; everything else comes from the caller's `data`.
-    // Unsubscribe link for the primary recipient — host from THIS request's
+    // Unsubscribe link for the primary recipient — host from this request's
     // origin (multi-domain safe), path optionally overridden by UNSUBSCRIBE_URL.
     // Exposed as {{ unsubscribe_url }}; built-ins win over caller data.
     const primary = [...to, ...cc, ...bcc][0];

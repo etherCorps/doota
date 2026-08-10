@@ -25,7 +25,7 @@
 	}: {
 		open?: boolean;
 		folders: Folder[];
-		/** Single-thread move: the sender ADDRESS shown on the rules hook row. */
+		/** Single-thread move: the sender address shown on the rules hook row. */
 		sender?: string | null;
 		/** null = move to Inbox. The caller closes the sheet + runs the move
 		 * (and, when asked, creates the "always file from sender" rule). */

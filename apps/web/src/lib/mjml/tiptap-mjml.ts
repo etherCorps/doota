@@ -218,8 +218,8 @@ function hasSectionStyle(a: Record<string, unknown>): boolean {
 /** Serialize a Tiptap doc + page settings to an MJML string. */
 export function tiptapToMjml(doc: TiptapDoc, settings: PageSettings = {}): string {
   const theme = settings.theme ?? {};
-  // Group consecutive "flow" blocks (text/heading/list/button/image/…) into ONE
-  // mj-section so they stack with only element padding — the Resend / idiomatic-
+  // Group consecutive "flow" blocks (text/heading/list/button/image/…) into one
+  // mj-section so they stack with only element padding — the Resend / idiomatic
   // MJML rhythm. A structural block (columns/hero/social) or a block with its own
   // background/border/padding breaks out into its own section.
   const out: string[] = [];

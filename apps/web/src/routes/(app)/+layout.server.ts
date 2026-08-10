@@ -9,7 +9,7 @@ export const load = async ({ locals, platform }) => {
 
   // Warm the KV caches on app entry (fire-and-forget — costs this page nothing):
   // the RPCs the shell fires next (thread list, unread count) hit a warm authz
-  // snapshot, and the FIRST composer open reads identities from KV instead of
+  // snapshot, and the first composer open reads identities from KV instead of
   // running its 5 D1 queries. Already-warm entry = 2 cheap KV reads.
   platform?.ctx?.waitUntil?.(Promise.allSettled([getAuthz(), cachedSendIdentities()]));
   // superadmin is external, has no mailbox → no /app.

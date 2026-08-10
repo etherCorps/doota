@@ -22,7 +22,7 @@
 
 	onMount(async () => {
 		subscribed = await isPushSubscribed();
-		// Permission already granted but no live subscription on THIS device (new
+		// Permission already granted but no live subscription on this device (new
 		// device, the push endpoint rotated, or a prior enable that never persisted):
 		// reconcile silently so the toggle reflects reality instead of showing off.
 		if (!subscribed && supported && notifPerm.current === 'granted') {
@@ -40,7 +40,7 @@
 		try {
 			if (next) {
 				// Awaits the full chain: permission → browser subscribe → server save.
-				// "ok" means browser AND server are in sync — not just a local sub.
+				// "ok" means browser and server are in sync, not just a local sub.
 				const res = await enableOsNotifications();
 				subscribed = res === 'ok';
 				if (res === 'ok') toast.success('Notifications on.');

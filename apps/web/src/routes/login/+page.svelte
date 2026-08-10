@@ -16,8 +16,8 @@
 </script>
 
 {#if data.addLimit}
-	<!-- Add-account blocked at the device-session cap: past it, better-auth
-	     silently stops tracking sessions — never let a sign-in reach that. -->
+	<!-- Add-account blocked at the device-session cap. Past it, better-auth
+	     silently stops tracking sessions, so never let a sign-in reach that. -->
 	<AuthShell
 		title="Account limit reached"
 		description="This device already has {MAX_DEVICE_SESSIONS} accounts signed in."

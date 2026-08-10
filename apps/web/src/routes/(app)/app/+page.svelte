@@ -161,7 +161,7 @@
 	// switcher drive this view by navigation.
 	const params = $derived(page.url.searchParams);
 	// URL is authoritative; when it lacks ?mailbox, fall back to the user's last
-	// explicit pick (validated against current access), NOT blindly mailboxes[0] —
+	// explicit pick (validated against current access), not blindly mailboxes[0],
 	// so folder nav / a fresh load never auto-switches the mailbox.
 	const mailboxId = $derived(
 		params.get('mailbox') ??
@@ -175,12 +175,12 @@
 	const labelId = $derived(params.get('label'));
 	const threadId = $derived(params.get('thread'));
 
-	// Continuation: on a bare /app load the mailbox comes from the persisted pick,
-	// but the URL doesn't show it — so write it back (replace, no history entry).
-	// Now the URL always reflects the active mailbox: refresh/share is stable and
-	// folder links carry the param instead of leaning on the fallback.
-	// goto (a real replace navigation), NOT shallow replaceState: shallow routing
-	// doesn't propagate to `page.url` in other components, so the sidebar's
+	// On a bare /app load the mailbox comes from the persisted pick, but the URL
+	// doesn't show it, so write it back (replace, no history entry). Then the URL
+	// always reflects the active mailbox: refresh/share is stable and folder links
+	// carry the param instead of leaning on the fallback.
+	// Use goto (a real replace navigation), not shallow replaceState: shallow
+	// routing doesn't propagate to `page.url` in other components, so the sidebar's
 	// Folders group (gated on ?mailbox) never appeared on a bare load.
 	$effect(() => {
 		const mb = mailboxId;
@@ -216,8 +216,8 @@
 	};
 
 	// Full search-results mode (?q=): the palette shows the top hits; "view all"
-	// lands here, where the list pane becomes the results list. Searches ALL
-	// accessible mailboxes — deliberately not scoped to the active one, so
+	// lands here, where the list pane becomes the results list. Searches all
+	// accessible mailboxes, deliberately not scoped to the active one, so
 	// opening a hit (which switches ?mailbox) can't reshuffle the results.
 	const searchQ = $derived(params.get('q'));
 	const searchResultsQ = $derived(
@@ -232,11 +232,11 @@
 
 	const threadQ = $derived(mailboxId && threadId && !isVirtual ? openThread({ mailboxId, threadId }) : null);
 	// Open-thread pane renders from `.current` so a refresh() updates in place
-	// instead of blanking (which read like a full reload).
+	// instead of blanking, which read like a full reload.
 	const openDto = $derived(threadQ?.current ?? null);
 
-	// Unread inbox count → sidebar badge + tab title. The mail page owns the
-	// fetch (it knows the mailbox); readers watch the shared store.
+	// Unread inbox count feeds the sidebar badge + tab title. The mail page owns
+	// the fetch (it knows the mailbox); readers watch the shared store.
 	async function refreshUnread() {
 		if (!mailboxId) return;
 		try {
@@ -257,7 +257,7 @@
 		document.title = unread.count > 0 ? `(${unread.count}) Doota` : 'Doota';
 	});
 
-	// Keep the OPEN thread read: a reply landing while you're viewing it, or your
+	// Keep the open thread read: a reply landing while you're viewing it, or your
 	// own send, shouldn't resurface the row as unread in the list/badge. No-op on
 	// a hidden tab (you haven't looked) or when nothing's open.
 	async function markOpenRead() {
@@ -268,7 +268,7 @@
 		patchItem(th, { unread: false });
 		void refreshUnread();
 	}
-	// Returned to the tab with a thread open → treat it as seen.
+	// Returned to the tab with a thread open: treat it as seen.
 	$effect(() => {
 		const onVis = () => {
 			if (!document.hidden) void markOpenRead();
@@ -277,8 +277,8 @@
 		return () => document.removeEventListener('visibilitychange', onVis);
 	});
 
-	// Mark read on FIRST load of a thread. selectThread handles a list click, but a
-	// DIRECT open — URL, notification-bell link, refresh — has no selectThread, so
+	// Mark read on first load of a thread. selectThread handles a list click, but a
+	// direct open (URL, notification-bell link, refresh) has no selectThread, so
 	// the thread would stay unread. Fire once per newly-loaded thread; selectThread
 	// stamps lastOpenedRead so a list click never double-writes, and this skips
 	// openDto refreshes (a reply landing keeps the same id).
@@ -293,15 +293,15 @@
 		});
 	});
 
-	// Live MailEventHub push. send_state: refresh the open thread in place —
-	// ticks flip clock→sent→delivered, failure banners appear without reopening
+	// Live MailEventHub push. send_state: refresh the open thread in place. Ticks
+	// flip clock→sent→delivered, failure banners appear without reopening
 	// (toasting lives in the app shell's notifier). inbound: new mail for this
-	// mailbox — bump the badge, refresh the visible list, and refresh the open
-	// thread if the reply landed there. Tracks ONLY the event; folder/thread
+	// mailbox, so bump the badge, refresh the visible list, and refresh the open
+	// thread if the reply landed there. Tracks only the event; folder/thread
 	// state is read untracked so navigation doesn't replay the last event.
 	// Page-specific reactions to the shared realtime bus (RealtimeSync is the sole
-	// subscriber + owns OS-notify and the unread badge). Here we only refresh what
-	// THIS view shows: the open thread's ticks/messages and the list.
+	// subscriber and owns OS-notify and the unread badge). Here we only refresh
+	// what this view shows: the open thread's ticks/messages and the list.
 	$effect(() => {
 		void realtime.seq;
 		const evt = realtime.event;
@@ -331,7 +331,7 @@
 			void refreshUnread();
 		}
 		// ponytail: full first-page reload on inbound — fine at inbox scale; switch
-		// to a prepend-merge if reset scroll ever annoys. Runs after markThreadRead
+		// to a prepend-merge if reset scroll ever annoys. Runs after markThreadRead,
 		// so the reloaded row reflects the advanced cursor.
 		if (placement === 'inbox' || placement === 'sent') await loadThreads(true);
 		if (viewing && th) patchItem(th, { unread: false });
@@ -342,8 +342,8 @@
 	// or folder changes. Common actions patch `items` in place (no refetch/flash).
 	const PAGE = 30;
 	let items = $state<ThreadSummary[]>([]);
-	// Pins are a SEPARATE small list (server partial index), merged atop the main
-	// list — never folded into the main sort, so the list index's backward-scan is
+	// Pins are a separate small list (server partial index), merged atop the main
+	// list, never folded into the main sort, so the list index's backward-scan is
 	// preserved. Reloaded on every reset, appended never (pins don't paginate).
 	let pinnedItems = $state<ThreadSummary[]>([]);
 	const pinnedIds = $derived(new Set(pinnedItems.map((thread) => thread.threadId)));
@@ -362,7 +362,7 @@
 		if (!mailboxId || isVirtual) return;
 		if (loadingList) {
 			// A reset that lands mid-load (live event during initial fetch) must
-			// not be dropped — run it again once the current load settles.
+			// not be dropped; run it again once the current load settles.
 			if (reset) pendingReload = true;
 			return;
 		}
@@ -374,11 +374,11 @@
 		try {
 			const offset = reset ? 0 : nextOffset;
 			const q = mailboxThreads({ mailboxId, placement: placement as never, offset, labelId: labelId ?? undefined });
-			// Same-args query calls are deduped/cached — a plain re-await can hand
+			// Same-args query calls are deduped/cached, so a plain re-await can hand
 			// back the stale page. Resets come from live events, so force the read.
 			const page = reset ? ((await q.refresh(), q.current) ?? []) : await q;
-			// The user may have switched folders/mailboxes while this was in flight —
-			// drop the late page rather than paint the wrong folder's mail.
+			// The user may have switched folders/mailboxes while this was in flight,
+			// so drop the late page rather than paint the wrong folder's mail.
 			if (forMailbox !== mailboxId || forPlacement !== placement || forLabel !== labelId) return;
 			items = reset ? page : [...items, ...page];
 			nextOffset = offset + page.length;
@@ -410,7 +410,7 @@
 		}
 	}
 
-	// Folder chips on rows — fetched per loaded page (≤ PAGE ids, well under the
+	// Folder chips on rows, fetched per loaded page (≤ PAGE ids, well under the
 	// rpc's 100-id cap). refresh() forces past the arg cache so an undo/reload
 	// repaints fresh chips, mirroring the reset path in loadThreads.
 	const rowLabels = new SvelteMap<string, { labelId: string; name: string; color: string | null }[]>();
@@ -423,7 +423,7 @@
 				rowLabels.set(rowThreadId, chips);
 			}
 		} catch {
-			// chips are decoration — skip on failure, next reload retries
+			// chips are decoration; skip on failure, next reload retries
 		}
 	}
 
@@ -451,10 +451,10 @@
 	const threadSel = new SvelteSet<string>();
 	let bulkBusy = $state(false);
 
-	// Action feedback on rows. Leaving rows play ONE continuous exit: height
+	// Action feedback on rows. Leaving rows play one continuous exit: height
 	// collapses while the row slides toward where it's going (trash/spam left,
 	// archive/inbox right), so rows below track the shrink instead of jumping
-	// after a separate fade. The exit only plays when rowFx names the row —
+	// after a separate fade. The exit only plays when rowFx names the row;
 	// removals from plain refreshes/live reloads stay instant. Read/unread
 	// keeps the row and pulses a ring instead.
 	type RowFx = 'delete' | 'spam' | 'archived' | 'inbox' | 'pulse';
@@ -484,7 +484,7 @@
 		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
-		// Optimistic: rows leave immediately (exit transition reads rowFx); a
+		// Optimistic: rows leave immediately (exit transition reads rowFx). A
 		// loading toast tracks the write, flipping to Undo on success (same flow as
 		// swipe triage), or to an error + list reload on failure.
 		items = items.filter((thread) => !threadSel.has(thread.threadId));
@@ -521,8 +521,8 @@
 		}
 	}
 
-	// "Empty trash/spam" — hides everything at the placement (no hard delete).
-	// Confirmed bulk (AlertDialog) with real latency: loading toast → success,
+	// "Empty trash/spam" hides everything at the placement (no hard delete).
+	// Confirmed bulk (AlertDialog) with real latency: loading toast then success,
 	// no Undo. Optimistic clear; reload the list back if the write fails.
 	async function emptyCurrentFolder() {
 		if (!mailboxId || (placement !== 'trash' && placement !== 'spam')) return;
@@ -542,8 +542,8 @@
 	// Drafts multi-select. Single-row delete goes through the same bulk call.
 	const draftSel = new SvelteSet<string>();
 	let deletingDrafts = $state(false);
-	// Rows mid-delete: dimmed + non-interactive so they immediately read as
-	// "going away" during the network round-trip, before the exit collapse.
+	// Rows mid-delete: dimmed + non-interactive so they read as going away
+	// during the network round-trip, before the exit collapse.
 	const pendingDelete = new SvelteSet<string>();
 	async function deleteDrafts(ids: string[]) {
 		deletingDrafts = true;
@@ -564,7 +564,7 @@
 	}
 
 	// Closing the composer (send, discard, or plain close) refreshes the virtual
-	// lists it feeds — Drafts and Scheduled were serving cached results until a
+	// lists it feeds. Drafts and Scheduled were serving cached results until a
 	// full navigation.
 	watch(
 		[() => compose.open],
@@ -576,9 +576,9 @@
 		}
 	);
 
-	// Manual refresh — live push covers updates, but the button gives control
-	// back to the user. Feedback always: what's new, a calm "nothing new", or
-	// the error.
+	// Manual refresh: live push covers updates, but the button gives control
+	// back to the user. Always gives feedback: what's new, a calm "nothing new",
+	// or the error.
 	let refreshing = $state(false);
 	const CALM = [
 		'Nothing new — enjoy the quiet.',
@@ -621,13 +621,13 @@
 
 	let listEl = $state<HTMLElement>();
 	function onListScroll(e: Event) {
-		// Search has its own (capped) result set — don't fire folder pagination,
+		// Search has its own (capped) result set; don't fire folder pagination,
 		// which would mutate `items` under the search view.
 		if (searchQ) return;
 		const el = e.currentTarget as HTMLElement;
 		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadThreads(false);
 	}
-	// The list pane and search share one scroll container — reset it to the top
+	// The list pane and search share one scroll container; reset it to the top
 	// when a search opens (or the query changes) so results never start pinned at
 	// a stale offset from the folder list (iOS reads that as "won't scroll").
 	$effect(() => {
@@ -637,7 +637,7 @@
 		});
 	});
 
-	/** Patch one loaded row in place — avoids a full refetch (and its flash). */
+	/** Patch one loaded row in place, avoiding a full refetch (and its flash). */
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
 		items = items.map((thread) => (thread.threadId === id ? { ...thread, ...patch } : thread));
 		// Pinned rows render from their own list — patch there too so a pinned row's
@@ -647,10 +647,10 @@
 		);
 	}
 
-	// Coherent star/assignee between the list and the open-thread header: ONE
-	// source, patched in place — never a full thread refetch to flip a boolean.
-	// Priority: optimistic override → the list row (when the open thread is
-	// loaded) → the thread DTO (direct-URL case). Override resets per thread.
+	// Coherent star/assignee between the list and the open-thread header: one
+	// source, patched in place, never a full thread refetch to flip a boolean.
+	// Priority: optimistic override, then the list row (when the open thread is
+	// loaded), then the thread DTO (direct-URL case). Override resets per thread.
 	const openThreadItem = $derived(merged.find((thread) => thread.threadId === threadId));
 	let openFlagOverride = $state<{
 		isStarred?: boolean;
@@ -661,7 +661,7 @@
 		void threadId;
 		untrack(() => {
 			openFlagOverride = {};
-			// Per-message reply target is scoped to the open thread — clear it so a
+			// Per-message reply target is scoped to the open thread; clear it so a
 			// stale msgId can't re-select (and auto-expand) a reply in the next thread.
 			replyTarget = null;
 		});
@@ -708,7 +708,7 @@
 		await markOpenRead();
 	}
 
-	// Collaboration layer (Task 5). Members drive "is this a shared mailbox?" —
+	// Collaboration layer (Task 5). Members drive "is this a shared mailbox?";
 	// personal mailboxes (1 member) show none of this UI.
 	const currentUserId = $derived(page.data.user?.id ?? '');
 	const membersQ = $derived(mailboxId && !isVirtual ? mailboxMembers(mailboxId) : null);
@@ -738,14 +738,14 @@
 		else if (quickFilter === 'starred') out = out.filter((row) => row.isStarred);
 		return out;
 	}
-	// Memoized once per (list, filter) change — NOT per render. Inlined as a
+	// Memoized once per (list, filter) change, not per render. Inlined as a
 	// template `@const` it re-ran on every pointermove during a swipe (swipeProg
 	// churn); as a $derived it only recomputes when merged/filters actually change.
 	const filteredThreads = $derived(applyListFilters(merged));
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
-		// Header + list flip instantly via the overlay; the thread refetch is only
+		// Header + list flip instantly via the overlay. The thread refetch is only
 		// to pull the "assigned to X" system-event into the timeline (a real
 		// server-side effect, unlike star), not to sync the badge.
 		openFlagOverride = { ...openFlagOverride, assigneeUserId: userId };
@@ -768,12 +768,12 @@
 		members.find((member) => member.userId === id)?.name ?? 'someone';
 
 	// Open a thread and mark it read (clears the unread dot + badge). Skip the
-	// write when we already know the row is read — reopening an already-read
+	// write when we already know the row is read: reopening an already-read
 	// thread shouldn't fire a redundant markThreadRead (a wasted D1 write). An
 	// item we don't have (direct URL / search nav) is treated as maybe-unread.
 	// Keyboard-nav cursor: j/k move this highlight instantly, but the actual
 	// open (URL nav + thread fetch + mark-read) is debounced so flying through
-	// the list doesn't fetch/read every thread skimmed past — only the one you
+	// the list doesn't fetch/read every thread skimmed past, only the one you
 	// land on. Enter (or the pause) commits. Superhuman's model.
 	let navCursor = $state<string | null>(null);
 	let openTimer: ReturnType<typeof setTimeout> | null = null;
@@ -816,8 +816,8 @@
 		void refreshUnread();
 	}
 
-	// Undo for triage moves (Gmail's safety net): every archive/spam/trash/inbox
-	// move toasts with Undo for ~6s, restoring each thread's PREVIOUS placement.
+	// Undo for triage moves (Gmail pattern): every archive/spam/trash/inbox
+	// move toasts with Undo for ~6s, restoring each thread's previous placement.
 	const MOVE_LABEL: Record<string, string> = {
 		archived: 'Archived',
 		spam: 'Marked as spam',
@@ -831,7 +831,7 @@
 		inbox: 'Moving to inbox…'
 	};
 	// Promise-toast helper: a loading toast tracks the write in the background so
-	// the (already-optimistic) UI never blocks. Returns the toast id — pass it to
+	// the (already-optimistic) UI never blocks. Returns the toast id; pass it to
 	// a follow-up toast (Undo / success) to replace the spinner in place, or let
 	// `error` land on the same toast. `done` closes it silently (caller shows its
 	// own success/Undo); `error` is the rollback message.
@@ -842,9 +842,9 @@
 		opts?: { done?: (progress: ProgressToast) => void }
 	): Promise<boolean> {
 		// progressToast (not raw toast.loading): the loading toast stays alive
-		// however long the write takes, and the terminal morphs it in place —
-		// a plain loading toast expires on the default duration, after which
-		// the terminal would ADD a second toast.
+		// however long the write takes, and the terminal morphs it in place.
+		// A plain loading toast expires on the default duration, after which
+		// the terminal would add a second toast.
 		const progress = progressToast(loading);
 		try {
 			await run();
@@ -856,7 +856,7 @@
 			return false;
 		}
 	}
-	// `id` updates an existing (loading) toast in place — the promise-toast flow:
+	// `id` updates an existing (loading) toast in place, the promise-toast flow:
 	// spinner while the write is in flight, then this Undo toast replaces it.
 	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, progress: ProgressToast) {
 		const mb = mailboxId;
@@ -871,7 +871,7 @@
 						try {
 							await moveThread({ mailboxId: mb, threadId: entry.threadId, placement: entry.prev as never });
 						} catch {
-							// row may have moved again meanwhile — restore the rest
+							// row may have moved again meanwhile; restore the rest
 						}
 					}
 					await loadThreads(true);
@@ -886,9 +886,9 @@
 	const rowPrev = (id: string) =>
 		items.find((thread) => thread.threadId === id)?.placement ?? (placement === 'sent' ? 'inbox' : placement);
 
-	// Move one LIST ROW (swipe path — no open-thread nav involved). Optimistic:
+	// Move one list row (swipe path, no open-thread nav involved). Optimistic:
 	// the row leaves the instant the swipe commits (no red-reveal stall while the
-	// server round-trips); a loading toast flips to the Undo toast on success and
+	// server round-trips). A loading toast flips to the Undo toast on success and
 	// the list restores on failure.
 	async function moveRow(id: string, target: 'inbox' | 'archived' | 'spam' | 'trash') {
 		if (!mailboxId) return;
@@ -911,7 +911,7 @@
 		}
 	}
 
-	// Live swipe progress per row (-1..1) — drives the action reveal underneath.
+	// Live swipe progress per row (-1..1), drives the action reveal underneath.
 	// Rendered only while non-zero, so translucent row tints never leak icons.
 	const swipeProg = new SvelteMap<string, number>();
 	const coarsePointer = () =>
@@ -956,17 +956,17 @@
 
 	// "Move to…" (org folders). Same optimistic shape as move()/bulkMove: rows
 	// leave now, the write settles behind a loading→Undo toast. Filing archives
-	// the thread server-side (Gmail semantics), so it leaves the current view;
-	// Undo posts each snapshot back to restore labels AND placement.
+	// the thread server-side (Gmail semantics), so it leaves the current view.
+	// Undo posts each snapshot back to restore labels and placement.
 	let moveSheetOpen = $state(false);
 	let moveTargets = $state<string[]>([]);
-	// Single-thread move: the raw sender ADDRESS — shown on the "always file"
+	// Single-thread move: the raw sender address, shown on the "always file"
 	// row and used verbatim in the created rule's from-equals condition.
 	const moveSender = $derived.by(() => {
 		if (moveTargets.length !== 1) return null;
 		const row = items.find((thread) => thread.threadId === moveTargets[0]);
 		if (row?.from) return row.from;
-		// Deep-linked open thread may not be in the list — read the DTO instead.
+		// Deep-linked open thread may not be in the list; read the DTO instead.
 		if (openDto?.id === moveTargets[0]) {
 			const external = openDto.items.filter(
 				(item): item is MessageDTO => item.type === 'external_message'
@@ -981,7 +981,7 @@
 		moveSheetOpen = true;
 	}
 
-	// "Why is this here?" — only queried in a folder (label) view; the ✱ chip
+	// "Why is this here?" is only queried in a folder (label) view; the ✱ chip
 	// shows only when the placement actually came from a rule or a person.
 	let whyOpen = $state(false);
 	const whyQ = $derived(
@@ -1019,7 +1019,7 @@
 							try {
 								await undoMove(snapshot);
 							} catch {
-								// thread may have moved again meanwhile — restore the rest
+								// thread may have moved again meanwhile; restore the rest
 							}
 						}
 						await loadThreads(true);
@@ -1044,7 +1044,7 @@
 		}
 	}
 
-	// "Always file mail from <sender> here" — create the rule after the move
+	// "Always file mail from <sender> here": create the rule after the move
 	// lands, then offer the existing-mail backfill from the confirm toast
 	// (ApplyRuleDialog owns the preview/override flow).
 	let applyRuleDialog = $state<{ start: (ruleId: string) => void } | null>(null);
@@ -1068,7 +1068,7 @@
 			toast.error(errorMessage(e, 'Moved, but the rule could not be created.'));
 		}
 	}
-	// "Labels…" — additive labels for the cross-cutting case ("belongs in two
+	// "Labels…": additive labels for the cross-cutting case ("belongs in two
 	// folders"). Flat name-sorted checklist; checkmarks read from the same
 	// rowLabels map the row chips use, toggles write through and re-fetch it.
 	const labelChecklist = $derived([...orgFolders].sort((a, b) => a.name.localeCompare(b.name)));
@@ -1099,12 +1099,12 @@
 		}
 	}
 
-	// Snooze/unsnooze committed inside SnoozeMenu — here we just leave the thread
+	// Snooze/unsnooze is committed inside SnoozeMenu; here we just leave the thread
 	// and drop its row (it left the current view), same optimistic shape as move().
 	function afterSnoozeChange(info?: { kept?: boolean }) {
 		const id = threadId;
 		if (!id) return;
-		// Reschedule from the Snoozed view — the thread stays snoozed, so keep it and
+		// Reschedule from the Snoozed view: the thread stays snoozed, so keep it and
 		// refetch to re-sort by the new wake time rather than dropping the row.
 		if (info?.kept) {
 			void loadThreads(true);
@@ -1126,7 +1126,7 @@
 		void refreshUnread();
 	}
 
-	// One-shot pop on the star glyph (transitions.dev scale+blur) — keyed by a
+	// One-shot pop on the star glyph (transitions.dev scale+blur), keyed by a
 	// counter so rapid re-toggles restart the animation.
 	let starPop = $state(0);
 	async function toggleStar(current: boolean) {
@@ -1134,8 +1134,8 @@
 		const id = threadId;
 		const next = !current;
 		if (next) starPop++; // pop only when starring on, not off
-		// Optimistic + coherent: flip both surfaces, no thread refetch. Roll back on
-		// failure (star carries no server-side side effects to re-pull).
+		// Optimistic and coherent: flip both surfaces, no thread refetch. Roll back
+		// on failure (star carries no server-side side effects to re-pull).
 		openFlagOverride = { ...openFlagOverride, isStarred: next };
 		patchItem(id, { isStarred: next });
 		try {
@@ -1162,8 +1162,8 @@
 	}
 
 	// Pin / unpin (mirrors the star pattern): optimistically move the row in/out of
-	// the separate pinnedItems list AND patch its pinnedAt, then reconcile with the
-	// server. Rolls back both surfaces on failure — the 409 cap message surfaces
+	// the separate pinnedItems list and patch its pinnedAt, then reconcile with the
+	// server. Rolls back both surfaces on failure; the 409 cap message surfaces
 	// through errorMessage. A later reset re-pulls the exact server order.
 	async function togglePin(id: string, current: boolean) {
 		if (!mailboxId) return;
@@ -1176,7 +1176,7 @@
 			pinnedItems = pinnedItems.filter((thread) => thread.threadId !== id);
 		}
 		patchItem(id, { pinnedAt: next ? Date.now() : null });
-		// Direct-URL open may have no list row — the header pin state reads the
+		// Direct-URL open may have no list row; the header pin state reads the
 		// override first, so the toggle reflects immediately either way.
 		if (id === threadId) openFlagOverride = { ...openFlagOverride, pinnedAt: next ? Date.now() : null };
 		try {
@@ -1192,15 +1192,15 @@
 
 	// Which message the docked composer replies to. null = default (latest
 	// inbound); a per-message Reply/Reply-all button sets an explicit target so
-	// the audience is computed from THAT message, not guessed from the thread.
+	// the audience is computed from that message, not guessed from the thread.
 	let replyTarget = $state<{ msgId: string; scope: 'reply' | 'reply_all' } | null>(null);
 	// Bumped on every Reply click so the composer re-expands even when it's already
 	// mounted for that message but the user had collapsed it.
 	let replyOpenTick = $state(0);
 	let composerEl = $state<HTMLElement>();
 	let composerFlash = $state(false);
-	// Every action needs a response: retarget, then scroll the (docked, easy-to-miss)
-	// composer into view and flash it so the click is unmistakably acknowledged.
+	// Retarget, then scroll the (docked, easy-to-miss) composer into view and
+	// flash it so the click is acknowledged.
 	async function replyTo(m: MessageDTO, scope: 'reply' | 'reply_all') {
 		replyTarget = { msgId: m.id, scope };
 		replyOpenTick++; // force-expand (no-op remount case where msgId is unchanged)
@@ -1214,7 +1214,7 @@
 			?.querySelector<HTMLElement>('[contenteditable="true"], textarea, input')
 			?.focus({ preventScroll: true });
 	}
-	// The viewer's own addresses (base-normalized) — feeds the reply-audience
+	// The viewer's own addresses (base-normalized), feeding the reply-audience
 	// helpers (msgPrivateTo / msgCanReplyAll / replyCtx) in $lib/mail/format.
 	const self = $derived(selfSet(identities));
 
@@ -1232,7 +1232,7 @@
 
 	// Address → best display name already in the loaded data (list rows + the open
 	// thread's messages). Providers sometimes omit the name on a given message, but
-	// we've usually captured a real one from that sender elsewhere — reuse it
+	// we've usually captured a real one from that sender elsewhere, so reuse it
 	// instead of falling back to the email local part. No extra fetch: purely the
 	// data in hand, and it enriches as more pages/threads load.
 	const nameByAddr = $derived.by(() => {
@@ -1272,7 +1272,7 @@
 		await threadQ?.refresh();
 	}
 
-	// RSVP for calendar invites: records local status AND (server-side) emails an
+	// RSVP for calendar invites: records local status and (server-side) emails an
 	// iTIP REPLY to the organizer. Optimistic: the override map flips the card's
 	// pressed state instantly; a failed persist reverts. Keyed by event UID so
 	// every message of the same event agrees.
@@ -1290,7 +1290,7 @@
 		return attachment ? `/api/attachments/${attachment.id}` : null;
 	}
 	// Invite messages hide the providers' boilerplate mail body by default (the
-	// card IS the content); "Show original message" reveals it per message.
+	// card is the content); "Show original message" reveals it per message.
 	const showOriginal = new SvelteSet<string>();
 	async function rsvp(m: MessageDTO, status: InviteRsvpStatus) {
 		const inv = m.calendarInvite;
@@ -1306,7 +1306,7 @@
 		}
 	}
 
-	// In-thread retry for a failed send (visible to its author only — server
+	// In-thread retry for a failed send (visible to its author only; server
 	// re-checks ownership). The live mailEvents stream refreshes ticks as the
 	// requeued submission moves; the immediate refresh() clears the banner.
 	let retryingSubId = $state<string | null>(null);
@@ -1325,8 +1325,8 @@
 	}
 
 	// Single-pane slide (mobile): opening a thread slides it in from the right,
-	// closing slides back — the list↔thread swap reads as navigation instead of a
-	// hard swap. View Transitions API; skipped for two-pane widths, reduced
+	// closing slides back, so the list↔thread swap reads as navigation instead of
+	// a hard swap. View Transitions API; skipped for two-pane widths, reduced
 	// motion, and unsupported browsers (hard swap remains the fallback).
 	onNavigate((navigation) => {
 		if (!('startViewTransition' in document)) return;
@@ -1362,8 +1362,8 @@
 		});
 	}
 
-	// Everyone the conversation has touched: the union of from/to/cc across ALL
-	// messages — so a bcc'd party who replies-all enters the list the moment
+	// Everyone the conversation has touched: the union of from/to/cc across all
+	// messages, so a bcc'd party who replies-all enters the list the moment
 	// their own message (with them in `from`) lands in the thread.
 	function participants(msgs: MessageDTO[]): { address: string; name: string; mine: boolean }[] {
 		const mine = new Set(
@@ -1386,7 +1386,7 @@
 		return [...seen.values()];
 	}
 
-	// Two conversation renderings, user-switchable + persisted: 'chat' (default —
+	// Two conversation renderings, user-switchable and persisted: 'chat' (default,
 	// WhatsApp-style bubbles, reads as a communication flow) and 'mail' (Gmail-style
 	// collapsible card stack, reads as correspondence).
 	const threadView = new PersistedState<'chat' | 'mail'>('doota:thread-view', 'chat');
@@ -1415,7 +1415,7 @@
 		contactCardOpen = true;
 	}
 
-	// Land on the newest message when a thread OPENS — once per thread, not on
+	// Land on the newest message when a thread opens, once per thread, not on
 	// every view toggle. Toggling chat↔mail used to re-run this and yank the scroll
 	// (chat→bottom, mail→top), which read as the header "shifting" and pushed short
 	// mail threads up with a gap above the reply bar. Anchoring to the bottom (paired
@@ -1443,12 +1443,12 @@
 		if (msgToggles.has(id)) msgToggles.delete(id);
 		else msgToggles.add(id);
 	}
-	// Thread attachments panel — every attachment in the open thread, grouped by
+	// Thread attachments panel: every attachment in the open thread, grouped by
 	// day (messages are chronological, so consecutive-day grouping is enough).
 	// ≥ md it docks beside the stream; < md it's a bottom drawer.
 	let attachmentsOpen = $state(false);
 	const isMobile = new IsMobile();
-	// Region (not viewport) width drives the pane-constrained layout — the SAME
+	// Region (not viewport) width drives the pane-constrained layout, the same
 	// axis + 896px threshold as the CSS `@4xl` split below. Viewport `isMobile`
 	// (768) disagreed: a small laptop with the sidebar open is single-pane but not
 	// "mobile", which used to dock the attachments column inside a stacked thread.
@@ -1473,7 +1473,7 @@
 
 	// Find-in-thread: a lightweight Cmd-F scoped to the open conversation. Matches
 	// against the plaintext we already hold (subject / stripped body / sender) and
-	// jumps between matching messages — rich HTML lives in the sandboxed frame, so
+	// jumps between matching messages. Rich HTML lives in the sandboxed frame, so
 	// this locates the message, it doesn't highlight inside the frame. Client-only.
 	let findOpen = $state(false);
 	let findQ = $state('');
@@ -1522,10 +1522,10 @@
 
 	// Compose (Forward / resume Draft / new) routes through the shared controller;
 	// the single ComposePanel is mounted in the (app) layout.
-	// A forward starts a NEW conversation (Gmail/Superhuman/Fastmail): no threadId,
-	// no In-Reply-To — otherwise it threads into the source conversation.
+	// A forward starts a new conversation (Gmail/Superhuman/Fastmail): no threadId,
+	// no In-Reply-To, otherwise it threads into the source conversation.
 	// Empty note; the forwarded messages are referenced by id and composed
-	// server-side at Send (raw HTML never leaves the server → full fidelity).
+	// server-side at Send (raw HTML never leaves the server, so full fidelity).
 	function startForward(subject: string | null, messageIds: string[]) {
 		if (!mailboxId || !messageIds.length) return;
 		compose.start({
@@ -1596,7 +1596,7 @@
 	// Dialogs/drawers (composer, palette) preventDefault their own Esc — skip those.
 	// Keyboard shortcuts (Gmail/Superhuman baseline). `c` compose lives in the
 	// (app) layout; ⌘K search in the command palette. Guard: never while typing
-	// or inside a dialog, and only unmodified keys.
+	// or inside a dialog, and only for unmodified keys.
 	function onPageKeydown(e: KeyboardEvent) {
 		if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement;
@@ -1688,7 +1688,7 @@
 	<SenderAvatar {from} class={cls} shape={shape ?? 'circle'} />
 {/snippet}
 
-<!-- Colleague chip — sits after the name. Only the EXCEPTION is badged (a sender
+<!-- Colleague chip, sits after the name. Only the exception is badged (a sender
      on your own org domain); external is the norm, so it gets no pill (avoids
      badge-on-everything noise / alarm fatigue). -->
 {#snippet colleagueChip(m: MessageDTO)}
@@ -1713,8 +1713,8 @@
 		</div>
 	{/if}
 {/snippet}
-<!-- Message details: an info glyph (not a chevron — a chevron reads as
-     "expand replies") opening the envelope in a Popover overlay — anchored,
+<!-- Message details: an info glyph (not a chevron, which reads as "expand
+     replies") opening the envelope in a Popover overlay. Anchored and
      portal-rendered, so the thread's geometry never changes (no layout shift). -->
 {#snippet detailsToggle(m: MessageDTO)}
 	<Popover.Root>
@@ -1724,7 +1724,7 @@
 		>
 			<InfoIcon class="size-4" />
 		</Popover.Trigger>
-		<!-- right-start beside the info glyph — into the thread's empty right
+		<!-- right-start beside the info glyph, into the thread's empty right
 		     margin, instead of dropping over the message bubble below. -->
 		<Popover.Content side="right" align="start" sideOffset={8} collisionPadding={16} class="w-80 max-w-[calc(100vw-2rem)] p-3">
 			<MessageDetails {m} />
@@ -1734,8 +1734,8 @@
 
 
 <!-- Avatar-as-select-toggle (Gmail pattern): the avatar swaps to a check when
-     selected and shows a checkbox affordance on fine-pointer hover — the row's
-     geometry never changes, so selection causes zero layout shift. -->
+     selected and shows a checkbox affordance on fine-pointer hover. The row's
+     geometry never changes, so selection causes no layout shift. -->
 {#snippet selectAvatar(participants: string[], checked: boolean, toggle: () => void, label: string)}
 	<button
 		type="button"
@@ -1765,7 +1765,7 @@
 
 <!-- Why an outbound message shows the warning tick: preflight/provider reason +
      the recipients that didn't make it. Rendered under bubbles and card headers
-     so a failure is readable without hunting for a 3px icon. -->
+     so a failure is readable without hunting for a small icon. -->
 {#snippet sendFailure(sub: NonNullable<MessageDTO['submission']>)}
 	{@const bad = sub.perRecipient.filter((recipient) => ['failed', 'bounced', 'dropped', 'complained'].includes(recipient.status))}
 	<div class="border-destructive/30 bg-destructive/10 text-destructive mt-1.5 w-full rounded-lg border px-2.5 py-1.5 text-left text-[11px]">
@@ -1792,7 +1792,7 @@
 	</div>
 {/snippet}
 
-<!-- Per-message reply/reply-all/forward. Retargets the docked composer to THIS
+<!-- Per-message reply/reply-all/forward. Retargets the docked composer to this
      message (unambiguous audience) instead of the thread-level guess. -->
 {#snippet msgActions(m: MessageDTO, align: 'start' | 'end', subject: string | null)}
 	<div class="mt-1 flex items-center gap-0.5 {align === 'end' ? 'justify-end' : ''}">
@@ -1840,16 +1840,16 @@
 	{/if}
 {/snippet}
 
-<!-- Plain-text bodies with URLs/emails made clickable — segment render, no
+<!-- Plain-text bodies with URLs/emails made clickable: segment render, no
      {@html}, so linkification can never introduce markup. Kept on single lines:
      the container is whitespace-pre-wrap and template newlines would show. -->
 {#snippet linkedText(text: string)}
 	{#each linkifySegments(text) as segment, i (i)}{#if segment.type === 'link'}<a href={segment.href} target="_blank" rel="noopener noreferrer" class="underline underline-offset-2 break-all">{segment.value}</a>{:else if segment.type === 'email'}<button type="button" class="underline underline-offset-2 break-all" onclick={() => openMailto(segment.address)}>{segment.value}</button>{:else}{segment.value}{/if}{/each}
 {/snippet}
 
-<!-- Reply context above a reply. parentId set → the parent is in this thread: a
-     one-line clickable jump. parentId null → this Cc'd mailbox can't see the
-     parent, so show the FULL prior message (never half). -->
+<!-- Reply context above a reply. parentId set: the parent is in this thread, so
+     a one-line clickable jump. parentId null: this Cc'd mailbox can't see the
+     parent, so show the full prior message (never half). -->
 {#snippet replyContextNote(m: MessageDTO)}
 	{#if m.replyContext}
 		{@const rc = m.replyContext}
@@ -1879,17 +1879,17 @@
 	{/if}
 {/snippet}
 
-<!-- @container: the list/thread split reacts to THIS region's width (sidebar
-     open/closed included), not the viewport — collapsing the sidebar on a small
+<!-- @container: the list/thread split reacts to this region's width (sidebar
+     open/closed included), not the viewport, so collapsing the sidebar on a small
      laptop earns the two-pane layout. -->
 <!-- min-h-0 + overflow-hidden: the mail view is app-shell (fixed height, panes
      scroll internally). Without it, a flex column's default min-height:auto lets
      tall content (e.g. the mail-view card stack) push the region past its height
-     into the outer scroller — shifting the header and un-pinning the reply bar. -->
+     into the outer scroller, shifting the header and un-pinning the reply bar. -->
 <div class="@container flex h-full min-h-0 overflow-hidden" bind:clientWidth={regionW}>
 	<!-- List pane -->
-	<!-- Single-pane swap (list OR thread) until the mail region is ≥ 56rem wide;
-	     then the real two-pane split. -->
+	<!-- Single-pane swap (list or thread) until the mail region is ≥ 56rem wide;
+	     then the two-pane split. -->
 	<div class="@4xl:w-[360px] @4xl:shrink-0 relative flex min-h-0 w-full flex-col border-r {threadId ? '@4xl:flex hidden' : 'flex'}">
 		<!-- List header — folder identity (or the active search) + settings -->
 		<div class="flex h-14 items-center gap-2 border-b px-4">
@@ -1964,7 +1964,7 @@
 			{/if}
 		</div>
 
-		<!-- Filter rail — folder nav lives in the sidebar (this row used to duplicate
+		<!-- Filter rail. Folder nav lives in the sidebar (this row used to duplicate
 		     it); the list's own row narrows what's shown instead. -->
 		{#if !isVirtual && !searchQ}
 			<div class="flex h-10 items-center gap-2 border-b px-3">
@@ -1999,7 +1999,7 @@
 
 		<!-- Persistent selection bar (threads + drafts): select-all always
 		     available, actions disabled until something is selected, count shown
-		     in the bar and as a badge on Delete. Always mounted → zero shift. -->
+		     in the bar and as a badge on Delete. Always mounted, so no shift. -->
 		{#if (!isVirtual && !searchQ) || placement === 'drafts'}
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
@@ -2089,7 +2089,7 @@
 		>
 			<!-- Pull-to-refresh indicator: floats over the list top, travels with the
 			     pull, arms (accent + full rotation) past the threshold, spins while
-			     the reload runs. Zero-height sticky wrapper — no layout shift. -->
+			     the reload runs. Zero-height sticky wrapper, so no layout shift. -->
 			{#if pullProg > 0 || pullBusy}
 				<div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center">
 					<div
@@ -2250,7 +2250,7 @@
 								style="content-visibility:auto;contain-intrinsic-size:auto 76px"
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
-								<!-- Section boundary for pins — INSIDE the row wrapper because
+								<!-- Section boundary for pins, inside the row wrapper because
 								     animate:flip requires the row to be the each block's only child.
 								     Pinned rows sit atop the chronological list; without a visible
 								     boundary the list reads as mis-sorted (old mail above new). -->
@@ -2295,7 +2295,7 @@
 									<span class="block truncate text-sm {thread.unread ? 'text-foreground font-semibold' : 'text-foreground/90 font-medium'}">{nameFor(thread.from, thread.fromName)}</span>
 									<div class="flex items-center gap-1.5">
 										{#if thread.unread}<span class="bg-brand size-1.5 shrink-0 rounded-full"></span>{/if}
-										<!-- Sent is a cross-cut view — flag rows that also live in the Inbox. -->
+										<!-- Sent is a cross-cut view: flag rows that also live in the Inbox. -->
 										{#if placement === 'sent' && thread.placement === 'inbox'}
 											<span class="bg-brand/10 text-brand shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">Inbox</span>
 										{/if}
@@ -2510,7 +2510,7 @@
 							</DropdownMenu.Root>
 						{/if}
 
-						<!-- Who's in this conversation — union of every message's from/to/cc,
+						<!-- Who's in this conversation: the union of every message's from/to/cc,
 						     so late reply-all joiners (even originally bcc'd) show up. -->
 						{#if ppl.length}
 							<Popover.Root>
@@ -2783,7 +2783,7 @@
 											{#if !outbound}
 											<!-- Top section: avatar left, name + origin/provider stacked right. The
 											     avatar left the gutter so the bubble below spans the full column.
-											     One hover card (avatar) — the name is plain to avoid a second card. -->
+											     One hover card (avatar); the name is plain to avoid a second card. -->
 											<div class="mb-1 flex items-center gap-2 px-1">
 												{#if m.from}
 													<ContactHoverCard address={senderAddr(m.from)} name={senderLabel(m)} {mailboxId} class="shrink-0">
@@ -2947,7 +2947,7 @@
 											{@render replyContextNote(m)}
 											{#if m.calendarInvite}
 												{@const inviteOnly = !showOriginal.has(m.id)}
-												<!-- Toggle sits ABOVE so the flat invite can reach the card's bottom edge. -->
+												<!-- Toggle sits above so the flat invite can reach the card's bottom edge. -->
 												<button
 													type="button"
 													class="text-muted-foreground hover:text-foreground mb-2 text-xs font-medium hover:underline"
@@ -3009,7 +3009,7 @@
 								</article>
 								{:else if item.type === 'internal_note'}
 									{@const n = item}
-									<!-- Internal note — unmistakably NOT an email: amber, left-spined, "not sent". -->
+									<!-- Internal note, clearly not an email: amber, left-spined, "not sent". -->
 									<div class="rounded-lg border-l-2 border-amber-400 bg-amber-50 px-3.5 py-2.5 dark:bg-amber-950/25">
 										<div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
 											<StickyNoteIcon class="size-3" />
@@ -3049,11 +3049,11 @@
 						</div>
 					</ScrollArea>
 
-					<!-- Attachments ≥ md — docked column beside the stream. -->
+					<!-- Attachments ≥ md: docked column beside the stream. -->
 					{#if attachmentsOpen && !narrow}
 						{@const groups = groupAttachments(msgs)}
-						<!-- slide on the x-axis animates WIDTH (0→auto), so the stream reflows
-						     in step with the panel — a fly/translate would claim the full width
+						<!-- slide on the x-axis animates width (0→auto), so the stream reflows
+						     in step with the panel. A fly/translate would claim the full width
 						     instantly and jolt the stream. Inner content is fixed-width and clips. -->
 						<aside
 							transition:slide={{ axis: 'x', duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200, easing: cubicOut }}
@@ -3092,7 +3092,7 @@
 
 					{#if mailboxId}
 						{#if isShared}
-							<!-- Deliberate Reply | Note toggle — never a silent mode flip. -->
+							<!-- Deliberate Reply | Note toggle, never a silent mode flip. -->
 							<div class="flex items-center gap-1 border-t px-3 pt-2 text-xs font-medium">
 								<button type="button" class="rounded-t px-3 py-1.5 {composeMode === 'reply' ? 'bg-card border border-b-0' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (composeMode = 'reply')}>Reply</button>
 								<button type="button" class="rounded-t px-3 py-1.5 {composeMode === 'note' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/25 dark:text-amber-500' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (composeMode = 'note')}>Note</button>
@@ -3104,7 +3104,7 @@
 							{/key}
 						{:else if ctx.target}
 							<!-- Re-key on the picked message + scope so a per-message Reply
-							     remounts the composer with THAT message's audience. The wrapper
+							     remounts the composer with that message's audience. The wrapper
 							     is the scroll/flash target that acknowledges the click. -->
 							<div
 								bind:this={composerEl}

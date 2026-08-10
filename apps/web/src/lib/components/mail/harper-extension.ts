@@ -7,11 +7,11 @@ import type { Linter, Lint } from 'harper.js';
 
 // Harper grammar/spell check as a ProseMirror decoration layer.
 //
-// harper.js is a ~17 MB WASM engine. We never import it at module load: the
+// harper.js is a ~17 MB WASM engine. It's not imported at module load: the
 // linter is created on first use via dynamic import, so SSR and the cold inbox
 // pay nothing and only the first composer to mount triggers the (browser-cached)
-// download. One WorkerLinter is shared across every editor — the worker keeps
-// the WASM off the main thread, so typing never janks.
+// download. One WorkerLinter is shared across every editor; the worker keeps
+// the WASM off the main thread so typing doesn't jank.
 
 export interface HarperSuggestion {
 	text: string;
@@ -46,7 +46,7 @@ async function getLinter(): Promise<Linter> {
  * the ProseMirror span it came from. Block boundaries become newlines
  * (position -1) so Harper sees paragraph breaks and doesn't merge sentences.
  *
- * Harper reports lint spans in Unicode-SCALAR indices, so the map is keyed by
+ * Harper reports lint spans in Unicode-scalar indices, so the map is keyed by
  * codepoint, not UTF-16 unit — otherwise every span past an emoji drifts by the
  * surrogate count. `ends[i]` carries the PM width (a surrogate pair spans 2 PM
  * units), so the exclusive end is exact with no +1 fudge.

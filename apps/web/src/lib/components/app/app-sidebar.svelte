@@ -177,7 +177,7 @@
 
 	// Keep the current mailbox when switching folders — otherwise the mailbox
 	// param drops and the mail page falls back to the first mailbox (a surprise
-	// auto-switch). The switcher is the only thing that changes mailbox.
+	// auto-switch). Only the switcher changes mailbox.
 	const folderHref = (id: string) => {
 		const sp = new URLSearchParams({ folder: id });
 		if (activeMailbox) sp.set('mailbox', activeMailbox);

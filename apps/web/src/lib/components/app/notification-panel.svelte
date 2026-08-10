@@ -73,11 +73,11 @@
 		});
 	}
 
-	// Live: refetch only the COUNT (not the feed — that waits for open). new_mail
+	// Live: refetch only the count (not the feed — that waits for open). new_mail
 	// rides `inbound`, send_failed rides a failed `send_state`, and assigned/note
-	// get a dedicated `notification` ping — so every type now updates the badge live.
+	// get a dedicated `notification` ping, so every type updates the badge live.
 	const FAILED = new Set(['failed', 'bounced_hard', 'bounced_soft', 'complained']);
-	// runed `watch`: react to each realtime event with an EXPLICIT source
+	// runed `watch`: react to each realtime event with an explicit source
 	// (realtime.seq bumps per event, duplicates included). The callback runs
 	// untracked, so reading realtime.event / calling refresh() can't become hidden
 	// reactive dependencies the way a bare $effect body can. lazy: skip the mount

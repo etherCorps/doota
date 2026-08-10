@@ -17,7 +17,7 @@
 	let { data } = $props();
 	const isSuperadmin = $derived(data.user.role === 'superadmin');
 
-	// Account daily sending limit + usage, live from Cloudflare (superadmin only —
+	// Account daily sending limit + usage, live from Cloudflare (superadmin only,
 	// it's the whole account). Lazy, once, best-effort.
 	let acct = $state<Awaited<ReturnType<typeof accountLimits>> | null>(null);
 	let acctLoading = $state(false);
@@ -30,7 +30,7 @@
 			.catch(() => (acctError = true))
 			.finally(() => (acctLoading = false));
 	}
-	// One-shot on mount — NOT a reactive $effect (which would retry forever if the
+	// One-shot on mount, not a reactive $effect (which would retry forever if the
 	// fetch rejects, hanging the tab). Retry is manual, via the button below.
 	onMount(() => {
 		if (!isSuperadmin) return;

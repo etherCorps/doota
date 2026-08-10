@@ -4,7 +4,7 @@ import { actorOrgAdminOf } from "$lib/server/provisioning.js";
 import { serviceMailboxManagerOrgIds } from "$lib/server/templates.js";
 
 /**
- * Template image upload. Multipart POST: `orgId` + `file`. Stored UNENCRYPTED
+ * Template image upload. Multipart POST: `orgId` + `file`. Stored unencrypted
  * under `tpl/{orgId}/{id}` in R2 (email images must be publicly fetchable by the
  * recipient's client — see the public GET at [orgId]/[id]). Auth = a template
  * manager (org admin or service-mailbox manager). Returns a host-absolute URL

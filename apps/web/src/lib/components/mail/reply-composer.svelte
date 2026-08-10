@@ -36,7 +36,7 @@
 	// Inline reply docked at the bottom of an open thread — the primary compose
 	// surface, and the one that should feel like a chat input. Replies default
 	// their From to the identity the mail was addressed to (an alias, if any), so
-	// hide-my-email never leaks the real address on the first reply.
+	// hide-my-email doesn't leak the real address on the first reply.
 	let {
 		mailboxId,
 		threadId,
@@ -81,9 +81,9 @@
 		onsent?: () => void;
 	} = $props();
 
-	// Gmail model: an explicit Reply / Reply all switch so the sender always KNOWS
-	// the scope — one person vs everyone on the thread. The switch DRIVES the
-	// recipient fields (Reply all pre-fills To with everyone AND Cc from the
+	// Gmail model: an explicit Reply / Reply all switch so the sender always knows
+	// the scope — one person vs everyone on the thread. The switch drives the
+	// recipient fields (Reply all pre-fills To with everyone and Cc from the
 	// conversation), and those fields stay editable underneath for fine-tuning.
 	let replyAll = $state(false);
 	let toList = $state<string[]>([]);
@@ -93,7 +93,7 @@
 	// Offer the switch only when reply-all would actually reach more people.
 	const canReplyAll = $derived(toAll.length + ccAll.length > to.length);
 	// A mail needs a To; Cc is optional. Send stays disabled until a To exists,
-	// but you can edit down to empty and re-type — never a dead end.
+	// but you can edit down to empty and re-type — not a dead end.
 	const hasRecipient = $derived(toList.length > 0);
 
 	const lc = (addr: string) => addr.toLowerCase();
@@ -137,18 +137,18 @@
 	let sending = $state(false);
 	let uploading = $state(false);
 	// The body is HTML; "has content" ignores tags/whitespace — an empty editor
-	// serializes to "<p></p>", which is a non-empty STRING but no real text.
+	// serializes to "<p></p>", a non-empty string but no real text.
 	const htmlHasText = (html: string) =>
 		html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0;
-	// A reply is sendable with an inline image and NO text (Gmail/Superhuman
-	// allow it) — so "has content" is real text OR an embedded image.
+	// A reply is sendable with an inline image and no text (Gmail/Superhuman
+	// allow it), so "has content" is real text or an embedded image.
 	const htmlHasContent = (html: string) => htmlHasText(html) || /<img\b/i.test(html);
 	const hasBody = $derived(htmlHasContent(body));
 
 	// Collapsible: on phones the full composer eats most of the thread view, so
 	// it starts as a one-row "Reply…" bar; desktop starts open and can collapse
 	// too. Collapsing only CSS-hides the body — the editor stays mounted, so an
-	// in-progress draft survives the round trip.
+	// in-progress draft survives the round-trip.
 	const isMobile = new IsMobile();
 	let collapsed = $state(false);
 
@@ -195,7 +195,7 @@
 		collapsed = !autoOpen;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
-		// Only a mirror with REAL text is a restore — an empty editor mirrors
+		// Only a mirror with real text is a restore — an empty editor mirrors
 		// "<p></p>", which must not resurface as a phantom "Restored" toast.
 		if (local?.body && htmlHasContent(local.body)) {
 			body = local.body;
@@ -273,7 +273,7 @@
 		});
 		draftId = d.id;
 		clientRevision = d.clientRevision;
-		// Server has this text now — drop the crash buffer (unless more was
+		// Server has this text now, so drop the crash buffer (unless more was
 		// typed while the request was in flight).
 		if (body === sentBody) clearMirror(mirrorKey);
 		return draftId;
@@ -305,7 +305,7 @@
 	}
 
 	// Serialize saves: two concurrent autosaves (debounce flush + visibilitychange
-	// + Send all race here) would send the SAME clientRevision — the loser reads as
+	// + Send all race here) would send the same clientRevision. The loser reads as
 	// an optimistic-concurrency miss and falsely warns "updated in another tab",
 	// reloading the body mid-type. Chaining makes each save see the bumped revision.
 	let saveChain: Promise<void> = Promise.resolve();
@@ -350,8 +350,8 @@
 			if (body === sentBody) clearMirror(mirrorKey);
 		} else {
 			// Adopt the winning revision. But if we're mid-send, this is the send's
-			// own flushSave racing a pending autosave (same draft, same tab) — not a
-			// real cross-tab edit — so adopt silently: no body reload, no false toast.
+			// own flushSave racing a pending autosave (same draft, same tab), not a
+			// real cross-tab edit, so adopt silently: no body reload, no false toast.
 			clientRevision = res.draft.clientRevision;
 			if (!sending) {
 				body = res.draft.body ?? body;
@@ -377,7 +377,7 @@
 		// One toast that carries the whole send: Sending… → Queued… → sent·Undo (or
 		// an error), morphing on a single id so it reads as one acknowledgement.
 		const sendProgress = sendToast();
-		// Fold the docked composer IMMEDIATELY — the editor stays mounted under the
+		// Fold the docked composer immediately — the editor stays mounted under the
 		// grid-collapse, so flushSave below still reads the body. This is what makes
 		// the close feel instant instead of waiting on the save round-trips.
 		collapsed = true;
@@ -429,7 +429,7 @@
 
 </script>
 
-<!-- Tab going hidden is the last reliable moment to reach the network — flush
+<!-- Tab going hidden is the last reliable moment to reach the network, so flush
      immediately instead of waiting out the debounce (best-effort; the local
      mirror covers whatever doesn't make it). -->
 <svelte:document
@@ -469,7 +469,7 @@
 	<div class="min-h-0 overflow-hidden">
 	<div class="space-y-2">
 			<div class="flex flex-wrap items-center gap-2">
-				<!-- From + selector: own full-width line UNDER the scope row on mobile
+				<!-- From + selector: own full-width line under the scope row on mobile
 				     (order-2), inline and flex-1 on desktop. With no scope switch it is
 				     the sole line, so it just grows. -->
 				<div
@@ -486,7 +486,7 @@
 					<!-- Explicit scope switch (Gmail's Reply / Reply all): the sender
 					     always sees whether this goes to one person or everyone. Picking
 					     a side repopulates the fields below — Reply all pre-fills Cc from
-					     the thread. Own full-width row ON TOP on mobile, inline at sm. -->
+					     the thread. Own full-width row on top on mobile, inline at sm. -->
 					<div
 						role="group"
 						aria-label="Reply scope"

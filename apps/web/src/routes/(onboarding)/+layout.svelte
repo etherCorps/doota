@@ -17,7 +17,7 @@
 	}
 </script>
 
-<!-- Deliberately NO sidebar: onboarding is a focused, gated flow. -->
+<!-- Deliberately no sidebar: onboarding is a focused, gated flow. -->
 <div class="bg-background flex min-h-svh flex-col">
 	<header class="flex h-14 items-center justify-between border-b px-4 md:px-6">
 		<div class="flex items-center gap-2">
@@ -35,7 +35,7 @@
 	<main class="relative mx-auto w-full max-w-xl flex-1 px-4 py-8 md:py-12">
 		{@render children()}
 		<!-- Every step completion re-derives onboarding server-side (fresh D1 reads)
-		     before the page updates — surface that as progress, not a frozen page. -->
+		     before the page updates, so surface that as progress, not a frozen page. -->
 		{#if navigating.to}
 			<div
 				class="bg-background/70 absolute inset-0 z-10 flex items-start justify-center pt-24 backdrop-blur-[2px]"

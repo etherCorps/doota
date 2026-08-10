@@ -20,7 +20,7 @@
 
 	let { data, children } = $props();
 
-	// iOS single-pane composes as a full-screen PAGE (keyboard fights the drawer on
+	// iOS single-pane composes as a full-screen page (keyboard fights the drawer on
 	// iOS). Everyone else keeps the drawer/desktop panel. Detected once.
 	const ios = isIOS();
 
@@ -58,7 +58,7 @@
 
 	// Org 2FA grace nudge — shown when this member's org now requires 2FA and
 	// they're still inside the grace window (deadline ms from hooks.server.ts).
-	// Dismissible per session so it stops nagging after they've seen it — EXCEPT
+	// Dismissible per session so it stops nagging after they've seen it — except
 	// inside the final 48h, when the hard block is imminent and hiding the
 	// deadline would be worse than the nag (the X is hidden then too).
 	let enroll2faDismissed = $state(false);

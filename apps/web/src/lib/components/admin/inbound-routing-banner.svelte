@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Self-contained inbound-routing health banner: probes the org's Email Routing
      catch-all on mount and renders nothing while healthy. Mounted on the org
-     OVERVIEW (the page admins actually visit) so a detached catch-all — mail
-     silently not arriving — surfaces where it will be seen, with the fix inline.
+     overview (the page admins actually visit) so a detached catch-all surfaces
+     where it will be seen, with the fix inline.
    Hallmark · component: alert-banner · states: hidden/detached/fixing -->
 <script lang="ts">
 	import { onMount } from 'svelte';

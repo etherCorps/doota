@@ -3,22 +3,22 @@ import type { RequestHandler } from "@sveltejs/kit";
 
 /**
  * The in-house sandboxed attachment viewer document. This is the security
- * boundary for rendering ATTACKER-CONTROLLED documents (PDF, images, SVG, text)
+ * boundary for rendering attacker-controlled documents (PDF, images, SVG, text)
  * without a third-party viewer.
  *
  * It mirrors /api/messages/[id]/body: a hand-built HTML doc, loaded inside an
- * iframe with sandbox="allow-scripts" and NO allow-same-origin, so it runs in an
- * OPAQUE origin — isolated from the app's cookies/DOM/storage. Combined with the
+ * iframe with sandbox="allow-scripts" and no allow-same-origin, so it runs in an
+ * opaque origin — isolated from the app's cookies/DOM/storage. Combined with the
  * CSP below the frame can:
- *   - load ONLY our own glue module + pdfjs (script-src ${url.origin}),
+ *   - load only our own glue module + pdfjs (script-src ${url.origin}),
  *   - render only blob:/data: images (img-src),
- *   - NOTHING else — connect-src/worker-src/object-src/frame-src all 'none'.
+ *   - nothing else — connect-src/worker-src/object-src/frame-src all 'none'.
  *
- * The document carries NO attachment data. The parent (session-authorized,
- * same-origin) fetches the already-SCANNED bytes and posts them in; the viewer
- * NEVER fetches. So connect-src 'none' is correct and load-bearing.
+ * The document carries no attachment data. The parent (session-authorized,
+ * same-origin) fetches the already-scanned bytes and posts them in; the viewer
+ * never fetches. So connect-src 'none' is correct and load-bearing.
  *
- * NEVER add allow-same-origin to the frame that loads this — with allow-scripts
+ * Don't add allow-same-origin to the frame that loads this — with allow-scripts
  * it lets the doc strip its own sandbox and escape into the app origin.
  */
 export const GET: RequestHandler = ({ url, locals }) => {
@@ -26,7 +26,7 @@ export const GET: RequestHandler = ({ url, locals }) => {
 	// but an unauth'd user has no business loading the shell).
 	if (!locals.user) return new Response("Not authenticated", { status: 401 });
 
-	// We list the EXPLICIT origin, not 'self': the frame is sandboxed without
+	// We list the explicit origin, not 'self': the frame is sandboxed without
 	// allow-same-origin, so its origin is opaque — and Safari treats 'self' as
 	// "the opaque origin", which matches nothing and would block our own module.
 	// (Same reasoning as the body route's img-src comment.)
@@ -46,13 +46,13 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		"manifest-src 'none'",
 		"frame-ancestors 'self'",
 	];
-	// The `sandbox` token here MUST match the iframe's sandbox attribute
+	// The `sandbox` token here must match the iframe's sandbox attribute
 	// (ATTACHMENT_VIEWER_SANDBOX = "allow-scripts"): the browser applies the
-	// INTERSECTION, so a mismatch silently strips capabilities. allow-scripts
-	// only — NO allow-same-origin (opaque origin), no forms/popups/nav.
+	// intersection, so a mismatch silently strips capabilities. allow-scripts
+	// only — no allow-same-origin (opaque origin), no forms/popups/nav.
 	const csp = `${directives.join("; ")}; sandbox allow-scripts`;
 
-	// Hand-built shell. It contains NO attacker data — the glue module fills #root
+	// Hand-built shell. It contains no attacker data — the glue module fills #root
 	// from postMessage'd bytes using textContent/blob <img>/canvas only.
 	const doc =
 		"<!doctype html><html><head><meta charset=utf-8>" +
@@ -64,8 +64,8 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		// data-theme on <html> so text previews stay readable in dark mode
 		// (unconditional #111 ink on the parent's dark bg-card was unreadable).
 		"<style>" +
-		// color-scheme MUST cover both: an embedded doc whose scheme mismatches
-		// the embedder's gets an OPAQUE WHITE canvas behind its "transparent"
+		// color-scheme must cover both: an embedded doc whose scheme mismatches
+		// the embedder's gets an opaque white canvas behind its "transparent"
 		// background (spec behavior; found live — it's why dark ink used to be
 		// readable by accident, on a white canvas the app never asked for).
 		"html{color-scheme:light dark}" +
@@ -83,7 +83,7 @@ export const GET: RequestHandler = ({ url, locals }) => {
 		".msg{padding:24px 12px;text-align:center;color:#8a8f98}" +
 		"</style></head><body>" +
 		'<div id="root"><div class="msg">Loading preview…</div></div>' +
-		// CLASSIC script, not type=module: module scripts are CORS-fetched, and
+		// Classic script, not type=module: module scripts are CORS-fetched, and
 		// this doc's origin is opaque ('null') — the bare asset has no ACAO header
 		// so the browser would block our own glue (found live). Classic scripts
 		// load no-cors; CSP script-src still pins it to our origin. The glue's one

@@ -16,7 +16,7 @@ export const load = async ({ locals }) => {
     columns: { id: true, name: true, createdAt: true },
   });
 
-  // Developer tab is a SERVICE-mailbox feature (programmatic send keys). Show it
+  // Developer tab is a service-mailbox feature (programmatic send keys). Show it
   // only when the user can reach a service mailbox, or still holds a legacy key
   // they may want to revoke — hide it for personal/shared-only users.
   const accessibleIds = (await getAuthz()).mailboxIds;

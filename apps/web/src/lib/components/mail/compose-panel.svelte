@@ -109,13 +109,13 @@
 	let body = $state('');
 	let attachments = $state<AttachmentRef[]>([]);
 	let editorKey = $state(0);
-	// Forwarded messages are referenced by id, not baked into the body — raw email
-	// HTML never reaches the client, so the server composes the real HTML at Send
-	// (full marketing-template fidelity). The composer shows a read-only preview.
+	// Forwarded messages are referenced by id, not baked into the body. Raw email
+	// HTML never reaches the client, so the server composes the real HTML at Send,
+	// keeping template fidelity. The composer shows a read-only preview.
 	let forwardMessageIds = $state<string[]>([]);
 	// Signature-per-mailbox, and the exact signature currently in the editor, so a
 	// From change can swap it out (see the $effect below). sigReady gates the swap
-	// off until the initial seed is in — the onMount identity pick must not trip it.
+	// off until the initial seed is in, so the onMount identity pick doesn't trip it.
 	let signatures = $state<Map<string, string>>(new Map());
 	let appliedSig = $state('');
 	let sigReady = $state(false);
@@ -134,9 +134,9 @@
 
 	// iOS keyboard. Vaul's own `repositionInputs` shrinks the sheet to
 	// `visualViewport - offsetFromTop`, which collapses the editor to a thin strip
-	// at the top of the screen. We turn it OFF (Drawer.Root below) and instead
-	// size the sheet to the *visible* viewport: full height above the keyboard,
-	// anchored just over it — so the editor keeps all the leftover space.
+	// at the top of the screen. We turn it off (Drawer.Root below) and instead
+	// size the sheet to the visible viewport: full height above the keyboard,
+	// anchored just over it, so the editor keeps the leftover space.
 	// visualViewport is the only signal that reflects the keyboard; rAF-batch its
 	// resize/scroll bursts so we set style once per frame, not per event.
 	let keyboardInset = $state(0);
@@ -164,21 +164,21 @@
 			vv.removeEventListener('scroll', update);
 		};
 	});
-	// Only override the sheet box while the keyboard is actually up. `m-2` on the
-	// content is 8px each side → subtract 16 so the sheet + margins fit the gap.
+	// Only override the sheet box while the keyboard is up. `m-2` on the content
+	// is 8px each side, so subtract 16 to fit the sheet + margins in the gap.
 	const drawerStyle = $derived(
 		keyboardInset > 0
 			? `height:${Math.max(viewportH - 16, 160)}px;max-height:none;bottom:${keyboardInset}px`
 			: undefined
 	);
-	// iOS page: pin the container to the VISIBLE viewport (top+height from
+	// iOS page: pin the container to the visible viewport (top+height from
 	// visualViewport) so the keyboard shrinks the page and the send bar stays put
 	// above it. Before the first measure, fall back to full dynamic height.
 	const iosPageStyle = $derived(
 		viewportH > 0 ? `top:${viewportTop}px;height:${viewportH}px` : 'top:0;height:100dvh'
 	);
 
-	// A surviving mirror = text the server never acked (tab died / offline
+	// A surviving mirror is text the server never acked (tab died / offline
 	// before the debounce flushed). Pull it back over whatever loaded.
 	function restoreMirror() {
 		const local = readMirror(mirrorKey);
@@ -241,7 +241,7 @@
 		// Default From: the mailbox in context (prefill = the current view/switcher),
 		// else the user's personal inbox, else the first available identity. The list
 		// is oldest→newest, so without the personal preference a shared/service
-		// mailbox could win by age.
+		// mailbox could win on age.
 		const chosen =
 			(prefill?.mailboxId &&
 				identities.find(
@@ -285,7 +285,7 @@
 	});
 
 	const canSend = $derived(phase === 'editing' && !!mailboxId && to.length + cc.length + bcc.length > 0);
-	// Why the primary action is blocked — surfaced as the button's title so a
+	// Why the primary action is blocked, surfaced as the button's title so a
 	// disabled Send explains itself instead of just greying out.
 	const sendHint = $derived(
 		!mailboxId
@@ -300,7 +300,7 @@
 	let confirmNoSubject = $state(false);
 
 	// Schedule-send presets. Arming one fills the datetime input (reviewable) and
-	// flips the primary button to “Schedule” — it does NOT fire immediately.
+	// flips the primary button to “Schedule”; it doesn't fire immediately.
 	function armSchedule(d: Date) {
 		scheduleAt = toLocalDatetime(d);
 	}
@@ -350,11 +350,11 @@
 		debouncedSave();
 	}
 
-	// The standard for "this is a draft": the session has meaningful content —
+	// The bar for "this is a draft": the session has meaningful content —
 	// a subject, a recipient, body text, or an attachment. Below that bar nothing
 	// is persisted (open+close must not mint empty draft rows), and a draft the
 	// user empties out is deleted on close. Prefilled forward/reply content
-	// counts — it's resumable state the user chose to start.
+	// counts: it's resumable state the user chose to start.
 	const hasContent = $derived(
 		subject.trim().length > 0 ||
 			to.length + cc.length + bcc.length > 0 ||
@@ -390,14 +390,14 @@
 		});
 		draftId = d.id;
 		clientRevision = d.clientRevision;
-		// Server has this content now — drop the crash buffer (unless more was
+		// Server has this content now, so drop the crash buffer (unless more was
 		// typed while the request was in flight).
 		if (snapshot() === sent) clearMirror(mirrorKey);
 		return draftId;
 	}
 
 	// Serialize saves so a debounce-flush, a visibility save, and the send's own
-	// flush can't race the SAME clientRevision (the loser would false-warn "updated
+	// flush can't race the same clientRevision (the loser would false-warn "updated
 	// in another tab"). Each queued save sees the previous one's bumped revision.
 	let saveChain: Promise<void> = Promise.resolve();
 	function enqueueSave(): Promise<void> {
@@ -406,7 +406,7 @@
 	}
 	function flushSave(): Promise<void> {
 		debouncedSave.cancel();
-		// Don't autosave once we're sending/sent — send() drives its own final save.
+		// Don't autosave once we're sending/sent; send() drives its own final save.
 		if (phase !== 'editing' || !mailboxId) return saveChain;
 		return enqueueSave();
 	}
@@ -436,9 +436,9 @@
 			if (snapshot() === sent) clearMirror(mirrorKey);
 		} else {
 			// Adopt the winning revision. Mid-send this is our own flush racing a
-			// pending autosave (same tab) — not a real cross-tab edit — so adopt
+			// pending autosave (same tab), not a real cross-tab edit, so adopt
 			// silently. Otherwise a genuine other-tab edit: swap in the server copy
-			// (never overwrite it) and SAY so, since a silent swap reads as data loss.
+			// (never overwrite it) and say so, since a silent swap reads as data loss.
 			const d = res.draft;
 			clientRevision = d.clientRevision;
 			if (phase !== 'sending') {
@@ -477,7 +477,7 @@
 		uploadFiles(files);
 	}
 
-	// Drag-and-drop files anywhere on the composer → upload as attachments.
+	// Drag-and-drop files anywhere on the composer uploads them as attachments.
 	let dragging = $state(false);
 	function onDragOver(e: DragEvent) {
 		if (!e.dataTransfer?.types.includes('Files')) return;
@@ -502,7 +502,7 @@
 
 	async function send(force = false) {
 		if (!canSend) return;
-		// Empty subject: confirm once (Gmail style), then proceed on the retry.
+		// Empty subject: confirm once (Gmail-style), then proceed on the retry.
 		if (!force && subject.trim().length === 0) {
 			confirmNoSubject = true;
 			return;
@@ -512,7 +512,7 @@
 		// One toast for the whole send, morphing on a single id: Sending… → Queued…
 		// → sent (or Scheduling… → scheduled), or an error.
 		const sendProgress = sendToast(sendAt ? 'Scheduling…' : 'Sending…');
-		// Close the drawer IMMEDIATELY (state survives until reset() below), then
+		// Close the drawer immediately (state survives until reset() below), then
 		// persist + send in the background — Gmail/Superhuman-style optimistic close.
 		open = false;
 		// Real final save (enqueueSave bypasses flushSave's editing-only guard);
@@ -520,7 +520,7 @@
 		await enqueueSave();
 		const id = draftId;
 		if (!id) {
-			// No draft persisted (empty / create failed) — reopen so nothing is lost.
+			// No draft persisted (empty / create failed): reopen so nothing is lost.
 			phase = 'editing';
 			open = true;
 			sendProgress.dismiss();
@@ -568,14 +568,14 @@
 		}
 	}
 
-	// Esc / X / overlay: close but KEEP the draft (autosaved — find it in Drafts).
-	// Closing is INSTANT — the save/discard runs in the background so the panel
+	// Esc / X / overlay: close but keep the draft (autosaved — find it in Drafts).
+	// Closing is instant: the save/discard runs in the background so the panel
 	// doesn't hang on a network round-trip. State isn't reset here, so the in-flight
 	// call keeps valid refs; the next compose remounts fresh via the nonce.
 	function close() {
 		debouncedSave.cancel();
 		if (draftId && !hasContent) {
-			// Emptied-out draft = no longer a draft: delete the husk instead of saving it.
+			// Emptied-out draft is no longer a draft: delete the husk instead of saving it.
 			clearMirror(mirrorKey);
 			const id = draftId;
 			draftId = null;
@@ -660,7 +660,7 @@
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
-<!-- Tab going hidden is the last reliable moment to reach the network — flush
+<!-- Tab going hidden is the last reliable moment to reach the network, so flush
      immediately instead of waiting out the debounce (best-effort; the local
      mirror covers whatever doesn't make it). -->
 <svelte:document
@@ -671,7 +671,7 @@
 
 <!-- The panel interior (attachments rail + editor column) is one snippet shared
      by the three containers: docked window, full-screen overlay, bottom drawer.
-     `drawer` disables the minimize/maximize chrome — the drawer swipes instead. -->
+     `drawer` disables the minimize/maximize chrome; the drawer swipes instead. -->
 {#snippet panelInner(drawer: boolean)}
 			<!-- Expanded mode keeps the rail mounted even when empty, so the first
 			     attachment doesn't reflow the editor column. -->
@@ -854,8 +854,8 @@
 					</div>
 
 					{#if forwardMessageIds.length}
-						<!-- Forwarded messages — read-only preview via the SAME sandboxed
-						     renderer used to read mail, so the template shows exactly as it'll
+						<!-- Forwarded messages — read-only preview via the same sandboxed
+						     renderer used to read mail, so the template shows as it'll
 						     send. Composed for real (from R2) server-side at Send. -->
 						<div class="mt-1 max-h-64 shrink-0 overflow-y-auto rounded-md border">
 							<div class="text-muted-foreground bg-muted/40 sticky top-0 border-b px-2 py-1 text-xs">
@@ -955,11 +955,11 @@
 	{#if asDrawer}
 		<!-- Single-pane region: bottom drawer, ~full height so typing space matches
 		     the full-screen panel. Swipe-down/Esc close keeps the draft (autosave). -->
-		<!-- repositionInputs off: vaul's keyboard resize collapses the sheet; we size
-		     it ourselves via drawerStyle (visible viewport above the keyboard). -->
+		<!-- repositionInputs off: vaul's keyboard resize collapses the sheet, so we
+		     size it ourselves via drawerStyle (visible viewport above the keyboard). -->
 		<Drawer.Root open={true} repositionInputs={false} onOpenChange={(v) => { if (!v) close(); }}>
 			<!-- interactOutsideBehavior="ignore": a stray tap outside must not dismiss
-			     mid-composition — closing is deliberate (swipe, Esc, or the ✕). -->
+			     mid-composition; closing is deliberate (swipe, Esc, or the ✕). -->
 			<Drawer.Content
 				interactOutsideBehavior="ignore"
 				class="h-[94svh] p-0 data-[vaul-drawer-direction=bottom]:max-h-[94svh]"

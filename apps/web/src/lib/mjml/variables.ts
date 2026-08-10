@@ -3,7 +3,7 @@
  * Built-in merge variables (docs/service-accounts.md § Templates). Doota fills
  * these automatically at send — the caller never supplies them (and they win
  * over caller `data` of the same name, so they're reserved). Everything else in
- * a template is a **custom** variable the caller passes via the API `data` object.
+ * a template is a custom variable the caller passes via the API `data` object.
  *
  * Shared: the builder lists these (click-to-use), and the send path fills them.
  */

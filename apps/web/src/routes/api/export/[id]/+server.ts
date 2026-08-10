@@ -13,7 +13,7 @@ import { log } from "@doota/mail-core/log";
  * 6). The token (minted by exportDownloadUrl, ~15 min TTL) is the sole
  * authorization — the link may be opened in a download manager without the
  * session cookie. Parts are stored encrypted at rest and decrypted here into
- * one streamed mbox: the download is plaintext BY DEFINITION.
+ * one streamed mbox: the download is plaintext by definition.
  */
 export const GET: RequestHandler = async ({ params, url, locals, platform }) => {
   const env = platform?.env;

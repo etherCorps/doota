@@ -7,7 +7,7 @@ export const loginSchema = z.object({
 	password: Password
 });
 
-// Bootstrap: the first user is the EXTERNAL super-admin. Their login email is
+// Bootstrap: the first user is the external super-admin. Their login email is
 // their external address, so there is no separate recovery email to collect.
 export const registerSchema = z.object({
 	email: Email,

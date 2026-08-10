@@ -7,9 +7,9 @@
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import type { SendIdentity } from '@doota/mail-core/identities';
 
-	// The identity picker that makes hide-my-email usable end to end. Addresses
-	// render in JetBrains Mono (font-mono) per the design system; an unavailable
-	// identity (domain not active) is shown disabled WITH its reason, never hidden.
+	// Identity picker for hide-my-email. Addresses render in JetBrains Mono
+	// (font-mono) per the design system; an unavailable identity (domain not
+	// active) is shown disabled with its reason rather than hidden.
 	let {
 		identities,
 		mailboxId = $bindable(),

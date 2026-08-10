@@ -48,7 +48,7 @@
 	async function enter() {
 		step = 'entering';
 		// Add-account (multiSession): a session was already live, so every layout
-		// holds the PREVIOUS account's data — only a full document load resets it.
+		// holds the previous account's data. Only a full document load resets it.
 		if (page.url.searchParams.has('add')) {
 			window.location.assign(resolve('/'));
 			return;

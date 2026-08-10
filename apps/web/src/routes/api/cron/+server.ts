@@ -5,9 +5,9 @@ import { runScheduledSweeps } from "@doota/mail-core/cron";
 import type { OutboundEnv } from "@doota/mail-core/outbound";
 
 /**
- * Cron BACKUP endpoint. The primary schedule is the `doota-mail` Worker's native
+ * Cron backup endpoint. The primary schedule is the `doota-mail` Worker's native
  * scheduled() handler (wrangler.mail.jsonc). This secret-gated endpoint runs the
- * SAME maintenance sweeps and exists as a manual/external-scheduler fallback
+ * same maintenance sweeps and exists as a manual/external-scheduler fallback
  * (`Authorization: Bearer $CRON_SECRET`), e.g. to force a sweep without waiting
  * for the 5-min tick. Not publicly callable.
  */

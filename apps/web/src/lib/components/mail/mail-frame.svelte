@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Sandboxed message HTML, loaded from the server-sanitized /api/messages/[id]/body
-     route as an OPAQUE-origin frame (sandbox="allow-scripts", NO allow-same-origin).
+     route as an opaque-origin frame (sandbox="allow-scripts", no allow-same-origin).
      The framed doc can't touch the app; it reports its height and forwards link
      clicks over postMessage. Height sizes to content (no inner scrollbar); long mail
      collapses to a cap with a fade and expands inline. -->
@@ -19,7 +19,7 @@
 		collapsedMax?: number;
 		/** Self-collapse long content to `collapsedMax` with a "Show full message"
 		 * toggle. OFF in mail (Gmail) view — the expanded card is already the
-		 * container, so a second collapse layer is redundant/confusing. */
+		 * container, so a second collapse layer is redundant. */
 		collapse?: boolean;
 		fadeClass?: string;
 		linkClass?: string;
@@ -54,7 +54,7 @@
 
 	$effect(() => {
 		function onMessage(e: MessageEvent) {
-			// Opaque origin: event.origin is "null", so validate the SOURCE window, not the origin.
+			// Opaque origin: event.origin is "null", so validate the source window, not the origin.
 			if (!frame || e.source !== frame.contentWindow) return;
 			const d = e.data as {
 				__mailframe?: number;

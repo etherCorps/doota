@@ -1,6 +1,6 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	// DEV-ONLY. Preview the three role surfaces without wiring real auth.
+	// Dev-only. Preview the three role surfaces without wiring real auth.
 	// Real routes are still server-gated by the logged-in user's role; this just
 	// jumps between the /app and /admin shells so all three are reachable in dev.
 	// TODO: remove once role-aware nav is driven entirely by the session.

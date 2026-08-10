@@ -76,7 +76,7 @@
 	// Desktop shows the calendar inline — there's room, so no extra tap.
 	const isMobile = new IsMobile();
 	let showCal = $state(false);
-	// Mobile only: when the calendar is open it takes the WHOLE sheet — presets + NLP
+	// Mobile only: when the calendar is open it takes the whole sheet; presets + NLP
 	// are swapped out so the month grid + time list aren't crowded off the fold.
 	// Desktop always shows the calendar inline (there's room), so no switch there.
 	const fullCal = $derived(isMobile.current && showCal);
@@ -221,7 +221,7 @@
 			{#each PRESETS as preset (preset.label)}
 				{@const when = parseWhen(preset.phrase)}
 				<!-- Hide a preset whose time has already passed (e.g. "Later today" =
-				     tonight 6pm, once it's after 6pm) — snoozing to the past silently
+				     tonight 6pm, once it's after 6pm), since snoozing to the past silently
 				     no-ops. Tomorrow/weekend/next week are always future. -->
 				{#if when && when.getTime() > Date.now()}
 					<li>

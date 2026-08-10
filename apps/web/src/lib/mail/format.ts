@@ -12,8 +12,8 @@ export function fmtTime(ms: number | null): string {
 	return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// Full, locale-aware date+time for the message details panel: month NAME (not a
-// number), day, year, and time in the reader's locale — e.g. "2 Aug 2026, 10:11"
+// Full, locale-aware date+time for the message details panel: month name (not a
+// number), day, year, and time in the reader's locale, e.g. "2 Aug 2026, 10:11"
 // or "Aug 2, 2026, 10:11 AM" depending on locale.
 export function fmtDateTime(ms: number | null): string {
 	if (!ms) return '';
@@ -46,7 +46,7 @@ export function senderEmail(from: string | null): string {
 // Bare lowercased domain of a `from` header/address ('' when none).
 export const domainOf = (from: string | null): string =>
 	senderAddr(from).split('@')[1]?.toLowerCase().trim() ?? '';
-// Best-effort mail provider from the sender domain — a DISPLAY hint, not an auth
+// Best-effort mail provider from the sender domain. A display hint, not an auth
 // signal (a Workspace/365 custom domain reads as null; that needs an MX lookup).
 // ponytail: static consumer-domain map, upgrade to MX/DNS only if it matters.
 const PROVIDERS: Record<string, string> = {
@@ -128,7 +128,7 @@ export function threadParticipants(msgs: MessageDTO[]): Set<string> {
 	return s;
 }
 // A message whose audience is a strict subset of the thread's participants is
-// PRIVATE — a reply that dropped people. Returns who (besides you) can see it,
+// private: a reply that dropped people. Returns who (besides you) can see it,
 // or null when everyone on the thread is on the message.
 export function msgPrivateTo(m: MessageDTO, parts: Set<string>, self: Set<string>): string[] | null {
 	const aud = new Set<string>();
@@ -138,7 +138,7 @@ export function msgPrivateTo(m: MessageDTO, parts: Set<string>, self: Set<string
 }
 // Messages safe to include when forwarding a conversation: those that reached the
 // whole thread, or that the forwarder (self) was directly a party to. A private
-// sub-reply the forwarder wasn't on — one they only saw via a shared mailbox — is
+// sub-reply the forwarder wasn't on (one they only saw via a shared mailbox) is
 // dropped, so forwarding never leaks a conversation that wasn't theirs.
 export function forwardableMessages(msgs: MessageDTO[], parts: Set<string>, self: Set<string>): MessageDTO[] {
 	return msgs.filter((m) => {
@@ -154,7 +154,7 @@ export function msgCanReplyAll(m: MessageDTO, self: Set<string>): boolean {
 	return all.size >= 2;
 }
 
-// Reply context. Audience is derived from ONE message — the explicitly chosen
+// Reply context. Audience is derived from one message: the explicitly chosen
 // target, else the latest inbound (falling back to the newest). reply-one goes
 // to the sender (inbound) or the person you wrote to (outbound); reply-all adds
 // the rest of that message's To/Cc, minus your own identities.
@@ -172,7 +172,7 @@ export function replyCtx(
 	const notSelf = (addr: string) => addr && !self.has(baseAddr(addr));
 	const uniq = (addrs: string[]) => [...new Set(addrs.filter(Boolean).map((addr) => addr.toLowerCase()))];
 	let primary = base?.outbound ? (base.to[0] ?? base.cc[0] ?? '') : base?.replyTo || base?.from || '';
-	// Audience: an explicit per-message Reply(-all) scopes to THAT message; the
+	// Audience: an explicit per-message Reply(-all) scopes to that message; the
 	// default docked composer is thread-level, so its Reply-all reaches every
 	// participant — else a private reply-to-one as the latest inbound would
 	// hide the Reply/Reply-all switch even on a multi-party thread.

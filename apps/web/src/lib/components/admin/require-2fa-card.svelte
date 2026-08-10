@@ -67,9 +67,9 @@
 					Members get a 7-day grace period to enrol, then they're blocked from the app until they do.
 				</p>
 			</div>
-			<!-- Function binding: the switch ALWAYS mirrors state2fa (bits-ui otherwise
-			     keeps internal state, so a tap would flip it visually before — and
-			     survive — the confirm's Cancel). The write side only opens the confirm. -->
+			<!-- Function binding keeps the switch mirroring state2fa. bits-ui otherwise
+			     keeps its own internal state, so a tap would flip it visually before the
+			     confirm — and survive a Cancel. The write side only opens the confirm. -->
 			<Switch
 				bind:checked={() => state2fa.required, (v) => (confirmTo = v)}
 				disabled={saving || q.current === undefined}

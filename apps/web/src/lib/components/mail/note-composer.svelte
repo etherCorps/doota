@@ -7,9 +7,9 @@
 	import AtSignIcon from '@lucide/svelte/icons/at-sign';
 	import { addNote, mentionCandidates } from '$lib/rpc/thread.remote';
 
-	// Internal-note composer — DELIBERATELY distinct from the reply composer
-	// (amber, "not sent" label) so a note is never mistaken for an email and the
-	// note surface is never mistaken for the reply surface.
+	// Internal-note composer, deliberately distinct from the reply composer
+	// (amber, "not sent" label) so a note isn't mistaken for an email and the
+	// note surface isn't mistaken for the reply surface.
 	let {
 		mailboxId,
 		threadId,
@@ -20,8 +20,8 @@
 	let saving = $state(false);
 	let ta = $state<HTMLTextAreaElement | null>(null);
 
-	// @mention picker — teammates are fetched ONCE (on the first '@') and cached,
-	// then filtered locally per keystroke so typing never hits the server.
+	// @mention picker: teammates are fetched once (on the first '@') and cached,
+	// then filtered locally per keystroke so typing doesn't hit the server.
 	type Cand = { name: string; handle: string };
 	let members = $state<Cand[]>([]);
 	let loaded = $state(false);

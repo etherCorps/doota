@@ -220,7 +220,7 @@
 				if (ready && transaction.docChanged) markDirty();
 			}
 		});
-		// Restore an unsaved local draft for a NEW template (crash recovery).
+		// Restore an unsaved local draft for a new template (crash recovery).
 		if (!initialDoc) {
 			void (async () => {
 				const raw = await opfsRead(draftKey);
@@ -627,7 +627,7 @@
 			<!-- Canvas / code -->
 			<section class="bg-muted/40 min-h-0 flex-1 overflow-y-auto p-6">
 				<div class="mx-auto max-w-[600px]" style:display={view === 'edit' ? 'block' : 'none'}>
-					<!-- The email surface stays fixed-light (it IS the email), whatever the
+					<!-- The email surface stays fixed-light (it is the email), whatever the
 					     app theme. Chrome around it (rails, panels) follows the theme. -->
 					<div class="overflow-hidden rounded-lg shadow-sm ring-1 ring-black/5" style:background={background || '#ffffff'}>
 						<div class="flex flex-col gap-1.5 border-b border-neutral-200 px-6 py-3">

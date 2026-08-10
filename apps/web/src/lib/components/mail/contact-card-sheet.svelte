@@ -2,7 +2,7 @@
 <!-- Contact card: opened by tapping the sender name/avatar in the open thread
      header. Drawer on mobile / Dialog on desktop (same split as move-sheet).
      Identity + interaction history + accepted details + domain colleagues +
-     signature-derived suggestions — a suggestion is NEVER auto-applied, only a
+     signature-derived suggestions — a suggestion is never auto-applied, only a
      one-tap Accept writes it (acceptContactDetail is the sole writer).
    Hallmark · component: contact-card · genre: modern-minimal · theme: project tokens
    states: loading skeleton · loaded · accept busy · empty sections hidden · contrast: pass -->
@@ -84,8 +84,8 @@
 
 {#snippet body()}
 	<div class="flex flex-col">
-		<!-- Identity: big avatar (same SenderAvatar as the thread header — BIMI/
-		     uploaded/DiceBear fallback chain comes along for free) + name + address. -->
+		<!-- Identity: big avatar (same SenderAvatar as the thread header, so the
+		     uploaded/DiceBear fallback chain comes along) + name + address. -->
 		<div class="flex items-center gap-3.5 px-4 pb-3">
 			<SenderAvatar from={`${name} <${address}>`} class="size-14 text-lg" />
 			<div class="min-w-0 flex-1">

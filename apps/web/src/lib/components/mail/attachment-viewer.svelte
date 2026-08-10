@@ -3,13 +3,13 @@
      states: idle · loading (spinner overlay until first height report; 8s boot
      watchdog → error) · rendered · error (failed box)
      Full-screen attachment preview (Gmail-pattern lightbox: one chrome bar,
-     content fills the viewport — not a small nested dialog). Per-document shell:
-     pdf/images/text render in the OPAQUE hard-isolated iframe (/api/attachment-view,
-     sandbox="allow-scripts", NO allow-same-origin); rich-only formats (Office,
+     content fills the viewport, not a small nested dialog). Per-document shell:
+     pdf/images/text render in the opaque hard-isolated iframe (/api/attachment-view,
+     sandbox="allow-scripts", no allow-same-origin); rich-only formats (Office,
      archives, …) use the same-origin file-viewer shell (/viewer — weaker isolation,
-     compensated by its CSP; see that route). THIS parent fetches the already-scanned
+     compensated by its CSP; see that route). This parent fetches the already-scanned
      bytes (session cookie) and hands them over postMessage; the frames never fetch
-     mail. Only ever opened by the gate AFTER a scan verdict. -->
+     mail. Only opened by the gate after a scan verdict. -->
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -28,18 +28,18 @@
 		downloadAttachment
 	} from '$lib/client/attachment-gate.svelte';
 
-	// Shell choice is PER DOCUMENT: pdf/images/text/media keep the opaque
+	// Shell choice is per document: pdf/images/text/media keep the opaque
 	// hard-isolated viewer; rich-only formats (Office/archives/markdown/…) use
 	// the same-origin file-viewer shell — deliberately weaker isolation, see
-	// /viewer's CSP notes. (Not gated on viewer.open: flipping the src during
-	// the close animation would reload the frame mid-outro.)
+	// /viewer's CSP notes. Not gated on viewer.open: flipping the src during
+	// the close animation would reload the frame mid-outro.
 	const rich = $derived(viewerFor(viewer.contentType, viewer.filename) === 'rich');
 	const frameSrc = $derived(rich ? '/viewer' : '/api/attachment-view');
 	const frameSandbox = $derived(rich ? RICH_VIEWER_SANDBOX : ATTACHMENT_VIEWER_SANDBOX);
 	let frame = $state<HTMLIFrameElement>();
 	let contentH = $state(0);
 	let failed = $state(false);
-	// True once ANY message arrives from the sandbox — a frame that never boots
+	// True once any message arrives from the sandbox. A frame that never boots
 	// (asset 404, blocked script) would otherwise sit as a blank box forever.
 	let booted = $state(false);
 	// Clamp an untrusted height so a hostile scrollHeight can't blow up the layout.
@@ -72,8 +72,8 @@
 		else if (event.key === 'ArrowRight') goTo(nextItem);
 	}
 
-	// Re-download through the SAME gate — a verdict already exists (cached), so
-	// this resolves instantly. downloadAttachment, NOT openAttachment: the open
+	// Re-download through the same gate — a verdict already exists (cached), so
+	// this resolves instantly. downloadAttachment, not openAttachment: the open
 	// path view-routes by type and would just re-open this viewer.
 	function download() {
 		void downloadAttachment({ id: viewer.id, filename: viewer.filename }, () => {
@@ -96,7 +96,7 @@
 
 		// Boot watchdog: if the frame never posts viewer-ready (asset failed to
 		// load), surface the error state instead of an infinite blank frame. Slow
-		// RENDERS are exempt — any received message marks the frame booted.
+		// renders are exempt — any received message marks the frame booted.
 		const bootTimer = setTimeout(() => {
 			if (!booted) failed = true;
 		}, 8000);
@@ -132,8 +132,8 @@
 
 		function onMessage(event: MessageEvent) {
 			if (!frame || event.source !== frame.contentWindow) return;
-			// Rich shell: additionally pin the sender's origin (the opaque frame
-			// reports origin 'null', so source identity is its only guard).
+			// Rich shell: also pin the sender's origin (the opaque frame reports
+			// origin 'null', so source identity is its only guard).
 			if (rich && event.origin !== location.origin) return;
 			const data = event.data as { __attview?: number; type?: string; value?: unknown };
 			if (!data || data.__attview !== 1) return;
@@ -175,7 +175,7 @@
 				<Dialog.Title class="min-w-0 flex-1 truncate text-left text-sm font-medium">
 					{viewer.filename}
 				</Dialog.Title>
-				<!-- Honest affordance, compact: isolated-frame notice lives in the bar. -->
+				<!-- Isolated-frame notice, compact, lives in the bar. -->
 				<p class="text-muted-foreground hidden shrink-0 items-center gap-1.5 text-[11px] sm:flex">
 					<ShieldCheckIcon class="size-3.5 shrink-0" />
 					<span>Sandboxed preview</span>
@@ -235,7 +235,7 @@
 						class="block h-full w-full border-0"
 					></iframe>
 				{:else}
-					<!-- Opaque frame grows to its content; THIS box scrolls it (the chrome
+					<!-- Opaque frame grows to its content; this box scrolls it (the chrome
 					     bar never moves). Document column centered at a readable measure. -->
 					<div class="h-full overflow-y-auto overscroll-contain">
 						<div class="mx-auto w-full max-w-4xl px-2 py-4 sm:px-4">

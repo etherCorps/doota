@@ -45,7 +45,7 @@
 
 	// Click → scan → then act. Same gate as the tile: viewable types open the
 	// sandboxed viewer after the verdict, everything else downloads; clean goes
-	// straight through, matched/skipped/error fail OPEN behind a confirm.
+	// straight through, matched/skipped/error fail open behind a confirm.
 	function triggerDownload(att: { id: string; filename: string | null }) {
 		const anchor = document.createElement('a');
 		anchor.href = resolve('/api/attachments/[id]', { id: att.id });

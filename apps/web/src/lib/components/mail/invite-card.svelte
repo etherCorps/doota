@@ -1,10 +1,10 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
-	// Themed calendar-invite card. Renders a parsed iMIP invite (see
+	// Calendar-invite card. Renders a parsed iMIP invite (see
 	// mail-core/calendar.ts) in the app's own surface instead of a raw .ics
-	// download. RSVP is LOCAL status (organizer not notified) plus, when the
+	// download. RSVP is local status (organizer not notified) plus, when the
 	// invite carried the provider's own Yes/Maybe/No links, a pass-through to
-	// Google/Microsoft's real RSVP flow. Times render in the VIEWER's local zone;
+	// Google/Microsoft's real RSVP flow. Times render in the viewer's local zone;
 	// the organizer's original timezone is a tap-away (Popover on the time line).
 	import type { CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
@@ -38,16 +38,16 @@
 	const cancelled = $derived(
 		invite.cancelled || invite.method === 'CANCEL' || invite.status === 'CANCELLED'
 	);
-	// A REPLY is someone else's RSVP notification (e.g. "X accepted") — the viewer
+	// A REPLY is someone else's RSVP notification (e.g. "X accepted"). The viewer
 	// can't RSVP to a reply, so the Yes/Maybe/No row is suppressed (Join + calendar
 	// actions stay). The eyebrow already reads "RSVP" to signal the card's nature.
 	const isReply = $derived(invite.method === 'REPLY');
 
 	const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	// Everything renders in the VIEWER's local zone (their perspective) — the
-	// organizer's original timezone is a tap-away (origLine). All-day
-	// events are tz-agnostic, so their wall date is shown in UTC (undefined tz =
-	// viewer local for timed events; 'UTC' pins the all-day date).
+	// Everything renders in the viewer's local zone. The organizer's original
+	// timezone is a tap-away (origLine). All-day events are tz-agnostic, so
+	// their wall date is shown in UTC (undefined tz = viewer local for timed
+	// events; 'UTC' pins the all-day date).
 	const dispTz = $derived<string | undefined>(invite.allDay ? 'UTC' : undefined);
 	const part = (ms: number, opts: Intl.DateTimeFormatOptions, tz?: string) =>
 		new Intl.DateTimeFormat(undefined, { ...opts, ...(tz ? { timeZone: tz } : {}) }).format(new Date(ms));
@@ -71,8 +71,8 @@
 		return invite.endMs ? `${fmt(invite.startMs)} – ${fmt(invite.endMs)} ${tzLabel(tz)}` : `${fmt(invite.startMs)} ${tzLabel(tz)}`;
 	};
 	const timeLine = $derived(invite.allDay ? 'All day' : timeRange(undefined));
-	// The organizer's original timezone rendering — for the tap-popover, only when
-	// it differs from the viewer's (and the event is timed).
+	// The organizer's original timezone, for the tap-popover. Only when it differs
+	// from the viewer's (and the event is timed).
 	const origLine = $derived.by(() => {
 		if (invite.allDay || !invite.tz || invite.tz === viewerTz) return null;
 		const d = part(invite.startMs, { weekday: 'short', month: 'short', day: 'numeric' }, invite.tz);
@@ -92,10 +92,10 @@
 		meet: 'Google Meet',
 		webex: 'Webex'
 	};
-	// Each provider's official signature colour — recognition by hue, no
-	// trademarked logo art (those aren't cleanly available and are legally
-	// fussy). Brand constants, not palette tokens; applied only to the small
-	// glyph so the card stays on-theme. null = no tint (use current colour).
+	// Each provider's signature colour — recognition by hue, no trademarked logo
+	// art (not cleanly available, and legally fussy). Brand constants, not palette
+	// tokens; applied only to the small glyph so the card stays on-theme. null =
+	// no tint (use current colour).
 	const ORIGIN_HUE: Record<string, string | null> = {
 		google: '#4285F4',
 		microsoft: '#0078D4',
@@ -139,7 +139,7 @@
 		STATUS[(partstat ?? '').toUpperCase()] ?? { label: 'No response', cls: 'text-muted-foreground' };
 
 	// RSVP is optimistic: the parent patches invite.myRsvp so the pressed state
-	// updates instantly; a failed persist reverts (handled by the parent's toast).
+	// updates instantly; a failed persist reverts (parent's toast handles it).
 	let busy = $state<InviteRsvpStatus | null>(null);
 	async function pick(status: InviteRsvpStatus) {
 		if (busy) return;
@@ -152,14 +152,14 @@
 	}
 
 	// Selected answer carries meaning through colour: Yes → ok, Maybe → warn,
-	// No → destructive (not a neutral grey pressed-state).
+	// No → destructive (not a neutral grey pressed state).
 	const RSVP: { key: InviteRsvpStatus; label: string; icon: typeof CheckIcon; active: string }[] = [
 		{ key: 'accepted', label: 'Yes', icon: CheckIcon, active: 'bg-ok/15 text-ok ring-1 ring-ok/25' },
 		{ key: 'tentative', label: 'Maybe', icon: HelpCircleIcon, active: 'bg-warn/15 text-warn ring-1 ring-warn/25' },
 		{ key: 'declined', label: 'No', icon: XIcon, active: 'bg-destructive/15 text-destructive ring-1 ring-destructive/25' }
 	];
 	// A provider RSVP link exists for this answer → open the real flow instead of
-	// (only) recording local status.
+	// only recording local status.
 	function providerLink(key: InviteRsvpStatus): string | null {
 		return invite.rsvpLinks[key] ?? null;
 	}
@@ -187,7 +187,7 @@
 		return out.length ? out : (linkifySegments(desc) as Seg[]);
 	}
 
-	// Google (and others) append a fenced machine block to DESCRIPTION — Meet
+	// Google (and others) append a fenced machine block to DESCRIPTION: Meet
 	// links, dial-in, "please do not edit", wrapped in `-::~:~::-` rules. Split
 	// the human text (before the fence) from that block so the card shows what a
 	// person typed, and tucks the boilerplate behind a "Meeting details"
@@ -255,8 +255,8 @@
 
 <div class="overflow-hidden {flat ? '' : 'border-border bg-card rounded-2xl border shadow-xs'}">
 	<!-- Header: tear-off date chip anchors the invite; title wraps (it's the
-	     headline); date + time promoted right under it. Cancelled reads muted
-	     with a struck title so a stale REQUEST isn't mistaken for live. -->
+	     headline); date + time sit right under it. Cancelled reads muted with a
+	     struck title so a stale REQUEST isn't mistaken for live. -->
 	<div class="flex items-start gap-3.5 border-b p-3.5 {cancelled ? 'bg-muted/40' : 'bg-brand/5'}">
 		<!-- Date chip: the invite's anchor, sized to carry the header (month tab +
 		     big day number), not a stamp in the corner. -->
@@ -267,8 +267,8 @@
 			<div class="bg-card text-foreground py-2 text-2xl font-bold tabular-nums">{chip.day}</div>
 		</div>
 		<div class="min-w-0 flex-1">
-			<!-- Eyebrow (accent) + provider marks: brand-hued glyphs make the source
-			     recognizable at a glance. Origin is quiet; the platform keeps a badge. -->
+			<!-- Eyebrow (accent) + provider marks: brand-hued glyphs identify the
+			     source. Origin is quiet; the platform keeps a badge. -->
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
 				<span class="font-medium tracking-wide uppercase {cancelled ? 'text-muted-foreground' : 'text-brand'}">
 					{cancelled ? 'Event cancelled' : invite.method === 'REPLY' ? 'RSVP' : 'Invitation'}
@@ -380,7 +380,7 @@
 	{#if !cancelled}
 		<div class="space-y-2.5 border-t p-3">
 			<!-- Full-width segmented pill: the three answers split the row evenly; the
-			     selected segment fills as a coloured pill (Yes/Maybe/No). Shown ONLY
+			     selected segment fills as a coloured pill (Yes/Maybe/No). Shown only
 			     when the viewer is an attendee with a valid organizer to reply to
 			     (server-gated, canRsvp); otherwise a quiet reason. Hidden on a REPLY. -->
 			{#if invite.canRsvp}

@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- The single confirm dialog behind the attachment open/download gate. Rendered
      once per page; every tile routes its non-clean opens through the shared
-     `confirm` state. Fail-open: the file matched / couldn't be checked, but the
-     user may still proceed (preview or download — the verb tracks the actual
-     action) after this explicit confirm. -->
+     `confirm` state. Fail-open: the file matched or couldn't be checked, but the
+     user can still proceed after this explicit confirm. The verb (preview or
+     download) tracks the actual action. -->
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { confirm, confirmMessage } from '$lib/client/attachment-gate.svelte';

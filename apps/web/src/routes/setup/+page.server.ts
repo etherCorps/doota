@@ -5,9 +5,9 @@ import { user as userTable } from "@doota/db/schema";
 import { SETUP_TOKEN } from "$app/env/private";
 
 /**
- * Renders the genesis wizard ONLY when the user count is zero AND the one-time
+ * Renders the genesis wizard only when the user count is zero and the one-time
  * SETUP_TOKEN is presented (?token=). Locks itself out permanently once a user
- * exists. When SETUP_TOKEN is unset, the wizard is disabled — use the CLI.
+ * exists. When SETUP_TOKEN is unset, the wizard is disabled; use the CLI.
  */
 export const load = async ({ locals, url }) => {
   if (locals.user) {

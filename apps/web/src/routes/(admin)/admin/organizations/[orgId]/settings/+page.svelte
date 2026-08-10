@@ -79,8 +79,8 @@
 	// Bumped after a re-upload to bust the preview cache (the l= URL stays stable
 	// for BIMI validators; only the preview img gets the ?t= param).
 	let bimiVer = $state(0);
-	// Preview the ACTUAL current asset: a pasted external URL as-is, otherwise the
-	// self-hosted R2 file — so it shows even before Publish and survives reload.
+	// Preview the actual current asset: a pasted external URL as-is, otherwise the
+	// self-hosted R2 file, so it shows even before Publish and survives reload.
 	const bimiPreviewSrc = $derived.by(() => {
 		const u = bimiLogo.trim();
 		const selfHosted = `/api/bimi/${org.id}.svg`;
@@ -251,7 +251,7 @@
 					<Field.Field>
 						<Field.Label>Logo URL (SVG Tiny-PS)</Field.Label>
 						<div class="flex gap-2">
-							<!-- Persistent preview of the ACTUAL current asset (self-hosted R2 file
+							<!-- Persistent preview of the actual current asset (self-hosted R2 file
 							     or a pasted URL). <img> is script-inert, so it's a safe preview even
 							     for an unvalidated external URL. Re-keyed on src so onerror re-runs;
 							     hides itself when nothing is uploaded yet. -->

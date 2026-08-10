@@ -34,7 +34,7 @@
 
 	const sidebar = useSidebar();
 
-	// Device sessions (multiSession plugin) — every account signed in on THIS
+	// Device sessions (multiSession plugin) — every account signed in on this
 	// browser. Fetched when the menu opens, so the list is fresh without polling.
 	type DeviceSession = {
 		session: { token: string };
@@ -50,8 +50,8 @@
 		const { data } = await authClient.multiSession.listDeviceSessions();
 		deviceSessions = (data as DeviceSession[] | null) ?? [];
 	}
-	// At the cap another sign-in would NOT be tracked by multiSession (it works
-	// until you switch away, then vanishes) — so "Add account" blocks with the
+	// At the cap another sign-in wouldn't be tracked by multiSession (it works
+	// until you switch away, then vanishes), so "Add account" blocks with the
 	// reason. The login page guards the direct-URL path server-side too.
 	const atLimit = $derived(deviceSessions.length >= MAX_DEVICE_SESSIONS);
 	function onMenuOpenChange(open: boolean) {
@@ -59,17 +59,17 @@
 	}
 
 	/**
-	 * All post-auth-mutation navigation goes through /login as a FULL document
+	 * All post-auth-mutation navigation goes through /login as a full document
 	 * load: the server bounces a live session to that account's home (role +
-	 * onboarding aware) and shows the login form when none is left. A full load —
-	 * not goto — because every layout holds the previous account's data.
+	 * onboarding aware) and shows the login form when none is left. A full load,
+	 * not goto, because every layout holds the previous account's data.
 	 */
 	function reenter() {
 		window.location.assign(resolve('/login'));
 	}
 
 	// The switch spans a setActive roundtrip + a full document load — seconds
-	// during which the OLD account is still on screen. A blocking overlay (below)
+	// during which the old account is still on screen. A blocking overlay (below)
 	// covers the whole stretch; the document unload takes it down.
 	let switching = $state<string | null>(null);
 	async function switchTo(target: DeviceSession) {
@@ -89,7 +89,7 @@
 	}
 
 	// Log out: with other accounts on the device, ask which scope; alone, just
-	// sign out. Revoking the ACTIVE session server-side promotes the next device
+	// sign out. Revoking the active session server-side promotes the next device
 	// session automatically, so "this account" lands on the next account's home.
 	let confirmOpen = $state(false);
 	let busy = $state(false);
@@ -106,7 +106,7 @@
 	}
 	async function logoutAll() {
 		busy = true;
-		// signOut ends EVERY device session (multiSession's sign-out hook).
+		// signOut ends every device session (multiSession's sign-out hook).
 		await authClient.signOut();
 		reenter();
 	}

@@ -2,8 +2,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 
-// Super-admin "view all orgs" is an aggregate over the orgs they OWN — resolved
-// through membership (owner/admin role), NOT a non-member override.
+// Super-admin "view all orgs" is an aggregate over the orgs they own, resolved
+// through membership (owner/admin role), not a non-member override.
 export const load = async ({ locals }) => {
   const user = locals.user!;
   const orgs = await locals.db

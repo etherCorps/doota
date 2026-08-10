@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 
 /**
- * Sender avatar by email address. If the address belongs to one of OUR users
+ * Sender avatar by email address. If the address belongs to one of our users
  * (org members log in with their served-domain address) and they've uploaded an
  * avatar, serve it; otherwise 404 and the client falls back to a locally
  * generated DiceBear image — external addresses never leave the browser.
@@ -13,7 +13,7 @@ import * as schema from "@doota/db/schema";
 
 // Avatars change rarely — cache a day so a scrolling list (and repeat visits)
 // don't re-query the DB + R2 per sender. The negative ("not our user" / no
-// upload) is cached TWO days so external senders — the bulk of a mailbox — stop
+// upload) is cached two days so external senders — the bulk of a mailbox — stop
 // re-requesting a 404 on every reload before falling back to local DiceBear.
 const HIT = "private, max-age=86400";
 const MISS = "private, max-age=172800";

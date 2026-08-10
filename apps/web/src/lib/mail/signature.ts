@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Composer-side signature injection. Kept pure + framework-free so it's unit
-// testable; the composers call it when building the INITIAL editor HTML for a
+// testable; the composers call it when building the initial editor HTML for a
 // fresh compose/reply/forward (never on a draft restore — that body already
 // carries whatever the user last saved, signature included).
 
@@ -56,7 +56,7 @@ export function swapSignature(body: string, applied: string, nextSigHtml: string
 
 /**
  * Render-side collapse boundary (build guide, Phase 3): split rendered body
- * HTML at the LAST `-- ` delimiter line — ours (`<p>-- </p>`) or other
+ * HTML at the last `-- ` delimiter line: ours (`<p>-- </p>`) or other
  * clients' (`-- <br>`). Returns null when no delimiter is present; the caller
  * then shows the body as-is. The signature collapses into the same
  * trimmed-content control as the quoted trail, per message, expandable.

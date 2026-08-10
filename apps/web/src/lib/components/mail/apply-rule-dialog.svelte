@@ -2,7 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	// "Apply rule to existing mail" flow — shared by the post-move toast and the
 	// rules sheet. Call `start(ruleId)`: previews how many conversations the
-	// user filed BY HAND, applies straight away when none exist, otherwise
+	// user filed by hand, applies straight away when none exist, otherwise
 	// confirms (with the override checkbox) before kicking the backfill.
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';

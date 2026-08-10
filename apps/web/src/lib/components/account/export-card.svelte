@@ -1,7 +1,7 @@
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
 	// Account → Mail: mailbox export (.mbox). The warning lives in a confirm
-	// dialog BEFORE anything starts — the export decrypts everything and the
+	// dialog before anything starts — the export decrypts everything and the
 	// download link is a 15-minute capability URL. A 403 from startExport means
 	// the session is older than 30 min; the server message says to re-login and
 	// is surfaced verbatim. Recent exports poll every 5s while one is running.

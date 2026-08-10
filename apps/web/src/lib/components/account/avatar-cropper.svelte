@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 
-	// Minimal square avatar cropper: the 256px canvas IS the crop — drag to pan,
+	// Minimal square avatar cropper: the 256px canvas is the crop — drag to pan,
 	// slider to zoom, then export the canvas as a webp blob and upload. No lib.
 	let {
 		open = $bindable(false),

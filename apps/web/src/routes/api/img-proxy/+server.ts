@@ -34,12 +34,12 @@ function validate(raw: string): URL {
 export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const target = url.searchParams.get("url");
   if (!target) error(400, "Missing url");
-  // Never an open proxy: a session, OR a signed token the body route minted for
-  // THIS exact url (the sandboxed MailFrame sends no session cookie cross-site).
+  // Never an open proxy: a session, or a signed token the body route minted for
+  // this exact url (the sandboxed MailFrame sends no session cookie cross-site).
   const okToken = await verifyResourceToken(platform?.env?.MAIL_SEARCH_KEY, `img:${target}`, url.searchParams.get("t"));
   if (!okToken && !locals.user) error(401, "Not authenticated");
 
-  // Shared edge cache keyed on the TARGET url only: the bytes are identical for
+  // Shared edge cache keyed on the target url only: the bytes are identical for
   // every reader (the per-user gate is the auth check above, which always runs
   // first). One upstream fetch then serves all opens/users — and the sender
   // stops seeing repeat opens, the Gmail/Apple caching behaviour.
@@ -76,7 +76,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     }
     if (!res || !res.ok) error(502, "Image fetch failed");
 
-    // Trust the RESPONSE type, not the request — must be an image OR a web font
+    // Trust the response type, not the request — must be an image or a web font
     // (custom @font-face). Nothing else: the sandboxed frame renders these as
     // inert pixels/glyphs, never executes them. Fonts served as octet-stream are
     // rejected (fail closed → text falls back to system fonts).
@@ -95,7 +95,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Referrer-Policy": "no-referrer",
-        // Public in the SHARED cache (keyed on url, gated by auth before lookup);
+        // Public in the shared cache (keyed on url, gated by auth before lookup);
         // the browser copy stays private so a token URL isn't reused cross-user.
         "Cache-Control": "private, max-age=3600",
       },
