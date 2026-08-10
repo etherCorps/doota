@@ -3,8 +3,8 @@ import { error, type RequestHandler } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import * as schema from "@doota/db/schema";
 import { can } from "@doota/db/can";
-import { importKey, decryptContent, getDecryptedBlob, packBlob, unpackBlob } from "@doota/mail-core/crypto";
-import { rawObjectToHtml, rawObjectToText } from "@doota/mail-core/mime";
+import { importKey, decryptContent } from "@doota/mail-core/crypto";
+import { messageRawHtml } from "@doota/mail-core/mime";
 import { remoteContentAllowed } from "@doota/mail-core/sender-trust";
 import { cachedRemoteContentPolicy } from "$lib/server/mail-cache.js";
 import {
@@ -17,10 +17,18 @@ import {
 import { stripQuotesHtml, cidMatches } from "@doota/mail-core/mail-thread-contract";
 import { splitSignatureHtml } from "$lib/mail/signature";
 import { getAuthz } from "$lib/server/authz.js";
-import { renderETag, isNotModified, revalidateHeaders, RENDER_CACHE_VERSION } from "$lib/server/render-cache.js";
-import { linkifySegments } from "$lib/utils/linkify.js";
+import { renderETag, isNotModified, revalidateHeaders } from "$lib/server/render-cache.js";
 import { signResourceToken } from "$lib/server/resource-token.js";
 import { log } from "@doota/mail-core/log";
+import { linkifySegments } from "$lib/utils/linkify.js";
+import {
+  renderFramedBody,
+  INJECTED_SCRIPT,
+  sha256Base64,
+  escapeText,
+  escapeAttr,
+  buildMetaCsp,
+} from "$lib/server/framed-body.js";
 
 /**
  * Serve one message's HTML body, sanitized, as an isolated document for the
@@ -39,77 +47,16 @@ import { log } from "@doota/mail-core/log";
  *
  * Don't add allow-same-origin to the frame that loads this — combined with
  * allow-scripts it lets the framed document strip its own sandbox and escape.
+ *
+ * The images=0 core (decrypt → rawObjectToHtml → stripQuotes → sanitize →
+ * buildFramedDocument) is shared with the thread-message mirror via
+ * renderFramedBody() in $lib/server/framed-body.ts. The images=1 and fullView
+ * paths remain here since they need proxyRemoteResources + raised sanitize caps.
  */
-
-// Our own script, injected after sanitization (the email's scripts are gone and
-// wouldn't match the script-src hash). It reports height and handles link clicks
-// in the click gesture — opening in the frame, not via the parent, so the browser
-// doesn't popup-block it. Only mailto: is handed up (to the composer). The link
-// security rules mirror lib/utils/mail-link.ts (classifyMailLink), kept in sync.
-const INJECTED_SCRIPT =
-  "(function(){" +
-  // Fit-to-width: a fixed-width email (600px provider card) in a narrow frame
-  // would overflow and get clipped (scrolling=no). Scale the body down to fit
-  // the viewport — like Gmail on mobile — then report the scaled height.
-  // scrollWidth/clientWidth are layout metrics (unaffected by transform), so
-  // re-runs are stable and the ResizeObserver can't loop.
-  "function h(){var b=document.body;if(!b)return;" +
-  "var vw=document.documentElement.clientWidth||b.clientWidth;var cw=b.scrollWidth;" +
-  "var s=(cw>vw&&cw>0)?vw/cw:1;" +
-  "if(s<1){b.style.transformOrigin='top left';b.style.transform='scale('+s+')';}else if(b.style.transform){b.style.transform='';}" +
-  "parent.postMessage({__mailframe:1,type:'height',value:Math.ceil(b.getBoundingClientRect().height)+8},'*');}" +
-  // A remote image that fails (blocked, 404, non-image) shows the browser's
-  // broken-image glyph — hide it so it just disappears instead of littering the
-  // card. Re-measure on each successful load (layout shifts → rescale).
-  "function fixImg(im){function x(){im.style.visibility='hidden';}" +
-  "if(im.complete&&!im.naturalWidth){x();}else{im.addEventListener('error',x);im.addEventListener('load',h);}}" +
-  "function imgs(){[].forEach.call(document.images,fixImg);}" +
-  "addEventListener('load',function(){imgs();h();});if(document.readyState!=='loading'){imgs();h();}" +
-  "try{new ResizeObserver(h).observe(document.body);}catch(e){}" +
-  "function textHost(t){t=(t||'').trim();if(!t||/\\s/.test(t))return null;" +
-  "var m=t.match(/^(?:https?:\\/\\/)?([a-z0-9.-]+\\.[a-z]{2,})/i);return m?m[1].toLowerCase():null;}" +
-  "document.addEventListener('click',function(e){" +
-  "var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a)return;e.preventDefault();" +
-  "if(a.id==='__viewfull'){parent.postMessage({__mailframe:1,type:'viewfull'},'*');return;}" +
-  // Collapsed-signature toggle (see the splitSignatureHtml wrap below). Height
-  // re-measures via the body ResizeObserver, so no explicit h() call needed.
-  "if(a.id==='__sigtoggle'){var sg=document.getElementById('__sig');" +
-  "if(sg){var show=sg.style.display==='none';sg.style.display=show?'':'none';a.setAttribute('aria-expanded',String(show));}return;}" +
-  "var href=a.getAttribute('href')||'';" +
-  "if(!/^[a-z][a-z0-9+.-]*:/i.test(href))return;" + // absolute-scheme only; drop relative
-  "var u;try{u=new URL(href);}catch(_){return;}var s=u.protocol.toLowerCase();" +
-  "if(s==='mailto:'){var sp=u.searchParams;parent.postMessage({__mailframe:1,type:'mailto',address:decodeURIComponent(u.pathname)," +
-  "subject:sp.get('subject')||'',body:sp.get('body')||''},'*');return;}" +
-  "if(s!=='http:'&&s!=='https:')return;" + // drop javascript:, data:, file:, …
-  "var host=u.hostname.toLowerCase();" +
-  "var idn=host.split('.').some(function(l){return l.indexOf('xn--')===0;});" +
-  "var claimed=textHost(a.textContent||'');" +
-  "var mismatch=!!claimed&&claimed!==host&&host.slice(-(claimed.length+1))!=='.'+claimed&&claimed.slice(-(host.length+1))!=='.'+host;" +
-  "if(idn||mismatch){var msg=mismatch?('The link text says \"'+claimed+'\" but it actually goes to '+host+'.'):" +
-  "(host+' uses internationalized (non-ASCII) characters that can imitate a real domain.');" +
-  "if(!confirm(msg+'\\n\\nOpen it anyway?'))return;}" +
-  "window.open(u.href,'_blank','noopener,noreferrer');" +
-  "},true);})();";
-
-async function sha256Base64(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  let bin = "";
-  for (const byte of new Uint8Array(digest)) bin += String.fromCharCode(byte);
-  return btoa(bin);
-}
-
-const escapeText = (value: string) =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
-const escapeAttr = (value: string) =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** On opt-in, route remote images through the same-origin proxy so img-src stays
  * 'self' and the browser never fetches from the sender directly. Each proxied URL
  * carries a signed token so the sandboxed (cookie-less) MailFrame can load it. */
-// Route every remote resource (img/poster/background/srcset + CSS url()) through
-// the same-origin privacy proxy with a per-URL signed token (the sandboxed frame
-// can't send the session cookie cross-site). Backgrounds + logos render; the
-// sender only ever sees Cloudflare. @import is stripped in the rewriter.
 async function proxyRemoteResources(html: string, sign: (resource: string) => Promise<string>): Promise<string> {
   const urls = collectRemoteResourceUrls(html);
   const tokens = new Map(await Promise.all(urls.map(async (resourceUrl) => [resourceUrl, await sign(`img:${resourceUrl}`)] as const)));
@@ -176,55 +123,11 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   }
 
   const ck = await importKey(dek);
-  // Derive the HTML body from the raw in R2 — it's not stored in D1 (golden:
-  // raw is canonical). To keep R2 reads flat vs when the body lived in D1, the
-  // parsed html is held in a shared edge cache keyed on (message, cache-version):
-  // the R2 GET + postal-mime parse then happens once per message globally, not
-  // once per viewer/isolate. Auth ran above, so a post-auth cache read is safe;
-  // a RENDER_CACHE_VERSION bump changes the key so patched renders don't serve
-  // stale. (The browser's own ETag 304 already skips repeat views entirely.)
+  const bucket = platform?.env?.MAIL_RAW;
   // The cache comes from the SvelteKit platform context (App.Platform.caches),
   // not the bare `caches` global — the global is absent under `vite dev` (Node
   // SSR) and a bare reference throws. undefined here just skips the edge cache.
-  const bodyCache = platform?.caches?.default;
-  const bodyCacheKey = new Request(`https://body-cache.internal/${RENDER_CACHE_VERSION}/${msg.id}`);
-  let rawHtml: string | null = null;
-  // Full plain-text body from R2 for a text-only message (no HTML part). The D1
-  // text twins are capped previews (see materialize.ts), so full fidelity comes
-  // from the raw — mirrors the HTML derive below. Only populated on a text-only
-  // message's cache-miss path (text-only never caches HTML → always lands here).
-  let rawText: string | null = null;
-  // The cache holds ciphertext (gzip+encrypted) — the CF edge never stores
-  // plaintext email. Decrypt on hit; a corrupt/legacy entry falls through to a
-  // fresh derive.
-  const cachedBody = bodyCache ? await bodyCache.match(bodyCacheKey) : null;
-  if (cachedBody) {
-    try {
-      rawHtml = new TextDecoder().decode(await unpackBlob(ck, new Uint8Array(await cachedBody.arrayBuffer()))) || null;
-    } catch {
-      rawHtml = null;
-    }
-  }
-  if (rawHtml === null) {
-    // Not cached (or bad entry): read + decrypt the raw from R2, then parse.
-    const rawBytes =
-      msg.r2RawKey && platform?.env?.MAIL_RAW
-        ? await getDecryptedBlob(platform.env.MAIL_RAW, msg.r2RawKey, ck)
-        : null;
-    rawHtml = rawBytes ? await rawObjectToHtml(msg.r2RawKey!, rawBytes) : null;
-    // No HTML part → derive the full text from the same raw for the text fallback.
-    if (rawHtml === null && rawBytes) rawText = await rawObjectToText(msg.r2RawKey!, rawBytes);
-    if (bodyCache && rawHtml !== null) {
-      const enc = await packBlob(ck, new TextEncoder().encode(rawHtml));
-      const store = new Response(enc as BodyInit, { headers: { "Cache-Control": "private, max-age=86400" } });
-      const put = bodyCache.put(bodyCacheKey, store);
-      if (platform?.ctx?.waitUntil) platform.ctx.waitUntil(put);
-      else await put;
-    }
-  }
-  const tDerive = Date.now();
-  // fullView ("View entire message", Gmail's clipped-message pattern): raised
-  // caps, still sanitized and sandboxed — only reachable from the clipped notice.
+  const bodyCache = platform?.caches?.default ?? null;
 
   // cid: → our attachment endpoint. The sandboxed frame can't send the session
   // cookie (cross-site), so carry a signed token this-message's attachments accept.
@@ -243,9 +146,58 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
     return att ? `/api/attachments/${att.id}${attToken ? `?t=${attToken}` : ""}` : null;
   };
 
-  // Strip quoted reply history before rendering — the prior messages are already
-  // in the timeline (matches getThread's render-flag basis).
-  let inner: string;
+  let doc: string;
+
+  // images=0 standard path: the shared render pipeline (decrypt → parse → strip
+  // quotes → sanitize → buildFramedDocument). Same output as the srcdoc mirror.
+  // images=1 and fullView stay inline since they need proxyRemoteResources and
+  // raised sanitize caps respectively.
+  if (!loadImages && !fullView && bucket) {
+    const tDeriveStart = Date.now();
+    const framed = await renderFramedBody(bucket, msg, ck, {
+      origin: url.origin,
+      resolveCid,
+      sigsExpanded,
+      bodyCache,
+    });
+    const tDerive = Date.now();
+    log.debug("render.body_timing", {
+      messageId: msg.id,
+      accessMs: tAccess - tStart,
+      deriveMs: tDerive - tDeriveStart,
+      sanitizeMs: 0, // folded into deriveMs in the shared path
+      totalMs: Date.now() - tStart,
+    });
+    if (framed !== null) {
+      const { metaCsp } = await buildMetaCsp(url.origin);
+      const headerCsp = `${metaCsp}; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'`;
+      return new Response(framed, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": headerCsp,
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+          ...revalidateHeaders(etag),
+        },
+      });
+    }
+    // renderFramedBody returned null → no HTML body; fall through to text/clipped
+    // path below by deriving rawText from the same raw.
+  }
+
+  // images=1, fullView, or fallback (no bucket / no HTML body): full inline path.
+  // Derive rawHtml/rawText here; messageRawHtml handles the body-cache read/write.
+  let rawHtml: string | null = null;
+  let rawText: string | null = null;
+  if (bucket) {
+    const derived = await messageRawHtml(bucket, ck, msg, bodyCache);
+    rawHtml = derived.html;
+    rawText = derived.text;
+  }
+  const tDerive = Date.now();
+
+  // fullView ("View entire message", Gmail's clipped-message pattern): raised
+  // caps, still sanitized and sandboxed — only reachable from the clipped notice.
   const forRender = rawHtml ? stripQuotesHtml(rawHtml) : null;
   const result = forRender
     ? sanitizeEmailHtml(forRender, {
@@ -253,6 +205,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
         ...(fullView ? { maxBytes: 10_000_000, maxNodes: 250_000 } : {}),
       })
     : null;
+  let inner: string;
   if (result && result.ok) {
     inner = loadImages ? await proxyRemoteResources(result.html, sign) : result.html;
   } else {
@@ -333,7 +286,7 @@ export const GET: RequestHandler = async ({ params, url, request, locals, platfo
   // allow-top-navigation — the frame can't touch the app or self-navigate.
   const headerCsp = `${metaCsp}; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'`;
 
-  const doc = buildFramedDocument(inner, {
+  doc = buildFramedDocument(inner, {
     csp: metaCsp,
     bodyExtra: `<script>${INJECTED_SCRIPT}</script>`,
   });

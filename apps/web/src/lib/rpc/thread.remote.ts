@@ -19,7 +19,7 @@ import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
 import { tryLog, log } from "@doota/mail-core/log";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
-import { buildSeed, buildChanges } from "./thread-localdb.js";
+import { buildSeed, buildChanges, buildSeedThread, buildThreadMessageChanges } from "./thread-localdb.js";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import {
   trustSenderImages,
@@ -844,3 +844,52 @@ export const mailboxMembers = query(z.string().min(1), async (mailboxId) => {
     .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
   return rows;
 });
+
+// ---- Thread-message mirror (slice 2) ----------------------------------------
+
+/**
+ * Seed a thread's messages into the client mirror. Returns every
+ * `external_message` in the thread as a `MirroredMessage` (= `MessageDTO` +
+ * `seq` + `framedHtml`), the current change_log cursor, and the render version
+ * for freshness checks. The client writes these rows into its local `message`
+ * table and sets `thread_synced`.
+ */
+export const seedThread = query(
+  z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
+  async ({ mailboxId, threadId }) => {
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const { locals, platform } = getRequestEvent();
+    return buildSeedThread(locals.db, {
+      mailboxId,
+      threadId,
+      ck: await contentKey(),
+      userId: locals.user!.id,
+      includeCollab: hasGrant,
+      assignedTo,
+      env: { MAIL_RAW: platform?.env?.MAIL_RAW },
+    });
+  },
+);
+
+/**
+ * Incremental delta for a mirrored thread since `sinceSeq`. Returns upserts
+ * (changed messages re-derived) + removals (destroyed message ids) + the new
+ * cursor. `cannotCalculate: true` tells the client to reseed.
+ */
+export const threadMessageChanges = query(
+  z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), sinceSeq: z.number().int().min(0) }),
+  async ({ mailboxId, threadId, sinceSeq }) => {
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const { locals, platform } = getRequestEvent();
+    return buildThreadMessageChanges(locals.db, {
+      mailboxId,
+      threadId,
+      sinceSeq,
+      ck: await contentKey(),
+      userId: locals.user!.id,
+      includeCollab: hasGrant,
+      assignedTo,
+      env: { MAIL_RAW: platform?.env?.MAIL_RAW },
+    });
+  },
+);
