@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Self-host pdfjs for the sandboxed attachment viewer. The viewer doc loads
-// pdf.min.mjs from OUR origin as a module (script-src ${origin}) — the sandbox
+// pdf.min.mjs from our origin as a module (script-src ${origin}); the sandbox
 // has an opaque origin and makes no network calls, so it can't import from a CDN.
 // Copies the pinned pdfjs-dist build into static/ at prepare time so a version
 // bump refreshes it. The copy is also committed, so a fresh checkout works
@@ -12,9 +12,9 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const buildDir = resolve(here, "../node_modules/pdfjs-dist/build");
 const destDir = resolve(here, "../static/pdfjs");
-// pdf.worker.min.mjs too: pdfjs ≥5 REQUIRES workerSrc; with CSP worker-src
+// pdf.worker.min.mjs too: pdfjs ≥5 requires workerSrc; with CSP worker-src
 // 'none' it falls back to a main-thread "fake worker" that dynamic-imports this
-// same file — so it must be self-hosted alongside the main bundle.
+// same file, so it must be self-hosted alongside the main bundle.
 const files = ["pdf.min.mjs", "pdf.worker.min.mjs"];
 
 if (!existsSync(resolve(buildDir, files[0]))) {

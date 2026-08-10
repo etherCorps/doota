@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Generate iOS apple-touch-startup-image splash screens: the Doota logo centered
 // on the brand-dark background, at every current + recent iPhone/iPad pixel size,
-// portrait AND landscape. iOS matches a startup image ONLY by an exact media
+// portrait and landscape. iOS matches a startup image only by an exact media
 // query (device CSS size + DPR + orientation), so we emit one <link> per device
 // per orientation. Re-run when Apple ships a new resolution:
 //   node apps/web/scripts/gen-ios-splash.mjs   (from repo root, or `node scripts/...` in apps/web)
@@ -19,7 +19,7 @@ mkdirSync(outDir, { recursive: true });
 const BG = { r: 0x15, g: 0x17, b: 0x1e, alpha: 1 }; // manifest background_color
 const logoSvg = readFileSync(join(staticDir, 'favicon.svg'));
 
-// [cssWidth, cssHeight, devicePixelRatio] in PORTRAIT. Covers the current iPhone
+// [cssWidth, cssHeight, devicePixelRatio] in portrait. Covers the current iPhone
 // lineup + recent legacy + the iPad sizes. Multiple models share a pixel size;
 // we dedupe the images but still emit a media query per model.
 const devices = [

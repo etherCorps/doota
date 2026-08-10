@@ -18,7 +18,7 @@ try {
 }
 
 // SETUP_TOKEN is required from the deployer (the app hard-requires it at
-// boot in production — the first admin is created with it). Fail the DEPLOY,
+// boot in production; the first admin is created with it). Fail the deploy,
 // not the running worker.
 if (!process.env.SETUP_TOKEN || process.env.SETUP_TOKEN.length < 8) {
   throw new Error(
@@ -26,7 +26,7 @@ if (!process.env.SETUP_TOKEN || process.env.SETUP_TOKEN.length < 8) {
   );
 }
 
-// VAPID halves come in pairs — a mismatched pair breaks push silently, so
+// VAPID halves come in pairs, and a mismatched pair breaks push silently, so
 // providing exactly one is a hard error (both or neither; neither → minted
 // into stack state, see secrets.ts).
 if (!process.env.VAPID_PUBLIC_KEY !== !process.env.VAPID_PRIVATE_KEY) {
@@ -41,14 +41,14 @@ export const optionalSecret = (envVarName: string) =>
 export const optionalVar = (envVarName: string) =>
   process.env[envVarName] ? { [envVarName]: process.env[envVarName]! } : {};
 
-// Custom domains come from ORIGINS in the deploy env, never hardcode:
-// comma-separated full origins WITH protocol (the app-wide standard — the
+// Custom domains come from ORIGINS in the deploy env, never hardcoded:
+// comma-separated full origins with protocol (the app-wide standard; the
 // same list feeds better-auth's allowed hosts). First entry is canonical,
 // the rest become aliases; unset → no custom domain, the app answers on
 // workers.dev.
 //
 // Normalize before anything consumes it: a bare hostname gets https://
-// prepended — the app validates each entry as a URL at boot, so shipping a
+// prepended. The app validates each entry as a URL at boot, so shipping a
 // protocol-less value would deploy a 500ing worker.
 const normalizedOrigins = (process.env.ORIGINS ?? "")
   .split(",")

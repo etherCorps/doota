@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * AUTH BOUNDARY GUARD (grep-based; the project has no ESLint).
+ * Auth boundary guard (grep-based; the project has no ESLint).
  *
  * Enforces the single-boundary rule: Better Auth internals and direct writes to
- * Better Auth-owned tables live ONLY under src/lib/server/auth/. App code must
+ * Better Auth-owned tables live only under src/lib/server/auth/. App code must
  * import typed functions from the boundary instead.
  *
- * Fails the build if, OUTSIDE src/lib/server/auth/, any file:
+ * Fails the build if, outside src/lib/server/auth/, any file:
  *   - touches `$context` or `internalAdapter` (undocumented internal API), or
  *   - runs `.insert/.update/.delete(schema.…)` (a direct auth-table write).
  *
@@ -31,7 +31,7 @@ const RULES = [
   { re: /\$context\b/, msg: "$context (Better Auth internal) — use a boundary function" },
   { re: /\binternalAdapter\b/, msg: "internalAdapter (Better Auth internal) — use a boundary function" },
   {
-    // Only Better Auth-OWNED tables are off-limits — app tables (mail, calendar,
+    // Only Better Auth-owned tables are off-limits; app tables (mail, calendar,
     // notes, …) are freely writable. Match `schema.<authTable>` in a write call.
     re: /\.(insert|update|delete)\(\s*schema\.(user|session|account|verification|organization|member|invitation|twoFactor|passkey|rateLimit)\b/,
     msg: "direct auth-table write — route through auth.api or a boundary escape hatch",

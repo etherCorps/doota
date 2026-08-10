@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Email-free super-admin genesis AND recovery — the guaranteed floor that works
- * with no web layer and no mail. Deploy access (running this) is the trust root.
+ * Email-free super-admin genesis and recovery: the floor that works with no web
+ * layer and no mail. Deploy access (running this) is the trust root.
  *
  * Two modes, auto-detected by whether the super-admin already exists:
  *
  *   GENESIS  (no super-admin yet): creates the first super-admin with a password
  *            and enrolls TOTP. Prints the otpauth:// URI + backup codes for you
- *            to scan into an authenticator. NO email is sent.
+ *            to scan into an authenticator. No email is sent.
  *
  *   RESET    (super-admin exists): resets the password; optional --clear-2fa.
  *
@@ -129,7 +129,7 @@ const userId = randomUUID();
 const name = opt("--name") || email.split("@")[0];
 const hash = await hashPassword(password);
 
-// TOTP: mirror better-auth's twoFactor enable — store an ENCRYPTED secret, and
+// TOTP: mirror better-auth's twoFactor enable. Store an encrypted secret, and
 // build the same otpauth URI from the raw secret so scanning matches verify().
 const totpSecret = generateRandomString(32);
 const encryptedSecret = await symmetricEncrypt({ key: secret, data: totpSecret });

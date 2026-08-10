@@ -8,10 +8,10 @@ import * as Redacted from "effect/Redacted";
 
 /**
  * State-backed secrets: a provided env value always wins; otherwise a value
- * is minted ONCE and persisted in the stack state store, so every later
- * deploy — local or CI, where no .env survives — reuses the same value
- * (a fresh MAIL_DEK would make previously stored mail unreadable; a fresh
- * BETTER_AUTH_SECRET would log everyone out). Resources are declared
+ * is minted once and persisted in the stack state store, so every later
+ * deploy (local or CI, where no .env survives) reuses the same value. A fresh
+ * MAIL_DEK would make previously stored mail unreadable; a fresh
+ * BETTER_AUTH_SECRET would log everyone out. Resources are declared
  * unconditionally so minted values stay in state even while an env override
  * is in use.
  */
@@ -39,7 +39,7 @@ export const stateSecret = (
 /**
  * State-backed VAPID (web-push) P-256 keypair. `Alchemy.Random` only mints
  * flat bytes; push needs a real keypair, so this custom resource mints one in
- * `reconcile` and persists it in stack state — every deploy (local or CI)
+ * `reconcile` and persists it in stack state, so every deploy (local or CI)
  * reuses the same pair. Same lifecycle as Random: client-side only, nothing
  * remote to delete or list.
  */

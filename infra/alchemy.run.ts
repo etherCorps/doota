@@ -13,19 +13,19 @@ import { hexToBase64, stateSecret, VapidKeyPair, VapidKeyPairProvider } from "./
  * mail-jobs) plus every shared resource they bind (D1, KV, R2, the three
  * queues, the MailEventHub Durable Object, the Email Service sender).
  *
- * Full guide — stages, env vars, secret minting, CI — lives in ./README.md.
+ * Full guide (stages, env vars, secret minting, CI) lives in ./README.md.
  * The short version:
- *   - EVERY stage suffixes EVERY physical name (`doota-<stage>`, …) — the
+ *   - Every stage suffixes every physical name (`doota-<stage>`, …). The
  *     stack never touches bare names, so nothing deployed manually (e.g. a
- *     wrangler-managed `doota`) can ever be overwritten. Default stage is
+ *     wrangler-managed `doota`) can be overwritten. Default stage is
  *     `dev_<username>`; CI deploys `--stage prod`.
- *   - NEVER deploy `--stage production`: that stage's state (from an early
+ *   - Don't deploy `--stage production`: that stage's state (from an early
  *     bare-name run) claims the manually-managed bare workers, and reusing
  *     it would rename/delete them. The stage name is retired.
  *   - secrets: env wins; absent ones are minted once into stack state.
  *   - custom domains come from ORIGINS (see env.ts).
  *   - D1 migrations from ../drizzle apply on every deploy (create included).
- *   - run from THIS folder; build the web app first (`pnpm infra:deploy`
+ *   - run from this folder; build the web app first (`pnpm infra:deploy`
  *     at the root does both).
  */
 export default Alchemy.Stack(
@@ -35,21 +35,21 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    // EVERY stage suffixes every physical name — self-labelling, collision-
-    // free, and structurally incapable of overwriting anything deployed
-    // manually under the bare names. Cloudflare names allow [a-z0-9-] —
-    // sanitize the stage (default `dev_<username>` contains an underscore).
+    // Every stage suffixes every physical name, so a deploy can't overwrite
+    // anything deployed manually under the bare names. Cloudflare names allow
+    // [a-z0-9-], so sanitize the stage (default `dev_<username>` contains an
+    // underscore).
     const stage = yield* Alchemy.Stage;
     if (stage === "production") {
       // Retired: this stage's state claims the manually-managed bare-name
       // workers (from an early bare-name deploy); reusing it would rename
-      // them to suffixed names and DELETE the bare originals. Use `prod`.
+      // them to suffixed names and delete the bare originals. Use `prod`.
       throw new Error('Stage "production" is retired — deploy --stage prod instead (see alchemy.run.ts header).');
     }
     const stageSuffix = stage.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const named = (baseName: string) => `${baseName}-${stageSuffix}`;
 
-    // ── Shared resources (fresh per stage — never the bare manual names) ──
+    // ── Shared resources (fresh per stage, not the bare manual names) ──
     const database = yield* Cloudflare.D1.Database("Database", {
       name: named("doota"),
       migrationsDir: "../drizzle",
@@ -88,8 +88,8 @@ export default Alchemy.Stack(
         : mintedVapid.privateKey,
     };
 
-    // ── mail-jobs: outbound consumer + cron sweep; HOSTS the MailEventHub DO.
-    // Deployed first — the other two bind its DO cross-script.
+    // ── mail-jobs: outbound consumer + cron sweep; hosts the MailEventHub DO.
+    // Deployed first, since the other two bind its DO cross-script.
     const mailJobsWorker = yield* Cloudflare.Worker("MailJobs", {
       name: named("doota-mail-jobs"),
       main: "../apps/mail-jobs/src/index.ts",
@@ -140,7 +140,7 @@ export default Alchemy.Stack(
         MAIL_QUEUE: inboundQueue,
         // Rules-engine `forward` action + vacation auto-replies enqueue
         // outbound sends from the inbound consumer (consumed by mail-jobs).
-        // Optional in MailEnv — without it those features silently no-op.
+        // Optional in MailEnv; without it those features silently no-op.
         MAIL_OUT_QUEUE: outboundQueue,
         // Inbound delivery produces the mail.received webhook event.
         WEBHOOK_QUEUE: webhookQueue,
@@ -173,10 +173,10 @@ export default Alchemy.Stack(
       dev: { mode: "external", url: "http://localhost:5173" },
       compatibility,
       observability: workerObservability,
-      // Custom domain(s) from ORIGINS (wrangler's `custom_domain: true`
-      // routes equivalent): canonical + aliases all serve the worker. Unset →
-      // prop omitted, which leaves existing attachments unmanaged and stage
-      // deploys on workers.dev.
+      // Custom domain(s) from ORIGINS (equivalent to wrangler's
+      // `custom_domain: true` routes): canonical + aliases all serve the
+      // worker. Unset → prop omitted, which leaves existing attachments
+      // unmanaged and stage deploys on workers.dev.
       ...(canonicalDomain
         ? {
             domain: {

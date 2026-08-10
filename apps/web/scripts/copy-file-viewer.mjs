@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Self-host the file-viewer runtime + renderer assets (no-CDN guard: everything
-// serves from OUR origin). Runs at prepare time; output is GITIGNORED (159 MB of
-// vendor workers/wasm — derived from node_modules, never committed).
+// serves from our origin). Runs at prepare time; output is gitignored (159 MB of
+// vendor workers/wasm, derived from node_modules, not committed).
 //
 //  - static/file-viewer/               ← file-viewer-copy-assets tree (workers,
 //                                        wasm, fonts, vendor bundles)
 //  - static/file-viewer-runtime.iife.js ← the @file-viewer/web-full IIFE the
 //                                        viewer shell loads as a classic script
 //
-// Cloudflare Workers static assets cap a single file at 25 MiB — anything over
+// Cloudflare Workers static assets cap a single file at 25 MiB; anything over
 // is dropped (currently only the typst wasm compiler; typst preview falls back
 // to download). Fails soft when deps aren't installed yet (CI order).
 import { execFileSync } from "node:child_process";
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// The file-viewer packages live in the STANDALONE tools/file-viewer-assets
+// The file-viewer packages live in the standalone tools/file-viewer-assets
 // package (own lockfile, outside the workspace): inside apps/web their data
 // renderer's sql.js/pg peers forked drizzle-orm into two type-incompatible
 // instances (1000+ type errors). See that package.json's note.
@@ -43,9 +43,9 @@ if (!existsSync(iife)) {
 	process.exit(0);
 }
 
-// Copy the web-full dist tree DIRECTLY — the file-viewer-copy-assets CLI's
-// bundled tree ships only vendor/ + wasm/ and MISSES the lazy renderer chunks
-// (renderers/*.iife.js, assets/*) the IIFE loads at render time; the live
+// Copy the web-full dist tree directly: the file-viewer-copy-assets CLI's
+// bundled tree ships only vendor/ + wasm/ and misses the lazy renderer chunks
+// (renderers/*.iife.js, assets/*) the IIFE loads at render time. The live
 // symptom was "Failed to load Word renderer from .../renderers/word.iife.js".
 rmSync(assetsDir, { recursive: true, force: true });
 mkdirSync(assetsDir, { recursive: true });

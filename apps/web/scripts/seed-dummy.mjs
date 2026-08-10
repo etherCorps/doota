@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Seed dummy test data into the local (or --remote) D1: one active org, a shared
 // support@ mailbox, 100 member users (each with a personal mailbox), and ~100
-// threads of encrypted email addressed to support@ — so the mail client, search,
+// threads of encrypted email addressed to support@, so the mail client, search,
 // admin member list, and oversight all have realistic data to render.
 //
 //   node scripts/seed-dummy.mjs            # local D1 (npm run dev)
 //   node scripts/seed-dummy.mjs --remote   # deployed D1  (careful!)
 //
-// Content is encrypted with the SAME envelope as src/lib/server/mail/crypto.ts
-// and indexed with the SAME blind tokens as search.ts, using MAIL_DEK /
+// Content is encrypted with the same envelope as src/lib/server/mail/crypto.ts
+// and indexed with the same blind tokens as search.ts, using MAIL_DEK /
 // MAIL_SEARCH_KEY. If those aren't set in .dev.vars/.env, fresh keys are generated
 // and written to .dev.vars so the dev worker decrypts what we seed.
 
@@ -190,7 +190,7 @@ async function build() {
     P(`INSERT INTO mailbox_access (id,user_id,mailbox_id,can_manage,can_send,created_at) VALUES (${esc(uuid())},${esc(p.id)},${esc(mbId)},1,1,${now});`);
   }
 
-  // Grant support@ to a handful of members (a real shared mailbox) AND to every
+  // Grant support@ to a handful of members (a real shared mailbox) and to every
   // existing real user (so whoever is logged into dev sees the seeded inbox).
   for (let i = 0; i < 6; i++) {
     P(`INSERT INTO mailbox_access (id,user_id,mailbox_id,can_manage,can_send,created_at) VALUES (${esc(uuid())},${esc(people[i].id)},${esc(supportMailboxId)},${i === 0 ? 1 : 0},1,${now});`);
