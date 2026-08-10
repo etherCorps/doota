@@ -9,11 +9,11 @@ import { log } from "./log";
  * `mail-in` handler — Cloudflare Email Routing catch-all target. Runs merged
  * into the SvelteKit Worker (one script, extra handler) via the wrapper entry.
  *
- * Bucket-first, accept-and-enqueue: do the MINIMUM so a processing backlog or
+ * Bucket-first, accept-and-enqueue: do the minimum so a processing backlog or
  * outage affects processing, never receipt. No parsing, no threading here. The
- * Cloudflare API is NEVER called — recipient resolution reads cached D1 only.
+ * Cloudflare API is never called; recipient resolution reads cached D1 only.
  *
- * Email Routing invokes this ONCE PER RECIPIENT when a message hits several of
+ * Email Routing invokes this once per recipient when a message hits several of
  * our addresses; that's expected — each invocation contributes its own delivery
  * and downstream dedupes by Message-ID.
  */
@@ -107,7 +107,7 @@ export async function handleEmail(
   const authResults = message.headers.get("authentication-results");
   const dmarcPass = isDmarcPass(authResults);
   // Spam-spike observability (build guide, Phase 5): the classifier is built
-  // against OBSERVED headers, not assumptions. Debug-level: watch
+  // against observed headers, not assumptions. Debug-level: watch
   // in.auth_headers on a real deployment to verify what CF actually sends.
   log.debug("in.auth_headers", {
     authResults,
@@ -117,7 +117,7 @@ export async function handleEmail(
   const keyId = messageIdHeader ? safeKey(messageIdHeader) : await sha256Hex(rawBuf);
   const r2RawKey = `raw/${resolved.orgId}/${keyId}`;
 
-  // Idempotent put — same key overwrites identical bytes; a redelivery is a no-op.
+  // Idempotent put: same key overwrites identical bytes; a redelivery is a no-op.
   // Stored gzip+encrypted at rest (zero-access): no plaintext email lives in R2.
   const ck = await importKey(env.MAIL_DEK);
   await putEncryptedBlob(env.MAIL_RAW, r2RawKey, ck, rawBuf, {

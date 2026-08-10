@@ -5,8 +5,8 @@
  *
  * D1 stays the source of truth: `session.storeSessionInDatabase` and
  * `verification.storeInDatabase` make Better Auth write sessions and verification
- * values to BOTH stores. Reads hit KV first and fall back to D1 on a miss, so
- * this is a cache, never the authority — revocation and single-use consumption
+ * values to both stores. Reads hit KV first and fall back to D1 on a miss, so
+ * this is a cache, never the authority. Revocation and single-use consumption
  * are enforced on D1 (consume deletes the KV copy), and KV's eventual consistency
  * (≤60s global propagation) only affects cache warmth, not correctness.
  *

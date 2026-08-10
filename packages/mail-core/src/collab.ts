@@ -13,9 +13,9 @@ import type { WebPushEnv } from "./web-push";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Assignment + system events (Task 5). System events are persisted ONLY for
- * genuinely shared mailboxes (>1 access grant); a personal mailbox emits none,
- * so the solo experience gains no timeline noise.
+ * Assignment + system events (Task 5). System events are persisted only for
+ * shared mailboxes (>1 access grant); a personal mailbox emits none, so the solo
+ * timeline gains no noise.
  */
 
 export type SystemEventDTO = {
@@ -122,7 +122,7 @@ export async function assignThread(
 
 /**
  * Emit a placement-change event (archived/unarchived by a user). Shared mailboxes
- * only. Called by the triage move path AFTER the placement has changed.
+ * only. Called by the triage move path after the placement has changed.
  */
 export async function emitPlacementEvent(
   db: Db,

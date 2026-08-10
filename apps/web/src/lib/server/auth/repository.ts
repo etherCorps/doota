@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * AUTH BOUNDARY — repository reads.
+ * Auth boundary — repository reads.
  *
  * Reads that join Better Auth-owned tables with app data. Reads may use Drizzle,
- * but ONLY from here (or other files under src/lib/server/auth/). Intention-named,
+ * but only from here (or other files under src/lib/server/auth/). Intention-named,
  * not generic CRUD.
  */
 import { eq } from "drizzle-orm";

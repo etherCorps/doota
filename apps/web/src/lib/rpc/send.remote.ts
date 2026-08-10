@@ -12,7 +12,7 @@ import { resolveSender } from "@doota/mail-core/resolver";
 
 /**
  * Send trigger surfaces (Part I). App-session sends go through these remote
- * functions, gated by can()'s mailbox SEND capability — the SAME check the API
+ * functions, gated by can()'s mailbox send capability, the same check the API
  * key path and the consumer preflight use (no parallel permission path). No
  * compose UI here; this is the callable seam.
  */

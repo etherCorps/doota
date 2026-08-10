@@ -37,7 +37,7 @@ export function pushSupported(): boolean {
 	return supported();
 }
 
-/** Is there a live push subscription in THIS browser right now. */
+/** Is there a live push subscription in this browser right now. */
 export async function isPushSubscribed(): Promise<boolean> {
 	if (!supported()) return false;
 	try {
@@ -48,14 +48,14 @@ export async function isPushSubscribed(): Promise<boolean> {
 	}
 }
 
-/** Outcome of an enable attempt — lets the settings UI say WHY it failed instead
+/** Outcome of an enable attempt. Lets the settings UI say why it failed instead
  * of one generic error, and guarantees "ok" means the server has the subscription
  * (not just the browser), so app-closed delivery actually works. */
 export type PushEnableResult = 'ok' | 'unsupported' | 'denied' | 'no-vapid' | 'failed';
 
-/** Subscribe this browser AND persist to the server. Idempotent (reuses an
+/** Subscribe this browser and persist to the server. Idempotent (reuses an
  * existing subscription). Call after permission is granted, and on load when
- * permission is already on. Returns the true outcome — 'ok' only when the
+ * permission is already on. Returns the true outcome: 'ok' only when the
  * server accepted the subscription. */
 export async function subscribeToPush(): Promise<PushEnableResult> {
 	if (!supported()) return 'unsupported';
@@ -73,8 +73,8 @@ export async function subscribeToPush(): Promise<PushEnableResult> {
 		const p256dh = keyOf(sub, 'p256dh');
 		const auth = keyOf(sub, 'auth');
 		if (!p256dh || !auth) return 'failed';
-		// Persist to the server — this is what makes app-closed delivery work, so
-		// a failure here means NOT enabled (a browser subscription alone delivers
+		// Persist to the server. This is what makes app-closed delivery work, so
+		// a failure here means not enabled (a browser subscription alone delivers
 		// nothing). Await it: the caller decides success on the full round-trip.
 		await savePushSubscription({ endpoint: sub.endpoint, p256dh, auth, userAgent: navigator.userAgent });
 		return 'ok';

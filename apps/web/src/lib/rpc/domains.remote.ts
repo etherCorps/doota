@@ -34,7 +34,7 @@ import {
 } from "$lib/server/cloudflare.js";
 
 /**
- * Domain onboarding is superadmin-only and the ONLY writer of Cloudflare state.
+ * Domain onboarding is superadmin-only and the only writer of Cloudflare state.
  * D1 stores just domain, zone_id, org mapping and the lifecycle `status`; the
  * live DNS/DKIM/routing truth is fetched from CF for settings screens only.
  */
@@ -56,7 +56,7 @@ function requireSuperadmin() {
 
 /**
  * Create the org for a domain (super-admin becomes owner) if missing, then set
- * its status/zone. ONLY called after a Cloudflare success — so the DB never
+ * its status/zone. Only called after a Cloudflare success, so the DB never
  * holds a domain that CF doesn't have. Idempotent (reuses an existing org).
  */
 async function upsertOrg(
@@ -84,7 +84,7 @@ async function upsertOrg(
 
 /**
  * Wire mail on an active zone, then create/activate the org. CF first: if wiring
- * fails, NO org is written (or an existing one drops to `error`), so the DB never
+ * fails, no org is written (or an existing one drops to `error`), so the DB never
  * claims a domain CF hasn't accepted.
  */
 async function wireAndActivate(
@@ -108,9 +108,9 @@ async function wireAndActivate(
   if (sending.returnPathDomain) {
     await tryCatch(mirrorReturnPathDomain(getRequestEvent().locals.db, orgId, sending.returnPathDomain));
   }
-  // A domain just went live — the first working sending path now exists. If the
+  // A domain just went live, so the first working sending path now exists. If the
   // super-admin who onboarded it hasn't verified their (external) primary email,
-  // auto-send that verification now so they never have to trigger it by hand.
+  // auto-send that verification now so they don't have to trigger it by hand.
   // Best-effort: a failure here must not fail the activation. Covers both entry
   // points, since onboardDomain and refreshDomain both route through here.
   await autoSendSuperadminVerify();
@@ -136,8 +136,8 @@ async function autoSendSuperadminVerify() {
 }
 
 /**
- * Onboard a domain NOT yet configured on Cloudflare: create/find the zone, and —
- * only on CF success — wire mail + create the org. If the zone is still pending
+ * Onboard a domain not yet configured on Cloudflare: create/find the zone, then,
+ * only on CF success, wire mail + create the org. If the zone is still pending
  * we surface the assigned nameservers and persist a pending org (the zone exists
  * on CF, so we must track it to poll later).
  */
@@ -161,7 +161,7 @@ export const onboardDomain = command(
       };
     }
 
-    // CF FIRST — the org row is only written after Cloudflare succeeds.
+    // CF first: the org row is only written after Cloudflare succeeds.
     let zone;
     try {
       zone = await zoneCreate(domain);
@@ -178,7 +178,7 @@ export const onboardDomain = command(
       return { success: true as const, orgId, status: "active" as ZoneOnboardStatus, nameServers: [] };
     }
 
-    // Zone created but not active yet — persist a pending org to poll later.
+    // Zone created but not active yet: persist a pending org to poll later.
     const orgId = await upsertOrg(domain, zone.status, zone.id);
     return {
       success: true as const,
@@ -190,7 +190,7 @@ export const onboardDomain = command(
 );
 
 /**
- * Link a domain ALREADY onboarded on the Cloudflare dashboard: no CF writes —
+ * Link a domain already onboarded on the Cloudflare dashboard: no CF writes,
  * just verify Email Routing is ready and sync it into our DB as active. For a
  * zone the operator configured themselves.
  */
@@ -248,7 +248,7 @@ export const refreshDomain = command(z.string(), async (orgId) => {
     const mail = await inspectZoneMail(org.zoneId);
     if (!mail.catchAllToWorker(MAIL_IN_WORKER_NAME)) {
       await createRoutingRule(org.zoneId, MAIL_IN_WORKER_NAME);
-      // Just fixed it — resolve any outstanding superadmin routing_issue bells.
+      // Just fixed it: resolve any outstanding superadmin routing_issue bells.
       await syncRoutingIssue(locals.db, org.id, true).catch(() => {});
     }
   }
@@ -298,9 +298,9 @@ export const listCloudflareZones = command(async () => {
 });
 
 /**
- * Update an org's BIMI profile: display name + logo URL. Improves mail
- * deliverability/branding (BIMI advertises a verified logo). Editable by a
- * superadmin or the org's owner/admin — never touches Cloudflare.
+ * Update an org's BIMI profile: display name + logo URL. BIMI advertises a
+ * verified logo for deliverability/branding. Editable by a superadmin or the
+ * org's owner/admin; never touches Cloudflare.
  *
  * ponytail: logo is a URL string, not an upload. BIMI needs an HTTPS SVG Tiny-PS;
  * add upload + VMC validation when a customer actually needs the blue check.
@@ -388,7 +388,7 @@ const REQUIRE_2FA_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * Toggle the org-wide 2FA mandate (owner/admin only). Enabling sets a 7-day
  * grace deadline so existing members are prompted first, then blocked at the
- * guard — flipping to instant lockout would be a support incident. Disabling
+ * guard. Flipping to instant lockout would be a support incident. Disabling
  * clears the deadline. API keys are exempt by construction (docs/2fa.md).
  */
 export const setOrgRequire2fa = command(
@@ -412,7 +412,7 @@ export const setOrgRequire2fa = command(
 );
 
 /**
- * Every DNS record in the org's Cloudflare zone — the apex and all subdomains —
+ * Every DNS record in the org's Cloudflare zone (the apex and all subdomains),
  * for the operator's full view of what's published. Superadmin only; fetched
  * live, never persisted.
  */
@@ -428,7 +428,7 @@ export const domainDnsRecords = command(z.string(), async (orgId) => {
 });
 
 /**
- * BIMI — the verified-logo badge. One TXT record at `default._bimi.<apex>`
+ * BIMI, the verified-logo badge. One TXT record at `default._bimi.<apex>`
  * pointing at a public HTTPS square SVG Tiny-PS (plus an optional VMC cert for
  * the blue check). Inbox providers only show the logo when DMARC is enforcing
  * (p=quarantine|reject), so the status surfaces DMARC alongside the record.
@@ -513,7 +513,7 @@ export const mailRoutingConfig = command(z.string(), async (orgId) => {
   const { zoneId, apex } = await orgZone(orgId);
   const config = await getRoutingConfig(zoneId, apex);
   // Catch-all truth: routing can be enabled while the catch-all was never
-  // pointed at the mail-in Worker (onboarding before the Worker deployed —
+  // pointed at the mail-in Worker (onboarding before the Worker deployed;
   // createRoutingRule tolerates that and leaves it unset). Surface it so the
   // UI can say "refresh to retry" instead of failing silently. null = can't
   // judge (no MAIL_IN_WORKER_NAME configured, e.g. local dev).
@@ -526,7 +526,7 @@ export const mailRoutingConfig = command(z.string(), async (orgId) => {
   await mirrorSubaddressing(locals.db, orgId, config.supportSubaddress);
   await mirrorRoutingSubdomains(locals.db, orgId, config.subdomains);
   // Bell truth rides the same inspection: detached raises a routing_issue
-  // notification for every superadmin, attached resolves them. Best-effort —
+  // notification for every superadmin, attached resolves them. Best-effort:
   // a notification hiccup must not fail the config read.
   if (catchAllAttached !== null) {
     await syncRoutingIssue(locals.db, orgId, catchAllAttached).catch(() => {});

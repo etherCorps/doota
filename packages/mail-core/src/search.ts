@@ -7,11 +7,11 @@ import { b64ToBytes } from "./crypto";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Blind-token search for NOTES (note_fts). Each word is turned into an HMAC token
+ * Blind-token search for notes (note_fts). Each word is turned into an HMAC token
  * with a SEARCH_KEY that never touches D1, so the notes index reveals nothing
  * about the plaintext. Notes stay blind because they're private annotations.
  *
- * MESSAGE search moved to `search-index.ts` (plaintext FTS5, readable index) —
+ * Message search moved to `search-index.ts` (plaintext FTS5, readable index) —
  * a deliberate posture choice for real ranking/prefix/phrase; see SECURITY docs.
  * SEARCH_KEY is an instance secret, distinct from the content DEK (crypto.ts).
  */

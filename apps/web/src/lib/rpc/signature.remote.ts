@@ -8,7 +8,7 @@ import { sanitizeEmailHtml } from "@doota/mail-core/sanitize-email";
 import { cachedSendIdentities, kvCached, invalidateUserMailCache } from "$lib/server/mail-cache.js";
 
 /**
- * Per-(user, mailbox) email signatures. A signature belongs to the SENDER, so a
+ * Per-(user, mailbox) email signatures. A signature belongs to the sender, so a
  * user can only read/write signatures for mailboxes they may send from
  * (listSendIdentities = the canSend + can() basis). Injected into the composer
  * client-side; sanitized here on write so a stored signature can't smuggle
@@ -45,7 +45,7 @@ export type MailboxSignature = {
  * keeps working everywhere. */
 export const myMailboxSignatures = query(async (): Promise<MailboxSignature[]> => {
   const user = requireUser();
-  // KV-cached (sig:v2:{user}, 5min) — read on every compose/reply open; deleted
+  // KV-cached (sig:v2:{user}, 5min), read on every compose/reply open; deleted
   // on setMailboxSignature and on grant changes (invalidateUserMailCache).
   return kvCached(`sig:v2:${user.id}`, loadMailboxSignatures, Array.isArray);
 });
@@ -89,7 +89,7 @@ export const setMailboxSignature = command(
     if (!(await sendableMailboxIds()).includes(mailboxId)) {
       error(403, "You can't set a signature for this mailbox.");
     }
-    // Sanitize on the trust boundary — the stored HTML is re-injected into the
+    // Sanitize on the trust boundary: the stored HTML is re-injected into the
     // composer and rides out with the mail. Empty stays empty (cleared).
     let clean = "";
     if (bodyHtml.trim()) {
@@ -97,7 +97,7 @@ export const setMailboxSignature = command(
       if (!sanitized.ok) error(400, "Signature is too large.");
       clean = sanitized.html;
       // A cleared editor still sends full markup (<html>…<p></p>…</html>), which
-      // is non-empty as a string — normalize a content-empty signature back to ""
+      // is non-empty as a string. Normalize a content-empty signature back to ""
       // so it reads "Not set" and the composer doesn't inject a blank paragraph.
       const hasText = clean.replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "").length > 0;
       const hasMedia = /<(img|hr|table|blockquote)\b/i.test(clean);

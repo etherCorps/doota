@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Default YARA rule set (Phase D), bundled at build time — the product NEVER
- * fetches rules from a third party by default (a privacy-positioned self-hosted
- * mail client must not phone home to a security vendor on attachment open). An
- * operator MAY point at their own feed URL later.
+ * Default YARA rule set (Phase D), bundled at build time. The product doesn't
+ * fetch rules from a third party by default — a privacy-positioned self-hosted
+ * mail client shouldn't phone home to a security vendor on attachment open. An
+ * operator can point at their own feed URL later.
  *
- * HONEST SCOPE: these catch KNOWN-family structure — embedded executables,
- * Office macros, PDF JavaScript/auto-actions, script-bearing SVG — plus the
- * EICAR test file. They MISS novel and obfuscated payloads entirely. The UI must
- * say "checked against known threat patterns", never "virus-free".
+ * Scope: these catch known-family structure — embedded executables, Office
+ * macros, PDF JavaScript/auto-actions, script-bearing SVG — plus the EICAR test
+ * file. They miss novel and obfuscated payloads entirely. The UI must say
+ * "checked against known threat patterns", never "virus-free".
  */
 
-// Engine + ruleset version — stamped on every verdict so a rules update is
+// Engine + ruleset version, stamped on every verdict so a rules update is
 // visible and re-scans can be triggered. Bump the rules suffix when editing below.
-// (The gate rescans any persisted verdict whose version doesn't match this.)
+// The gate rescans any persisted verdict whose version doesn't match this.
 export const SCANNER_VERSION = "yara-x-1.19.0+rules-2";
 
 export const DEFAULT_YARA_RULES = String.raw`
@@ -54,8 +54,8 @@ rule pdf_active_content {
   condition:
     uint32(0) == 0x46445025 and any of ($js, $js2, $launch)
 }
-// NOT flagged: /OpenAction and /AA alone. Nearly every benign PDF (Word/LaTeX/
-// print-to-PDF) carries an /OpenAction goto-page action — flagging it marked
+// Not flagged: /OpenAction and /AA alone. Nearly every benign PDF (Word/LaTeX/
+// print-to-PDF) carries an /OpenAction goto-page action; flagging it marked
 // ordinary documents as threats (rules-1 false positive, found live). The
 // dangerous auto-run payloads are JavaScript and Launch actions, both of which
 // still match above regardless of how they're triggered.

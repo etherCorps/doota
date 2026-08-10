@@ -7,20 +7,20 @@ import * as mail from "@doota/db/mail.schema";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Spam classifier (build guide, Phase 5) — tiers 1+2. Tier 3 (per-org blinded
+ * Spam classifier (build guide, Phase 5), tiers 1+2. Tier 3 (per-org blinded
  * Bayes) is a follow-up; the minimum viable ship is lists + tier 1 + tier 2.
  *
  * Precedence, most-explicit first:
  *   1. allow-list  → ham (user said so)
  *   2. block-list  → spam (user said so)
- *   3. tier 2 — correspondent reputation, HAM-ONLY. Hard constraint: "never
- *      seen this sender" is strictly NEUTRAL, never a spam signal — a support
- *      inbox receives most legitimate mail from strangers, and weighting
+ *   3. tier 2 — correspondent reputation, ham-only. Hard constraint: "never
+ *      seen this sender" is strictly neutral, never a spam signal. A support
+ *      inbox receives most legitimate mail from strangers, so weighting
  *      unfamiliarity toward spam would junk real customers on exactly the
  *      mailboxes this product is for. Encoded structurally: tier 2 can only
  *      return ham or fall through.
  *   4. tier 1 — upstream auth verdicts (CF Authentication-Results). Spam only
- *      on an EXPLICIT dmarc=fail; absence of auth results is neutral (false
+ *      on an explicit dmarc=fail; absence of auth results is neutral (false
  *      positives cost far more than false negatives — a lost invoice is worse
  *      than a visible spam).
  *   5. default ham.
@@ -55,8 +55,8 @@ export async function classifyInbound(
     if (listed?.kind === "allow") return { spam: false, reason: "allow_list" };
     if (listed?.kind === "block") return { spam: true, reason: "block_list" };
 
-    // Tier 2 — the correspondent table as a reputation oracle. One indexed
-    // lookup per signal, strongest first.
+    // Tier 2 — correspondent table as reputation oracle. One indexed lookup
+    // per signal, strongest first.
     const row = await db.query.correspondent.findFirst({
       where: and(
         eq(schema.correspondent.mailboxId, input.mailboxId),
@@ -79,7 +79,7 @@ export async function classifyInbound(
       if ((domainReplied[0]?.n ?? 0) > 0) return { spam: false, reason: "domain_replied" };
     }
     if ((row?.messageCount ?? 0) > 0) return { spam: false, reason: "known_sender" };
-    // No row → NEUTRAL. Falls through to tier 1; unfamiliarity is never spam.
+    // No row → neutral. Falls through to tier 1; unfamiliarity is never spam.
   }
 
   // Tier 1: explicit aligned-DMARC failure from the upstream validator.
@@ -120,7 +120,7 @@ export async function removeSenderListEntry(
 }
 
 /**
- * Junk retention (daily cron): HIDE — never delete — spam threads whose last
+ * Junk retention (daily cron): hide (never delete) spam threads whose last
  * activity is past the window. Same semantics as "empty spam" (hidden_at);
  * messages, R2 content, and other mailboxes' state stay untouched.
  */

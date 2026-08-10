@@ -6,5 +6,5 @@
 import { PersistedState } from "runed";
 
 /** Render `-- ` signatures expanded in the thread view instead of collapsing
- * them behind the per-message "···" control. Default OFF (collapsed). */
+ * them behind the per-message "···" control. Default off (collapsed). */
 export const showSignatures = new PersistedState<boolean>("doota:show-signatures", false);

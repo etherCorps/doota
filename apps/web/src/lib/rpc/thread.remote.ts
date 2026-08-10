@@ -44,10 +44,10 @@ function contentKey() {
 
 /**
  * Assert the current user may read this mailbox. Returns the box, whether the
- * user holds an actual mailbox_access GRANT (distinct from org-admin read —
- * internal notes + system events follow the grant, NOT org read: an admin
- * reading a mailbox they aren't a member of sees the mail but never the notes),
- * and `assignedTo`: non-null when this is an assigned-only grantee, in which
+ * user holds an actual mailbox_access grant (distinct from org-admin read).
+ * Internal notes and system events follow the grant, not org read: an admin
+ * reading a mailbox they aren't a member of sees the mail but never the notes.
+ * `assignedTo` is non-null when this is an assigned-only grantee, in which
  * case every read is narrowed to threads assigned to them.
  */
 async function assertMailboxAccess(mailboxId: string) {
@@ -78,7 +78,7 @@ async function assertMailboxAccess(mailboxId: string) {
   return { box, hasGrant, assignedTo };
 }
 
-/** Assert the user holds a mailbox_access GRANT (required to read/write notes,
+/** Assert the user holds a mailbox_access grant (required to read/write notes,
  * assign, or otherwise touch the collaboration layer). */
 async function assertMailboxGrant(mailboxId: string) {
   const { box, hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
@@ -108,7 +108,7 @@ async function assertThreadGrant(mailboxId: string, threadId: string) {
   return { box, state };
 }
 
-/** Assert the user MANAGES this mailbox — a can_manage grant or org-admin.
+/** Assert the user manages this mailbox: a can_manage grant or org-admin.
  * Assignment is a manager action: restricted members can't hand threads around. */
 async function assertMailboxManage(mailboxId: string) {
   const { locals } = getRequestEvent();
@@ -130,13 +130,13 @@ async function assertMailboxManage(mailboxId: string) {
   return box;
 }
 
-// Real placements a thread can be MOVED to. `sent` is a view (threads this
+// Real placements a thread can be moved to. `sent` is a view (threads this
 // mailbox sent something in), listable but never a move target.
 const MOVE_PLACEMENTS = ["inbox", "archived", "spam", "trash"] as const;
 // `sent` and `snoozed` are views, not move targets (see listThreads).
 const VIEW_PLACEMENTS = [...MOVE_PLACEMENTS, "sent", "snoozed"] as const;
 
-// Kept local: a remote-function module may export ONLY remote functions.
+// Kept local: a remote-function module may export only remote functions.
 const PAGE_SIZE = 30;
 
 export const mailboxThreads = query(
@@ -144,7 +144,7 @@ export const mailboxThreads = query(
     mailboxId: z.string().min(1),
     // .catch (not .default): an unknown ?folder= value (e.g. "archive" vs
     // "archived", or a stale bookmark) clamps to inbox instead of failing the
-    // enum — a rejected view query throws client-side and paints a blank list.
+    // enum. A rejected view query throws client-side and paints a blank list.
     placement: z.enum(VIEW_PLACEMENTS).catch("inbox"),
     offset: z.number().int().min(0).default(0),
     /** Folder view: threads carrying this label (placement is ignored). */
@@ -169,7 +169,7 @@ export const mailboxThreads = query(
 );
 
 /**
- * The pinned threads of a view — a SEPARATE small list (partial index), merged
+ * The pinned threads of a view: a separate small list (partial index), merged
  * atop the main list client-side. Not folded into the main sort, so the list
  * index's backward-scan-to-LIMIT is preserved.
  */
@@ -195,14 +195,14 @@ export const mailboxThreadsPinned = query(
   },
 );
 
-/** Unread inbox count for the badge/title — refreshed by live inbound events. */
+/** Unread inbox count for the badge/title, refreshed by live inbound events. */
 export const unreadCount = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
   const { assignedTo } = await assertMailboxAccess(mailboxId);
   const { locals } = getRequestEvent();
   return countUnread(locals.db, { mailboxId, userId: locals.user!.id, assignedTo });
 });
 
-/** Recent unread mail across ALL the caller's mailboxes — feeds the bell's
+/** Recent unread mail across all the caller's mailboxes. Feeds the bell's
  * "New mail" section. App-wide (not tied to the active mailbox). */
 export const recentUnreadMail = query(async () => {
   const { locals } = getRequestEvent();
@@ -224,7 +224,7 @@ export const openThread = query(
     const tAuthz = Date.now();
     const { locals } = getRequestEvent();
     const ck = await contentKey();
-    // Notes/events are included ONLY for grant holders (not org-admin readers).
+    // Notes/events are included only for grant holders (not org-admin readers).
     const dto = await getThread(locals.db, {
       mailboxId,
       threadId,
@@ -247,8 +247,8 @@ export const openThread = query(
 );
 
 /**
- * Mark a thread read for the CURRENT USER in this mailbox (clears their unread
- * dot only — a shared mailbox tracks read state per person). Upsert on
+ * Mark a thread read for the current user in this mailbox (clears their unread
+ * dot only; a shared mailbox tracks read state per person). Upsert on
  * (user, thread, mailbox). Requires an actual grant: triage is a member action,
  * an org-admin oversight reader doesn't mutate mailbox state.
  */
@@ -266,8 +266,8 @@ export const markThreadRead = command(
         set: { lastReadAt: now },
       });
     // Reading a thread from the list also clears its bell notifications (and
-    // pings the stream so the bell + sidebar count drop live) — parity with
-    // opening it from the notification panel. Best-effort; the read itself
+    // pings the stream so the bell + sidebar count drop live), for parity with
+    // opening it from the notification panel. Best-effort: the read itself
     // already succeeded, so a failed bell-clear must not fail the request.
     await tryLog(
       "thread.mark_notifications_read_failed",
@@ -279,15 +279,15 @@ export const markThreadRead = command(
 );
 
 /**
- * Record the viewer's RSVP for a calendar invite (yes/no/maybe) AND, when a
- * valid organizer exists, send a proper iTIP REPLY email to the organizer.
+ * Record the viewer's RSVP for a calendar invite (yes/no/maybe) and, when a
+ * valid organizer exists, send an iTIP REPLY email to the organizer.
  *
- * Guards (all server-authoritative — the card mirrors them, but this is the
- * gate): the uid must belong to an invite in THIS thread; the viewer's mailbox
- * address must be an ATTENDEE (never RSVP as someone else); the REPLY goes to
- * the ORGANIZER ONLY, carrying EXACTLY the replying attendee; a cancelled event
- * or a REPLY-method notification can't be answered; re-answering with the SAME
- * partstat does NOT re-send (lastSentPartstat + enqueueSend idempotency).
+ * Guards (all server-authoritative; the card mirrors them, but this is the
+ * gate): the uid must belong to an invite in this thread; the viewer's mailbox
+ * address must be an attendee (never RSVP as someone else); the REPLY goes to
+ * the organizer only, carrying exactly the replying attendee; a cancelled event
+ * or a REPLY-method notification can't be answered; re-answering with the same
+ * partstat does not re-send (lastSentPartstat + enqueueSend idempotency).
  */
 export const setInviteRsvp = command(
   z.object({
@@ -300,8 +300,8 @@ export const setInviteRsvp = command(
     const { box } = await assertThreadGrant(mailboxId, threadId);
     const { locals } = getRequestEvent();
 
-    // The uid must name an invite carried by a message in THIS thread. Pull the
-    // EFFECTIVE event (highest SEQUENCE) so the REPLY echoes the current invite.
+    // The uid must name an invite carried by a message in this thread. Pull the
+    // effective event (highest SEQUENCE) so the REPLY echoes the current invite.
     const rows = await locals.db
       .select({
         sequence: mail.calendarEvent.sequence,
@@ -321,7 +321,7 @@ export const setInviteRsvp = command(
     if (rows.some((r) => r.isCancelled)) error(409, "This event was cancelled.");
     if (event.method === "REPLY") error(409, "That's a reply notification, not an invitation.");
 
-    // ATTENDEE GATE: the viewer's mailbox address must be on the guest list.
+    // Attendee gate: the viewer's mailbox address must be on the guest list.
     // Never let a user RSVP as an attendee they are not.
     const mbox = await locals.db.query.mailbox.findFirst({
       where: eq(mail.mailbox.id, mailboxId),
@@ -353,8 +353,8 @@ export const setInviteRsvp = command(
         set: { status, updatedAt: now },
       });
 
-    // Decrypt details for the REPLY subject AND to see whether the invite
-    // carried the PROVIDER's own Yes/Maybe/No link for this answer (Google/MS).
+    // Decrypt details for the REPLY subject and to see whether the invite
+    // carried the provider's own Yes/Maybe/No link for this answer (Google/MS).
     let summary: string | null = null;
     let hasProviderLink = false;
     try {
@@ -372,9 +372,9 @@ export const setInviteRsvp = command(
     }
 
     // Send our iTIP REPLY only when: a valid organizer exists, we haven't already
-    // emailed this exact answer, AND the invite has NO provider RSVP link for this
-    // answer. When Google/Microsoft supplied their own link, the card opens THAT
-    // flow (new page) — sending our email too would be a duplicate/conflicting
+    // emailed this exact answer, and the invite has no provider RSVP link for this
+    // answer. When Google/Microsoft supplied their own link, the card opens that
+    // flow (new page); sending our email too would be a duplicate/conflicting
     // response, so the provider flow owns it.
     const organizerValid =
       !!event.organizerEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(event.organizerEmail);
@@ -472,7 +472,7 @@ export const moveThread = command(
 
 /** Snooze: park the thread out of the inbox until `until` (ms epoch, future).
  * The 5-min cron wakes it back to the inbox top, unread (see sweepDueSnoozes).
- * Per-mailbox, like placement — on a shared mailbox it snoozes for the team. */
+ * Per-mailbox, like placement: on a shared mailbox it snoozes for the team. */
 export const snoozeThread = command(
   z.object({
     mailboxId: z.string().min(1),
@@ -493,7 +493,7 @@ export const snoozeThread = command(
 );
 
 /** Manual un-snooze: bring the thread back to the inbox now. Keeps its read
- * state (the user chose to surface it) — unlike the cron wake, which marks unread. */
+ * state (the user chose to surface it), unlike the cron wake, which marks unread. */
 export const unsnoozeThread = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1) }),
   async ({ mailboxId, threadId }) => {
@@ -543,13 +543,13 @@ export const bulkMoveThreads = command(
   },
 );
 
-/** "Empty trash/spam": hides every thread at the placement — never a hard
+/** "Empty trash/spam": hides every thread at the placement. Never a hard
  * delete (messages, R2 content and other mailboxes' state are untouched). */
 export const emptyFolder = command(
   z.object({ mailboxId: z.string().min(1), placement: z.enum(["trash", "spam"]) }),
   async ({ mailboxId, placement }) => {
     const box = await assertMailboxGrant(mailboxId);
-    // Emptying hides the folder for everyone — a mailbox-wide act, not one an
+    // Emptying hides the folder for everyone: a mailbox-wide act, not one an
     // assigned-only member may perform.
     if (box.assignedTo) error(403, "Only a mailbox manager can empty this folder.");
     const { locals } = getRequestEvent();
@@ -619,7 +619,7 @@ export const bulkMarkRead = command(
 );
 
 /** Star / unstar a thread for this mailbox. */
-/** "Always load images from this sender" — per-user display preference, keyed
+/** "Always load images from this sender": per-user display preference, keyed
  * on the caller's identity only (nothing mailbox-scoped to authorize). */
 export const setSenderImageTrust = command(
   z.object({ sender: z.string().min(3).max(320), trusted: z.boolean() }),
@@ -632,8 +632,8 @@ export const setSenderImageTrust = command(
   },
 );
 
-/** Global "always show remote images" — a user-wide default that overrides the
- * per-message block for EVERY sender. Off by default (privacy: remote images are
+/** Global "always show remote images": a user-wide default that overrides the
+ * per-message block for every sender. Off by default (privacy: remote images are
  * tracking beacons). Reads/writes are keyed on the caller's identity only. */
 export const imagesLoadAll = query(async (): Promise<boolean> => {
   const { locals } = getRequestEvent();
@@ -663,8 +663,8 @@ export const starThread = command(
   },
 );
 
-/** Max pins per mailbox — keeps the pinned-list query (and its partial index) a
- * small set the client cheaply merges atop the main list. Enforced HERE, not
+/** Max pins per mailbox. Keeps the pinned-list query (and its partial index) a
+ * small set the client cheaply merges atop the main list. Enforced here, not
  * just in the UI. */
 const MAX_PINS = 10;
 
@@ -719,7 +719,7 @@ export const addNote = command(
   },
 );
 
-/** Teammates who can access this mailbox — the @mention candidate list for the
+/** Teammates who can access this mailbox: the @mention candidate list for the
  * note composer. Fetched once per composer and filtered client-side (no
  * per-keystroke query). Excludes the caller; empty if the caller can't see the
  * mailbox (so it never leaks another mailbox's members). */
@@ -774,7 +774,7 @@ export const deleteNoteById = command(
 );
 
 /**
- * Assign / reassign / unassign a thread within a mailbox. MANAGERS ONLY
+ * Assign / reassign / unassign a thread within a mailbox. Managers only
  * (can_manage grant or org-admin): assignment is what grants an assigned-only
  * member sight of a thread, so it can't be self-served.
  */
@@ -803,7 +803,7 @@ export const assignThread = command(
   },
 );
 
-/** Members who hold access to a mailbox — the assignment picker's options. */
+/** Members who hold access to a mailbox: the assignment picker's options. */
 export const mailboxMembers = query(z.string().min(1), async (mailboxId) => {
   await assertMailboxGrant(mailboxId);
   const { locals } = getRequestEvent();

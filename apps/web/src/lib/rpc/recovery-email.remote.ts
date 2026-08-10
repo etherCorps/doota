@@ -56,7 +56,7 @@ export const setRecoveryEmail = form(recoveryEmailSchema, async ({ recoveryEmail
 });
 
 /**
- * DEFERRED super-admin email verification. The super-admin's external email is
+ * Deferred super-admin email verification. The super-admin's external email is
  * intentionally unverified at genesis (no domain → no sending path). This action
  * becomes usable only once a domain is `active`, so the verification mail has a
  * real path out. Until then the CLI (reset-admin) is the recovery floor.

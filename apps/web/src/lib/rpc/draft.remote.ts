@@ -137,18 +137,18 @@ export const failedSends = query(async () => {
 /**
  * Live send-state events (query.live). The generator subscribes to the user's
  * MailEventHub (Durable Object in doota-mail-jobs, hibernatable WebSocket) and
- * yields each pushed transition — no DB polling anywhere: producers (outbound
- * consumer, event-subscriptions consumer, DSN fallback) notify the hub only
- * when a state actually changed. Clients react by refreshing what they show
- * (ticks in an open thread, failure toasts). Without the binding (vite dev)
- * the stream is silent and the UI falls back to read-time state.
+ * yields each pushed transition. No DB polling: producers (outbound consumer,
+ * event-subscriptions consumer, DSN fallback) notify the hub only when a state
+ * actually changed. Clients react by refreshing what they show (ticks in an
+ * open thread, failure toasts). Without the binding (vite dev) the stream is
+ * silent and the UI falls back to read-time state.
  */
 export const mailEvents = query.live(async function* () {
   const user = requireUser();
   const { platform, request } = getRequestEvent();
   const hub = platform?.env?.MAIL_EVENTS;
   if (!hub) return;
-  // Exit cleanly when the client disconnects — otherwise the reconnect backoff's
+  // Exit cleanly when the client disconnects, otherwise the reconnect backoff's
   // setTimeout dangles as cancelled waitUntil work (the "did not complete" warning).
   const signal = request.signal;
   while (!signal.aborted) {

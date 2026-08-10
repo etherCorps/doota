@@ -2,18 +2,18 @@
 /**
  * Programmatic bearer API keys for external send (Part I). App-owned (Better
  * Auth's apiKey plugin isn't present at the pinned better-auth version) but kept
- * INSIDE the auth boundary: creation, hashing, and verification live here so key
+ * inside the auth boundary: creation, hashing, and verification live here so key
  * handling is auditable in one place, like every other auth concern.
  *
  * A key acts as its owning user. verify() returns the actor identity; the caller
- * runs the SAME can() send-capability check as an interactive session — there is
+ * runs the same can() send-capability check as an interactive session, so there's
  * no parallel permission path. Only the SHA-256 of the secret is stored; the
  * plaintext is returned once at creation and never again.
  *
- * SCOPE: these keys are SEND-ONLY. The single bearer-authenticated endpoint is
+ * Scope: these keys are send-only. The single bearer-authenticated endpoint is
  * POST /api/send (verifyApiKey is imported nowhere else); every other surface
  * requires an interactive session or a distinct secret (e.g. CRON_SECRET). A key
- * grants no account, admin, or read access — only enqueuing outbound mail.
+ * grants no account, admin, or read access, only enqueuing outbound mail.
  */
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -41,7 +41,7 @@ export type ApiKeyActor = {
   orgId: string;
   /** The mailbox the key sends as. Required (non-null) for service keys. */
   mailboxId: string | null;
-  /** Service keys send AS the mailbox directly — no per-user grant is consulted. */
+  /** Service keys send as the mailbox directly; no per-user grant is consulted. */
   isService: boolean;
 };
 
@@ -50,10 +50,10 @@ export type ApiKeyActor = {
  * user-tied keys keep working via the userId path in verifyApiKey / resolveSender. */
 
 /**
- * Mint a SERVICE key against a service mailbox. Returns the PLAINTEXT secret once
- * — only its hash is persisted. The key sends as the mailbox itself (no owning
- * user), so it survives staff turnover; `createdByUserId` is audit only. The
- * caller has already authorized this (org-admin) through can().
+ * Mint a service key against a service mailbox. Returns the plaintext secret
+ * once; only its hash is persisted. The key sends as the mailbox itself (no
+ * owning user), so it survives staff turnover; `createdByUserId` is audit only.
+ * The caller has already authorized this (org-admin) through can().
  */
 export async function createServiceApiKey(
   db: Db,
@@ -101,7 +101,7 @@ export async function verifyApiKey(db: Db, presented: string): Promise<ApiKeyAct
   };
 }
 
-/** A key row for display — NEVER includes the hash or secret. */
+/** A key row for display; never includes the hash or secret. */
 export type ApiKeySummary = {
   id: string;
   name: string | null;

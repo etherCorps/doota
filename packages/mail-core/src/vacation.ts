@@ -10,8 +10,8 @@ import { log } from "./log";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Vacation auto-responder (build guide, Phase 4). The UI is trivial — RFC 3834
- * compliance IS the feature: get it wrong and every Doota instance becomes a
+ * Vacation auto-responder (build guide, Phase 4). The UI is trivial; RFC 3834
+ * compliance is the feature. Get it wrong and every Doota instance becomes a
  * mail-loop participant.
  *
  * Never reply when (each returns a reason string for the test matrix):
@@ -22,17 +22,17 @@ type Db = DrizzleD1Database<typeof schema>;
  *  - list headers present (List-Id / List-Unsubscribe / List-Post)
  *  - our own address is not in To/Cc (Bcc'd or list mail — role bcc)
  *  - our own forward marker is present (rules forward)
- * Always: Auto-Submitted: auto-replied on the outgoing reply — that is what
- * stops the loop with someone ELSE'S correctly-implemented autoresponder.
- * (A null outgoing return-path is not expressible through the Email Service
- * binding — it sets the envelope itself; Auto-Submitted carries the burden.)
+ * Always set Auto-Submitted: auto-replied on the outgoing reply — that's what
+ * stops the loop with someone else's correctly-implemented autoresponder.
+ * (A null outgoing return-path isn't expressible through the Email Service
+ * binding, which sets the envelope itself; Auto-Submitted carries the burden.)
  *
  * Dedupe: one reply per (mailbox, sender) per interval_days, in KV with TTL —
  * self-cleaning, no cron, no table growth.
- * Rate: vacation has its OWN hourly + daily ceilings (a mail bomb must not
- * turn the responder into an amplifier). Replies additionally flow through the
- * normal outbound pipeline and ITS limits — over-limiting is the safe
- * direction for an automation.
+ * Rate: vacation has its own hourly + daily ceilings (a mail bomb must not turn
+ * the responder into an amplifier). Replies also flow through the normal
+ * outbound pipeline and its limits; over-limiting is the safe direction for an
+ * automation.
  */
 
 export type VacationHeaders = { key: string; value: string }[];
@@ -80,7 +80,7 @@ const VACATION_DAILY_CAP = 200;
 export type VacationEnv = OutboundEnv & { AUTH_KV?: KVNamespace };
 
 /**
- * Evaluate + (maybe) send the auto-reply for one inbound delivery. Call AFTER
+ * Evaluate + (maybe) send the auto-reply for one inbound delivery. Call after
  * spam/rules evaluation (junk decision is an input). Best-effort: callers wrap
  * in tryLog, a responder failure never fails the delivery.
  */
@@ -125,7 +125,7 @@ export async function maybeVacationReply(
     if (await env.AUTH_KV.get(dedupeKey)) return { sent: false, reason: "deduped" };
   }
 
-  // Own ceilings, charged BEFORE the send so a mail bomb caps out fast.
+  // Own ceilings, charged before the send so a mail bomb caps out fast.
   const hourly = await chargeCounter(db, "vacation_hour", input.mailboxId, 60 * 60 * 1000, VACATION_HOURLY_CAP, 1, now);
   if (!hourly.ok) return { sent: false, reason: "rate_hourly" };
   const daily = await chargeCounter(db, "vacation_day", input.mailboxId, 24 * 60 * 60 * 1000, VACATION_DAILY_CAP, 1, now);

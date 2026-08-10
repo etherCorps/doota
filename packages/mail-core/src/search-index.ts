@@ -21,17 +21,17 @@ export type SearchScope = {
 };
 
 /**
- * Full-text search over messages. ONE implementation ships today —
+ * Full-text search over messages. One implementation ships today —
  * `PlaintextIndex` (FTS5, readable index; see search-index SQL + SECURITY docs).
  * Callers depend only on this interface, so a blind-token implementation could be
  * added later without touching them. No mode flag is wired for a mode that
- * doesn't exist — just the clean seam.
+ * doesn't exist — just the seam.
  */
 export interface SearchIndex {
   /** Upsert a message's searchable text (idempotent per messageId). */
   index(input: IndexInput): Promise<void>;
   /**
-   * Remove a message from the index. MUST run in the same operation as a hard
+   * Remove a message from the index. Must run in the same operation as a hard
    * purge — a readable index row must never outlive the encrypted message.
    */
   remove(messageId: string): Promise<void>;
@@ -49,7 +49,7 @@ const BODY_WEIGHT = 1.0;
  * a quoted phrase (user used "...") or a lowercased alphanumeric bareword with a
  * trailing `*` for prefix matching. Stripping to [a-z0-9] neutralizes FTS5
  * operators/syntax (", *, :, -, (), NEAR, and stray AND/OR), so raw input can't
- * break the query or inject operators. Tokens join with a space = implicit AND.
+ * break the query or inject operators. Tokens join with a space (implicit AND).
  * Returns "" when nothing usable is left (caller returns no hits).
  */
 export function buildMatch(query: string): string {

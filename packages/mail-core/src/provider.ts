@@ -77,8 +77,8 @@ class CloudflareProvider implements MailProvider {
         ...(headers ? { headers } : {}),
         ...(email.text ? { text: email.text } : {}),
         ...(email.html ? { html: email.html } : {}),
-        // Content MUST be bytes (ArrayBufferView), never a base64 string — the
-        // binding treats strings as RAW content, so base64 text used to arrive
+        // Content must be bytes (ArrayBufferView), never a base64 string — the
+        // binding treats strings as raw content, so base64 text used to arrive
         // as the attachment's literal data (corrupt files at the recipient).
         // Uint8Array also serializes over the remote-binding RPC where a bare
         // ArrayBuffer does not.
@@ -103,10 +103,10 @@ class CloudflareProvider implements MailProvider {
             }
           : {}),
       });
-      // EMAIL_SENDER may be a REMOTE binding, so `res` is an RPC stub at runtime
+      // EMAIL_SENDER may be a remote binding, so `res` is an RPC stub at runtime
       // even though the static type says POJO. Await the id off it, then dispose
-      // the stub — supporting EITHER disposal symbol (remote stubs can expose
-      // asyncDispose, and `Symbol.dispose?.()` alone silently no-ops those) — or
+      // the stub, supporting either disposal symbol (remote stubs can expose
+      // asyncDispose, and `Symbol.dispose?.()` alone silently no-ops those), or
       // the runtime warns ("An RPC stub was not disposed properly"). The finally
       // guarantees disposal even if the read throws. Local POJO binding: no-op.
       try {
@@ -134,7 +134,7 @@ class CloudflareProvider implements MailProvider {
  * Precedence, a few content/display ones, plus any X-* header. Message-ID and
  * everything else are dropped — the binding rejects unknown headers
  * (E_HEADER_NOT_ALLOWED fails the whole send) and sets Message-ID itself.
- * Returns undefined if none survive (so the send omits the field entirely).
+ * Returns undefined if none survive (so the send omits the field).
  */
 const CF_ALLOWED_HEADERS = new Set([
   "in-reply-to",

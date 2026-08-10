@@ -10,7 +10,7 @@ type Db = DrizzleD1Database<typeof schema>;
 /**
  * D1 mirror of the two Cloudflare Email Routing facts the inbound hot path needs
  * but must not fetch from CF: subaddressing on/off, and the routing-subdomain
- * set. Written through by the superadmin CF commands AFTER Cloudflare confirms
+ * set. Written through by the superadmin CF commands after Cloudflare confirms
  * (domains.remote.ts), so CF stays the source of truth and D1 is a read-replica.
  * Every write invalidates the org-domains cache so the resolver sees it at once.
  *

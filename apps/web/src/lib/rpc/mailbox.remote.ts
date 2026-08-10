@@ -67,7 +67,7 @@ async function assertManageOrg(orgId: string) {
 }
 
 /**
- * Assert the actor may manage THIS mailbox — org-admin/superadmin OR a
+ * Assert the actor may manage this mailbox — org-admin/superadmin or a
  * can_manage grant on the mailbox itself. Returns the box for follow-up checks.
  */
 async function assertManageMailbox(mailboxId: string) {
@@ -93,7 +93,7 @@ async function assertManageMailbox(mailboxId: string) {
 }
 
 /**
- * Assert the actor may manage OR send as THIS mailbox — used for read surfaces
+ * Assert the actor may manage or send as this mailbox — used for read surfaces
  * (the send log) that senders, not just managers, are allowed to see.
  */
 async function assertManageOrSendMailbox(mailboxId: string) {
@@ -260,8 +260,8 @@ export const grantMailboxAccess = command(
       ),
       columns: { canManage: true, canSend: true, assignedOnly: true },
     });
-    // A new grant on a SHARED mailbox starts restricted (assigned-only) unless
-    // told otherwise — access is opened per thread by assignment, not by default.
+    // A new grant on a shared mailbox starts restricted (assigned-only) unless
+    // told otherwise: access is opened per thread by assignment, not by default.
     const nextManage = canManage ?? existing?.canManage ?? false;
     await grantAccess(locals.db, {
       userId,
@@ -299,7 +299,7 @@ export const revokeMailboxAccess = command(
 
 // ---- Service-mailbox API keys (admin-issued) --------------------------------
 
-/** Issue a send-only API key against a SERVICE mailbox. Admin/manager only; the
+/** Issue a send-only API key against a service mailbox. Admin/manager only; the
  * key authorizes the mailbox directly (no owning user). Secret shown once. */
 export const createServiceKey = command(
   z.object({ mailboxId: z.string().min(1), name: z.string().trim().min(1, "Name the key so it's identifiable.").max(80) }),

@@ -6,14 +6,14 @@ type Terminal = { kind: 'success' | 'error' | 'note'; message: string; action?: 
 
 /**
  * One toast that carries a whole multi-step operation: a mutable loading line
- * ("Sending… → In queue…") that settles into exactly one terminal state — on
- * the SAME toast, never a second one.
+ * ("Sending… → In queue…") that settles into exactly one terminal state, on
+ * the same toast, never a second one.
  *
  * Built on toast.promise over an internal deferred, because that's the only
  * sonner mode whose loading toast lives until the work settles. A plain
  * toast.loading expires on the default duration, after which a terminal
- * update with the same id finds nothing and ADDS a fresh toast — the
- * "second toast on sent" bug. The promise's own terminal only carries a
+ * update with the same id finds nothing and adds a fresh toast (the
+ * "second toast on sent" bug). The promise's own terminal only carries a
  * message, so action/duration ride a same-type follow-up update (pure
  * in-place merge, no remount).
  */
@@ -39,7 +39,7 @@ export function progressToast(initial: string) {
 		if (terminal.kind === 'error') abort(terminal);
 		else settle(terminal);
 		// Runs after sonner's own .then (registered earlier ⇒ runs first), so
-		// this merges INTO the terminal toast instead of racing it.
+		// this merges into the terminal toast instead of racing it.
 		queueMicrotask(() => {
 			const options = { id, action: terminal.action, duration: terminal.duration };
 			if (terminal.kind === 'success') toast.success(terminal.message, options);
@@ -52,8 +52,8 @@ export function progressToast(initial: string) {
 		id,
 		/** Swap the loading line in place — call as often as the work has phases.
 		 * The huge finite duration defuses a svelte-sonner bug: its `updated`
-		 * effect unconditionally re-arms the auto-close timer on ANY in-place
-		 * update — even on promise-loading toasts — with the 4s default, which
+		 * effect unconditionally re-arms the auto-close timer on any in-place
+		 * update (even on promise-loading toasts) with the 4s default, which
 		 * hid the loading toast mid-flight and let the terminal re-add a second
 		 * one. (Not Infinity: browsers coerce setTimeout(…, Infinity) to 0.)
 		 * Terminal updates then re-arm the timer with their own real duration. */

@@ -22,7 +22,7 @@ import { log } from "./log";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Read model. A thread DTO is assembled from thread + messages + THIS mailbox's
+ * Read model. A thread DTO is assembled from thread + messages + this mailbox's
  * deliveries and thread_state, decrypting content on read. Shaped on JMAP
  * Email/Thread so a future JMAP API is a thin mapping. The timeline is a
  * discriminated union; only external_message is emitted this pass.
@@ -42,7 +42,7 @@ export type ThreadSummary = {
    * avatar faces. */
   participants: string[];
   /** Full distinct participant count (uncapped). >2 = a group thread; the list
-   * renders an avatar stack + this count so it reads as one. */
+   * renders an avatar stack + this count. */
   participantCount: number;
   lastMessageAt: number | null;
   isStarred: boolean;
@@ -58,7 +58,7 @@ export type ThreadSummary = {
 };
 
 // stripHtmlTags: stored stripped bodies are plain text by construction, but
-// odd senders ship HTML inside text/plain — never let markup reach a list row.
+// odd senders ship HTML inside text/plain — don't let markup reach a list row.
 function preview(text: string | null, n = 140): string | null {
   if (!text) return null;
   const clean = stripHtmlTags(text).replace(/\s+/g, " ").trim();
@@ -68,9 +68,9 @@ function preview(text: string | null, n = 140): string | null {
 /**
  * Threads in a mailbox at a placement (inbox/archived/…), newest first.
  *
- * `sent` is a VIEW, not a placement: "threads where this mailbox sent
+ * `sent` is a view, not a placement: "threads where this mailbox sent
  * something" (a delivery with role `from`), whatever their placement short of
- * spam/trash. Gmail semantics — a replied-to sent thread shows in BOTH Sent and
+ * spam/trash. Gmail semantics — a replied-to sent thread shows in both Sent and
  * Inbox; trashing removes it from Sent.
  */
 export async function listThreads(
@@ -85,19 +85,19 @@ export async function listThreads(
     includeCollab?: boolean;
     /** Whose unread state to compute. Absent (no session) → everything unread. */
     userId?: string;
-    /** Assigned-only grantee: show ONLY threads assigned to this user id
+    /** Assigned-only grantee: show only threads assigned to this user id
      * (from assignedOnlyFor; null/undefined = full mailbox). */
     assignedTo?: string | null;
     /** Folder view: threads carrying this label (any placement short of
-     * spam/trash), like `sent` a VIEW — `placement` is ignored when set. */
+     * spam/trash), a view like `sent` — `placement` is ignored when set. */
     labelId?: string;
     /** Pinned-list mode: only pinned threads of this view, newest-pin first.
      * Served by the partial pinned index, so the main list index is untouched. */
     pinnedOnly?: boolean;
   },
 ): Promise<ThreadSummary[]> {
-  // `snoozed` is a VIEW like `sent`: any non-spam/trash thread with a pending
-  // snooze, soonest-to-wake first. Every other placement EXCLUDES snoozed threads
+  // `snoozed` is a view like `sent`: any non-spam/trash thread with a pending
+  // snooze, soonest-to-wake first. Every other placement excludes snoozed threads
   // (they've left the inbox until the cron wakes them — see the where clause).
   const isSnoozedView = input.placement === "snoozed" && !input.labelId;
   const placementCond = input.labelId
@@ -178,14 +178,14 @@ export async function listThreads(
     .offset(input.pinnedOnly ? 0 : (input.offset ?? 0));
 
   // Unread keys on the mailbox mode (same model as unreadCount below):
-  // personal → last_inbound_at (an own send never marks unread), shared →
+  // personal → last_inbound_at (an own send never marks unread); shared →
   // last_activity_at (a teammate's send does).
   const listBox = await db.query.mailbox.findFirst({
     where: eq(schema.mailbox.id, input.mailboxId),
     columns: { isPersonal: true },
   });
 
-  // Per-USER read cursors for these threads (shared-mailbox unread is per person,
+  // Per-user read cursors for these threads (shared-mailbox unread is per person,
   // not per mailbox). One indexed read for the page, keyed to this user.
   const readByThread = new Map<string, number>();
   if (input.userId && states.length) {
@@ -202,7 +202,7 @@ export async function listThreads(
     for (const r of reads) if (r.lastReadAt) readByThread.set(r.threadId, r.lastReadAt.getTime());
   }
 
-  // Latest message per thread (subject + snippet + from) in ONE window-function
+  // Latest message per thread (subject + snippet + from) in one window-function
   // query instead of a findFirst per row — uses message_thread_sent_idx.
   const threadIds = states.map((s) => s.threadId);
   type LatestRow = {
@@ -218,7 +218,7 @@ export async function listThreads(
   const latestByThread = new Map<string, LatestRow>();
   if (threadIds.length) {
     const idList = sql.join(threadIds.map((id) => sql`${id}`), sql`, `);
-    // Personal mailbox: the preview must be the latest message THIS mailbox was a
+    // Personal mailbox: the preview must be the latest message this mailbox was a
     // party to, not the globally-latest (which could be a colleague's reply it
     // can't see). Shared mailbox: whole conversation, so globally-latest. Mirrors
     // getThread's visibility model.
@@ -268,7 +268,7 @@ export async function listThreads(
     const lastMessageAt = latest?.sentAt != null ? Number(latest.sentAt) : null;
     const lastReadAt = readByThread.get(s.threadId);
     // Distinct people on the latest message — from + to + cc, deduped by bare
-    // address (case-insensitive). `participants` caps at 4 (for avatars);
+    // address (case-insensitive). `participants` caps at 4 (avatars);
     // `participantCount` is the full distinct total (>2 = a group thread).
     const seen = new Set<string>();
     const participants: string[] = [];
@@ -317,7 +317,7 @@ export type UnreadNotice = {
 };
 
 /**
- * Recent unread INBOX threads across the given mailboxes, for the notification
+ * Recent unread inbox threads across the given mailboxes, for the notification
  * bell. "Unread" keys on last_inbound_at (a recipient-role message newer than
  * the user's read cursor) so an own send never shows up. Newest first, capped.
  */
@@ -392,7 +392,7 @@ export async function recentUnread(
 }
 
 /**
- * Unread INBOX threads for (mailbox, user): thread newer than the user's read
+ * Unread inbox threads for (mailbox, user): thread newer than the user's read
  * cursor (or never read). One indexed count — feeds the sidebar badge + title.
  */
 export async function countUnread(
@@ -406,9 +406,9 @@ export async function countUnread(
   // "Unread" = the newest relevant message is after the user's read cursor,
   // read straight off the denormalized thread_state columns (no delivery scan,
   // no `thread` join):
-  //  - PERSONAL: only messages delivered here count → last_inbound_at (NULL when
+  //  - personal: only messages delivered here count → last_inbound_at (null when
   //    nothing inbound has landed, so an own-sent-only thread is never unread).
-  //  - SHARED: the whole conversation is visible → last_activity_at (mirrors
+  //  - shared: the whole conversation is visible → last_activity_at (mirrors
   //    thread.last_message_at, the prior authority).
   const newerThanCursor = mbox?.isPersonal
     ? and(
@@ -518,7 +518,7 @@ export async function getThread(
   },
 ): Promise<ThreadDTO | null> {
   // Phase timing (debug-only): openThread was reported slow; these marks say
-  // WHICH wave eats the time (dev proxy vs D1 vs assembly) instead of guessing.
+  // which wave eats the time (dev proxy vs D1 vs assembly) instead of guessing.
   const tStart = Date.now();
   let tPreamble = 0;
   let tMessages = 0;
@@ -557,9 +557,9 @@ export async function getThread(
   if (input.assignedTo && state.assigneeUserId !== input.assignedTo) return null;
   const readCursor = readRow?.lastReadAt ? readRow.lastReadAt.getTime() : null;
 
-  // Visibility model: a SHARED mailbox shows the whole conversation (team
-  // transparency, Front/Missive-style); a PERSONAL mailbox shows only the
-  // messages it was actually a party to (Gmail-style) — so a colleague's reply
+  // Visibility model: a shared mailbox shows the whole conversation (team
+  // transparency, Front/Missive-style); a personal mailbox shows only the
+  // messages it was actually a party to (Gmail-style), so a colleague's reply
   // that dropped this address never leaks into a coincidentally-shared thread.
   let messages: (typeof schema.message.$inferSelect)[];
   if (mbox?.isPersonal) {
@@ -600,7 +600,7 @@ export async function getThread(
     ),
   ];
 
-  // ONE parallel batch for everything keyed on the message set — this was a
+  // One parallel batch for everything keyed on the message set — this was a
   // serial chain of ~6 round-trips and the dominant cost of opening a thread.
   const [deliveries, submissionByMsg, attRows, trustedFrom, hiddenParentRows, collab, calendarRows] =
     await Promise.all([
@@ -676,7 +676,7 @@ export async function getThread(
   };
   // Decrypt + hydrate invites, folding in the viewer's local RSVP (keyed by UID).
   // Multiple rows can share an event (uid,recurrence_id) across the thread's
-  // messages — a re-invite (higher SEQUENCE) or a CANCEL. The EFFECTIVE state is
+  // messages — a re-invite (higher SEQUENCE) or a CANCEL. The effective state is
   // resolved here (highest sequence wins; is_cancelled overlaid) so every message
   // carrying that event shows the current state, never a stale earlier one.
   const inviteByMsg = new Map<string, CalendarInviteDTO>();
@@ -726,7 +726,7 @@ export async function getThread(
     );
 
     const viewerAddr = (mbox?.address ?? "").toLowerCase();
-    // Emit ONE card per message — the first event that message carries, resolved
+    // Emit one card per message — the first event that message carries, resolved
     // to its effective state. (Multi-VEVENT invites are rare; all events are
     // stored, one card renders the primary — matches Gmail's one-card-per-invite.)
     const seenMsg = new Set<string>();
@@ -738,7 +738,7 @@ export async function getThread(
       const row = eff.row;
       const details = detailsByKey.get(k) ?? {};
       const attendees = parseAttendees(row.attendeesJson);
-      // RSVP is allowed only when the viewer's mailbox address is an ATTENDEE and
+      // RSVP is allowed only when the viewer's mailbox address is an attendee and
       // a valid organizer exists to reply to (server re-checks; card just hides).
       const organizerValid = !!row.organizerEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.organizerEmail);
       const isAttendee = !!viewerAddr && attendees.some((a) => a.email.toLowerCase() === viewerAddr);
@@ -777,10 +777,10 @@ export async function getThread(
   }
 
   const deliveryByMsg = new Map(deliveries.map((d) => [d.messageId, d]));
-  // Messages THIS mailbox sent (it holds the `from` receipt). A message can
-  // carry both `from` and `to` receipts here (self-send), so check the set —
-  // and never infer "mine" from the submission row: a colleague's send in a
-  // shared thread has a submission too, but it is not this mailbox's bubble.
+  // Messages this mailbox sent (it holds the `from` receipt). A message can
+  // carry both `from` and `to` receipts here (self-send), so check the set.
+  // Don't infer "mine" from the submission row: a colleague's send in a shared
+  // thread has a submission too, but it is not this mailbox's bubble.
   const sentFromHere = new Set(deliveries.filter((d) => d.role === "from").map((d) => d.messageId));
   const attByMsg = new Map<string, typeof attRows>();
   for (const a of attRows) {
@@ -802,10 +802,10 @@ export async function getThread(
   }
 
   // Reply context per message. Two shapes:
-  //  - parent IS visible (accessible) → a one-line preview that links to it, so a
-  //    reply to an OLDER message can jump back.
-  //  - parent NOT visible (a personal mailbox added on Cc) → the FULL parent text,
-  //    because a half-shown message is worse than none — plus the hidden ancestor
+  //  - parent is visible → a one-line preview that links to it, so a reply to an
+  //    older message can jump back.
+  //  - parent not visible (a personal mailbox added on Cc) → the full parent text,
+  //    because a half-shown message is worse than none, plus the hidden ancestor
   //    chain above it (`ancestors`, oldest first), so the newcomer gets the whole
   //    conversation, not one hop. The walk stops at a visible message (the reader
   //    can scroll to it) or a gap; depth cap guards cycles.
@@ -829,7 +829,7 @@ export async function getThread(
       const visibleParent = visibleByHeader.get(m.inReplyTo);
       if (visibleParent) {
         // WhatsApp-style: show the quoted reference for every reply (even to the
-        // message directly above) — it's the click target to jump back.
+        // message directly above); it's the click target to jump back.
         replyContextByMsg.set(m.id, {
           from: visibleParent.fromAddr,
           sentAt: visibleParent.sentAt ? visibleParent.sentAt.getTime() : null,
@@ -877,7 +877,7 @@ export async function getThread(
     }
   }
 
-  // Decrypt + assemble EVERY message in parallel — this was a serial loop that
+  // Decrypt + assemble every message in parallel — this was a serial loop that
   // awaited each message's decrypts before starting the next (N sequential
   // round-trips of AES-GCM over the bodies).
   const items: MessageDTO[] = await Promise.all(
@@ -908,7 +908,7 @@ export async function getThread(
       // Raw HTML never leaves the server — only the render decision + flags do.
       // Computed at ingest (materialize) + stored, so the read path never touches
       // the body. The sandboxed /api/messages/[id]/body route derives + sanitizes
-      // the html from the R2 raw on demand.
+      // the HTML from the R2 raw on demand.
       htmlKind: (m.htmlKind as "rich" | "plain" | null) ?? null,
       hasRemoteImages: m.hasRemoteImages,
       senderTrusted: !!m.fromAddr && trustedFrom.has(m.fromAddr.toLowerCase()),
@@ -938,8 +938,8 @@ export async function getThread(
 
   const lastMessageAt = items.at(-1)?.sentAt ?? null;
 
-  // Merge internal notes + system events for THIS mailbox into one ordered
-  // timeline (Task 5) — ONLY for grant holders. A user reaching a thread via
+  // Merge internal notes + system events for this mailbox into one ordered
+  // timeline (Task 5) — only for grant holders. A user reaching a thread via
   // org-admin read (no mailbox_access) gets messages only: notes/events are
   // never placed in a payload they aren't a member for.
   let timeline: TimelineItem[] = items;

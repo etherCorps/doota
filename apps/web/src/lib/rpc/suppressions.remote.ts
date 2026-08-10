@@ -10,11 +10,11 @@ import { suppress, unsuppress } from "@doota/mail-core/bounce";
 
 /**
  * Org suppression list management. This is the app-side list the outbound
- * consumer checks BEFORE calling Cloudflare's send endpoint, so a suppressed
+ * consumer checks before calling Cloudflare's send endpoint, so a suppressed
  * address is dropped end-to-end. Cloudflare also keeps its own account-level
  * suppression list (auto-managed from bounces/complaints) as a backstop, but it
- * exposes no public API to read or mutate it — so this list is app-owned; there
- * is no two-way sync. Every mutation re-gates through can(), same chokepoint as
+ * exposes no public API to read or mutate it, so this list is app-owned with no
+ * two-way sync. Every mutation re-gates through can(), same chokepoint as
  * mailbox.remote.
  */
 

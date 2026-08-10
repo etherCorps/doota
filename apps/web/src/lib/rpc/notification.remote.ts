@@ -8,8 +8,8 @@ import * as mail from "@doota/db/mail.schema";
 
 /**
  * The notification bell (docs/notifications.md, Phase A). Rows are structural;
- * display fields (the sender name, the actor name) are resolved HERE from
- * cleartext columns, never stored. Scoped to the caller only — NOT org-scoped:
+ * display fields (the sender name, the actor name) are resolved here from
+ * cleartext columns, never stored. Scoped to the caller only, not org-scoped:
  * the app has no org switcher yet, so a bell count that shifted as you moved
  * between orgs would be more confusing than useful. `orgId` is on the row for
  * when a switcher lands.
@@ -28,7 +28,7 @@ export type NotificationDTO = {
   fromName: string | null;
   /** assigned/mention: the internal actor's display name. */
   actorName: string | null;
-  /** Which mailbox this is about — so a multi-mailbox user knows where it landed. */
+  /** Which mailbox this is about, so a multi-mailbox user knows where it landed. */
   mailboxLabel: string | null;
   /** routing_issue: the affected org's domain, for "Mail to acme.com isn't arriving". */
   orgDomain: string | null;
@@ -56,11 +56,11 @@ export const myNotifications = query(
     if (!rows.length) return [];
 
     // Resolve sender names (new_mail) from the thread's latest message, and actor
-    // names (assigned) from the user table — both cleartext, batched.
+    // names (assigned) from the user table. Both cleartext, batched.
     const threadIds = [...new Set(rows.filter((row) => row.type === "new_mail" && row.threadId).map((row) => row.threadId!))];
     const senderByThread = new Map<string, { from: string | null; fromName: string | null }>();
     if (threadIds.length) {
-      // Latest message PER thread — one indexed (thread_id, sent_at) read each,
+      // Latest message per thread: one indexed (thread_id, sent_at) read each,
       // not a scan of every message in these threads. Bounded to the page (≤20).
       const latest = await Promise.all(
         threadIds.map((threadId) =>
@@ -87,7 +87,7 @@ export const myNotifications = query(
     }
 
     // Mailbox labels (name, else address) so the client can show which mailbox a
-    // notification is about — batched over the page's distinct mailbox ids.
+    // notification is about. Batched over the page's distinct mailbox ids.
     const mailboxIds = [...new Set(rows.filter((row) => row.mailboxId).map((row) => row.mailboxId!))];
     const mailboxLabel = new Map<string, string>();
     if (mailboxIds.length) {
@@ -98,8 +98,8 @@ export const myNotifications = query(
       for (const box of boxes) mailboxLabel.set(box.id, box.displayName?.trim() || box.address);
     }
 
-    // Org domains for routing_issue rows (superadmin health alerts) — the row is
-    // org-scoped, not mailbox/thread-scoped, so the domain IS the display context.
+    // Org domains for routing_issue rows (superadmin health alerts). The row is
+    // org-scoped, not mailbox/thread-scoped, so the domain is the display context.
     const issueOrgIds = [...new Set(rows.filter((row) => row.type === "routing_issue").map((row) => row.orgId))];
     const orgDomain = new Map<string, string>();
     if (issueOrgIds.length) {
@@ -132,7 +132,7 @@ export const myNotifications = query(
   },
 );
 
-/** Unread badge — served by the partial (userId) WHERE read_at IS NULL index. */
+/** Unread badge, served by the partial (userId) WHERE read_at IS NULL index. */
 export const unreadNotificationCount = query(async (): Promise<number> => {
   const { locals } = getRequestEvent();
   if (!locals.user) error(401, "Not authenticated");
@@ -143,7 +143,7 @@ export const unreadNotificationCount = query(async (): Promise<number> => {
   return row?.n ?? 0;
 });
 
-/** Bell opened — clear the unseen state (dot), leaving unread (bold) intact. */
+/** Bell opened: clear the unseen state (dot), leaving unread (bold) intact. */
 export const markNotificationsSeen = command(async () => {
   const { locals } = getRequestEvent();
   if (!locals.user) error(401, "Not authenticated");
@@ -165,7 +165,7 @@ export const markAllNotificationsRead = command(async () => {
   return { ok: true as const };
 });
 
-/** A notification was clicked — mark it read (ownership enforced). */
+/** A notification was clicked: mark it read (ownership enforced). */
 export const markNotificationRead = command(z.object({ id: z.string().min(1) }), async ({ id }) => {
   const { locals } = getRequestEvent();
   if (!locals.user) error(401, "Not authenticated");
@@ -178,7 +178,7 @@ export const markNotificationRead = command(z.object({ id: z.string().min(1) }),
 
 // --- Web Push subscriptions (Phase B) --------------------------------------
 
-/** The VAPID PUBLIC key (safe to expose) — the client needs it to subscribe.
+/** The VAPID public key (safe to expose); the client needs it to subscribe.
  * Empty string when push isn't configured, so the client just skips. */
 export const pushPublicKey = query(async (): Promise<string> => {
   const { platform } = getRequestEvent();

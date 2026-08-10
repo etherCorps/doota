@@ -19,7 +19,7 @@ const bodyHtmlCacheKey = (msgId: string) => new Request(`https://body-cache.inte
 
 /**
  * Parsed HTML (+ text fallback) for a message's R2 raw — shared by the render
- * route and the forward composer so both read the SAME cached parse. A shared
+ * route and the forward composer so both read the same cached parse. A shared
  * edge cache (caches.default) holds the parsed HTML as ciphertext keyed by
  * (version, message), so the R2 GET + postal-mime parse runs once per message
  * globally, not again per view or per forward. `cache` is optional (absent in
@@ -56,9 +56,9 @@ export async function messageRawHtml(
 }
 
 /**
- * Derive the HTML body from an R2 raw object. The HTML body is NOT stored in D1
- * (golden-standard: raw is canonical, large bodies aren't duplicated into the
- * hot DB) — the render route reads the raw from R2 and parses it here on demand.
+ * Derive the HTML body from an R2 raw object. The HTML body isn't stored in D1
+ * (raw is canonical; large bodies aren't duplicated into the hot DB) — the render
+ * route reads the raw from R2 and parses it here on demand.
  *
  * Two raw shapes, distinguished by key prefix:
  *   - inbound:  RFC822 MIME bytes (postal-mime parses it, same as at ingest).
@@ -80,10 +80,10 @@ export async function rawObjectToHtml(key: string, bytes: ArrayBuffer | Uint8Arr
 
 /**
  * Derive the plain-text body from an R2 raw object — the text twin for a
- * text-only message (no HTML part). Same golden-standard reasoning as
- * `rawObjectToHtml`: the D1 `body_*_enc` columns are bounded hot-path previews
- * (see materialize.ts), so full-fidelity text for a very long message comes from
- * R2, not the (capped) DB column. Two raw shapes, same as rawObjectToHtml.
+ * text-only message (no HTML part). Same reasoning as `rawObjectToHtml`: the D1
+ * `body_*_enc` columns are bounded hot-path previews (see materialize.ts), so
+ * full-fidelity text for a very long message comes from R2, not the (capped) DB
+ * column. Two raw shapes, same as rawObjectToHtml.
  */
 export async function rawObjectToText(key: string, bytes: ArrayBuffer | Uint8Array): Promise<string | null> {
   if (key.startsWith("outbound/")) {

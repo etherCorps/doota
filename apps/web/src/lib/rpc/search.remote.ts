@@ -12,7 +12,7 @@ import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
 
 /**
  * Mail search (command palette). Plaintext FTS5 (BM25-ranked, subject-weighted)
- * over the user's OWN mailboxes — access is the set of mailbox_access grants, so a
+ * over the user's own mailboxes. Access is the set of mailbox_access grants, so a
  * search can never reach mail the user can't already read; the index itself only
  * holds mail from search-indexed mailboxes. Matches are message ids ranked by
  * relevance; we roll them up to a thread and decrypt just the subject/snippet for
@@ -25,8 +25,8 @@ import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
  * thread_state, `is:unread` / `is:read` on the caller's thread_read state,
  * `has:attachment` on a filename'd attachment row, and `after:` / `before:`
  * (YYYY-MM-DD, YYYY/MM/DD, or a relative `7d`) on sent time. Remaining free text
- * goes through FTS. `terms` echoes the query words so the client can bold matches;
- * the snippet is centered on the first match, not the body head.
+ * goes through FTS. `terms` echoes the query words so the client can bold matches.
+ * The snippet is centered on the first match, not the body head.
  */
 
 export type SearchHit = {
@@ -68,10 +68,10 @@ export const searchMail = query(
 
     // Candidate message ids, remembering which mailbox surfaced each (for nav).
     const msgToBox = new Map<string, string>();
-    // FTS relevance order (insertion order across boxes) — used to sort the final
+    // FTS relevance order (insertion order across boxes), used to sort the final
     // free-text results by BM25 rank instead of recency.
     const rank = new Map<string, number>();
-    // Thread → mailbox for the starred-only path (no message ids up front).
+    // Thread to mailbox for the starred-only path (no message ids up front).
     let starredThreads: Map<string, string> | null = null;
 
     if (text.length >= 2) {
@@ -215,7 +215,7 @@ export const searchMail = query(
     }
 
     // Assigned-only mailboxes: a hit only survives if the thread is assigned to
-    // the searcher — search must never widen what the mailbox itself shows.
+    // the searcher. Search must never widen what the mailbox itself shows.
     const restricted = await assignedOnlyMailboxIds(locals.db, locals.user.id);
     if (restricted.length && hits.length) {
       const mine = await locals.db.query.threadState.findMany({

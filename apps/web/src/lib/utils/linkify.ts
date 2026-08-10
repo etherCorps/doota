@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Plain-text linkify: split a text body into text/link/email segments so both
 // the in-app bubbles (Svelte render, no {@html}) and the sandboxed-iframe text
-// fallback (server-built anchors) share ONE URL grammar.
+// fallback (server-built anchors) share one URL grammar.
 
 export type LinkSegment =
 	| { type: 'text'; value: string }

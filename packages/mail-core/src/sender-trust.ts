@@ -12,9 +12,9 @@ type Db = DrizzleD1Database<typeof schema>;
 
 const norm = (addr: string) => addr.trim().toLowerCase();
 
-// Sentinel sender that means "load remote images from EVERYONE" — a user-wide
-// default that sits orthogonally to the per-sender rows (a real address can't be
-// "*"). Presence of this row = auto-load all remote images.
+// Sentinel sender meaning "load remote images from everyone" — a user-wide
+// default alongside the per-sender rows (a real address can't be "*"). Presence
+// of this row = auto-load all remote images.
 const ALL = "*";
 
 /** User's global "always show remote images" preference. */
@@ -69,8 +69,8 @@ export async function orgRemoteContentPolicy(db: Db, orgId: string): Promise<Rem
   return { mode: row?.remoteContentMode === "allow" ? "allow" : "block", locked: row?.remoteContentLocked ?? false };
 }
 
-/** Effective allow, org-authoritative. A LOCKED org can't be overridden by the
- * reader's per-message request (`requested`) — the server enforces it. */
+/** Effective allow, org-authoritative. A locked org can't be overridden by the
+ * reader's per-message request (`requested`); the server enforces it. */
 export function remoteContentAllowed(policy: RemoteContentPolicy, requested: boolean): boolean {
   if (policy.locked) return policy.mode === "allow";
   return requested || policy.mode === "allow";

@@ -5,25 +5,25 @@ import { Sanitizer } from "neosanitize";
  * Untrusted email HTML → safe HTML, plus a framed single-document builder.
  *
  * The sanitizer core is **neosanitize** — an html5lib-conformant tokenizer that
- * closes mutation-XSS gaps by construction and is fuzz-tested. We never hand-roll
+ * closes mutation-XSS gaps by construction and is fuzz-tested. We don't hand-roll
  * the allowlist walk (hand-rolled sanitizers are exactly what gets bypassed); this
- * module only *configures* the policy, rewrites `cid:` refs the parser would drop,
+ * module only configures the policy, rewrites `cid:` refs the parser would drop,
  * enforces DoS caps, and reshapes the output into one framed document (A2).
  *
- * MUST run server-side, before the HTML reaches the client. Sanitize-at-READ: the
+ * Must run server-side, before the HTML reaches the client. Sanitize-at-read: the
  * raw MIME in R2 + the encrypted body stay canonical; this is a pure function of
- * them, so any fix here protects ALL historical mail immediately.
+ * them, so any fix here protects all historical mail immediately.
  */
 
-// Deny-by-default element allowlist (Part B). Anything NOT listed is dropped —
+// Deny-by-default element allowlist (Part B). Anything not listed is dropped —
 // which is how script/iframe/object/embed/applet/frame(set)/form/input/button/
 // textarea/select/base/meta/link/svg/math/template/etc. are removed (by omission).
-// neosanitize's inviolable baseline ALSO strips script, on* handlers, and
+// neosanitize's inviolable baseline also strips script, on* handlers, and
 // javascript:/vbscript: URLs regardless of this list. `<meta>` is deliberately
 // absent so a `<meta http-equiv=refresh>` can never survive.
 const TAGS = [
   // structure kept so the email's own body/.class rules still match after A2;
-  // flattened into ONE body by buildFramedDocument below.
+  // flattened into one body by buildFramedDocument below.
   "html", "head", "body", "style",
   // flow + text
   "p", "div", "span", "br", "hr", "pre", "blockquote",
@@ -55,7 +55,7 @@ const ATTRS: Record<string, string[]> = {
 const sanitizer = Sanitizer.builder({ tags: TAGS, attrs: ATTRS }).build();
 
 // Framed-document chrome tones. The opaque-origin iframe can't reach the app's
-// CSS tokens, so these are the one place the email frame's ink/paper/rule live —
+// CSS tokens, so these are the one place the email frame's ink/paper/rule live;
 // keep server-injected chrome (e.g. the clipped-message notice) on the same set.
 export const FRAME_INK = "#25252c";
 export const FRAME_PAPER = "#ffffff";
@@ -66,12 +66,12 @@ export const FRAME_INK_DARK = "#e4e4e7";
 export const FRAME_PAPER_DARK = "#1c1c1f";
 export const FRAME_RULE = "#e4e4e7";
 
-// DoS guards, sized for REAL mail: table-based newsletters/receipts (Amazon,
+// DoS guards, sized for real mail: table-based newsletters/receipts (Amazon,
 // Postcards/Designmodo, Mailchimp) routinely run 200-600KB and 20k-50k tags of
 // deeply-nested tables. The old 1MB/15k ceiling rejected those and dumped the
-// ugly text/plain alternative — so genuine marketing HTML rendered as walls of
-// text. These caps still bound pathological input; the "view entire message"
-// path raises them further (body/+server.ts).
+// text/plain alternative, so genuine marketing HTML rendered as walls of text.
+// These caps still bound pathological input; the "view entire message" path
+// raises them further (body/+server.ts).
 /** Bodies larger than this are treated as hostile/DoS and fall back to text. */
 export const MAX_HTML_BYTES = 2_500_000;
 /** Rough tag-count ceiling (counts `<`), a cheap guard before the parser runs. */
@@ -81,7 +81,7 @@ export type SanitizeResult =
   | { ok: true; html: string }
   | { ok: false; reason: "too-large" | "too-many-nodes" };
 
-/** Rewrite `src="cid:..."` to a resolver-provided URL BEFORE sanitizing, since
+/** Rewrite `src="cid:..."` to a resolver-provided URL before sanitizing, since
  * neosanitize drops the non-web `cid:` scheme. Unresolved cids are left for the
  * sanitizer to strip. */
 function rewriteCids(html: string, resolve: (cid: string) => string | null): string {
@@ -95,14 +95,14 @@ function rewriteCids(html: string, resolve: (cid: string) => string | null): str
     }
     const url = resolve(norm);
     // Unresolved cid = a missing inline part; blank the src so no cid: string
-    // survives (it wouldn't load under CSP img-src 'self' anyway).
+    // survives (wouldn't load under CSP img-src 'self' anyway).
     return `${pre}${url ?? ""}${post}`;
   });
 }
 
 /**
  * Sanitize untrusted email HTML. Returns not-ok (caller falls back to the
- * plain-text alternative) when the body is oversized or absurdly deep — untrusted
+ * plain-text alternative) when the body is oversized or absurdly deep; untrusted
  * input must be bounded (Part F). True per-message time-boxing needs isolation the
  * Worker runtime can't give a sync call; the size + node caps bound the cost.
  */
@@ -120,7 +120,7 @@ export function sanitizeEmailHtml(
   const nodeApprox = (rawHtml.match(/</g) ?? []).length;
   if (nodeApprox > (opts.maxNodes ?? MAX_NODES)) return { ok: false, reason: "too-many-nodes" };
   const withCids = opts.resolveCid ? rewriteCids(rawHtml, opts.resolveCid) : rawHtml;
-  // neosanitize already strips data:text/html and keeps inert data:image/* — but
+  // neosanitize already strips data:text/html and keeps inert data:image/*, but
   // blank data:image/svg+xml specifically: SVG-in-<img> is only inert by the
   // browser's secure-mode guarantee, so don't lean on it. Plain raster data:
   // images (logos/signatures) are kept — dropping them all breaks real mail.
@@ -136,8 +136,8 @@ export function sanitizeEmailHtml(
  * Neutralize the legacy CSS attack vectors that survive HTML sanitization inside
  * kept `<style>` blocks + inline styles (neosanitize sanitizes markup, not CSS
  * semantics). The opaque sandboxed frame already blocks scripts, so these are
- * defense-in-depth for ancient IE/Gecko engines — cheap to render inert by
- * corrupting the keyword so the declaration is dropped by any CSS parser.
+ * defense-in-depth for ancient IE/Gecko engines — rendered inert by corrupting
+ * the keyword so the declaration is dropped by any CSS parser.
  * (@import and remote url() are handled by rewriteRemoteResourceUrls.)
  */
 function scrubCss(html: string): string {
@@ -148,12 +148,12 @@ function scrubCss(html: string): string {
     .replace(/url\(\s*['"]?\s*(?:javascript|vbscript|data:text\/html)[^)]*\)/gi, "url()");
 }
 
-// Remote-resource rewriting (golden-standard image handling). Real HTML mail
-// references remote URLs in FIVE places, not just `<img src>`: `src`/`poster`
-// attrs, the `background=` attr (table-based hero art), `srcset`, and CSS
-// `url(...)` in inline styles AND `<style>` blocks. Gmail/Apple proxy ALL of
-// them at parse time; we do the same so backgrounds/logos render AND every
-// remote fetch goes through our privacy proxy (never straight to the sender).
+// Remote-resource rewriting. Real HTML mail references remote URLs in five
+// places, not just `<img src>`: `src`/`poster` attrs, the `background=` attr
+// (table-based hero art), `srcset`, and CSS `url(...)` in inline styles and
+// `<style>` blocks. Gmail/Apple proxy all of them at parse time; we do the same
+// so backgrounds/logos render and every remote fetch goes through our privacy
+// proxy (never straight to the sender).
 const ATTR_URL_RE = /\b(?:src|poster|background)\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
 const SRCSET_RE = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
 const CSS_URL_RE = /url\(\s*(['"]?)(https?:\/\/[^)'"]+?)\1\s*\)/gi;
@@ -209,14 +209,14 @@ export function rewriteRemoteResourceUrls(html: string, resolve: (url: string) =
 }
 
 /**
- * Reshape already-sanitized HTML into ONE framed document (A2): our head (charset,
- * viewport, reset, CSP meta, forced light color-scheme) + a SINGLE body carrying
+ * Reshape already-sanitized HTML into one framed document (A2): our head (charset,
+ * viewport, reset, CSP meta, forced light color-scheme) + a single body carrying
  * the email's own body attributes (so its `body{}` / `.class` / `#id` rules still
- * match), with the email's `<style>` blocks and content hoisted in. Kills the
+ * match), with the email's `<style>` blocks and content hoisted in. Fixes the
  * nested-document bug and the tripled padding (A3: wrapper padding is zero — email
  * always brings its own).
  *
- * `inner` MUST be sanitizer output — this does string surgery on trusted-safe HTML.
+ * `inner` must be sanitizer output — this does string surgery on trusted-safe HTML.
  */
 export function buildFramedDocument(
   sanitized: string,
@@ -231,7 +231,7 @@ export function buildFramedDocument(
     .trim();
   const reset =
     "*{resize:none!important}" + // stray editor drag-grips from legacy sends
-    // Honor BOTH schemes: the email's own `@media (prefers-color-scheme: dark)`
+    // Honor both schemes: the email's own `@media (prefers-color-scheme: dark)`
     // rules fire when the reader is in dark mode, and `light-dark()` below gives
     // our own defaults a matching value.
     "html{color-scheme:light dark}" +

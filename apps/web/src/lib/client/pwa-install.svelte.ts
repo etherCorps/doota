@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // PWA install affordance. Chromium (Chrome/Edge on any desktop + Android) fires
-// `beforeinstallprompt` → a real install button. Safari (iOS AND macOS) fires no
-// such event but IS installable, so we detect it and hand back a manual hint:
+// `beforeinstallprompt` → a real install button. Safari (iOS and macOS) fires no
+// such event but is installable, so we detect it and hand back a manual hint:
 // touch devices (iPhone/iPad) → Add to Home Screen; macOS Safari → Add to Dock.
 // Installing on iOS is what unlocks Web Push there. State is reactive.
 
@@ -39,7 +39,7 @@ if (typeof window !== "undefined") {
 	});
 }
 
-/** Fire the browser install prompt (Chromium). No-op on Safari — show `pwa.hint`
+/** Fire the browser install prompt (Chromium). No-op on Safari; show `pwa.hint`
  * (home-screen / dock) as a manual instruction instead. */
 export async function installApp(): Promise<void> {
 	if (!deferred) return;

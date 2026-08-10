@@ -178,7 +178,7 @@ export async function provisionUser(
   if (mailboxError) console.error("[provision] personal mailbox failed", mailboxError);
 
   // One invite mail: temp password only. No recovery-verification link — the
-  // invite is delivered ONLY to the external recovery address, so a successful
+  // invite is delivered only to the external recovery address, so a successful
   // first login (with these creds) is itself proof of control, and the
   // session-create hook auto-verifies the recovery email then.
   const from = await senderAddress(db, org.domain);

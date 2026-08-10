@@ -4,14 +4,14 @@ import { adventurer } from "@dicebear/collection";
 
 /**
  * Locally generated DiceBear avatars for external senders. Generated in the
- * browser on purpose — using dicebear's HTTP API would leak every sender
+ * browser on purpose: using dicebear's HTTP API would leak every sender
  * address to a third party. Both caches are module-level (session-lifetime):
  * one for generated data URIs, one remembering which addresses have no
  * server-side avatar so later rows skip the 404 round-trip entirely.
  *
- * Style is `glass`, deliberately NOT `thumbs`: provisioning seeds our users'
+ * Style is `glass`, deliberately not `thumbs`: provisioning seeds our users'
  * profile images with thumbs (utils/dice-bear.ts), so externals get a distinct
- * look — abstract tiles for strangers, faces for teammates.
+ * look: abstract tiles for strangers, faces for teammates.
  */
 const diceCache = new Map<string, string>();
 

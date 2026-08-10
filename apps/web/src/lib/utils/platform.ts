@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // OS detection for shortcut display. Mac shows ⌘/⌥; everyone else Ctrl/Alt.
-// The key HANDLERS already accept metaKey||ctrlKey cross-OS — this is purely
+// The key handlers already accept metaKey||ctrlKey cross-OS; this is purely
 // what we render to the user.
 
 function detectMac(): boolean {

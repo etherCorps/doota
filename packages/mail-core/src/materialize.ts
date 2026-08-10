@@ -62,12 +62,12 @@ export type MaterializeDeps = { ck: ContentKey; searchKeyB64: string };
 const SUBJECT_FALLBACK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7d — weak, bounded
 
 /**
- * Find one of OUR messages by a wire Message-ID. Tries the stored header first,
+ * Find one of our messages by a wire Message-ID. Tries the stored header first,
  * then the provider-minted ids: Cloudflare Email Service rejects a custom
  * Message-ID and stamps its own (e.g. <EUQ…@doota.dev>), which we capture from
  * send() into submission.provider_message_id (first chunk) and
  * submission_recipient.provider_message_id (every chunk). External replies carry
- * THAT id in In-Reply-To, so it must resolve to the same message row.
+ * that id in In-Reply-To, so it must resolve to the same message row.
  */
 async function findMessageByHeaderId(
   db: Db,
@@ -137,17 +137,17 @@ async function resolveThreadId(
   }
 
   const subjectNorm = normalizeSubject(parsed.subject);
-  // Subject-fallback exists ONLY to rescue a genuine reply whose ancestor
-  // Message-IDs we don't happen to have stored — so it must carry In-Reply-To
-  // or References. A fresh compose (both absent) that merely shares a subject +
-  // participant must start its own thread, else re-sent "welcome"/"testing"/
-  // automated no-reply mail collapses into one polluted thread.
+  // Subject-fallback only rescues a genuine reply whose ancestor Message-IDs we
+  // don't happen to have stored — so it must carry In-Reply-To or References. A
+  // fresh compose (both absent) that merely shares a subject + participant starts
+  // its own thread, else re-sent "welcome"/"testing"/automated no-reply mail
+  // collapses into one polluted thread.
   const isReply = !!(parsed.inReplyTo || parsed.references);
   if (subjectNorm && isReply) {
     const since = new Date((parsed.sentAt ?? Date.now()) - SUBJECT_FALLBACK_WINDOW_MS);
     // Candidate threads with the same normalized subject in the window, newest
     // first. Subject alone is too weak to merge on (two unrelated "Re: invoice"
-    // threads would collapse), so we ALSO require a shared participant — the new
+    // threads would collapse), so we also require a shared participant — the new
     // message and the candidate thread must have an address in common.
     const candidates = await db.query.thread.findMany({
       where: and(
@@ -208,28 +208,28 @@ export async function materializeMessage(
   const threadId = await resolveThreadId(db, orgId, parsed);
   const strippedText = parsed.text ? stripQuotesText(parsed.text) : "";
   // htmlToText (line-preserving), not stripHtmlTags: an HTML-only message's text
-  // twin renders as a plain-text bubble — flattening breaks reads as one run-on line.
+  // twin renders as a plain-text bubble — flattening would read as one run-on line.
   const bodyFull = parsed.text ?? (parsed.html ? htmlToText(parsed.html) : null);
   const contentKind = deriveContentKind({
     strippedText,
     hasAttachments: parsed.attachments.length > 0,
     htmlLength: parsed.html?.length ?? 0,
   });
-  // Render-decision flags computed ONCE at ingest (the DB stores decisions, not
+  // Render-decision flags computed once at ingest (the DB stores decisions, not
   // the body): getThread reads these instead of decrypting the html per message
   // on every thread open. Same quote-stripped basis the body route renders on.
   const displayHtml = parsed.html ? stripQuotesHtml(parsed.html) : null;
   const htmlKind = displayHtml ? (isRichHtml(displayHtml) ? "rich" : "plain") : null;
   const hasRemoteImages = hasRemoteHttpImages(displayHtml);
 
-  // The HTML body is NOT stored in D1 — it's derived from the raw MIME in R2
-  // (r2RawKey) on render (golden-standard: raw is canonical, large derived
-  // bodies aren't duplicated into the hot DB). Only the small text twins
-  // (stripped for list/search preview, full for reply quoting) live here — and
-  // they are CAPPED: a pathologically long plain-text thread would otherwise
-  // grow the D1 row past its size cap and fail the insert (silent mail loss).
-  // Full-fidelity text for such a message is served from R2 raw on render
-  // (rawObjectToText), same as the HTML body — the cap only bounds the preview.
+  // The HTML body isn't stored in D1 — it's derived from the raw MIME in R2
+  // (r2RawKey) on render (raw is canonical; large derived bodies aren't
+  // duplicated into the hot DB). Only the small text twins (stripped for
+  // list/search preview, full for reply quoting) live here, and they're capped:
+  // a pathologically long plain-text thread would otherwise grow the D1 row past
+  // its size cap and fail the insert (silent mail loss). Full-fidelity text for
+  // such a message is served from R2 raw on render (rawObjectToText), same as the
+  // HTML body — the cap only bounds the preview.
   const [subjectEnc, strippedEnc, fullEnc] = await Promise.all([
     encryptContent(deps.ck, parsed.subject),
     encryptContent(deps.ck, capText(strippedText || bodyFull)),
@@ -359,7 +359,7 @@ async function indexContent(
   // Per-mailbox escape valve: a non-indexed mailbox's mail never enters the
   // readable index (skip = no-op; never removes another mailbox's index row).
   if (!searchIndexed) return;
-  // Index the PLAINTEXT subject + STRIPPED body (not the quoted trail — no point
+  // Index the plaintext subject + stripped body (not the quoted trail — no point
   // re-indexing the same quote on every reply). Participant/date/flag filters are
   // handled as query operators over plaintext columns, not FTS.
   const strippedText = parsed.text ? stripQuotesText(parsed.text) : "";
@@ -370,7 +370,7 @@ async function indexContent(
 /**
  * Placement policy for the mailbox's thread_state. Inbound (default): a new
  * thread lands in `inbox`, and a reply un-archives an archived thread. Outbound
- * (sender's copy): a new thread lands in `sent`, and a reply must NOT yank the
+ * (sender's copy): a new thread lands in `sent`, and a reply must not yank the
  * thread out of wherever it currently sits (don't drag an inbox thread to sent).
  */
 export type PlacementPolicy = { newThread: string; unarchiveOnReply: boolean };
@@ -378,7 +378,7 @@ const INBOUND_PLACEMENT: PlacementPolicy = { newThread: "inbox", unarchiveOnRepl
 
 /**
  * Write one recipient's delivery + ensure a thread_state for its mailbox. BCC
- * lives ONLY as a delivery row (never back into the shared message headers).
+ * lives only as a delivery row (never back into the shared message headers).
  * Idempotent on (message_id, mailbox_id, role). Placement follows `policy`
  * (default: inbound — new→inbox, un-archive on reply).
  */
@@ -394,7 +394,7 @@ export async function materializeDelivery(
     subaddressTag: string | null;
     sentAt: number | null;
     placement?: PlacementPolicy;
-    /** Rules engine: markRead/markFlagged land AT INSERT (both is_read and
+    /** Rules engine: markRead/markFlagged land at insert (both is_read and
      * keywords, kept consistent) — an insert-then-update would burn a second
      * change_log seq per delivery. */
     isRead?: boolean;
@@ -449,7 +449,7 @@ async function ensureThreadState(
   role: "to" | "cc" | "bcc" | "from",
   sentAtMs: number,
 ): Promise<void> {
-  // last_activity_at bumps on ANY delivery (own sends bump the sort); last_inbound_at
+  // last_activity_at bumps on any delivery (own sends bump the sort); last_inbound_at
   // only on a recipient-role delivery (an own send must not mark a thread unread).
   const inbound = role !== "from";
   const existing = await db.query.threadState.findFirst({
@@ -483,7 +483,7 @@ async function ensureThreadState(
     // A new inbound reply wakes a snoozed thread early (Gmail semantics): clearing
     // snoozedUntil returns it to the inbox, and the recency bumps above put it at
     // the top, unread. Only when actually snoozed — SQLite's `UPDATE OF` fires on
-    // a watched column merely APPEARING in SET, and this write runs on every
+    // a watched column merely appearing in SET, and this write runs on every
     // inbound delivery; an unconditional null would burn a change_log seq each time.
     if (existing.snoozedUntil != null) set.snoozedUntil = null;
   }

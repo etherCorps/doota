@@ -10,7 +10,7 @@ export type LinkDecision =
   | { action: "open"; url: string; warn: string | null }
   | { action: "drop" };
 
-/** The host a link's DISPLAY TEXT claims to point at, when the text is a bare
+/** The host a link's display text claims to point at, when the text is a bare
  * URL/domain (the phishing shape). Null when the text isn't a lone domain. */
 export function textHostOf(text: string): string | null {
   const t = text.trim();

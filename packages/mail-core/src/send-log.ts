@@ -2,7 +2,7 @@
 /**
  * Service-account send log (docs/service-accounts.md § Send log). Two tiers:
  *   1. durable metadata — who/when/which key/which template/status/recipients;
- *   2. an ENCRYPTED, short-TTL `data` payload — the template merge variables,
+ *   2. an encrypted, short-TTL `data` payload — the template merge variables,
  *      often PII — purged by the cron sweep after `dataExpiresAt`.
  * Rendered HTML is never stored; reconstruct from template + data while in TTL.
  * Variables flagged `sensitive` on the template are redacted before storage.

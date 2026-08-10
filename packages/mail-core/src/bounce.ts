@@ -12,8 +12,8 @@ type Db = DrizzleD1Database<typeof schema>;
 
 /**
  * Bounce & complaint handling (Part F). Cloudflare Email Service (public beta)
- * has NO bounce webhooks and no reliable synchronous bounce field — verified
- * against current docs. Bounces come back as INBOUND email (a DSN from
+ * has no bounce webhooks and no reliable synchronous bounce field (verified
+ * against current docs). Bounces come back as inbound email (a DSN from
  * mailer-daemon, multipart/report) delivered to the return-path subdomain, which
  * routes through Email Routing → the mail-in worker. So the inbound consumer must
  * recognize these and route them here instead of materializing them into an inbox.
@@ -24,7 +24,7 @@ type Db = DrizzleD1Database<typeof schema>;
 
 export type BounceKind = "hard" | "soft";
 export type ParsedBounce = {
-  /** Message-ID of the ORIGINAL message we sent (ours) — links to the submission. */
+  /** Message-ID of the original message we sent — links to the submission. */
   originalMessageId: string | null;
   /** Recipients that failed, with hard/soft from the DSN status/SMTP code. */
   failures: { address: string; kind: BounceKind }[];
@@ -62,10 +62,10 @@ export function looksLikeBounce(input: {
 
 /**
  * Structural DSN/ARF check: a real bounce or complaint is a `multipart/report`
- * (RFC 3464 delivery-status, RFC 5965 feedback-report) — a human who forwards or
- * quotes a bounce sends `text/*`. Read ONLY the top header block (before the
+ * (RFC 3464 delivery-status, RFC 5965 feedback-report); a human who forwards or
+ * quotes a bounce sends `text/*`. Read only the top header block (before the
  * first blank line) so a reply that quotes a bounce's headers doesn't count.
- * This gates the DROP: `looksLikeBounce` + a parseable failure is not enough —
+ * This gates the drop: `looksLikeBounce` + a parseable failure isn't enough —
  * the message must actually be a report, or it's delivered as normal mail.
  */
 export function isDeliveryReport(rawText: string): boolean {
@@ -113,13 +113,13 @@ const WORST_STATUS = ["complained", "bounced_hard", "bounced_soft"] as const;
  * Apply a parsed bounce to submission state + suppression list. Per-recipient:
  * flip status to bounced/complained + record kind/reason. Hard bounces and
  * complaints add the address to `suppressions` (blocks the next send). The
- * submission rolls up to its worst outcome. Idempotent — re-applying a duplicate
+ * submission rolls up to its worst outcome. Idempotent: re-applying a duplicate
  * DSN converges (upserts + fixed status transitions).
  */
 export type AppliedBounce = {
   matchedSubmission: string | null;
   suppressed: string[];
-  /** The status the submission rolled to — the caller's notification payload. */
+  /** The status the submission rolled to; the caller's notification payload. */
   worstStatus: (typeof WORST_STATUS)[number] | null;
 };
 
@@ -169,8 +169,8 @@ export async function applyBounce(
         );
     }
 
-    // Hard bounces + complaints suppress; soft bounces retry within policy and are
-    // NOT suppressed (a transient failure shouldn't block the address forever).
+    // Hard bounces + complaints suppress; soft bounces retry within policy and
+    // aren't suppressed (a transient failure shouldn't block the address forever).
     if (complaint || f.kind === "hard") {
       await suppress(db, orgId, f.address, complaint ? "complaint" : "hard_bounce");
       suppressed.push(f.address);

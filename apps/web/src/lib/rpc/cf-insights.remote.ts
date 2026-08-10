@@ -17,8 +17,8 @@ import {
 
 /**
  * Per-zone observability for org admins: outbound analytics, email logs, and
- * Cloudflare audit logs — all read LIVE from the Cloudflare API (cached in the
- * CF module with a short TTL to respect rate limits). The client only sends an
+ * Cloudflare audit logs, read live from the Cloudflare API (cached in the CF
+ * module with a short TTL to respect rate limits). The client only sends an
  * orgId; the zone is resolved server-side (never trust a client-supplied zone).
  * Manage-gated through the same can() chokepoint as the other org admin surfaces.
  */
@@ -60,7 +60,7 @@ export const zoneAudit = query(arg, async ({ orgId, days }) => {
 });
 
 /** Domain sending reputation (24h + 7d), the Cloudflare dashboard's widget
- * numbers — delivered vs failed vs spam-rejected, last-event-only, no NDRs. */
+ * numbers: delivered vs failed vs spam-rejected, last-event-only, no NDRs. */
 export const sendingReputation = query(z.string().min(1), async (orgId) => {
   const org = await orgForInsights(orgId);
   if (!org.zoneId) return null;
@@ -68,15 +68,15 @@ export const sendingReputation = query(z.string().min(1), async (orgId) => {
 });
 
 /** This zone's sends today (per-domain context for the overview). The daily
- * LIMIT is account-wide (see accountLimits on the dashboard), not shown per-org. */
+ * limit is account-wide (see accountLimits on the dashboard), not shown per-org. */
 export const zoneUsage = query(z.string().min(1), async (orgId) => {
   const org = await orgForInsights(orgId);
   if (!org.zoneId) return { today: 0 };
   return zoneSendUsage(org.zoneId);
 });
 
-/** The account's live daily sending limit + usage. Superadmin only — this is the
- * operator's whole Cloudflare account. */
+/** The account's live daily sending limit + usage. Superadmin only; this covers
+ * the operator's whole Cloudflare account. */
 export const accountLimits = query(async () => {
   const { locals } = getRequestEvent();
   const user = locals.user;

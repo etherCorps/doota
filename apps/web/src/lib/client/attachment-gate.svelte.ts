@@ -2,8 +2,8 @@
 // Click → scan → then act. The shared open/download gate for every attachment
 // surface. On open we ensure a verdict (persisted first, else scan), stamp it on
 // the tile, and: `clean` downloads straight through; `matched`/`skipped`/`error`
-// fail OPEN behind an explicit confirm. The verdict is advisory — it shapes the
-// label and the confirm copy, it NEVER blocks (nor authorizes) the download.
+// fail open behind an explicit confirm. The verdict is advisory: it shapes the
+// label and the confirm copy, it never blocks (nor authorizes) the download.
 import { SvelteMap } from "svelte/reactivity";
 import type { ScanVerdict } from "@doota/mail-core/attachment-scan";
 import { SCANNER_VERSION } from "@doota/mail-core/attachment-scan-rules";
@@ -16,7 +16,7 @@ export type TileVerdict = "checking" | ScanVerdict | null;
 
 // Per-session verdict cache the tiles read to paint their indicator, and the
 // gate reuses so a re-open never rescans. Keyed by attachment id. SvelteMap,
-// NOT $state(new Map()) — $state doesn't proxy Map mutations, so .set() would
+// not $state(new Map()): $state doesn't proxy Map mutations, so .set() would
 // never repaint the tiles (found live: badges stayed blank while the gate ran).
 const verdicts = new SvelteMap<string, TileVerdict>();
 
@@ -38,7 +38,7 @@ export const confirm = $state({
 });
 
 // The one sandboxed viewer, rendered once by <AttachmentGate/>. Only ever opened
-// from inside the gate AFTER a verdict (see openAttachment) — there is no code
+// from inside the gate after a verdict (see openAttachment); there is no code
 // path that reaches it without a scan having run.
 export const viewer = $state({
 	open: false,
@@ -77,7 +77,7 @@ export function confirmMessage(verdict: ScanVerdict, willView: boolean): string 
 }
 
 // One in-flight check per attachment: a second click while scanning awaits the
-// SAME promise instead of kicking off a duplicate fetch + rescan (the old
+// same promise instead of kicking off a duplicate fetch + rescan (the old
 // `known === "checking"` early state fell through and rescanned).
 const inflight = new Map<string, Promise<ScanVerdict>>();
 
@@ -89,8 +89,8 @@ function ensureVerdict(attachmentId: string): Promise<ScanVerdict> {
 
 	verdicts.set(attachmentId, "checking");
 	const run = (async () => {
-		// A persisted verdict (ours or a teammate's) wins — no rescan. But only
-		// from the CURRENT ruleset: a rules bump (e.g. the /OpenAction
+		// A persisted verdict (ours or a teammate's) wins, no rescan. But only
+		// from the current ruleset: a rules bump (e.g. the /OpenAction
 		// false-positive fix) must invalidate stale verdicts, else a bad verdict
 		// is cached forever.
 		const persisted = await attachmentScanState({ attachmentId }).catch(() => null);
@@ -112,8 +112,8 @@ function ensureVerdict(attachmentId: string): Promise<ScanVerdict> {
  * forget; dedupes with any in-flight or persisted check. Never throws.
  *
  * Budgeted: prefetch downloads the full bytes, so it skips files over the cap
- * (a thread of ten 20 MB files must not pull 200 MB on open — the click path
- * still scans them) and runs ONE at a time so a many-attachment thread doesn't
+ * (a thread of ten 20 MB files must not pull 200 MB on open; the click path
+ * still scans them) and runs one at a time so a many-attachment thread doesn't
  * burst-fetch. Clicks bypass the queue via ensureVerdict's dedupe.
  */
 const PREFETCH_MAX_BYTES = 8 * 1024 * 1024;
@@ -123,7 +123,7 @@ export function prefetchVerdict(attachmentId: string, size?: number | null): voi
 	if (size != null && size > PREFETCH_MAX_BYTES) return;
 	prefetchChain = prefetchChain.then(() =>
 		ensureVerdict(attachmentId).catch(() => {
-			// Prefetch failure is not an outcome — the click path retries and the
+			// Prefetch failure is not an outcome: the click path retries and the
 			// tile shows "couldn't check" only from a real scan result.
 			verdicts.delete(attachmentId);
 		}),
@@ -132,18 +132,18 @@ export function prefetchVerdict(attachmentId: string, size?: number | null): voi
 
 /**
  * Gate an attachment open/download. Scans first (persisted verdict wins), then
- * acts. For a VIEWABLE type (image/text/pdf/svg — see isViewable) the action is
- * to OPEN THE SANDBOXED VIEWER; otherwise it downloads via `download`. Either way
- * the act happens only AFTER a verdict: a `clean` verdict proceeds straight
- * through; a non-clean verdict fails OPEN behind the confirm. The viewer is
- * unreachable without a verdict — that is the security invariant.
+ * acts. For a viewable type (image/text/pdf/svg, see isViewable) the action is
+ * to open the sandboxed viewer; otherwise it downloads via `download`. Either way
+ * the act happens only after a verdict: a `clean` verdict proceeds straight
+ * through; a non-clean verdict fails open behind the confirm. The viewer is
+ * unreachable without a verdict. That is the security invariant.
  *
  * `att.contentType` decides viewable-vs-download. Callers that pass no
  * contentType (or a non-viewable one) get the download-after-gate behavior, so
  * existing download-only call sites are unchanged.
  */
-// Clicks already inside the gate for an attachment are swallowed — the tile
-// shows "checking" and the FIRST click's action fires once the verdict lands.
+// Clicks already inside the gate for an attachment are swallowed: the tile
+// shows "checking" and the first click's action fires once the verdict lands.
 // Without this, a dead-feeling wait invites double-clicks → double downloads.
 const gating = new Set<string>();
 
@@ -174,7 +174,7 @@ export async function openAttachment(
 }
 
 /**
- * Gate a DOWNLOAD explicitly — same scan-then-act flow, but never routes to the
+ * Gate a download explicitly: same scan-then-act flow, but never routes to the
  * viewer (openAttachment view-routes by type/extension, which silently turned
  * the lightbox's own Download button back into "open the viewer"; found live).
  */

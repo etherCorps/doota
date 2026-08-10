@@ -9,8 +9,8 @@ import { can } from "@doota/db/can";
 import { getAuthz } from "$lib/server/authz.js";
 
 /**
- * Attachment scan verdicts — advisory display signal ONLY. The verdict is
- * NEVER an authorization input: `recordScanVerdict` records what the client's
+ * Attachment scan verdicts: advisory display signal only. The verdict is
+ * never an authorization input. `recordScanVerdict` records what the client's
  * scan found so a teammate sees it without rescanning, and nothing gates on it.
  *
  * Access mirrors the attachment bytes route (api/attachments/[id]): the caller
@@ -57,7 +57,7 @@ async function assertAttachmentAccess(attachmentId: string) {
   return { db: locals.db };
 }
 
-/** The persisted verdict for an attachment, or null if never scanned — so a
+/** The persisted verdict for an attachment, or null if never scanned, so a
  * teammate reuses another's scan instead of rescanning. */
 export const attachmentScanState = query(
   z.object({ attachmentId: z.string().min(1) }),
@@ -70,7 +70,7 @@ export const attachmentScanState = query(
     if (!row?.scanVerdict) return null;
     return {
       // Column is untyped `text`, but only `recordScanVerdict` (enum-validated)
-      // ever writes it — so the stored value is always one of the four verdicts.
+      // ever writes it, so the stored value is always one of the four verdicts.
       verdict: row.scanVerdict as ScanVerdict,
       rule: row.scanRule,
       scannedAt: row.scannedAt,
@@ -79,7 +79,7 @@ export const attachmentScanState = query(
   },
 );
 
-/** Record what the client's scan found. ADVISORY ONLY — this write records the
+/** Record what the client's scan found. Advisory only: this write records the
  * display signal and gates nothing. Never trust it as authz. */
 export const recordScanVerdict = command(
   z.object({

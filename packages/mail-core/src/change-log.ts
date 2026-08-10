@@ -59,7 +59,7 @@ export const CHANGE_LOG_RETENTION_DAYS = 30;
 
 /**
  * Daily prune (rides the cron alongside draft GC): delete rows past retention
- * and raise each affected mailbox's floor to its highest pruned seq FIRST — the
+ * and raise each affected mailbox's floor to its highest pruned seq first. The
  * floor must never lag the delete, or an old token would silently get an
  * incomplete diff instead of a resync.
  */

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Send an iTIP REPLY (RFC 5546) for an RSVP. The Cloudflare provider builds MIME
-// itself and can't emit a `text/calendar` BODY part, so the REPLY rides as a
-// `text/calendar; method=REPLY` ATTACHMENT (the canonical payload; attachment
-// transport) — Gmail/Outlook still process it as an RSVP. Sent to the ORGANIZER
-// ONLY, carrying EXACTLY the replying attendee (never the guest list).
+// itself and can't emit a `text/calendar` body part, so the REPLY rides as a
+// `text/calendar; method=REPLY` attachment (canonical payload, attachment
+// transport); Gmail/Outlook still process it as an RSVP. Sent to the organizer
+// only, carrying exactly the replying attendee, never the guest list.
 //
 // The gates (attendee-only, organizer-valid, not-cancelled, dedup) live in the
 // caller (setInviteRsvp) where the db + viewer identity are at hand; this helper
@@ -75,7 +75,7 @@ export async function sendRsvpReply(
     createdByUserId: input.userId,
     fromAddress: input.fromAddress,
     fromName: input.fromName,
-    // ORGANIZER ONLY — never the attendee list.
+    // Organizer only, never the attendee list.
     to: [input.organizerEmail],
     subject: `${SUBJECT_VERB[input.status]}: ${summary}`,
     attachments: [
@@ -86,7 +86,7 @@ export async function sendRsvpReply(
         contentType: "text/calendar; method=REPLY; charset=utf-8",
       },
     ],
-    // No undo window on an RSVP; a repeat of the SAME answer dedupes here.
+    // No undo window on an RSVP; a repeat of the same answer dedupes here.
     idempotencyKey: `itip-reply:${input.userId}:${input.uid}:${input.recurrenceId}:${partstat}`,
     undoSeconds: 0,
   });

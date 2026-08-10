@@ -8,10 +8,10 @@ type Db = DrizzleD1Database<typeof schema>;
 
 /**
  * Folders = labels (build guide, Phase 1). The schema is multi-membership
- * (`thread_label`); folder-LIKE behaviour lives in ONE action — moveToFolder
- * REPLACES a thread's labels — so relaxing it later is a UI change, not a
- * migration. `label` is MAILBOX-scoped (privacy: folder names must not leak
- * across mailboxes — a personal mailbox's folders are nobody else's business);
+ * (`thread_label`); folder-like behaviour lives in one action — moveToFolder
+ * replaces a thread's labels — so relaxing it later is a UI change, not a
+ * migration. `label` is mailbox-scoped (privacy: folder names must not leak
+ * across mailboxes; a personal mailbox's folders are nobody else's business);
  * application is per (thread, mailbox). Placement stays system-only
  * (inbox/archived/spam/trash). Nesting caps at depth 2; deeper trees are where
  * folder UIs become unnavigable.
@@ -199,11 +199,11 @@ export type MoveSnapshot = {
 };
 
 /**
- * "Move to folder" — REPLACES the thread's labels with the one target (folder
+ * "Move to folder" — replaces the thread's labels with the one target (folder
  * behaviour on a multi-membership table; the constraint lives here, not in the
  * schema). Filing is moving: the thread leaves the inbox (placement
  * `archived`); `labelId: null` moves it back to Inbox and clears its folders.
- * Stamps `user` origin — rules never re-file a user-placed thread, and a new
+ * Stamps `user` origin: rules never re-file a user-placed thread, and a new
  * reply resurfaces it. Returns the prior state for undo.
  */
 export async function moveThreadToFolder(
@@ -265,7 +265,7 @@ export async function moveThreadToFolder(
   return snapshot;
 }
 
-/** Undo a moveToFolder: restore labels AND placement + its origin stamps. */
+/** Undo a moveToFolder: restore labels, placement, and its origin stamps. */
 export async function undoMoveToFolder(db: Db, snap: MoveSnapshot): Promise<void> {
   await db
     .delete(mail.threadLabel)

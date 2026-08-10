@@ -2,7 +2,7 @@
 /**
  * Structured logging for the mail pipeline. In Workers, console.* is captured
  * asynchronously by the runtime (no syscall/stdout write), so the only real
- * costs are the level check and the fields-object allocation — logging a flat
+ * costs are the level check and the fields-object allocation. Logging a flat
  * object is what makes Workers Logs index the fields for dash queries, so we
  * never build interpolated strings.
  *

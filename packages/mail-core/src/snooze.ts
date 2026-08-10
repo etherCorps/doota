@@ -6,21 +6,21 @@ import * as mail from "@doota/db/mail.schema";
 
 type Db = DrizzleD1Database<typeof schema>;
 
-// Snooze lives on thread_state, which is per-(thread, mailbox) — so a snooze is
-// per-mailbox, the same scope as `placement`. On a shared mailbox, snoozing hides
-// the thread for the whole team until it wakes (matches the shared placement
-// model). Snooze/unsnooze writes happen in thread.remote.ts; this file owns the
-// cron wake sweep.
+// Snooze lives on thread_state, which is per-(thread, mailbox), so a snooze is
+// per-mailbox — the same scope as `placement`. On a shared mailbox, snoozing
+// hides the thread for the whole team until it wakes (matches the shared
+// placement model). Snooze/unsnooze writes happen in thread.remote.ts; this file
+// owns the cron wake sweep.
 
 /**
- * Wake threads whose snooze elapsed — meant to run on the 5-min cron. Clears
- * `snoozedUntil`, bumps `lastActivityAt` to now (returns the thread to the TOP of
+ * Wake threads whose snooze elapsed; runs on the 5-min cron. Clears
+ * `snoozedUntil`, bumps `lastActivityAt` to now (returns the thread to the top of
  * the inbox), and drops the per-user read cursors for those threads so they come
- * back UNREAD (Gmail semantics; both confirmed by product). Returns the count woken.
+ * back unread (Gmail semantics; both confirmed by product). Returns the count woken.
  *
- * lastActivityAt normally mirrors thread.last_message_at; a wake deliberately sets
- * it to now so the thread resurfaces at the top — it re-syncs on the next real
- * delivery. Sort-hint only, no correctness impact elsewhere.
+ * lastActivityAt normally mirrors thread.last_message_at; a wake sets it to now
+ * so the thread resurfaces at the top, then re-syncs on the next real delivery.
+ * Sort-hint only, no correctness impact elsewhere.
  */
 export async function sweepDueSnoozes(db: Db, now: Date = new Date()): Promise<number> {
   const woken = await db

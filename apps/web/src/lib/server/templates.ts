@@ -2,7 +2,7 @@
 /**
  * Hosted mail templates (docs/service-accounts.md § Templates). Org-scoped
  * library; edits create immutable versions. Rendered at send with un-jinja
- * (Jinja2-like, auto-escaping) — the SAME engine as system email
+ * (Jinja2-like, auto-escaping), the same engine as system email
  * (src/lib/server/email/index.ts). Pure DB helpers so they're unit-testable;
  * the remote functions in rpc/template.remote.ts wrap these with auth guards.
  */

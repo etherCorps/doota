@@ -22,7 +22,7 @@ const confirmSchema = z.object({
 	newPassword: Password
 });
 
-// Step 2: require BOTH the emailed code AND the current password before changing it.
+// Step 2: require both the emailed code and the current password before changing it.
 export const confirmPasswordReset = form(
 	confirmSchema,
 	async ({ code, currentPassword, newPassword }) => {

@@ -17,10 +17,10 @@ type Db = DrizzleD1Database<typeof schema>;
  *
  * Two-tier conditions: tier 1 (from/to/cc/subject/listId/hasAttachment/size)
  * is free — already in memory after the metadata stage. tier 2 (`body`) is
- * only materialized when a rule in the ACTIVE set declares a body condition
+ * only materialized when a rule in the active set declares a body condition
  * (`ruleSetNeedsBody`, computed once per set): at ingest the parsed text is
- * already in memory, but the backfill must fetch + decrypt from R2 — a
- * mailbox with no body rules must never touch R2 during rules eval.
+ * already in memory, but the backfill must fetch + decrypt from R2. A mailbox
+ * with no body rules must never touch R2 during rules eval.
  */
 
 export type RuleField = "from" | "to" | "cc" | "subject" | "listId" | "hasAttachment" | "size" | "body";
@@ -36,7 +36,7 @@ export type RuleAction =
   | { type: "markFlagged" }
   | { type: "junk" }
   | { type: "snooze"; minutes: number }
-  // `confirmed` must be true at write time (UI double-confirm) — a forward
+  // `confirmed` must be true at write time (UI double-confirm): a forward
   // target is an exfiltration path on a compromised account.
   | { type: "forward"; to: string; confirmed: true }
   | { type: "stopProcessing" };
@@ -58,7 +58,7 @@ export class RuleValidationError extends Error {
   }
 }
 
-/** Closed-enum validation — the ONLY door to the executor. Throws on anything
+/** Closed-enum validation — the only door to the executor. Throws on anything
  * outside the DSL; returns normalized objects safe to JSON.stringify. */
 export function validateConditions(input: unknown): RuleConditions {
   if (typeof input !== "object" || input === null) throw new RuleValidationError("conditions must be an object");
@@ -209,7 +209,7 @@ export function emptyOutcome(): RuleOutcome {
   };
 }
 
-/** True when any ENABLED rule declares a body condition — computed once per
+/** True when any enabled rule declares a body condition — computed once per
  * set; gates the (backfill-time) R2 fetch + decrypt. */
 export function ruleSetNeedsBody(rules: RuleRow[]): boolean {
   return rules.some((r) => {
@@ -261,9 +261,9 @@ function conditionMatches(c: RuleCondition, msg: RuleMessageView, body: string |
 }
 
 /**
- * Evaluate an ordered rule set against one message. `getBody` is called AT
- * MOST ONCE, and only if a live rule actually reaches a body condition —
- * assert on it in tests to prove tier-2 laziness.
+ * Evaluate an ordered rule set against one message. `getBody` is called at most
+ * once, and only if a live rule actually reaches a body condition — assert on it
+ * in tests to prove tier-2 laziness.
  *
  * Precedence (decided here, not by accident of ordering):
  *  - first moveTo in position order wins; later moveTo/junk are recorded as
@@ -355,7 +355,7 @@ export async function evalRules(
  * Apply a RuleOutcome's thread-level effects (labels, placement, snooze) for
  * one (thread, mailbox). Shared by ingest (placement stage) and the backfill.
  *
- * Precedence case 3: a thread the USER placed is never moved by automatic
+ * Precedence case 3: a thread the user placed is never moved by automatic
  * evaluation — marks/labels still apply. `overrideUserPlacement` is the
  * backfill's explicit-user-action exception (warned in its confirm dialog).
  */
@@ -434,7 +434,7 @@ export async function applyRuleOutcome(
   return { moved };
 }
 
-/** Ordered ENABLED rule set for a mailbox (one load per job/batch). */
+/** Ordered enabled rule set for a mailbox (one load per job/batch). */
 export async function loadRules(db: Db, mailboxId: string): Promise<RuleRow[]> {
   const rows = await db.query.rule.findMany({
     where: and(eq(schema.rule.mailboxId, mailboxId), eq(schema.rule.enabled, true)),

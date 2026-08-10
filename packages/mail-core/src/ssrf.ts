@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * SSRF guards for operator-supplied URLs fetched by a Worker. ONE implementation
- * (cross-cutting guard): the image proxy, attachment fetch, and webhook delivery
- * all validate here. `isBlockedHost` is re-checked after EVERY redirect hop;
+ * SSRF guards for operator-supplied URLs fetched by a Worker. One cross-cutting
+ * implementation: the image proxy, attachment fetch, and webhook delivery all
+ * validate here. `isBlockedHost` is re-checked after every redirect hop;
  * `validateWebhookUrl` is the stricter save/deliver gate for webhooks.
  */
 
 /**
- * Block loopback / private / link-local / ULA / CGNAT — the SSRF-relevant ranges.
+ * Block loopback / private / link-local / ULA / CGNAT: the SSRF-relevant ranges.
  * Re-checked after every redirect hop, not just the first URL.
  */
 export function isBlockedHost(hostname: string): boolean {
@@ -41,8 +41,8 @@ const IPV6_LITERAL = /:/;
 /**
  * Validate an operator-supplied webhook URL. Stricter than isBlockedHost alone:
  * webhook delivery is a Worker fetching an arbitrary URL, so this is the SSRF
- * chokepoint. Enforced on SAVE and re-checked at DELIVERY time (DNS answers
- * change between the two). The caller must ALSO fetch with redirect:"manual" —
+ * chokepoint. Enforced on save and re-checked at delivery time (DNS answers
+ * change between the two). The caller must also fetch with redirect:"manual":
  * a public URL that 302s to 169.254.169.254 defeats a check done on the origin
  * host only.
  *

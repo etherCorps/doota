@@ -20,10 +20,10 @@ type Db = DrizzleD1Database<typeof schema>;
 
 /**
  * "Apply to existing messages" (build guide, Phase 2) — a resumable queue
- * backfill, never a synchronous action. The CURSOR LIVES IN D1
- * (rule.backfill_cursor), not the queue payload: a lost/evicted job resumes
- * from the row, progress (backfill_done) is UI-readable, and re-kicking is
- * idempotent. Cursor protocol: NULL = idle/finished, "" = kicked, "<delivery
+ * backfill, never a synchronous action. The cursor lives in D1
+ * (rule.backfill_cursor), not the queue payload: a lost/evicted job resumes from
+ * the row, progress (backfill_done) is UI-readable, and re-kicking is
+ * idempotent. Cursor protocol: null = idle/finished, "" = kicked, "<delivery
  * id>" = mid-run.
  *
  * Deliberately applies only labels + move/junk to existing mail: no forwards
@@ -109,7 +109,7 @@ export async function handleRuleBackfill(db: Db, env: MailEnv, job: RuleBackfill
         ((await db.$count(mail.attachment, eq(mail.attachment.messageId, message.id))) ?? 0) > 0,
       size: null, // raw size not stored — backfill size rules miss
     };
-    // The tier-2 gate: R2 is touched ONLY when the rule declares a body
+    // The tier-2 gate: R2 is touched only when the rule declares a body
     // condition (needsBody), and at most once per message.
     const outcome = await evalRules([ruleRow], view, async () => {
       if (!needsBody || !message.r2RawKey) return null;

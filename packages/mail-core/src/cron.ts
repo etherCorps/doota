@@ -38,11 +38,11 @@ export async function runScheduledSweeps(
   // — timely, so every 5 min like snoozes, not daily-gated. No-op without the
   // queue binding.
   const webhooksRedriven = env.WEBHOOK_QUEUE ? await sweepDueWebhooks(db, env.WEBHOOK_QUEUE) : 0;
-  // Daily-gated GC — all bounded scans that don't need per-5-min frequency:
+  // Daily-gated GC — bounded scans that don't need per-5-min frequency:
   // abandoned-draft + stuck-send tombstones, read notifications past retention,
-  // push subscriptions that stopped refreshing. Draft GC ran ~288×/day for a
-  // tombstone sweep a once-daily pass covers (a crashed send's draft reopening
-  // within ~a day is fine — the mail already went out before the crash).
+  // push subscriptions that stopped refreshing. A once-daily pass covers the
+  // tombstone sweep (a crashed send's draft reopening within ~a day is fine — the
+  // mail already went out before the crash).
   const daily = Math.random() < DAILY_ODDS;
   const staleDraftsDeleted = daily ? await sweepStaleDrafts(db, env) : 0;
   const notificationsPruned = daily ? await pruneStaleNotifications(db) : 0;

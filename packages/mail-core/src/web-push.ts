@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Web Push sender (docs/notifications.md, Phase B). Pure WebCrypto — VAPID ES256
+// Web Push sender (docs/notifications.md, Phase B). Pure WebCrypto: VAPID ES256
 // JWT (RFC 8292) + aes128gcm payload encryption (RFC 8291 over RFC 8188). No
 // dependency; runs on CF Workers and Node (crypto.subtle). Delivers a
 // notification with the app closed; a 404/410 from the push service means the

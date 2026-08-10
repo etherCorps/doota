@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Resolve API-supplied attachments (Resend-shaped: inline base64 `content`, or a
-// remote `url`) into ENCRYPTED R2 blobs, returning the refs enqueueSend stores on
+// remote `url`) into encrypted R2 blobs, returning the refs enqueueSend stores on
 // the message. Inline is decoded directly; url is fetched behind the same SSRF
 // guard + redirect re-validation as the image proxy. Bytes are encrypted at rest
-// (MAIL_DEK), identical to every other blob in the pipeline.
+// (MAIL_DEK), like every other blob in the pipeline.
 import { error } from "@sveltejs/kit";
 import { importKey, putEncryptedBlob } from "@doota/mail-core/crypto";
 import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES } from "@doota/mail-core/drafts";

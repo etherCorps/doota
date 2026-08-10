@@ -59,10 +59,10 @@ export function parseSearchQuery(raw: string): ParsedSearch {
 	return { text, from, to, starred, hasAttachment, unread, after, before };
 }
 
-/** A snippet centered on the FIRST query-term match in the body (Gmail/
- * Superhuman-style), not the body head — so a hit that matched deep in a long
- * mail still shows relevant context. Falls back to the head when nothing
- * matches (e.g. the term was only in the subject). */
+/** A snippet centered on the first query-term match in the body (Gmail/
+ * Superhuman-style), not the body head, so a hit deep in a long mail still
+ * shows relevant context. Falls back to the head when nothing matches (e.g.
+ * the term was only in the subject). */
 export function snippetAround(body: string | null, terms: string[], n = 160): string | null {
 	if (!body) return null;
 	const clean = body.replace(/\s+/g, " ").trim();

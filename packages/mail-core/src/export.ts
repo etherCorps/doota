@@ -12,16 +12,16 @@ type Db = DrizzleD1Database<typeof schema>;
 /**
  * Mailbox export (build guide, Phase 6): mbox with X-Doota-* headers carrying
  * Doota-specific state, plus a sidecar JSON for what can't survive a header
- * (notes, per-thread label sets). mbox because every mail tool in existence
- * imports it, and the custom headers keep the export losslessly re-importable
- * into Doota later (Phase 7) without a second proprietary format.
+ * (notes, per-thread label sets). mbox because every mail tool imports it, and
+ * the custom headers keep the export losslessly re-importable into Doota later
+ * (Phase 7) without a second proprietary format.
  *
- * Resumable queue job, same pattern as the rules backfill: the CURSOR lives
+ * Resumable queue job, same pattern as the rules backfill: the cursor lives
  * in D1 (mail_export.cursor), each batch appends one R2 part object
  * (`export/{orgId}/{exportId}/part-NNNNN`), the job re-enqueues itself until
  * done, and the download route streams the parts in order. Parts are stored
- * with the same at-rest encryption as everything else; the DOWNLOAD is
- * plaintext by definition — the UI must say so at the point of export, and
+ * with the same at-rest encryption as everything else; the download is
+ * plaintext by definition, so the UI must say so at the point of export, and
  * the mail_export row (who/when) is the audit record.
  */
 export type MailboxExportJob = { kind: "mailbox_export"; exportId: string };
@@ -99,7 +99,7 @@ export async function handleExportJob(db: Db, env: MailEnv, job: MailboxExportJo
 
     const fromLine = `From ${message.fromAddr ?? "MAILER-DAEMON"} ${new Date(message.sentAt?.getTime() ?? message.createdAt.getTime()).toUTCString()}\r\n`;
 
-    // Inbound: the raw MIME is canonical — full fidelity, attachments intact.
+    // Inbound: the raw MIME is canonical (full fidelity, attachments intact).
     let rfc822: string | null = null;
     if (message.r2RawKey && !message.r2RawKey.startsWith("outbound/")) {
       const buf = await getDecryptedBlob(env.MAIL_RAW, message.r2RawKey, ck);
@@ -120,7 +120,7 @@ export async function handleExportJob(db: Db, env: MailEnv, job: MailboxExportJo
         header("References", message.references) +
         `Content-Type: text/plain; charset=utf-8\r\n\r\n${body}\r\n`;
     }
-    // The X-Doota headers are PREPENDED to the message's header block —
+    // The X-Doota headers are prepended to the message's header block:
     // valid RFC822 (header order is free) and trivially strippable.
     blocks.push(fromLine + doota + mboxEscape(rfc822) + "\r\n");
   }

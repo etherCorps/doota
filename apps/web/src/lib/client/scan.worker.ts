@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-// Attachment scan worker. Runs the yara-x WASM engine off the main thread — a
+// Attachment scan worker. Runs the yara-x WASM engine off the main thread; a
 // 25 MB scan would otherwise lock the tab. Fetches the attachment same-origin
 // (session cookie rides along), hashes it, runs the pure engine, posts a verdict.
 //
-// FAIL-CLOSED on the label: any fetch/init/scan failure posts `error` — NEVER
-// `clean`. (The caller may still fail OPEN on the action, behind a confirm.)
+// Fail-closed on the label: any fetch/init/scan failure posts `error`, never
+// `clean`. (The caller may still fail open on the action, behind a confirm.)
 import init, { Compiler } from '@virustotal/yara-x';
 // Vendored + self-hosted (guide: no CDN, pin + vendor the build). The package's
 // exports map doesn't expose the .wasm, so we ship our own copy; Vite emits it

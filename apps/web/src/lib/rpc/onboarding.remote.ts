@@ -11,8 +11,8 @@ const changePasswordSchema = z.object({
 	newPassword: Password
 });
 
-// Changes the password AND clears the temp-password onboarding gate. Goes
-// through better-auth so the current password is actually verified — we don't
+// Changes the password and clears the temp-password onboarding gate. Goes
+// through better-auth so the current password is actually verified; we don't
 // clear the flag on an unproven request.
 export const changeInitialPassword = form(
 	changePasswordSchema,

@@ -22,7 +22,7 @@ type ResetUser = {
 /**
  * External address the reset code is sent to (same invariant as the logged-out
  * flow): super-admin → their external primary email; everyone else → their
- * VERIFIED recovery email. Never a served-domain inbox. null = no valid target.
+ * verified recovery email. Never a served-domain inbox. null = no valid target.
  */
 export function resetTarget(user: ResetUser): string | null {
   if (user.role === "superadmin") return user.email;

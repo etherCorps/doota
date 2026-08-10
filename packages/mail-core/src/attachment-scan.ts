@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Attachment scan engine (Phase D). Runs in a Web Worker on the CLIENT the
+ * Attachment scan engine (Phase D). Runs in a Web Worker on the client the
  * moment a user opens an attachment — the one place the check is real, because
- * at OPEN the attacker is the SENDER and the user is the victim (unlike upload,
+ * at open the attacker is the sender and the user is the victim (unlike upload,
  * where the user is the attacker and a client check is theatre).
  *
- * The engine is pure + yara-agnostic: it takes a `YaraScanner` (the yara-x WASM
- * rules, or a stub in tests) and owns the size cap, the archive zip-bomb caps,
- * and the fail-closed verdict rules. Never claims "virus-free" — YARA with
- * public rules catches KNOWN families + suspicious structure and misses novel /
- * obfuscated payloads. The verdict is advisory (a display signal), NEVER an
+ * The engine is pure and yara-agnostic: it takes a `YaraScanner` (the yara-x
+ * WASM rules, or a stub in tests) and owns the size cap, the archive zip-bomb
+ * caps, and the fail-closed verdict rules. Never claims "virus-free" — YARA with
+ * public rules catches known families + suspicious structure and misses novel /
+ * obfuscated payloads. The verdict is advisory (a display signal), not an
  * authorization input.
  *
- * FAIL-CLOSED on the label: a timeout, an oversized file, a zip-bomb breach, or
- * a crash records `skipped`/`error` — NEVER `clean`. (Fail-open on the action:
- * the caller may still let the user download after an explicit confirm.)
+ * Fail-closed on the label: a timeout, oversized file, zip-bomb breach, or crash
+ * records `skipped`/`error`, never `clean`. (Fail-open on the action: the caller
+ * may still let the user download after an explicit confirm.)
  */
 
 export type ScanVerdict = "clean" | "matched" | "skipped" | "error";
@@ -22,8 +22,8 @@ export type ScanResult = { verdict: ScanVerdict; rule: string | null; reason?: s
 
 // Beyond this, `skipped` with an honest message (the worker would lock the tab).
 export const SCAN_MAX_BYTES = 25 * 1024 * 1024;
-// Archive scanning is where the value is AND where the DoS is. Every cap here is
-// non-negotiable — without them a sender can hang any recipient's browser.
+// Archive scanning is where the value is and where the DoS is. Without these
+// caps a sender can hang any recipient's browser.
 export const ZIP_MAX_DEPTH = 3;
 export const ZIP_MAX_ENTRIES = 1000;
 export const ZIP_MAX_TOTAL_BYTES = 200 * 1024 * 1024;
@@ -48,8 +48,8 @@ function isZip(bytes: Uint8Array): boolean {
 type ZipEntry = { name: string; compSize: number; uncompSize: number; method: number; localOffset: number };
 
 /**
- * Parse the ZIP central directory to read declared sizes + count WITHOUT
- * decompressing — so a bomb is rejected on its own metadata, never expanded.
+ * Parse the ZIP central directory to read declared sizes + count without
+ * decompressing, so a bomb is rejected on its own metadata, never expanded.
  * Returns null when the archive is malformed (caller treats as skipped).
  */
 function readCentralDirectory(bytes: Uint8Array): ZipEntry[] | null {
@@ -124,7 +124,7 @@ export function scanBuffer(
       if (!entries) return skipped("unreadable archive");
       if (entries.length > ZIP_MAX_ENTRIES) return skipped("too many archive entries");
 
-      // Cap on DECLARED sizes, before decompressing anything.
+      // Cap on declared sizes, before decompressing anything.
       let declaredTotal = 0;
       let compTotal = 0;
       for (const entry of entries) {
@@ -152,7 +152,7 @@ export function scanBuffer(
     }
     return clean;
   } catch (err) {
-    // A crash NEVER reads as clean — that is the worst outcome available.
+    // A crash never reads as clean — that's the worst outcome available.
     return { verdict: "error", rule: null, reason: err instanceof Error ? err.message : "scan error" };
   }
 }

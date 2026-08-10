@@ -10,8 +10,8 @@ import { getAuthz } from "$lib/server/authz.js";
 /**
  * Contact detail for the sender hover card: whether the address is one of our
  * org's users, plus the most recent threads involving it. Privacy boundary is
- * the SAME as search — only threads in mailboxes the caller can already read.
- * Lazy: the client fires this only when a card actually opens.
+ * the same as search: only threads in mailboxes the caller can already read.
+ * The client fires this only when a card actually opens.
  */
 
 export type ContactThread = {

@@ -2,7 +2,7 @@
 // Tiny per-isolate TTL memo. Module scope on Workers = per-isolate: survives
 // across requests while the isolate is warm, vanishes on eviction. First-tier
 // cache in front of KV/D1 for small, high-read, staleness-tolerant values.
-// NOT for anything that must invalidate cross-isolate instantly — other
+// Not for anything that must invalidate cross-isolate instantly: other
 // isolates keep their copy until the TTL runs out.
 
 type Entry<V> = { v: V; exp: number };

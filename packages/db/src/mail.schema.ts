@@ -10,7 +10,7 @@ import {
 import { user, organization } from "./auth.schema";
 
 /**
- * Mail data model — APP-OWNED tables (not Better Auth). The auth-boundary guard
+ * Mail data model. App-owned tables, not Better Auth. The auth-boundary guard
  * only blocks writes to the aggregated `schema.` namespace; app/worker code
  * writes these via a `mail.*` import alias (`db.insert(mail.mailbox)`), so the
  * guard is never tripped. Reads are allowed anywhere.
@@ -20,7 +20,7 @@ import { user, organization } from "./auth.schema";
  *   delivery     — per mailbox: receipt (role, read, via-alias, subaddress tag)
  *   thread_state — per mailbox: triage (placement, star, assignee)
  *
- * Encrypt CONTENT only (subject/bodies, the *_enc columns). Routing + threading
+ * Encrypt content only (subject/bodies, the *_enc columns). Routing + threading
  * metadata stays cleartext so the inbound hot path and threading never decrypt.
  */
 
@@ -35,12 +35,12 @@ const now = () =>
 
 /**
  * Per-org mirror of Cloudflare Email Routing facts the inbound hot path needs
- * but must NOT fetch from CF: whether subaddressing is honored, and which
+ * but must not fetch from CF: whether subaddressing is honored, and which
  * routing subdomains route to this org. Write-through from the superadmin CF
  * commands (domains.remote.ts); CF stays source of truth, this is a read-replica
  * (same pattern as organization.status). routing_subdomains is a JSON array of
- * full hosts — the resolver reads it via the in-memory org-domains cache, never
- * a per-message SQL join, so a column beats a table here.
+ * full hosts. The resolver reads it via the in-memory org-domains cache, not a
+ * per-message SQL join, so a column beats a table here.
  */
 export const orgMailSettings = sqliteTable("org_mail_settings", {
   orgId: text("org_id")
@@ -59,16 +59,16 @@ export const orgMailSettings = sqliteTable("org_mail_settings", {
   // Org-wide remote-content (images + fonts) policy. `block` (privacy default):
   // remote resources are proxied only when the reader opts in. `allow`:
   // auto-loaded (still same-origin proxied, never a direct sender fetch).
-  // When `remote_content_locked`, users CANNOT override it (server-enforced in
+  // When `remote_content_locked`, users can't override it (server-enforced in
   // the body route) — for privacy-strict orgs.
   remoteContentMode: text("remote_content_mode").default("block").notNull(), // block | allow
   remoteContentLocked: integer("remote_content_locked", { mode: "boolean" }).default(false).notNull(),
   // Org-wide 2FA mandate (Phase C). When set, every interactive member must have
-  // TOTP enrolled — enforced in the request guard, not the UI. `require_2fa_from`
+  // TOTP enrolled, enforced in the request guard, not the UI. `require_2fa_from`
   // is the grace deadline: before it members are prompted, after it unenrolled
   // sessions are blocked. Flipping this to instant-lockout would be a support
   // incident, so enabling always sets a future deadline. API keys are exempt by
-  // construction (they never hit the interactive guard) — see docs/2fa.md.
+  // construction (they never hit the interactive guard). See docs/2fa.md.
   require2fa: integer("require_2fa", { mode: "boolean" }).default(false).notNull(),
   require2faFrom: integer("require_2fa_from", { mode: "timestamp_ms" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
@@ -78,7 +78,7 @@ export const orgMailSettings = sqliteTable("org_mail_settings", {
 });
 
 /**
- * An address that receives mail. A SEPARATE entity from `user`: shared mailboxes
+ * An address that receives mail. A separate entity from `user`: shared mailboxes
  * (support@) have many users and no single owner. Personal mailboxes are created
  * alongside the user in provisioning (is_personal = true). Address may sit on the
  * apex or any configured routing subdomain.
@@ -104,10 +104,10 @@ export const mailbox = sqliteTable(
     // mailbox (RFC 5322 From ≠ Sender; DMARC aligns on From, so it's free).
     // Off by default — Outlook renders it as "on behalf of".
     revealSender: integer("reveal_sender", { mode: "boolean" }).default(false).notNull(),
-    // Full-text search keeps a READABLE index of subject + body (see search.ts /
+    // Full-text search keeps a readable index of subject + body (see search.ts /
     // SECURITY docs). Set false to exclude a sensitive mailbox from that index
-    // entirely — its mail is then not searchable and never enters the readable
-    // index. Honored at index time. Default on.
+    // entirely: its mail is then not searchable and never enters the index.
+    // Honored at index time. Default on.
     searchIndexed: integer("search_indexed", { mode: "boolean" }).default(true).notNull(),
     createdAt: now(),
   },
@@ -144,7 +144,7 @@ export const mailboxAccess = sqliteTable(
       .notNull(),
     // "Priya at Acme Support" — this user's From display name when sending as a
     // shared mailbox. Falls back to mailbox.display_name. The wire From address
-    // is ALWAYS the mailbox address (replies must return to the team).
+    // is always the mailbox address (replies must return to the team).
     sendDisplayName: text("send_display_name"),
     createdAt: now(),
   },
@@ -196,7 +196,7 @@ export const thread = sqliteTable(
 
 /**
  * One immutable row per unique email, deduped by (org_id, message_id_header).
- * item_type is the timeline discriminated union — only external_message is
+ * item_type is the timeline discriminated union. Only external_message is
  * written this pass; the column exists so internal_note / system_event are an
  * additive change, not a render-path rewrite. subject/body columns are
  * ciphertext (crypto.ts). Raw RFC5322 blob lives in R2 (r2_raw_key) and is the
@@ -219,9 +219,9 @@ export const message = sqliteTable(
     // Sender's display name from the From header ("Alice" in `Alice <a@x>`).
     // Cleartext label only — fromAddr stays the identity used for all matching.
     fromName: text("from_name"),
-    // Original visible recipients (JSON arrays) + Reply-To — cleartext routing
+    // Original visible recipients (JSON arrays) + Reply-To. Cleartext routing
     // metadata (like from_addr), kept so reply-all can reconstruct the audience.
-    // BCC is NEVER stored here (it lives only as delivery/submission rows).
+    // BCC is never stored here (it lives only as delivery/submission rows).
     toAddrs: text("to_addrs").default("[]").notNull(),
     ccAddrs: text("cc_addrs").default("[]").notNull(),
     replyTo: text("reply_to"),
@@ -230,33 +230,33 @@ export const message = sqliteTable(
     itemType: text("item_type").default("external_message").notNull(),
     contentKind: text("content_kind").default("card").notNull(), // bubble | card
     // Render-decision flags computed at ingest so the read path never needs the
-    // HTML body (which is NOT stored here — it's derived from the raw MIME in R2
-    // on render). html_kind: rich → sandboxed card, plain → text bubble.
+    // HTML body (not stored here — it's derived from the raw MIME in R2 on
+    // render). html_kind: rich → sandboxed card, plain → text bubble.
     htmlKind: text("html_kind"), // rich | plain | null (no html)
     hasRemoteImages: integer("has_remote_images", { mode: "boolean" }).default(false).notNull(),
     // Sender authentication verdict captured at ingest from Cloudflare's
     // Authentication-Results header (dmarc=pass ⇒ aligned DKIM/SPF). Drives the
-    // "verified sender" shield. false = fail/none/unknown — fail-closed: we never
+    // "verified sender" shield. false = fail/none/unknown. Fail-closed: we never
     // badge mail we didn't confirm, including historical rows.
     dmarcPass: integer("dmarc_pass", { mode: "boolean" }).default(false).notNull(),
     subjectEnc: text("subject_enc"),
     // Small text twins stay in D1 for the hot list/search/quote paths. The large
-    // HTML body does NOT — see body/+server.ts (derives it from R2 raw).
+    // HTML body does not — see body/+server.ts (derives it from R2 raw).
     bodyStrippedEnc: text("body_stripped_enc"),
     bodyFullEnc: text("body_full_enc"),
     createdAt: now(),
   },
   (t) => [
     uniqueIndex("message_org_msgid_uidx").on(t.orgId, t.messageIdHeader),
-    // Composite: serves plain thread lookups AND latest-message-per-thread
-    // (ORDER BY sent_at) without scanning every message in the thread — the
+    // Composite: serves plain thread lookups and latest-message-per-thread
+    // (ORDER BY sent_at) without scanning every message in the thread, so the
     // thread-list hot path pays per-thread O(1) instead of O(messages).
     index("message_thread_sent_idx").on(t.threadId, t.sentAt),
   ],
 );
 
 /**
- * Per-recipient receipt. BCC exists ONLY as delivery rows — never written into
+ * Per-recipient receipt. BCC exists only as delivery rows, never written into
  * the shared message's stored headers. keywords is the JMAP-style extensible
  * flag set (JSON array: $seen/$answered/$flagged/…); is_read is kept as a fast
  * indexed mirror of $seen for list queries.
@@ -317,14 +317,14 @@ export const threadState = sqliteTable(
     lastReadAt: integer("last_read_at", { mode: "timestamp_ms" }),
     // Denormalized recency, maintained by materializeDelivery, so list + unread
     // never join `thread` or scan `delivery`:
-    //  - last_activity_at mirrors thread.last_message_at — the SORT key (your own
+    //  - last_activity_at mirrors thread.last_message_at, the sort key (your own
     //    replies bump a thread), so the list walks an index and stops at LIMIT.
-    //  - last_inbound_at = newest message delivered to THIS mailbox in a
-    //    recipient role (never `from`) — the UNREAD key (your own send must not
+    //  - last_inbound_at = newest message delivered to this mailbox in a
+    //    recipient role (never `from`), the unread key (your own send must not
     //    mark a thread unread). NULL ⇒ nothing inbound here yet.
     lastActivityAt: integer("last_activity_at", { mode: "timestamp_ms" }),
     lastInboundAt: integer("last_inbound_at", { mode: "timestamp_ms" }),
-    // "Empty trash/spam" hides — never a hard delete. Hidden threads drop out of
+    // "Empty trash/spam" hides, never a hard delete. Hidden threads drop out of
     // every list; moving a thread to a new placement clears it.
     hiddenAt: integer("hidden_at", { mode: "timestamp_ms" }),
     // Snooze: when set (future), the thread is hidden from the inbox and lives in
@@ -333,7 +333,7 @@ export const threadState = sqliteTable(
     // Partial index below (snoozed_snoozed_idx) keeps the tiny snoozed set — so the
     // cron's due-sweep and the Snoozed view are index-served, not full scans.
     snoozedUntil: integer("snoozed_until", { mode: "timestamp_ms" }),
-    // How the thread reached its placement — drives resurfacing on a new reply
+    // How the thread reached its placement. Drives resurfacing on a new reply
     // (user-filed returns to inbox; rule-filed stays put) and the "why is this
     // here?" sheet. Cheap now, impossible to backfill later.
     placementOrigin: text("placement_origin").default("default").notNull(), // default | user | rule
@@ -345,9 +345,9 @@ export const threadState = sqliteTable(
     // alongside thread_read — additive, no rewrite.
     muted: integer("muted", { mode: "boolean" }).default(false).notNull(),
     // Pin (Phase B): shared across the mailbox, like is_starred. Pinned threads
-    // sort to the top of any list containing them. Orthogonal to placement —
+    // sort to the top of any list containing them. Orthogonal to placement:
     // survives archive/move, never cleared on a placement change. Queried as a
-    // separate small list (the partial index below), NOT a tiebreaker on the
+    // separate small list (the partial index below), not a tiebreaker on the
     // list sort, so thread_state_list_idx's backward-scan-to-LIMIT is preserved.
     pinnedAt: integer("pinned_at", { mode: "timestamp_ms" }),
     createdAt: now(),
@@ -380,9 +380,9 @@ export const threadState = sqliteTable(
 );
 
 /**
- * Per-USER read cursor for a thread within a mailbox. Distinct from
+ * Per-user read cursor for a thread within a mailbox. Distinct from
  * thread_state (which is per-mailbox triage shared by the whole team): in a
- * shared mailbox each teammate must have their OWN unread state, so one person
+ * shared mailbox each teammate must have their own unread state, so one person
  * opening a thread doesn't clear the unread dot for everyone. Keyed
  * (user, thread, mailbox); last_read_at is compared against a message's sent_at
  * to derive read/unread. thread_state.last_read_at is left in place but is no
@@ -427,19 +427,19 @@ export const label = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    // Labels are MAILBOX-scoped (privacy: folder names must not leak across
+    // Labels are mailbox-scoped (privacy: folder names must not leak across
     // mailboxes). Nullable only because SQLite ADD COLUMN can't be NOT NULL
-    // without a default — code treats it as required post-0045.
+    // without a default; code treats it as required post-0045.
     mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     color: text("color"),
-    // Folder nesting, max depth 2 (parent → child, no grandchildren) —
-    // enforced in the rpc layer, deeper trees are where folder UIs die.
-    // No FK self-reference: SQLite ALTER TABLE can't add one, and a dangling
-    // parent simply renders at the root.
+    // Folder nesting, max depth 2 (parent → child, no grandchildren), enforced
+    // in the rpc layer. Deeper trees are where folder UIs die. No FK
+    // self-reference: SQLite ALTER TABLE can't add one, and a dangling parent
+    // renders at the root.
     parentId: text("parent_id"),
     // Per-folder new-mail notification (All=true / None=false). Rule-fed
-    // folders default to None at rule creation (Phase 2) — filing away mail
+    // folders default to None at rule creation (Phase 2): filing away mail
     // that still buzzes achieves nothing. Inbox itself isn't a label.
     notifyNewMail: integer("notify_new_mail", { mode: "boolean" }).default(true).notNull(),
     createdAt: now(),
@@ -448,12 +448,11 @@ export const label = sqliteTable(
 );
 
 /**
- * Mailbox export jobs (build guide, Phase 6) — data portability is part of
- * the self-hosting promise. A queued, RESUMABLE job streams an mbox (plus a
- * sidecar JSON) into R2 part objects; the download route concatenates them
- * behind a short-lived capability URL. This row is the cursor (a lost job
- * resumes from D1), the progress readout, and the AUDIT RECORD — an export
- * decrypts everything, so who/when is part of the feature.
+ * Mailbox export jobs (build guide, Phase 6). A queued, resumable job streams
+ * an mbox (plus a sidecar JSON) into R2 part objects; the download route
+ * concatenates them behind a short-lived capability URL. This row is the cursor
+ * (a lost job resumes from D1), the progress readout, and the audit record: an
+ * export decrypts everything, so who/when is part of the feature.
  */
 export const mailExport = sqliteTable(
   "mail_export",
@@ -479,8 +478,8 @@ export const mailExport = sqliteTable(
 );
 
 /**
- * Per-mailbox sender allow/block lists (build guide, Phase 5) — evaluated
- * BEFORE the spam classifier. `address` is a full address or a "@domain"
+ * Per-mailbox sender allow/block lists (build guide, Phase 5). Evaluated
+ * before the spam classifier. `address` is a full address or a "@domain"
  * suffix entry. Moving mail out of Junk adds an implicit allow entry.
  */
 export const mailboxSenderList = sqliteTable(
@@ -510,8 +509,8 @@ export const mailboxVacation = sqliteTable("mailbox_vacation", {
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
   enabled: integer("enabled", { mode: "boolean" }).default(false).notNull(),
-  // Replies are sent AS the mailbox but authorized as this user (the normal
-  // can() send gate) — the responder dies with their revoked access.
+  // Replies are sent as the mailbox but authorized as this user (the normal
+  // can() send gate), so the responder dies with their revoked access.
   enabledByUserId: text("enabled_by_user_id").references(() => user.id, { onDelete: "set null" }),
   subject: text("subject").default("").notNull(), // empty → "Auto: Re: <subject>"
   bodyText: text("body_text").default("").notNull(),
@@ -525,12 +524,12 @@ export const mailboxVacation = sqliteTable("mailbox_vacation", {
 });
 
 /**
- * Rules engine (build guide, Phase 2). JSON DSL, not Sieve — change_log is
+ * Rules engine (build guide, Phase 2). JSON DSL, not Sieve: change_log is
  * JMAP-shaped and JMAP has its own filter model. Evaluated in `position`
- * order at the inbound rulesEval stage (BEFORE placement + notification);
+ * order at the inbound rulesEval stage (before placement + notification);
  * spam and vacation later hang off the same stage as built-in kinds.
  * `conditions` / `actions` are validated on write against a closed enum
- * (rules.ts) — nothing unvalidated reaches the executor.
+ * (rules.ts), so nothing unvalidated reaches the executor.
  */
 export const rule = sqliteTable(
   "rule",
@@ -543,8 +542,8 @@ export const rule = sqliteTable(
       .notNull()
       .references(() => mailbox.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    // The human who authored the rule. `forward` actions send AS the mailbox
-    // but are authorized as this user — the existing can() send gate applies,
+    // The human who authored the rule. `forward` actions send as the mailbox
+    // but are authorized as this user: the existing can() send gate applies,
     // so a forward dies with its creator's revoked access instead of becoming
     // an ownerless exfiltration path.
     createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
@@ -603,9 +602,9 @@ export const attachment = sqliteTable(
     // Computed at ingest so the read path doesn't need the HTML body.
     inline: integer("inline", { mode: "boolean" }).default(false).notNull(),
     // Client-side scan result (Phase D). Shared on the (deduped) attachment row so
-    // one teammate's scan is visible to everyone — nobody quietly misses a warning.
-    // The verdict is ADVISORY (client-reported): a display signal, NEVER an
-    // authorization input. `clean | matched | skipped | error` — fail-closed:
+    // one teammate's scan is visible to everyone; nobody quietly misses a warning.
+    // The verdict is advisory (client-reported): a display signal, never an
+    // authorization input. `clean | matched | skipped | error`. Fail-closed:
     // a timeout/oversize/crash records skipped/error, never clean.
     sha256: text("sha256"),
     scanVerdict: text("scan_verdict"),
@@ -655,7 +654,7 @@ export const calendarEvent = sqliteTable(
     endMs: integer("end_ms"),
     tz: text("tz"), // event timezone label (IANA) when the value carried a TZID
     allDay: integer("all_day", { mode: "boolean" }).default(false).notNull(),
-    // RAW recurrence rule, verbatim — NEVER expanded. rdate/exdate stay in the
+    // Recurrence rule, verbatim, never expanded. rdate/exdate stay in the
     // raw ICS blob (raw_ics_r2_key), not surfaced as columns.
     rrule: text("rrule"),
     organizerEmail: text("organizer_email"),
@@ -680,7 +679,7 @@ export const calendarEvent = sqliteTable(
 
 /**
  * A user's local RSVP for an event (yes/no/maybe), scoped by the event UID. This
- * is the app's own record — it does NOT notify the organizer (that needs an iMIP
+ * is the app's own record; it does not notify the organizer (that needs an iMIP
  * reply the outbound provider can't emit yet, or the provider's own RSVP links).
  * Keyed per (user, uid) so the latest answer wins across every message of the
  * event.
@@ -694,8 +693,8 @@ export const calendarRsvp = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     uid: text("uid").notNull(),
     status: text("status").notNull(), // accepted | declined | tentative
-    // The PARTSTAT we last emailed the organizer, and when — so re-answering
-    // with the SAME value doesn't re-send an iTIP REPLY.
+    // The PARTSTAT we last emailed the organizer, and when, so re-answering
+    // with the same value doesn't re-send an iTIP REPLY.
     lastSentPartstat: text("last_sent_partstat"),
     replySentAt: integer("reply_sent_at", { mode: "timestamp_ms" }),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
@@ -706,11 +705,11 @@ export const calendarRsvp = sqliteTable(
 );
 
 /**
- * Durable notification log (docs/notifications.md, Phase A). STRUCTURAL refs
- * only — no rendered title/body: the display string ("New message from Alice")
+ * Durable notification log (docs/notifications.md, Phase A). Structural refs
+ * only, no rendered title/body: the display string ("New message from Alice")
  * is resolved at read time from the thread's cleartext `message.fromAddr`/
  * `fromName`, so re-wording never needs a migration and no subject line leaks
- * into a zero-access design. Scoped per user; the bell filters to the ACTIVE org
+ * into a zero-access design. Scoped per user; the bell filters to the active org
  * (a user can hold mailboxes across served domains under multiSession).
  *
  * Read state is server-owned (cross-device): `seenAt` = bell opened, `readAt` =
@@ -739,8 +738,8 @@ export const notification = sqliteTable(
   },
   (t) => [
     // Paginated feed (incl. recently-read). SQLite reads it backwards for DESC.
-    // No orgId: the app has no org switcher yet, so the bell is not org-scoped —
-    // filtering + sorting must share one index, and (userId, createdAt) serves
+    // No orgId: the app has no org switcher yet, so the bell is not org-scoped.
+    // Filtering + sorting must share one index, and (userId, createdAt) serves
     // both. `orgId` stays on the row; add (userId, orgId, createdAt) when a
     // switcher exists to scope by.
     index("notification_feed_idx").on(t.userId, t.createdAt),
@@ -759,11 +758,11 @@ export const notification = sqliteTable(
 );
 
 /**
- * Web Push subscriptions (docs/notifications.md, Phase B) — one row per
+ * Web Push subscriptions (docs/notifications.md, Phase B). One row per
  * browser/device that opted in. `endpoint` is the push service URL (unique);
  * `p256dh`/`auth` are the client keys the payload is encrypted to. Pruned when
- * the push service returns 404/410 (gone) or the row goes stale. Delivering
- * push with the app CLOSED is what this buys over the tab-open Notification API.
+ * the push service returns 404/410 (gone) or the row goes stale. This buys
+ * push with the app closed, which the tab-open Notification API can't do.
  */
 export const pushSubscription = sqliteTable(
   "push_subscription",
@@ -786,17 +785,17 @@ export const pushSubscription = sqliteTable(
 );
 
 /**
- * COLLABORATION (Task 5) — the thin Missive layer. Both live in SIBLING tables
+ * Collaboration (Task 5), the thin Missive layer. Both live in sibling tables
  * (never merged into `message`), so the immutable-message / delivery / submission
- * invariants stay untouched and a note is STRUCTURALLY incapable of entering the
- * outbound path (submission.message_id FKs `message` only — no note ever does).
+ * invariants stay untouched and a note is structurally incapable of entering the
+ * outbound path (submission.message_id FKs `message` only, and no note ever does).
  *
- * internal_note — a note the team writes INSIDE a thread without emailing anyone.
+ * internal_note — a note the team writes inside a thread without emailing anyone.
  * Scoped per thread, per mailbox (mirrors thread_state): the same thread in
  * support@ and sales@ keeps separate notes. Body is encrypted (crypto.ts, same
  * DEK as messages); author/timestamps stay cleartext. Soft-deleted (deleted_at)
  * so a removal leaves a tombstone instead of rewriting history. Visibility
- * follows mailbox_access via can() — no parallel path.
+ * follows mailbox_access via can(), no parallel path.
  */
 export const internalNote = sqliteTable(
   "internal_note",
@@ -831,9 +830,9 @@ export const internalNote = sqliteTable(
 
 /**
  * system_event — quiet, inline context (assignment changed, archived by another
- * user). Persisted ONLY for genuinely shared mailboxes (>1 access grant) and
- * only for meaningful acts; personal mailboxes emit none (the solo experience is
- * untouched). Never confusable with a message: rendered as a chip, no body.
+ * user). Persisted only for genuinely shared mailboxes (>1 access grant) and
+ * only for meaningful acts; personal mailboxes emit none. Never confusable with
+ * a message: rendered as a chip, no body.
  */
 export const systemEvent = sqliteTable(
   "system_event",
@@ -860,17 +859,17 @@ export const systemEvent = sqliteTable(
 );
 
 /**
- * DRAFTS — mutable, PER-USER compose state. A draft is NOT a `message` row:
+ * Drafts — mutable, per-user compose state. A draft is not a `message` row:
  * messages are immutable and deduped by message_id_header, a draft has neither.
  * It becomes a `message` + `submission` only at Send (a fresh message is built
- * from these fields — the draft is never mutated into it). Retained as a
+ * from these fields; the draft is never mutated into it). Retained as a
  * tombstone (status `sent`, submission_id linked) until the submission leaves
  * its cancellable/failable window, so undo can restore an editable draft; then
- * GC'd. A draft never appears in the thread timeline — it is composer state.
+ * GC'd. A draft never appears in the thread timeline; it is composer state.
  *
- * Per-user: two people with send access to support@ each get their OWN drafts.
+ * Per-user: two people with send access to support@ each get their own drafts.
  * Every row is owned via created_by_user_id and keyed by its own id; ownership
- * is enforced in app code (ownDraftRow) — a draft is never shared.
+ * is enforced in app code (ownDraftRow), so a draft is never shared.
  *
  * Content (subject/body) is encrypted at rest with the same crypto.ts as
  * messages — a draft is user content. Recipient sets + attachment refs are JSON
@@ -885,7 +884,7 @@ export const draft = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    // Sending identity — the mailbox the can() SEND capability is checked against.
+    // Sending identity — the mailbox the can() send capability is checked against.
     mailboxId: text("mailbox_id")
       .notNull()
       .references(() => mailbox.id, { onDelete: "cascade" }),
@@ -939,13 +938,13 @@ export const draft = sqliteTable(
 );
 
 /**
- * OUTBOUND — send state, JMAP EmailSubmission-shaped. Send state CANNOT live on
+ * Outbound send state, JMAP EmailSubmission-shaped. Send state can't live on
  * `message` (immutable, shared across recipients), so it belongs on its own
  * object. One submission per send; per-recipient rows track fan-out (bounces are
  * per-recipient, sends chunk at 50).
  *
- * The row is written FIRST (status `queued`, idempotency_key set) and only THEN
- * is a job enqueued — that ordering is what makes queue redelivery safe.
+ * The row is written first (status `queued`, idempotency_key set) and only then
+ * is a job enqueued; that ordering is what makes queue redelivery safe.
  * status lifecycle (rolls up from recipients):
  *   draft_queued → queued → sending → sent → delivered
  *                → bounced_hard | bounced_soft | complained
@@ -958,7 +957,7 @@ export const submission = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    // The message we constructed + materialized into the sender's timeline. It
+    // The message we constructed and materialized into the sender's timeline. It
     // carries the Message-ID we transmit, so a reflect-back dedupes against it.
     messageId: text("message_id")
       .notNull()
@@ -974,8 +973,8 @@ export const submission = sqliteTable(
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
-    // The API key that originated this send (null for interactive sends). The
-    // join between the service-account send log and the outbound pipeline.
+    // The API key that originated this send (null for interactive sends). Joins
+    // the service-account send log to the outbound pipeline.
     apiKeyId: text("api_key_id").references(() => apiKey.id, { onDelete: "set null" }),
     // Scheduled send; null = send now (still held for the undo window below).
     sendAt: integer("send_at", { mode: "timestamp_ms" }),
@@ -984,7 +983,7 @@ export const submission = sqliteTable(
     undoUntil: integer("undo_until", { mode: "timestamp_ms" }),
     status: text("status").default("queued").notNull(),
     attempts: integer("attempts").default(0).notNull(),
-    // Stamped by the consumer's claim CAS. Distinguishes a FRESH in-flight
+    // Stamped by the consumer's claim CAS. Distinguishes a fresh in-flight
     // `sending` row (must not be re-claimed — that's a double send on the wire)
     // from a stuck one (crashed mid-flight; rescue-eligible after a timeout).
     lastAttemptAt: integer("last_attempt_at", { mode: "timestamp_ms" }),
@@ -997,7 +996,7 @@ export const submission = sqliteTable(
     lastError: text("last_error"),
     provider: text("provider"),
     providerMessageId: text("provider_message_id"),
-    // The double-send guard: unique, so a redelivered enqueue can't create a
+    // The double-send guard. Unique, so a redelivered enqueue can't create a
     // second submission for the same logical send.
     idempotencyKey: text("idempotency_key").notNull(),
     createdAt: now(),
@@ -1051,7 +1050,7 @@ export const submissionRecipient = sqliteTable(
 
 /**
  * Suppression list — hard bounces + complaints land here; a send to a suppressed
- * address is dropped BEFORE it reaches the provider (recorded as dropped, not
+ * address is dropped before it reaches the provider (recorded as dropped, not
  * silently lost). Per-org so one org's bad address doesn't block another.
  */
 export const suppression = sqliteTable(
@@ -1072,7 +1071,7 @@ export const suppression = sqliteTable(
 );
 
 /**
- * Windowed send counters for rate limiting (Part G) — the same DB-backed
+ * Windowed send counters for rate limiting (Part G). Same DB-backed
  * counter pattern used elsewhere, not a new mechanism. One row per
  * (scope, scope_key, window_start); the consumer bumps `count` via an atomic
  * upsert (onConflictDoUpdate count = count + 1) before each provider call.
@@ -1097,9 +1096,9 @@ export const sendCounter = sqliteTable(
 
 /**
  * Programmatic send keys (bearer). App-owned rather than Better Auth's apiKey
- * plugin, which isn't present at the pinned better-auth version — same
- * capability, no phantom dependency. A key ACTS AS its owning user: the outbound
- * path resolves the presented secret → this row, then runs the SAME can() send
+ * plugin, which isn't present at the pinned better-auth version. Same
+ * capability, no phantom dependency. A key acts as its owning user: the outbound
+ * path resolves the presented secret → this row, then runs the same can() send
  * check as an interactive session (no parallel permission path). Only the SHA-256
  * of the secret is stored; the plaintext is shown once at creation. Optional
  * mailbox_id restricts a key to sending as one mailbox. All access lives in
@@ -1112,14 +1111,14 @@ export const apiKey = sqliteTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    // Legacy human owner (a key ACTS AS this user). Null for service keys, which
-    // authorize the service mailbox directly — so they survive staff turnover.
+    // Legacy human owner (a key acts as this user). Null for service keys, which
+    // authorize the service mailbox directly, so they survive staff turnover.
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     // Admin who issued a service key (audit only). Set-null so key outlives them.
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
-    // Service keys send AS the mailbox itself; no per-user grant is consulted.
+    // Service keys send as the mailbox itself; no per-user grant is consulted.
     isService: integer("is_service", { mode: "boolean" }).default(false).notNull(),
     // The sending scope. Required for service keys; for legacy keys null = any
     // mailbox the owning user can send as.
@@ -1143,7 +1142,7 @@ export const apiKey = sqliteTable(
  * Outbound webhook endpoints (Phase A). PER MAILBOX: the mailbox's own users
  * decide where its delivery-outcome + inbound events go, so a shared mailbox's
  * webhooks are separate from a personal one's. The signing `secret` is stored
- * ENCRYPTED with the instance DEK (not hashed): unlike an api_key we must
+ * encrypted with the instance DEK (not hashed): unlike an api_key we must
  * recover it to compute the HMAC at delivery time. It is shown in cleartext
  * once at creation and never re-displayed. `events` is a JSON array of
  * subscribed event types; empty = all. Auto-disabled after N consecutive
@@ -1217,7 +1216,7 @@ export const webhookDelivery = sqliteTable(
 
 /**
  * Send log for API-originated mail (service accounts). Two tiers:
- *   1. durable metadata — who/when/which key/which template/status/recipients —
+ *   1. durable metadata (who/when/which key/which template/status/recipients),
  *      retained long (the audit trail);
  *   2. a short-TTL, ENCRYPTED `data_cipher` — the template merge payload, often
  *      PII — purged by the cron sweep after `data_expires_at`, leaving the
@@ -1247,7 +1246,7 @@ export const sendEvent = sqliteTable(
     // template doesn't cascade-wipe the audit log; the version pins what went out.
     templateId: text("template_id"),
     templateVersion: integer("template_version"),
-    // Recipients + rendered subject — low-sensitivity audit. JSON string array.
+    // Recipients + rendered subject, low-sensitivity audit. JSON string array.
     toAddresses: text("to_addresses").notNull(),
     subject: text("subject").default("").notNull(),
     // queued | sent | bounced | failed — mirrors the submission lifecycle.
@@ -1269,7 +1268,7 @@ export const sendEvent = sqliteTable(
 );
 
 /**
- * Hosted mail templates (docs/service-accounts.md § Templates) — an ORG-scoped
+ * Hosted mail templates (docs/service-accounts.md § Templates). An org-scoped
  * library reusable by any of the org's service accounts. `current_version_id`
  * points at the live version; edits create a new immutable version so a send's
  * pinned `template_version` reproduces exactly what went out.
@@ -1336,7 +1335,7 @@ export const templateVersion = sqliteTable(
 /**
  * Per-user "always load remote images from this sender" (Gmail/Fastmail
  * pattern). Presence of a row = trusted; delete to revoke. Address stored
- * lowercased. Display preference only — never an authorization surface.
+ * lowercased. Display preference only, never an authorization surface.
  */
 export const senderImageTrust = sqliteTable(
   "sender_image_trust",
@@ -1352,8 +1351,8 @@ export const senderImageTrust = sqliteTable(
 );
 
 /**
- * Per-(user, mailbox) email signature. The signature is the SENDER's sign-off,
- * so it's keyed on the user AND the sending mailbox — on a shared mailbox each
+ * Per-(user, mailbox) email signature. The signature is the sender's sign-off,
+ * so it's keyed on the user and the sending mailbox: on a shared mailbox each
  * teammate has their own. One signature per identity (bodyHtml, sanitized on
  * write). Injected into the composer client-side on a fresh compose/reply.
  */
@@ -1388,7 +1387,7 @@ export const mailboxSignature = sqliteTable(
  * (mailbox, address): the people a mailbox has sent to OR received from, with
  * the best-known display name and the most recent contact time. Upserted in the
  * inbound consumer (sender → recipient mailbox) and on send (recipient → sender
- * mailbox). Denormalization — same move as thread_state — so autocomplete is a
+ * mailbox). Denormalized (same move as thread_state) so autocomplete is a
  * bounded prefix scan over a mailbox's few hundred contacts instead of a
  * GROUP BY over the whole delivery + submission history on every compose open.
  * Display-only, never an authorization surface; scoped by the caller's
@@ -1406,13 +1405,13 @@ export const correspondent = sqliteTable(
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
-    // Interaction facts (build guide, Phase 3) — the substance of the contact
+    // Interaction facts (build guide, Phase 3), the substance of the contact
     // card, and cheap only if maintained from day one:
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }),
     // Inbound messages received from this address (not sends to it).
     messageCount: integer("message_count").default(0).notNull(),
-    // Last time THIS mailbox sent to the address — the ham signal for spam
-    // tier 2 and the "you reply to them" line on the card. Cannot be
+    // Last time this mailbox sent to the address — the ham signal for spam
+    // tier 2 and the "you reply to them" line on the card. Can't be
     // reconstructed cheaply later.
     lastRepliedAt: integer("last_replied_at", { mode: "timestamp_ms" }),
     // User-ACCEPTED contact details (phone/url/…), JSON object. Extraction
@@ -1429,9 +1428,9 @@ export const correspondent = sqliteTable(
 /**
  * Monotonic per-mailbox change stream — the substrate for local-first sync and
  * a future JMAP server (shape satisfies JMAP /changes even though no endpoint
- * exists yet). Rows are written by SQLite TRIGGERS (drizzle/*_change_log_triggers.sql),
- * never application code, so logging cannot be forgotten by a future code path.
- * Structural refs only — no subjects, addresses, or bodies (same discipline as
+ * exists yet). Rows are written by SQLite triggers (drizzle/*_change_log_triggers.sql),
+ * never application code, so logging can't be forgotten by a future code path.
+ * Structural refs only, no subjects, addresses, or bodies (same discipline as
  * notifications).
  *
  * `seq` must be AUTOINCREMENT (not a rowid alias): a reused rowid would let the

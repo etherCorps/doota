@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// Short-lived HMAC token that lets the SANDBOXED, opaque-origin MailFrame load
-// same-origin image URLs. That iframe (sandbox WITHOUT allow-same-origin) makes
+// Short-lived HMAC token that lets the sandboxed, opaque-origin MailFrame load
+// same-origin image URLs. That iframe (sandbox without allow-same-origin) makes
 // its subresource requests as `sec-fetch-site: cross-site`, so the SameSite
-// session cookie is NOT attached → the attachment / img-proxy endpoints 401.
+// session cookie isn't attached and the attachment / img-proxy endpoints 401.
 // The authenticated body route (which already checked the user's access to the
 // message) mints a token per image URL; the endpoints accept a valid token as an
-// alternative to the session. The token authorizes ONE resource for a bounded
-// window — it never grants session access.
+// alternative to the session. The token authorizes one resource for a bounded
+// window; it never grants session access.
 //
 // Keyed on MAIL_SEARCH_KEY (an existing server HMAC secret); the "resource"
 // string is context-prefixed by the caller (e.g. `att:msg:<id>`, `img:<url>`).

@@ -11,7 +11,7 @@ type Db = DrizzleD1Database<typeof schema>;
 
 /**
  * A deliverable recipient, resolved entirely from D1 (never the Cloudflare API).
- * Used by BOTH the inbound worker hot path and app code, so there is exactly one
+ * Used by both the inbound worker hot path and app code, so there is exactly one
  * definition of "who does this address deliver to".
  */
 export type ResolvedRecipient = {
@@ -40,11 +40,11 @@ function splitAddress(address: string): { local: string; host: string } | null {
  *      (via the org-domains cache — no CF call).
  *   2. If subaddressing is enabled for that domain, strip `+tag` and resolve the
  *      base address, carrying the tag through to the delivery row.
- *   3. Resolve to an ACTIVE mailbox, else an ENABLED alias (→ its active mailbox).
+ *   3. Resolve to an active mailbox, else an enabled alias (→ its active mailbox).
  *   4. Unknown / disabled / inactive → null (the worker bounces).
  *
  * Domain facts are cached (they change rarely). The mailbox/alias lookup is a
- * FRESH indexed D1 read, never cached — a just-disabled alias must reject on the
+ * fresh indexed D1 read, never cached — a just-disabled alias must reject on the
  * next message, so correctness beats caching here.
  */
 export async function resolveRecipient(
@@ -110,7 +110,7 @@ export async function resolveRecipient(
 
 /**
  * Resolve the from-address for a mailbox (its own address, or an owned+enabled
- * alias) and assert the user may SEND as it. Shared by both trigger surfaces.
+ * alias) and assert the user may send as it. Shared by both trigger surfaces.
  */
 export async function resolveSender(
   db: import("drizzle-orm/d1").DrizzleD1Database<typeof schema>,
@@ -148,9 +148,9 @@ export async function resolveSender(
 }
 
 /**
- * Resolve the from-address for a SERVICE-key send. The key itself is the
+ * Resolve the from-address for a service-key send. The key itself is the
  * authorization (issued by an org admin against a service mailbox), so no
- * per-user grant is consulted — but the target MUST be an active service mailbox.
+ * per-user grant is consulted — but the target must be an active service mailbox.
  */
 export async function resolveServiceSender(
   db: import("drizzle-orm/d1").DrizzleD1Database<typeof schema>,

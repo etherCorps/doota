@@ -3,10 +3,10 @@
  * Zero-access content encryption (ARCHITECTURE.md §1). Subject and bodies are
  * encrypted at rest with AES-256-GCM (WebCrypto). Routing/threading metadata
  * stays cleartext so the hot path and threading never decrypt. This is
- * zero-access at rest, NOT E2EE — operator oversight is intended.
+ * zero-access at rest, not E2EE — operator oversight is intended.
  *
  * The DEK is an instance secret (Worker secret / Secrets Store), passed in as a
- * base64 32-byte key — NEVER stored in D1. Envelope format is versioned and
+ * base64 32-byte key, never stored in D1. Envelope format is versioned and
  * key-id-tagged so rotation is an additive envelope change, not a re-encrypt:
  *
  *   v1.<keyId>.<base64(iv)>.<base64(ciphertext+tag)>
@@ -93,7 +93,7 @@ export async function decryptContent(
 }
 
 // ---- Binary blobs (R2 objects: raw MIME, attachment bytes, outbound JSON) ----
-// These are large + read as bytes, so they use a compact BINARY envelope
+// These are large + read as bytes, so they use a compact binary envelope
 // instead of the base64 string envelope above: [1-byte version][12-byte iv]
 // [ciphertext+tag]. Version 1 = AES-256-GCM. gzip first (email MIME compresses
 // ~5-8x) so the stored/cached blob stays small.
@@ -130,7 +130,7 @@ export async function packBlob(ck: ContentKey, data: Uint8Array): Promise<Uint8A
   return encryptBytes(ck, await pipe(data, "gzip"));
 }
 
-/** Read shape: decrypt → gunzip. Inverse of packBlob. ENCRYPTED-ONLY: a blob
+/** Read shape: decrypt → gunzip. Inverse of packBlob. Encrypted-only: a blob
  * without our 0x01 envelope byte is rejected by decryptBytes (fail closed), so
  * a plaintext or tampered-down blob can never be served as content — the
  * zero-access-at-rest guarantee holds. (Legacy plaintext must be re-encrypted

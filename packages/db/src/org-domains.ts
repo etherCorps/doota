@@ -10,11 +10,11 @@ import * as schema from "./schema";
  * for "which domains does this deployment serve", and drives:
  *   - inbound recipient routing (future mailbox pipeline),
  *   - login-domain validation (a member's address must be on a served domain),
- *   - rejecting recovery / external-login addresses that land on ANY served domain.
+ *   - rejecting recovery / external-login addresses that land on any served domain.
  *
  * Cached in module scope (per Worker isolate). Invalidated explicitly when an
  * org/domain is added or removed (same isolate), and bounded by a short TTL so
- * staleness self-heals across other isolates — domain changes are rare, so a
+ * staleness self-heals across other isolates. Domain changes are rare, so a
  * few seconds of cross-isolate lag is fine.
  *
  * ponytail: TTL + explicit invalidate. If cross-isolate freshness ever needs to
@@ -23,7 +23,7 @@ import * as schema from "./schema";
 export type ServedOrg = { id: string; domain: string };
 
 /**
- * An org's routing facts, keyed in the cache by EVERY host that routes to it —
+ * An org's routing facts, keyed in the cache by every host that routes to it:
  * the apex plus each configured routing subdomain. `subaddressing` and the
  * subdomain list are the D1 mirror of Cloudflare Email Routing (write-through
  * from domains.remote.ts); CF stays source of truth, this is the read-replica
@@ -127,7 +127,7 @@ export type MailFrom = { name: string; email: string; logo?: string | null };
 /**
  * From-address for mail *about* an org. Sending must always originate from an
  * onboarded domain whose sending path is live on Cloudflare (`status ===
- * 'active'`) — a domain that isn't DKIM-wired gets marked spam or bounced.
+ * 'active'`): a domain that isn't DKIM-wired gets marked spam or bounced.
  *
  * Resolution order:
  *   1. the requested org's own domain, if it's active;

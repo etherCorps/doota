@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * iCalendar (RFC 5545) parse + iTIP (RFC 5546) build, via ical.js — pure JS, no
- * Node APIs, Workers-safe. This is the STORAGE/RSVP-grade path (all VEVENTs,
+ * iCalendar (RFC 5545) parse + iTIP (RFC 5546) build, via ical.js: pure JS, no
+ * Node APIs, Workers-safe. This is the storage/RSVP-grade path (all VEVENTs,
  * RECURRENCE-ID overrides, METHOD, raw RRULE, sequence) and the REPLY/REQUEST
  * builders that make "create event" a later drop-in. The lighter display-only
  * helpers (join-url, provider RSVP links, tz math) live in `calendar.ts`; we
  * reuse its meeting/origin detection here rather than duplicate it.
  *
- * Everything is defensive: attacker-controlled bytes. parseCalendar NEVER
- * throws — a malformed VCALENDAR returns `{ ok:false }`, never breaks ingest.
+ * Everything is defensive: attacker-controlled bytes. parseCalendar never
+ * throws; a malformed VCALENDAR returns `{ ok:false }` and never breaks ingest.
  */
 import ICAL from "ical.js";
 import type { InviteAttendee, MeetingPlatform, CalOrigin } from "./calendar.ts";
@@ -28,13 +28,13 @@ export type ParsedEvent = {
   allDay: boolean;
   organizer: { email: string | null; name: string | null };
   attendees: InviteAttendee[];
-  /** RAW recurrence rules — stored verbatim, NEVER expanded (out of scope). */
+  /** Raw recurrence rules, stored verbatim, never expanded (out of scope). */
   rrule: string | null;
   rdate: string[] | null;
   exdate: string[] | null;
   meetingPlatform: MeetingPlatform;
   calOrigin: CalOrigin;
-  /** Missing UID or DTSTART → we can't dedupe/place it; flagged, not dropped. */
+  /** Missing UID or DTSTART: can't dedupe/place it, so flagged, not dropped. */
   incomplete: boolean;
   // --- sensitive free-text (encrypt these) ---
   summary: string | null;
@@ -49,8 +49,7 @@ export type ParsedCalendar =
 const mailtoAddr = (v: string | null | undefined): string =>
   (v ?? "").replace(/^mailto:/i, "").trim().toLowerCase();
 
-// Reuse calendar.ts detection so both parsers agree. Imported lazily-ish (top
-// import) — these are pure string fns, no cost.
+// Reuse calendar.ts detection so both parsers agree. Pure string fns, no cost.
 import { detectMeetingAndOrigin } from "./calendar.ts";
 
 /** ical.js Time → { ms, tz, allDay }. All-day (isDate) is tz-agnostic: its wall
@@ -89,7 +88,7 @@ function readEvent(ve: ICAL.Component): ParsedEvent | null {
   const dt = timeToMs(ve.getFirstPropertyValue("dtstart") as ICAL.Time | null);
   const incomplete = !uid || !dt;
   // Even incomplete events are kept (flagged) so raw survives; but a start we
-  // can't read means no card placement — use 0 and let the caller decide.
+  // can't read means no card placement, so use 0 and let the caller decide.
   const start = dt ?? { ms: 0, tz: null, allDay: false };
   const end = timeToMs(ve.getFirstPropertyValue("dtend") as ICAL.Time | null);
 
@@ -148,7 +147,7 @@ function readEvent(ve: ICAL.Component): ParsedEvent | null {
 }
 
 /**
- * Parse a VCALENDAR into its METHOD + every VEVENT. NEVER throws — malformed
+ * Parse a VCALENDAR into its METHOD + every VEVENT. Never throws: malformed
  * input returns `{ ok:false }` so ingest keeps the email and stores raw ICS.
  */
 export function parseCalendar(input: string | ArrayBuffer | Uint8Array): ParsedCalendar {
@@ -191,8 +190,8 @@ export function parseCalendar(input: string | ArrayBuffer | Uint8Array): ParsedC
 /**
  * Across the rows that share one event `(uid, recurrence_id)` — a re-invite
  * (higher SEQUENCE) or a CANCEL arriving as separate messages — resolve the
- * CURRENT state: the highest SEQUENCE wins (tie → newest), a lower/equal
- * sequence arriving later is IGNORED, and a CANCEL at ≥ the winning sequence
+ * current state: the highest SEQUENCE wins (tie → newest), a lower/equal
+ * sequence arriving later is ignored, and a CANCEL at ≥ the winning sequence
  * marks the event cancelled. Pure so read.ts and its tests share one rule.
  */
 export function resolveEffectiveEvent<
@@ -220,7 +219,7 @@ export type BuildReplyInput = {
   /** ORGANIZER address to reply to (validated by the caller). */
   organizerEmail: string;
   organizerName?: string | null;
-  /** EXACTLY the replying attendee — never the full list (privacy). */
+  /** Exactly the replying attendee, never the full list (privacy). */
   attendeeEmail: string;
   attendeeName?: string | null;
   partstat: ReplyPartstat;
@@ -235,9 +234,9 @@ function icalUtcStamp(ms: number): ICAL.Time {
 }
 
 /**
- * Build a VCALENDAR `METHOD:REPLY` carrying ONLY the replying attendee's
- * PARTSTAT (RFC 5546 §3.2.3). Never echoes other attendees — that would leak
- * the guest list. To be sent to the ORGANIZER only.
+ * Build a VCALENDAR `METHOD:REPLY` carrying only the replying attendee's
+ * PARTSTAT (RFC 5546 §3.2.3). Never echoes other attendees (that would leak
+ * the guest list). Sent to the organizer only.
  */
 export function buildReply(input: BuildReplyInput): string {
   const vc = new ICAL.Component(["vcalendar", [], []]);
@@ -282,8 +281,8 @@ export type BuildInviteInput = {
 
 /**
  * Build a VCALENDAR `METHOD:REQUEST` (a new invite). Used by "create event"
- * later — validated + unit-tested now, no UI. SEQUENCE:0, the creator is the
- * ORGANIZER, every attendee is NEEDS-ACTION + RSVP=TRUE.
+ * later; validated + unit-tested now, no UI. SEQUENCE:0, the creator is the
+ * organizer, every attendee is NEEDS-ACTION + RSVP=TRUE.
  */
 export function buildInvite(input: BuildInviteInput): string {
   if (!input.attendees.length) throw new Error("buildInvite: at least one attendee required");

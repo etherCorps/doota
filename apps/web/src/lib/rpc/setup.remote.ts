@@ -11,11 +11,11 @@ import { APIError } from 'better-auth/api';
 import { SETUP_TOKEN } from '$app/env/private';
 
 /**
- * First-run genesis wizard. Email-free by design: the super-admin's trust root
- * is deploy access (the one-time SETUP_TOKEN), never an email round-trip — at
- * genesis no domain is onboarded, so there is no path to deliver mail.
+ * First-run genesis wizard. Email-free: the super-admin's trust root is deploy
+ * access (the one-time SETUP_TOKEN), not an email round-trip. At genesis no
+ * domain is onboarded, so there is no path to deliver mail.
  *
- * Gated by BOTH userCount === 0 AND a matching SETUP_TOKEN. TOTP is enrolled
+ * Gated by both userCount === 0 and a matching SETUP_TOKEN. TOTP is enrolled
  * later via the onboarding secure-account step (or the CLI floor). No mail sent.
  */
 export const setupRemoteFunction = form(
@@ -26,7 +26,7 @@ export const setupRemoteFunction = form(
 		}
 
 		const db = getDb(getRequestEvent().platform?.env.DB!);
-		// Bootstrap only: the first user is the EXTERNAL super-admin (auto-assigned
+		// Bootstrap only: the first user is the external super-admin (auto-assigned
 		// the superadmin role via databaseHooks). Everyone else is provisioned by
 		// an admin under an organization. This also permanently locks /setup out.
 		const userCount = await db.$count(user);
@@ -37,7 +37,7 @@ export const setupRemoteFunction = form(
 			};
 		}
 
-		// The super-admin is external: their login email must NOT be on a domain
+		// The super-admin is external: their login email must not be on a domain
 		// this server hosts (at bootstrap there are no served domains yet).
 		if (await isServedDomain(db, email)) {
 			return {

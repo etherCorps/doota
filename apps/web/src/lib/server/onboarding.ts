@@ -36,7 +36,7 @@ type SessionUser = {
   twoFactorEnabled?: boolean | null;
 };
 
-/** Elevated accounts must hold BOTH factors (TOTP + passkey). */
+/** Elevated accounts must hold both factors (TOTP + passkey). */
 export function isElevatedRole(role?: string | null): boolean {
   return role === "admin" || role === "superadmin";
 }
@@ -57,7 +57,7 @@ export type OrgTwoFactorGate =
 
 /**
  * Org-wide 2FA mandate check (Phase C), evaluated per request in the guard for
- * users who have NOT enrolled TOTP. Resolves the user's active org (the session
+ * users who haven't enrolled TOTP. Resolves the user's active org (the session
  * value, else their first mailbox's org, else their first membership) and reads
  * its mandate. `block` past the grace deadline; `grace` before it (the UI nudges
  * but access continues). Cheap: only called when twoFactorEnabled is false, and
@@ -118,7 +118,7 @@ const DONE: OnboardingStatus = { steps: [], complete: true, nextStep: null };
  *   member     → verify recovery email
  * Anyone provisioned with a temp password also has a set-password step.
  *
- * Reads the gating flags FRESH from D1 (never the 5-minute session cookie cache),
+ * Reads the gating flags fresh from D1 (never the 5-minute session cookie cache),
  * so a just-completed step isn't reported stale and bounce the user in a loop.
  * Callers that already know `user.onboardedAt` is set should skip this (fast path).
  */
@@ -129,7 +129,7 @@ export async function getOnboardingStatus(
    * enroll TOTP too, so reopen secure-account for them like an elevated debt. */
   mustEnroll2fa = false,
 ): Promise<OnboardingStatus> {
-  // Onboarded users normally skip re-derivation — EXCEPT an account owing a
+  // Onboarded users normally skip re-derivation, except an account owing a
   // security factor: elevated (2FA+passkey) or org-mandated 2FA reopens it.
   const mustSecure = hasSecurityDebt(user) || mustEnroll2fa;
   if (user.onboardedAt && !mustSecure) return DONE;
@@ -151,10 +151,10 @@ export async function getOnboardingStatus(
     db.$count(schema.passkey, eq(schema.passkey.userId, user.id)),
   ]);
 
-  // BOTH factors are mandatory for elevated roles. Passkey-only is not enough:
+  // Both factors are mandatory for elevated roles. Passkey-only isn't enough:
   // password sign-in never consults passkeys, so an admin with a passkey but no
   // TOTP could be logged in with bare credentials — that exact hole shipped once.
-  // An org-2FA member owes ONLY TOTP (the mandate is "require 2FA", not a passkey).
+  // An org-2FA member owes only TOTP (the mandate is "require 2FA", not a passkey).
   const secured = !!fresh?.twoFactorEnabled && (isElevated ? passkeys > 0 : true);
   const steps: OnboardingStep[] = [];
 
@@ -175,10 +175,10 @@ export async function getOnboardingStatus(
     });
   }
 
-  // The external super-admin does NOT verify email at onboarding: their email
+  // The external super-admin doesn't verify email at onboarding: their email
   // verification is auto-sent once a domain is active (see above), and is a
-  // non-blocking, deferred action — their trust root is deploy access, and 2FA /
-  // passkey below is the real gate. So the super-admin never has a verify step.
+  // non-blocking, deferred action. Their trust root is deploy access, and 2FA /
+  // passkey below is the real gate, so the super-admin never has a verify step.
   if (role !== "superadmin") {
     steps.push({
       id: "verify-recovery",
@@ -220,9 +220,9 @@ export async function markOnboarded(auth: Auth, userId: string): Promise<void> {
 }
 
 /**
- * Completion notifications, fired ONCE when an account turns active (first
+ * Completion notifications, fired once when an account turns active (first
  * markOnboarded): the new user always gets a welcome as the first mail in
- * their inbox — sent from the org's no-reply sender (senderAddress default).
+ * their inbox, sent from the org's no-reply sender (senderAddress default).
  * When an invite chain exists, the inviter additionally gets "member joined".
  * Best-effort: a mail failure never blocks the request.
  */

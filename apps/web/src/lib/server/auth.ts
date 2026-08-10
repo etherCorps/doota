@@ -47,7 +47,7 @@ type UserRecovery = {
 
 /**
  * Reject an address that lands on any domain this deployment serves. Recovery
- * addresses and the external super-admin's login email must be EXTERNAL — a
+ * addresses and the external super-admin's login email must be external. A
  * served-domain address recreates the circular "can't read your own mailbox
  * until you're logged in" problem. No-op when db is absent (schema generation).
  */
@@ -77,7 +77,7 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
         ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
       },
       // Cloudflare Workers never set NODE_ENV, so better-auth can't auto-detect
-      // production and would ship session cookies WITHOUT Secure. Force it on
+      // production and would ship session cookies without Secure. Force it on
       // outside local dev (paired with HSTS in hooks.server.ts).
       useSecureCookies: !dev,
     },
@@ -110,9 +110,9 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       },
     },
     emailVerification: {
-      // Only the external super-admin verifies their PRIMARY email (it's a real
-      // external inbox). Mailbox users verify a recovery address instead — their
-      // primary email is an unreadable Doota inbox — so we never send here for them.
+      // Only the external super-admin verifies their primary email (it's a real
+      // external inbox). Mailbox users verify a recovery address instead: their
+      // primary email is an unreadable Doota inbox, so we never send here for them.
       sendVerificationEmail: async ({ user, url }) => {
         // Superadmin primary-email verify: no specific org, so brand/send from
         // any active domain (same rule as the reset link below).
@@ -150,16 +150,16 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
        *   - mailbox/member user  → verified external `recoveryEmail`
        * Never `user.email` for a member (that's the unreadable Doota inbox),
        * and never a served-domain address for anyone. Silent no-op otherwise,
-       * so the endpoint's response stays generic (no enumeration).
+       * so the endpoint's response stays generic and can't be used to enumerate.
        */
       sendResetPassword: async ({ user, url }) => {
         const role = (user as typeof user & { role?: string | null }).role;
         let to: string | null = null;
 
         if (role === "superadmin") {
-          // Only once the super-admin has VERIFIED their external email (a
+          // Only once the super-admin has verified their external email (a
           // deferred action, available after a domain has a working sending
-          // path). Until then recovery is the email-free CLI (reset-admin) —
+          // path). Until then recovery is the email-free CLI (reset-admin),
           // never an unverified, possibly-undeliverable address.
           const emailVerified = (
             user as typeof user & { emailVerified?: boolean }
@@ -229,7 +229,7 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
       session: {
         create: {
           // A successful credential login proves the user controls the address
-          // the temp password was delivered to — their EXTERNAL recovery email
+          // the temp password was delivered to: their external recovery email
           // (provisioning mails it there and nowhere else). So we verify the
           // recovery address on first login instead of sending a separate
           // confirmation link. Idempotent: once verified this is a no-op, and
@@ -282,7 +282,7 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
         roles,
       }),
       // org == domain. Only the super-admin may create orgs; they become the
-      // org OWNER (org membership role) automatically via creatorRole.
+      // org owner (org membership role) automatically via creatorRole.
       organization({
         allowUserToCreateOrganization: async (user) =>
           (user as { role?: string | null }).role === "superadmin",
@@ -334,10 +334,10 @@ function buildAuth(db?: DrizzleD1Database<typeof schema>, kv?: KVNamespace) {
           afterDeleteOrganization: async () => invalidateDomainCache(),
         },
       }),
-      // Switching between accounts on DIFFERENT domains — NOT the /app↔/admin
+      // Switching between accounts on different domains, not the /app↔/admin
       // switch (that is plain navigation within a single account). The cap is
-      // explicit and shared with the UI, which blocks BEFORE a sign-in would
-      // exceed it (over the cap the plugin silently stops tracking sessions).
+      // shared with the UI, which blocks before a sign-in would exceed it (over
+      // the cap the plugin silently stops tracking sessions).
       multiSession({ maximumSessions: MAX_DEVICE_SESSIONS }),
       lastLoginMethod(),
       twoFactor(),
@@ -360,7 +360,7 @@ export function createAuth(
 }
 
 /**
- * Do not use this export, it's only for better auth cli to generate schema.
+ * Don't use this export; it's only for the better-auth CLI to generate schema.
  */
 const authClientGen = buildAuth();
 export default authClientGen;

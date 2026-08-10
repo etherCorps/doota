@@ -4,14 +4,14 @@
  * API to operator-registered endpoints. Rides the write-row-then-enqueue queue
  * pattern (like `submission`) so redelivery is idempotent.
  *
- * SECURITY (each guard is load-bearing):
- * - SSRF: validateWebhookUrl on save AND at delivery (DNS answers change), and
+ * Security (each guard is load-bearing):
+ * - SSRF: validateWebhookUrl on save and at delivery (DNS answers change), and
  *   fetch with redirect:"manual" so a public URL that 302s to a private address
  *   fails rather than being followed.
- * - Payload carries STRUCTURAL REFS ONLY — ids, statuses, addresses, timestamps.
+ * - Payload carries structural refs only: ids, statuses, addresses, timestamps.
  *   Never a subject or body. A misconfigured URL leaks routing metadata, not mail.
  * - Signed HMAC-SHA256 over `timestamp.body` (timestamp included → no replay),
- *   in the Doota-Signature header. The signing secret is stored ENCRYPTED (not
+ *   in the Doota-Signature header. The signing secret is stored encrypted (not
  *   hashed): the worker must recover it to sign.
  * - 5s timeout; no retry on 4xx except 408/429; exponential backoff + jitter to
  *   a capped attempt count; auto-disable + routing_issue after N failures.
@@ -91,8 +91,8 @@ function nextDelayMs(attempts: number): number {
 // ---- Enqueue (producer) ----
 
 /**
- * Fan an event out to the MAILBOX's enabled, subscribed endpoints. Writes a
- * `webhook_delivery` row per endpoint FIRST, then enqueues — the same ordering
+ * Fan an event out to the mailbox's enabled, subscribed endpoints. Writes a
+ * `webhook_delivery` row per endpoint first, then enqueues — the same ordering
  * that makes submission redelivery safe. `eventId` is stable so receivers
  * dedupe. `payload` must already be structural-refs-only (see buildPayload
  * callers). No-op when the mailbox has no matching endpoint.
@@ -150,7 +150,7 @@ const STATUS_EVENT: Record<string, WebhookEvent> = {
 };
 
 /**
- * Producer: emit a submission-state webhook. Resolves the org + STRUCTURAL refs
+ * Producer: emit a submission-state webhook. Resolves the org + structural refs
  * only (ids, status, timestamp — never subject/body) and fans out. No-op when
  * the status isn't a webhook event or the queue binding is absent. `eventId` is
  * `${submissionId}:${status}` so a redelivered state change dedupes downstream.
@@ -273,7 +273,7 @@ export async function handleWebhookDelivery(
   try {
     const res = await fetch(check.url, {
       method: "POST",
-      redirect: "manual", // a 3xx to a private address must NOT be followed
+      redirect: "manual", // a 3xx to a private address must not be followed
       signal: controller.signal,
       headers: {
         "content-type": "application/json",
@@ -292,9 +292,9 @@ export async function handleWebhookDelivery(
     clearTimeout(timer);
   }
 
-  // 2xx = delivered. A manual-redirect (opaqueredirect/3xx) is NOT success —
-  // we refused to follow it. 4xx (except 408/429) is permanent — the endpoint
-  // will never accept it, so retrying burns quota. Everything else retries.
+  // 2xx = delivered. A manual-redirect (opaqueredirect/3xx) isn't success — we
+  // refused to follow it. 4xx (except 408/429) is permanent — the endpoint will
+  // never accept it, so retrying burns quota. Everything else retries.
   if (code !== null && code >= 200 && code < 300) {
     await db
       .update(mail.webhookDelivery)

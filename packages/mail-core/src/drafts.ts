@@ -61,7 +61,7 @@ type Db = DrizzleD1Database<typeof schema>;
 
 /**
  * Draft lifecycle (per-user compose state). A draft never becomes a `message`
- * by mutation — at Send a FRESH immutable message + submission are built from
+ * by mutation — at Send a fresh immutable message + submission are built from
  * its fields (via the existing outbound path) and the draft is retained as a
  * tombstone until the submission leaves its cancellable window, so undo can
  * restore an editable draft. See mail.schema.ts `draft` for the model.
@@ -354,7 +354,7 @@ export type FailedSend = {
 /**
  * The user's recently failed sends (last 7 days) — feeds the client-side
  * failure notifier. Includes post-send failures (bounces/complaints), which can
- * arrive hours after "sent". Newest first; the client dedupes what it toasted.
+ * arrive hours after "sent". Newest first; the client dedupes what it has toasted.
  */
 export async function listFailedSends(db: Db, ck: ContentKey, userId: string): Promise<FailedSend[]> {
   const rows = await db.query.submission.findMany({
@@ -396,7 +396,7 @@ export async function listFailedSends(db: Db, ck: ContentKey, userId: string): P
 
 /**
  * Re-enqueue a failed send (the in-thread "Retry" button). Ownership + failed
- * status are checked HERE — the client only renders the button; authorization
+ * status are checked here — the client only renders the button; authorization
  * never depends on it. Recipients that already went out (sent/delivered) are
  * left untouched, so retrying a partial failure never double-sends them.
  */
@@ -571,7 +571,7 @@ export async function stageDraftAttachment(
 
 /** Remove a staged attachment (deletes both the ref and the R2 object). */
 /**
- * Read a draft attachment's bytes for its OWNER only — powers compose-time
+ * Read a draft attachment's bytes for its owner only — powers compose-time
  * thumbnails. Never public: ownership is checked (ownDraftRow) and the key must
  * belong to the draft's attachment list. Returns null when absent.
  */
@@ -626,17 +626,17 @@ async function copyToOutbound(env: OutboundEnv, ck: ContentKey, orgId: string, r
 }
 
 /**
- * Send a draft through the EXISTING outbound path. Attachments are copied to
+ * Send a draft through the existing outbound path. Attachments are copied to
  * outbound keys (the message owns its own objects; the draft keeps its staged
  * copies for a possible undo-restore). The draft is retained as a `sent`
  * tombstone linked to the submission until the undo window closes.
  */
 /**
- * Compose the forwarded-message HTML + text at Send from the SOURCE messages'
+ * Compose the forwarded-message HTML + text at Send from the source messages'
  * R2 raw. Raw email HTML never reaches the client (read.ts: "Raw HTML never
  * leaves the server"), so a marketing template only forwards with full fidelity
  * if assembled here. Each source is re-checked for the sender's access (a
- * delivery to a mailbox they can see) — inaccessible/missing ids are skipped,
+ * delivery to a mailbox they can see); inaccessible/missing ids are skipped,
  * never errored, so one stale id can't fail the whole send.
  */
 async function buildForward(
@@ -717,7 +717,7 @@ export async function sendDraft(
   const row = await ownDraftRow(db, input.draftId, userId);
   if (row.status !== "editing") error(409, "This draft has already been sent.");
 
-  // Claim the draft (editing → sending) with a compare-and-set BEFORE building
+  // Claim the draft (editing → sending) with a compare-and-set before building
   // the submission. Two concurrent Sends of the same draft both pass the status
   // read above; without the claim both would enqueue — duplicate mail on the
   // wire. The loser of the CAS gets a 409 instead.
@@ -803,7 +803,7 @@ export async function sendDraft(
 
 /**
  * Undo a draft's send within the window. Because `message` is immutable, we
- * DELETE the sender's timeline copy rather than mutate it, then reopen the
+ * delete the sender's timeline copy rather than mutate it, then reopen the
  * retained draft for editing — a retry mints a brand-new message (no duplicate).
  * Returns the reopened draft, or null if the window had already closed.
  */
@@ -841,7 +841,7 @@ export async function undoDraftSend(
     });
     await Promise.all(atts.map((a) => (a.r2Key ? env.MAIL_RAW.delete(a.r2Key) : Promise.resolve())));
     await db.delete(mail.message).where(eq(mail.message.id, sub.messageId));
-    // PURGE PARITY: a readable search-index row must never outlive the message it
+    // Purge parity: a readable search-index row must never outlive the message it
     // describes. FTS5 is a virtual table (no FK cascade), so remove it explicitly.
     await plaintextIndex(db).remove(sub.messageId);
   }

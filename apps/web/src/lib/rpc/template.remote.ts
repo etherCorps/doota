@@ -16,10 +16,10 @@ import {
 } from "$lib/server/templates.js";
 
 /**
- * Hosted-template management — org-scoped library reusable by the org's service
+ * Hosted-template management: org-scoped library reusable by the org's service
  * accounts. Blocks are compiled to HTML in the browser (mrml/bundler); the
- * server just stores the client-supplied compiledHtml + editorJson +
- * variablesSchema. Gated to org admins OR service-mailbox managers.
+ * server stores the client-supplied compiledHtml + editorJson +
+ * variablesSchema. Gated to org admins or service-mailbox managers.
  */
 
 /** Assert the actor may manage templates in this org (org admin or svc manager). */
@@ -50,7 +50,7 @@ async function assertManageTemplate(templateId: string): Promise<string> {
 
 const contentShape = {
   subjectTemplate: z.string().max(500),
-  // Compiled by the builder in the browser (mrml/bundler) — the server stores it.
+  // Compiled by the builder in the browser (mrml/bundler); the server stores it.
   compiledHtml: z.string().max(500_000),
   // Builder block document (source of truth) + its derived variables schema.
   editorJson: z.string().max(2_000_000).optional(),

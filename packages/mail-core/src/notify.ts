@@ -32,7 +32,7 @@ async function pushToUsers(db: Db, push: WebPushEnv, orgId: string, userIds: str
 }
 
 /** Display label for a mailbox (its name, else its address). Null when unknown —
- * so a multi-mailbox recipient can see WHICH mailbox a notification is about. */
+ * so a multi-mailbox recipient can see which mailbox a notification is about. */
 async function mailboxLabel(db: Db, mailboxId: string | null): Promise<string | null> {
   if (!mailboxId) return null;
   const box = await db.query.mailbox.findFirst({
@@ -74,7 +74,7 @@ function withMailbox(text: string, boxLabel: string | null): string {
 
 /**
  * Durable notification writes (docs/notifications.md, Phase A). Rows carry
- * STRUCTURAL refs only — the display string is resolved at read/send time from
+ * structural refs only — the display string is resolved at read/send time from
  * cleartext fields, so no subject line is ever stored. Every writer is
  * best-effort at the call site: a notification failure must never fail mail
  * delivery or a triage action.
@@ -82,7 +82,7 @@ function withMailbox(text: string, boxLabel: string | null): string {
 
 /**
  * Users to notify of new mail in a mailbox: full-access members always; an
- * assigned-only member ONLY when this thread is currently theirs (they can't
+ * assigned-only member only when this thread is currently theirs (they can't
  * open threads that aren't assigned to them, so notifying would dead-end).
  */
 async function newMailRecipients(db: Db, mailboxId: string, threadId: string): Promise<string[]> {
@@ -100,7 +100,7 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
       columns: { assigneeUserId: true, muted: true },
     }),
   ]);
-  // Muted thread: stays put and stays SILENT (chat mute semantics) — the
+  // Muted thread: stays put and stays silent (chat mute semantics) — the
   // unread count still shows, but no bell row and no OS push.
   if (state?.muted) return [];
   const assignee = state?.assigneeUserId ?? null;
@@ -108,11 +108,11 @@ async function newMailRecipients(db: Db, mailboxId: string, threadId: string): P
 }
 
 /**
- * Per-folder notification setting: a thread filed into folders that are ALL
- * set to notify_new_mail = false is silent (bell + push). A thread with no
- * labels, or with any notify-on label, notifies normally. Rule-fed folders
- * default to off at rule creation (Phase 2) — filing away mail that still
- * buzzes achieves nothing.
+ * Per-folder notification setting: a thread filed into folders all set to
+ * notify_new_mail = false is silent (bell + push). A thread with no labels, or
+ * with any notify-on label, notifies normally. Rule-fed folders default to off
+ * at rule creation (Phase 2) — filing away mail that still buzzes achieves
+ * nothing.
  */
 async function folderSilenced(db: Db, mailboxId: string, threadId: string): Promise<boolean> {
   const labels = await db
@@ -123,7 +123,7 @@ async function folderSilenced(db: Db, mailboxId: string, threadId: string): Prom
   return labels.length > 0 && labels.every((l) => !l.notify);
 }
 
-/** The user opened/read a thread from the LIST (not the bell) — clear their
+/** The user opened/read a thread from the list (not the bell) — clear their
  * unread new_mail notifications for it and ping their stream so the bell +
  * sidebar drop live. No-op (and no ping) when nothing was unread. */
 export async function markThreadNotificationsRead(
@@ -149,7 +149,7 @@ export async function markThreadNotificationsRead(
 
 /** New mail landed in a thread — one unread row per eligible recipient,
  * collapsing a reply burst per (user, thread). `excludeUserId` drops the sender
- * on an INTERNAL (in-system) delivery so they don't notify themselves. */
+ * on an internal (in-system) delivery so they don't notify themselves. */
 export async function recordNewMail(
   db: Db,
   input: { orgId: string; mailboxId: string; threadId: string; excludeUserId?: string },
@@ -257,11 +257,10 @@ export async function recordAssigned(
 /**
  * Inbound-routing health → superadmin bells. `attached=false` raises one
  * unread `routing_issue` row per superadmin (deduped on an existing unread row
- * for the org, so repeated health checks don't stack); `attached=true`
- * resolves them (marks read). Called wherever the catch-all state is actually
- * inspected — admin config views and the reattach self-heal — since there is
- * no background prober. Best-effort at call sites: a bell failure must never
- * fail the config read.
+ * for the org, so repeated health checks don't stack); `attached=true` resolves
+ * them (marks read). Called wherever the catch-all state is inspected — admin
+ * config views and the reattach self-heal — since there's no background prober.
+ * Best-effort at call sites: a bell failure must never fail the config read.
  */
 export async function syncRoutingIssue(db: Db, orgId: string, attached: boolean): Promise<void> {
   const unreadIssue = and(

@@ -2,8 +2,8 @@
 /**
  * Inline `data:` image handling for outbound HTML. The composer embeds pasted /
  * inserted images as base64 `data:` URIs (see tiptap-editor). Cloudflare Email
- * Sending strips `data:` srcs, so the image never reaches the recipient — we
- * convert each to an INLINE CID attachment and rewrite the src to `cid:<id>`.
+ * Sending strips `data:` srcs, so the image never reaches the recipient; we
+ * convert each to an inline CID attachment and rewrite the src to `cid:<id>`.
  */
 
 export type InlineImage = {

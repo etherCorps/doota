@@ -76,11 +76,11 @@ export async function handleOutboundQueue(batch: QueueBatch, env: OutboundConsum
 }
 
 /**
- * Process a single submission NOW, in-process, without the queue — used by the
- * app worker's synchronous delivery bridge (deliver-bridge.ts) while the
- * doota-mail queue consumer isn't wired in dev. `ack`/`retry` are no-ops: soft
- * failures simply aren't retried (the real queue does that once enabled).
- * Idempotent with the queue path, so enabling the consumer later can't double-send.
+ * Process a single submission in-process, without the queue — used by the app
+ * worker's synchronous delivery bridge (deliver-bridge.ts) while the doota-mail
+ * queue consumer isn't wired in dev. `ack`/`retry` are no-ops: soft failures
+ * aren't retried (the real queue does that once enabled). Idempotent with the
+ * queue path, so enabling the consumer later can't double-send.
  */
 export async function deliverSubmissionNow(env: OutboundConsumerEnv, submissionId: string): Promise<void> {
   await handleOutboundQueue(
@@ -103,7 +103,7 @@ export async function processSubmission(
   const sub = await db.query.submission.findFirst({
     where: eq(schema.submission.id, m.body.submissionId),
   });
-  if (!sub) return m.ack(); // submission gone — nothing to do
+  if (!sub) return m.ack(); // submission gone
 
   // Undo won, or already processed → ack without sending (idempotent).
   if (sub.status === "canceled" || TERMINAL.has(sub.status)) return m.ack();
@@ -120,11 +120,11 @@ export async function processSubmission(
   // terminal check above. D1 serializes writes, so the conditional UPDATE lets
   // exactly one through; the loser backs off and re-reads terminal state later.
   //
-  // A `sending` row is claimable ONLY when its claim stamp has gone stale
+  // A `sending` row is claimable only when its claim stamp has gone stale
   // (crashed mid-flight → rescue). Without the time fence, a second deliverer
-  // reading AFTER the winner's claim sees the bumped attempts value, passes the
-  // CAS, and re-sends the same mail while the winner is mid-provider-call —
-  // the web worker's delivery bridge and the queue consumer race exactly there.
+  // reading after the winner's claim sees the bumped attempts value, passes the
+  // CAS, and re-sends the same mail while the winner is mid-provider-call — the
+  // web worker's delivery bridge and the queue consumer race exactly there.
   const claimCutoff = new Date(now - STUCK_CLAIM_MS);
   const claimed = await db
     .update(mail.submission)
@@ -206,11 +206,11 @@ export async function processSubmission(
   if (org?.status !== "active" || routing?.id !== sub.orgId) {
     return fail("from-address domain is not active");
   }
-  // Wire From display name. Alias sends use the alias label ONLY — hide-my-email
+  // Wire From display name. Alias sends use the alias label only — hide-my-email
   // exists to not leak who's behind it, so never fall through to the user's real
   // name. Direct sends: the sender's per-mailbox send_display_name ("Priya at
   // Acme Support"), else mailbox displayName, else the sending user's name.
-  // The From ADDRESS is always the mailbox address — replies must return to the
+  // The From address is always the mailbox address — replies must return to the
   // team, never a teammate's personal inbox.
   let fromName: string | undefined;
   let senderHeader: string | undefined;
@@ -250,8 +250,8 @@ export async function processSubmission(
     // (RFC 5322 permits From ≠ Sender; DMARC aligns on From, so it's free).
     // Gated by mailbox.reveal_sender (off by default — Outlook shows "on
     // behalf of"). Never on alias sends. Uses the sender's personal mailbox
-    // address; silently skipped if they have none.
-    // NOTE: Cloudflare Email Sending's header allowlist excludes Sender, so
+    // address; skipped if they have none.
+    // Cloudflare Email Sending's header allowlist excludes Sender, so
     // filterCloudflareHeaders drops it on the wire today (passing it through
     // would fail the whole send with E_HEADER_NOT_ALLOWED). The seam still
     // computes it so a future provider transmits it unchanged.
@@ -352,12 +352,12 @@ export async function processSubmission(
 
   log.info("out.recipients", { subId: sub.id, external: external.length, internal: recipients.length - external.length });
 
-  // ---- Rate limit (Part G) — external volume, charged ONCE per submission ----
+  // ---- Rate limit (Part G) — external volume, charged once per submission ----
   // Keyed on the rateChargedAt stamp, not attempts: the claim CAS bumps attempts
-  // before we get here, so a crash between claim and charge would make an
-  // attempts-based guard skip the charge on redelivery (uncounted send). The
-  // stamp is written AFTER the charge — a crash between the two re-charges on
-  // retry, which overcounts: the safe direction for abuse control.
+  // before we get here, so an attempts-based guard would skip the charge on
+  // redelivery after a crash between claim and charge (uncounted send). The stamp
+  // is written after the charge — a crash between the two re-charges on retry,
+  // which overcounts: the safe direction for abuse control.
   if (external.length > 0 && !sub.rateChargedAt) {
     const rl = await chargeSend(db, sub.mailboxId, external.length);
     if (!rl.ok) return fail(`rate limit exceeded (${rl.scope})`);
@@ -368,11 +368,11 @@ export async function processSubmission(
   }
 
   // ---- Send external via provider (Part B.4) ----
-  // The provider couples wire headers to deliveries (To/Cc ARE the recipient
-  // list), so visible recipients must all ride in ONE call or different
-  // recipients would see different To/Cc headers and reply-all fractures.
-  // Only Bcc — envelope-only, never in headers — is chunkable. More than
-  // CHUNK visible recipients is a hard fail, not a fractured send.
+  // The provider couples wire headers to deliveries (To/Cc are the recipient
+  // list), so visible recipients must all ride in one call — otherwise different
+  // recipients see different To/Cc headers and reply-all fractures. Only Bcc —
+  // envelope-only, never in headers — is chunkable. More than CHUNK visible
+  // recipients is a hard fail, not a fractured send.
   if (external.length > 0) {
     const provider = selectProvider({ EMAIL_SENDER: env.EMAIL_SENDER });
     if (!provider) return fail("no mail provider configured");
@@ -525,7 +525,7 @@ async function buildBody(
   if (!message.inReplyTo) {
     return { text: newText ?? undefined, html: newHtml ?? undefined, extraHeaders };
   }
-  // Walk the ancestor chain (newest-first) so outbound replies carry FULL
+  // Walk the ancestor chain (newest-first) so outbound replies carry full
   // accumulated history like every provider — bodies are stored quote-stripped,
   // so one hop alone would drop everything older. Depth cap + seen set guard cycles.
   const parents: QuotedParent[] = [];

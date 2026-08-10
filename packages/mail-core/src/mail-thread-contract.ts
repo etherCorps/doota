@@ -9,7 +9,7 @@
 
 // ---- Timeline (discriminated union) ------------------------------------------
 // Only external_message renders this pass; the discriminator exists now so
-// internal_note / system_event are an additive change, not a render rewrite.
+// internal_note / system_event are additive later, not a render rewrite.
 export type TimelineItemType = "external_message" | "internal_note" | "system_event";
 
 /** WhatsApp-style delivery ticks for an outbound message (Part H). */
@@ -30,13 +30,13 @@ export type SubmissionState = {
 /**
  * Submission statuses that mean "this send went wrong" — the single source for
  * failure toasts (notifier), the failed-sends list (drafts), and any future
- * consumer. `canceled` is deliberately absent: a user cancel is not a failure.
+ * consumer. `canceled` is deliberately absent: a user cancel isn't a failure.
  */
 export const FAILED_SEND_STATUSES = ["failed", "bounced_hard", "bounced_soft", "complained"] as const;
 
 /**
  * Failed sends that a retry can actually help. A hard bounce / complaint is
- * PERMANENT — the address is suppressed on receipt, so re-sending just bounces
+ * permanent: the address is suppressed on receipt, so re-sending just bounces
  * again (or is blocked at preflight). Only a transient failure or a soft bounce
  * is worth another attempt. Drives the retry affordance + the server guard.
  */
@@ -91,9 +91,9 @@ export type MessageDTO = {
   senderVerified?: boolean;
   keywords: string[];
   isRead: boolean;
-  /** True when the VIEWING mailbox sent this message (it holds the `from`
+  /** True when the viewing mailbox sent this message (it holds the `from`
    * receipt). Drives which side a bubble renders on — presence of `submission`
-   * is NOT enough: a colleague's send in a shared thread carries one too. */
+   * isn't enough: a colleague's send in a shared thread carries one too. */
   outbound: boolean;
   viaAlias: string | null;
   /** Alias id the mail was delivered through — lets a reply default its From to
@@ -106,10 +106,10 @@ export type MessageDTO = {
   /** Present only for outbound messages (this mailbox sent it). */
   submission?: SubmissionState;
   /** Context for a reply's parent message.
-   *  - `parentId` set → the parent IS visible in this timeline: `text` is a
+   *  - `parentId` set → the parent is visible in this timeline: `text` is a
    *    one-line preview and the UI links to it (jump to the original).
    *  - `parentId` null → this (personal) mailbox can't see the parent (added on
-   *    Cc): `text` is the FULL parent body, so context is never half-shown.
+   *    Cc): `text` is the full parent body, so context is never half-shown.
    * Absent when the parent is the message directly above (redundant). */
   replyContext?: {
     from: string | null;
@@ -203,7 +203,7 @@ export type ThreadDTO = {
 
 /**
  * Normalize a subject for the weak same-org fallback: strip Re:/Fwd: prefixes and
- * collapse whitespace. NEVER the primary threading signal — In-Reply-To /
+ * collapse whitespace. Never the primary threading signal — In-Reply-To /
  * References win; subject only closes threads when headers are absent.
  */
 export function normalizeSubject(subject: string | null | undefined): string {
@@ -267,20 +267,20 @@ export function stripQuotesText(body: string): string {
  * Strip quoted history from HTML. Top-posting assumption (symmetric with
  * stripQuotesText): everything from the first quote container — a <blockquote>
  * or a Gmail/Yahoo/Thunderbird quote div — to the end is history, so cut there.
- * This handles NESTED quoting (reply-to-reply-to-reply) for free: a non-greedy
+ * This handles nested quoting (reply-to-reply-to-reply) for free: a non-greedy
  * regex stops at the first inner </blockquote> or </div> and leaks the wrapper,
  * and the containers nest arbitrarily so no single regex balances them. Regex
  * only locates the first marker, so this still runs in both Workers and node.
  * ponytail: top-post cut. If interleaved/bottom-posted replies must keep their
  * post-quote tail, swap in a depth-counting scanner — bodyFull stays canonical.
  */
-// A FORWARD's original content IS the message — never strip it, even with a note
+// A forward's original content is the message — never strip it, even with a note
 // typed above. Gmail wraps it in a `gmail_quote` after a "-- Forwarded message --"
 // line; Outlook uses a `divRplyFwdMsg` divider whose header reads `FW:`;
 // Thunderbird uses `moz-forward-container`.
 const FORWARD_MARKER =
   /-{2,}\s*forwarded message\s*-{2,}|moz-forward-container|\bid=["']?divRplyFwdMsg[^>]*>[\s\S]{0,300}?\bfw:/i;
-// A REPLY quote container: everything from here down is prior history. Covers
+// A reply quote container: everything from here down is prior history. Covers
 // Gmail/Yahoo/Thunderbird, Apple/generic (`<blockquote>`), and Outlook
 // (`divRplyFwdMsg`/`appendonsend` reply divider, `-----Original Message-----`).
 const REPLY_QUOTE_MARKER =
@@ -290,8 +290,8 @@ export function stripQuotesHtml(html: string): string {
   if (FORWARD_MARKER.test(html)) return html.trim(); // forward → keep the whole body
   const at = html.search(REPLY_QUOTE_MARKER);
   if (at === -1) return html.trim();
-  // A REPLY has the new message text ABOVE the quote — that's what we keep. A
-  // FORWARD (Gmail wraps the whole original in a top-level `gmail_quote`) or a
+  // A reply has the new message text above the quote — that's what we keep. A
+  // forward (Gmail wraps the whole original in a top-level `gmail_quote`) or a
   // top-quote has ~nothing before the marker, so cutting there would drop the
   // entire message. When there's no real text before the first quote container,
   // it isn't reply history — keep the whole body. Otherwise a forwarded
@@ -302,8 +302,8 @@ export function stripQuotesHtml(html: string): string {
 }
 
 /**
- * HTML → text PRESERVING line structure: block-closing tags and <br> become
- * newlines, only spaces/tabs collapse. Use for a body that gets RENDERED as a
+ * HTML → text preserving line structure: block-closing tags and <br> become
+ * newlines, only spaces/tabs collapse. Use for a body rendered as a
  * plain-text bubble (composer output, HTML-only inbound) — stripHtmlTags flattens
  * every break into one space, which reads as a single run-on line. Runs in
  * Workers + node (no DOM).
@@ -319,7 +319,7 @@ export function htmlToText(html: string): string {
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/[ \t]+/g, " ") // collapse spaces/tabs, NOT newlines
+    .replace(/[ \t]+/g, " ") // collapse spaces/tabs, not newlines
     .replace(/[ \t]*\n[ \t]*/g, "\n") // trim padding around each break
     .replace(/\n{3,}/g, "\n\n") // cap runaway blank-line runs at one
     .trim();
@@ -330,7 +330,7 @@ export function htmlToText(html: string): string {
  * than plain conversational content? Drives render: rich → sandboxed HTML frame
  * (faithful), normal → plain-text bubble (chatty, uses the line-preserving text
  * twin). bodyHtml presence can't decide it — our composer wraps even a one-line
- * reply in <p> — so we look for STRUCTURE/STYLING our replies never emit.
+ * reply in <p> — so we look for structure/styling our replies never emit.
  *
  * Biased toward rich: a false positive just renders faithfully in the frame
  * (harmless); a false negative flattens a real template to text (the bug). Our
@@ -378,7 +378,7 @@ export function isCidReferenced(html: string | null | undefined, partId: string 
 
 /**
  * Prefix a reply/forward subject the way every mail client expects — `Re:` for a
- * reply, `Fwd:` for a forward — WITHOUT stacking (a reply to "Re: hi" stays
+ * reply, `Fwd:` for a forward — without stacking (a reply to "Re: hi" stays
  * "Re: hi", not "Re: Re: hi"). Empty base stays empty (a no-subject thread's
  * reply carries no subject rather than a bare "Re:").
  */
@@ -408,7 +408,7 @@ export function stripHtmlTags(html: string): string {
 
 /**
  * Mint a Message-ID we own: `<uuid@domain>`. We own it so that if the message
- * reflects back to us (CC to a hosted address, a list), the inbound consumer
+ * reflects back to us (Cc to a hosted address, a list), the inbound consumer
  * dedupes against the sender's copy via (org, message_id_header).
  */
 export function mintMessageId(domain: string): string {
@@ -427,7 +427,7 @@ export function threadingHeaders(parent: {
   if (!parent) return {};
   const ids = [...new Set([...parseReferences(parent.references), parent.messageIdHeader])];
   // Cloudflare rejects header values over 2,048 bytes (E_HEADER_VALUE_TOO_LONG,
-  // permanent) — a deep thread must not hard-fail the send. RFC convention when
+  // permanent), and a deep thread must not hard-fail the send. RFC convention when
   // trimming: keep the root plus the recent tail, drop the middle.
   while (ids.length > 2 && ids.join(" ").length > 1900) ids.splice(1, 1);
   return {

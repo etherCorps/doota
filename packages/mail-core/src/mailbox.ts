@@ -2,7 +2,7 @@
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "@doota/db/schema";
-// Writes go through the `mail.*` alias, NOT the aggregated `schema.` namespace,
+// Writes go through the `mail.*` alias, not the aggregated `schema.` namespace,
 // so the auth-boundary guard (which matches `.insert/.update/.delete(schema.…)`)
 // never trips — these are app-owned tables, freely writable.
 import * as mail from "@doota/db/mail.schema";
@@ -124,8 +124,8 @@ export async function grantedUserIds(db: Db, mailboxId: string): Promise<string[
 }
 
 /**
- * User ids allowed to SEND as a mailbox (canSend grants only). A mailbox has no
- * single owner, so this list IS the send capability — it feeds can()'s
+ * User ids allowed to send as a mailbox (canSend grants only). A mailbox has no
+ * single owner, so this list is the send capability — it feeds can()'s
  * grantedSenderIds for the outbound preflight (owner/role never grants send).
  */
 export async function sendGrantUserIds(db: Db, mailboxId: string): Promise<string[]> {
@@ -142,8 +142,8 @@ export async function sendGrantUserIds(db: Db, mailboxId: string): Promise<strin
 }
 
 /**
- * User ids who may MANAGE a mailbox (canManage grants only) — feeds can()'s
- * grantedManagerIds so a mailbox manager can administer THAT mailbox without
+ * User ids who may manage a mailbox (canManage grants only) — feeds can()'s
+ * grantedManagerIds so a mailbox manager can administer that mailbox without
  * being an org admin.
  */
 export async function manageGrantUserIds(db: Db, mailboxId: string): Promise<string[]> {
@@ -160,13 +160,12 @@ export async function manageGrantUserIds(db: Db, mailboxId: string): Promise<str
 }
 
 /**
- * THE visibility chokepoint for shared mailboxes: `null` → the user sees every
- * thread in the mailbox; a user id → they see ONLY threads assigned to them
+ * The visibility chokepoint for shared mailboxes: `null` → the user sees every
+ * thread in the mailbox; a user id → they see only threads assigned to them
  * (whole thread, history included). Managers are never restricted.
  *
- * Every read path (list, open, counts, search, live events) passes the result
- * of this through as a thread filter — there is no second definition of
- * "what can this member see".
+ * Every read path (list, open, counts, search, live events) passes this through
+ * as a thread filter — there's no second definition of what a member can see.
  */
 export async function assignedOnlyFor(
   db: Db,

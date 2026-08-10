@@ -7,14 +7,14 @@ import { can } from "@doota/db/can";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * From-selector source (Part B) — every identity the current user may send as:
- * each mailbox they hold a SEND grant on, plus each enabled alias of those
- * mailboxes, plus whether the domain honors subaddressing (user+tag@). This is a
- * CONVENIENCE list; the send path re-checks the chosen identity through
+ * From-selector source (Part B): every identity the current user may send as —
+ * each mailbox they hold a send grant on, plus each enabled alias of those
+ * mailboxes, plus whether the domain honors subaddressing (user+tag@). A
+ * convenience list; the send path re-checks the chosen identity through
  * resolveSender()/can() and is the authority.
  *
  * An identity whose sending domain isn't `active` (DKIM not wired) is returned
- * as unavailable WITH a reason, never silently dropped — a clear "why" beats a
+ * as unavailable with a reason, never silently dropped: a clear "why" beats a
  * mysteriously missing address.
  */
 export type SendIdentity = {
@@ -25,15 +25,15 @@ export type SendIdentity = {
   displayName: string | null;
   /** the domain honors `+tag` subaddressing for this identity */
   subaddressable: boolean;
-  /** the underlying mailbox is the user's personal inbox (not shared/service) —
-   * used to pick a sensible default From when there's no mailbox context. */
+  /** the underlying mailbox is the user's personal inbox (not shared/service);
+   * used to pick a default From when there's no mailbox context. */
   isPersonal: boolean;
   available: boolean;
   reason?: string;
 };
 
 export async function listSendIdentities(db: Db, userId: string): Promise<SendIdentity[]> {
-  // Mailboxes the user may SEND as (canSend grants only — owner/role never sends).
+  // Mailboxes the user may send as (canSend grants only; owner/role never sends).
   const grants = await db
     .select({ mailboxId: schema.mailboxAccess.mailboxId })
     .from(schema.mailboxAccess)

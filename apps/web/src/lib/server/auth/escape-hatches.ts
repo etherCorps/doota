@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * AUTH BOUNDARY — escape hatches.
+ * Auth boundary — escape hatches.
  *
- * The ONLY place in app code allowed to reach Better Auth internals
+ * The only place in app code allowed to reach Better Auth internals
  * (`$context` / `internalAdapter`) or write Better Auth-owned tables directly.
  * Each function here exists because the sanctioned paths (auth.api mutations /
- * databaseHooks) genuinely cannot express it — the reason is documented inline.
- * Everything else must import from the boundary, never from Better Auth guts.
+ * databaseHooks) can't express it; the reason is documented inline. Everything
+ * else must import from the boundary, never from Better Auth guts.
  *
  * A grep guard (scripts/check-auth-boundary.mjs, run in `pnpm check`) blocks
  * `$context` / `internalAdapter` / auth-schema imports anywhere outside
- * `src/lib/server/auth/`, so this sprawl cannot regress.
+ * `src/lib/server/auth/`, so this can't regress.
  */
 import { and, eq, gt } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -25,7 +25,7 @@ type Ctx = Awaited<Auth["$context"]>;
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Better Auth context + db for the current request. `$context` lives ONLY here.
+ * Better Auth context + db for the current request. `$context` lives only here.
  * Every escape hatch runs inside a request (remote functions / load), so
  * getRequestEvent is always available.
  */
@@ -39,11 +39,11 @@ async function reqCtx(): Promise<{ db: Db; ctx: Ctx }> {
 // ---------------------------------------------------------------------------
 
 /**
- * ESCAPE HATCH — create the first super-admin (web setup wizard).
+ * Escape hatch — create the first super-admin (web setup wizard).
  *
- * WHY no sanctioned path: at genesis there is no admin session to authorize
+ * Why no sanctioned path: at genesis there is no admin session to authorize
  * `auth.api.createUser` (admin plugin), and `emailAndPassword.disableSignUp`
- * blocks `auth.api.signUpEmail`. So the very first credentialed account must be
+ * blocks `auth.api.signUpEmail`. So the first credentialed account must be
  * minted through the internal adapter. `databaseHooks.user.create.before` still
  * runs and forces role=superadmin for the first user, so the role isn't set here.
  *
@@ -90,10 +90,10 @@ export async function createGenesisSuperadmin(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * ESCAPE HATCH — mint/read/consume short-lived tokens in Better Auth's
+ * Escape hatch — mint/read/consume short-lived tokens in Better Auth's
  * `verification` table under namespaced identifiers.
  *
- * WHY no sanctioned path: Better Auth exposes no `auth.api` to write arbitrary
+ * Why no sanctioned path: Better Auth exposes no `auth.api` to write arbitrary
  * verification values. Our recovery-email verification links, password-reset
  * codes, and per-user send throttles reuse this BA-owned table rather than add a
  * parallel one. All reads/writes are confined here.
@@ -169,10 +169,10 @@ type UserAuthFlags = Partial<{
 }>;
 
 /**
- * ESCAPE HATCH — set app-owned boolean/timestamp flags that live on the BA
+ * Escape hatch — set app-owned boolean/timestamp flags that live on the BA
  * `user` row (recoveryEmailVerified, mustChangePassword, onboardedAt, ...).
  *
- * WHY no sanctioned path: `auth.api` has no way to set custom additionalFields
+ * Why no sanctioned path: `auth.api` has no way to set custom additionalFields
  * on a user by id (self-update only covers input:true fields; these are
  * input:false, server-managed). Uses the internal adapter so
  * `databaseHooks.user.update.*` still runs.
@@ -186,8 +186,8 @@ export async function setUserAuthFlags(
 }
 
 /**
- * ESCAPE HATCH — stamp onboardedAt via the internal adapter so the session's
- * cached user (KV secondary storage + cookie cache) is refreshed in lockstep
+ * Escape hatch — stamp onboardedAt via the internal adapter so the session's
+ * cached user (KV secondary storage + cookie cache) is refreshed alongside it
  * (updateUser → refreshUserSessions). A raw D1 write would leave the KV session
  * snapshot reporting onboardedAt=null, defeating the request-hook fast path.
  *
@@ -202,10 +202,10 @@ export async function stampOnboarded(auth: Auth, userId: string): Promise<void> 
 }
 
 /**
- * ESCAPE HATCH — purge a user's org memberships.
+ * Escape hatch — purge a user's org memberships.
  *
- * WHY no sanctioned path: admin.removeUser deletes the user + sessions + accounts
- * but does NOT cascade the organization plugin's `member` table, and D1's FK
+ * Why no sanctioned path: admin.removeUser deletes the user + sessions + accounts
+ * but doesn't cascade the organization plugin's `member` table, and D1's FK
  * cascade is unreliable at runtime. `auth.api.removeMember` keys on a
  * member-id/email (version-fragile), so a direct delete-by-userId is the robust
  * purge. Call before auth.api.removeUser so no orphan membership rows survive.
@@ -220,13 +220,13 @@ export async function purgeUserMemberships(userId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * ESCAPE HATCH — write an org's onboarding lifecycle fields (status, zoneId).
+ * Escape hatch — write an org's onboarding lifecycle fields (status, zoneId).
  *
- * WHY no sanctioned path: these are `input:false` org additionalFields, so
+ * Why no sanctioned path: these are `input:false` org additionalFields, so
  * `auth.api.updateOrganization` refuses to set them. Written via Drizzle, then
  * `invalidateDomainCache()` to mirror the org plugin's afterUpdateOrganization
- * hook — a raw write would otherwise skip it and leave the served-domain cache
- * stale after a domain goes active (finding F1).
+ * hook. A raw write would skip it and leave the served-domain cache stale after
+ * a domain goes active (finding F1).
  */
 export async function setOrgLifecycle(
   orgId: string,

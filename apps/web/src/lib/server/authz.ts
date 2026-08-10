@@ -7,13 +7,12 @@
 //   2. KV (AUTH_KV, `authz:v1:{userId}`, 60s TTL): cross-request cache.
 //      Explicitly deleted on grant/membership changes (invalidateAuthz), so the
 //      staleness ceiling after a revocation is KV's cross-PoP propagation
-//      (≤60s worst case; same-PoP sees the delete immediately). Accepted —
-//      matches the old 30s per-isolate memo philosophy, but global and with
-//      real invalidation.
+//      (≤60s worst case; same-PoP sees the delete immediately). This matches the
+//      old 30s per-isolate memo philosophy, but global and with real invalidation.
 //   3. D1 (authoritative).
 //
-// Mutating paths that must NOT tolerate staleness (rare) can keep calling the
-// D1 helpers directly — this is the default read path, not a mandate.
+// Mutating paths that can't tolerate staleness (rare) can keep calling the
+// D1 helpers directly; this is the default read path, not a mandate.
 import { error } from "@sveltejs/kit";
 import { getRequestEvent } from "$app/server";
 import { accessibleMailboxIds } from "@doota/mail-core/mailbox";
@@ -66,7 +65,7 @@ export function getAuthz(): Promise<Authz> {
   return locals.authz;
 }
 
-/** Drop a user's cached snapshot — call after ANY grant/membership change for
+/** Drop a user's cached snapshot — call after any grant/membership change for
  * that user (mailbox grant/revoke, org member add/remove/role change). Also
  * clears the current request's memo in case it targets the caller themself. */
 export async function invalidateAuthz(userId: string): Promise<void> {

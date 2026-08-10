@@ -19,7 +19,7 @@ import { initLogLevel } from "@doota/mail-core/log";
  * EMAIL_SENDER (Cloudflare Email Service) binding for delivery.
  * Vars: LOG_LEVEL (optional, debug|info|warn|error, default info).
  */
-// Per-user mail event hub (one DO instance per user). Lives in THIS script;
+// Per-user mail event hub (one DO instance per user). Lives in this script;
 // the web Worker reaches it via a cross-script binding (script_name).
 export { MailEventHub } from "@doota/mail-core/events-hub";
 
@@ -27,7 +27,7 @@ export default {
   async queue(batch, env): Promise<void> {
     initLogLevel(env);
     // Two consumed queues, routed by name: outbound sends + Email Service
-    // event subscriptions (delivery lifecycle). Prefix match, not equality —
+    // event subscriptions (delivery lifecycle). Prefix match, not equality:
     // stage deploys (alchemy.run.ts) suffix queue names (doota-mail-events-<stage>).
     if (batch.queue.startsWith("doota-mail-events")) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

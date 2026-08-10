@@ -25,10 +25,10 @@ import type { InboundJob, MailEnv } from "./inbound-worker";
 
 /**
  * Inbound queue consumer — the heavy, idempotent work. Fetch raw from R2, parse
- * MIME with postal-mime (Workers-compatible, NOT Node mailparser), then upsert
+ * MIME with postal-mime (Workers-compatible, not Node mailparser), then upsert
  * message / delivery / thread_state through the shared materialize seam. Every
- * step is safe to re-run: a redelivered job converges, never duplicates, so on
- * any error we retry the whole job rather than half-commit.
+ * step is safe to re-run: a redelivered job converges rather than duplicating,
+ * so on any error we retry the whole job rather than half-commit.
  */
 
 type PMAddress = { address?: string; name?: string };
@@ -68,13 +68,13 @@ function addrList(list: PMAddress[] | undefined): string[] {
 }
 
 /**
- * A MIME part is a real attachment only if it has a filename, or a Content-ID
- * (a `cid:`-referenced inline image), or `Content-Disposition: attachment`.
- * Everything else is a BODY representation — most importantly a `text/calendar`
- * (or any other) part sitting in a `multipart/alternative`, which postal-mime
- * surfaces in `attachments` but which must never become a phantom download.
- * postal-mime already lifts the chosen text/plain + text/html out into
- * `parsed.text`/`parsed.html`, so this only ever drops non-body alternatives.
+ * A MIME part is a real attachment only if it has a filename, a Content-ID (a
+ * `cid:`-referenced inline image), or `Content-Disposition: attachment`.
+ * Everything else is a body representation — most importantly a `text/calendar`
+ * (or other) part in a `multipart/alternative`, which postal-mime surfaces in
+ * `attachments` but which must never become a phantom download. postal-mime
+ * already lifts the chosen text/plain + text/html into `parsed.text`/`parsed.html`,
+ * so this only drops non-body alternatives.
  */
 export function isRealAttachment(a: {
   filename?: string | null;
@@ -96,9 +96,9 @@ export function baseAddress(address: string, tag: string | null): string {
 }
 
 /**
- * Role of THIS recipient: visible in To → to, in Cc → cc, else the envelope
- * recipient isn't in any visible header, which means it was Bcc'd. Bcc therefore
- * exists ONLY as a delivery row, never back in the stored message headers.
+ * Role of this recipient: visible in To → to, in Cc → cc, else it isn't in any
+ * visible header, which means it was Bcc'd. Bcc therefore exists only as a
+ * delivery row, never back in the stored message headers.
  */
 export function deriveRole(parsed: PMParsed, recipientBase: string): "to" | "cc" | "bcc" {
   if (addrList(parsed.to).includes(recipientBase)) return "to";
@@ -127,8 +127,8 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
     dmarcPass: job.dmarcPass ?? false, // ?? false: jobs queued before this field
 
     // r2Key is filled by stageInboundAttachments before materialize — a null
-    // key means an empty/unreadable part, and stays undownloadable. Only REAL
-    // attachments (not body-alternative parts like a bare text/calendar) — see
+    // key means an empty/unreadable part, and stays undownloadable. Only real
+    // attachments (not body-alternative parts like a bare text/calendar); see
     // isRealAttachment. Staging applies the same filter so indices stay aligned.
     attachments: realAttachments(parsed).map((a, i) => ({
       partId: a.contentId ?? String(i),
@@ -142,9 +142,9 @@ function toParsedMessage(parsed: PMParsed, job: InboundJob): ParsedMessage {
 
 /**
  * Give each attachment its own R2 object and stamp the key onto the parsed
- * message. The raw MIME stays canonical, but nothing re-parses it at read
- * time: the download endpoint and outbound forwarding both stream per-part
- * keys — without this, inbound attachments 404 and forwards drop them.
+ * message. The raw MIME stays canonical, but nothing re-parses it at read time:
+ * the download endpoint and outbound forwarding both stream per-part keys.
+ * Without this, inbound attachments 404 and forwards drop them.
  */
 async function stageInboundAttachments(
   env: MailEnv,
@@ -172,15 +172,15 @@ async function stageInboundAttachments(
  * Parse any calendar part on the message and persist a calendar_event row per
  * VEVENT. Structural fields stay cleartext; the sensitive free-text (summary/
  * location/description/joinUrl/rsvpLinks) is encrypted into details_enc with the
- * same DEK as the subject/body. The RAW ICS is kept in R2 (encrypted) as the
- * source of truth — stored BEFORE parsing, so a malformed invite still leaves
- * the bytes recoverable.
+ * same DEK as the subject/body. The raw ICS is kept in R2 (encrypted) as the
+ * source of truth, stored before parsing so a malformed invite still leaves the
+ * bytes recoverable.
  *
  * Identity is (message, uid, recurrence_id); message-level idempotency collapses
  * "fires once per recipient", and SEQUENCE supersede + CANCEL are resolved at
- * READ (highest sequence wins, is_cancelled shows "Cancelled") — history-
- * preserving and D1-transaction-free. NEVER throws into the delivery path: a bad
- * invite must not lose the mail (it still lands as a normal message).
+ * read (highest sequence wins, is_cancelled shows "Cancelled"), which is
+ * history-preserving and D1-transaction-free. Never throws into the delivery
+ * path: a bad invite must not lose the mail (it still lands as a normal message).
  */
 export async function persistInvite(
   db: ReturnType<typeof drizzle<typeof schema>>,
@@ -195,8 +195,8 @@ export async function persistInvite(
     const raw = findCalendarPart(parsed.attachments);
     if (!raw) return;
 
-    // Raw ICS → R2 (encrypted at rest), FIRST — survives even a parse failure so
-    // a future export/re-parse has the bytes.
+    // Raw ICS → R2 (encrypted at rest), first — survives a parse failure so a
+    // future export/re-parse has the bytes.
     rawIcsR2Key = `calendar/${orgId}/${crypto.randomUUID()}.ics`;
     await putEncryptedBlob(env.MAIL_RAW, rawIcsR2Key, ck, new TextEncoder().encode(raw), {
       httpMetadata: { contentType: "text/calendar" },
@@ -211,10 +211,10 @@ export async function persistInvite(
     // Provider's own Yes/Maybe/No links (message-level) — same for every event.
     const rsvpLinks = extractRsvpLinks(parsed.html);
     const isCancelMethod = cal.method === "CANCEL";
-    // iTIP methods directed AT the organizer (attendee → organizer). They're only
-    // actionable if the organizer is one of OUR mailboxes; otherwise the reply is
-    // misdirected or spoofed — drop it (never bounce a machine-generated reply, it
-    // risks a mail loop).
+    // iTIP methods directed at the organizer (attendee → organizer). Only
+    // actionable if the organizer is one of our mailboxes; otherwise the reply is
+    // misdirected or spoofed, so drop it (never bounce a machine-generated reply,
+    // it risks a mail loop).
     const isReplyClass = ["REPLY", "COUNTER", "DECLINECOUNTER", "REFRESH"].includes(
       cal.method ?? "",
     );
@@ -238,7 +238,7 @@ export async function persistInvite(
             uid: ev.uid,
             organizer: organizer || null,
           });
-          continue; // organizer not in our DB — reject/drop, don't store or act
+          continue; // organizer not in our DB — drop, don't store or act
         }
       }
       const detailsEnc = await encryptContent(
@@ -296,12 +296,12 @@ type QueueBatch = {
 
 /**
  * Named inbound stages (build guide 0b): metadata → rulesEval → placement →
- * notify. Execution is driven by INBOUND_STAGES, so the order is structural —
- * the one load-bearing constraint is that rulesEval precedes notify: a rule
- * that files or junks a message must suppress its notification in the same
- * pass, before the notification dedupe machinery ever records the event.
- * receive (handleEmail) and parse (PostalMime + bounce short-circuit) run
- * before the stage loop.
+ * notify. Execution is driven by INBOUND_STAGES, so the order is structural. The
+ * one load-bearing constraint is that rulesEval precedes notify: a rule that
+ * files or junks a message must suppress its notification in the same pass,
+ * before the notification dedupe machinery records the event. receive
+ * (handleEmail) and parse (PostalMime + bounce short-circuit) run before the
+ * stage loop.
  */
 export type RulesOutcome = {
   /** Placement override handed to materializeDelivery; null = default policy. */
@@ -365,7 +365,7 @@ export function ruleViewOf(parsed: PMParsed, pm: ParsedMessage, rawSize: number 
 
 async function rulesEvalStage(ctx: InboundStageCtx): Promise<void> {
   const rules = await loadRules(ctx.db, ctx.job.resolvedMailboxId);
-  // Tier-2 body is ALREADY in memory at ingest (postal-mime parsed it) — the
+  // Tier-2 body is already in memory at ingest (postal-mime parsed it), so the
   // lazy getter costs nothing here; the R2 gate matters in the backfill.
   const outcome = rules.length
     ? await evalRules(rules, ruleViewOf(ctx.parsed, ctx.pm, ctx.rawSize ?? null), async () => ctx.pm.text ?? null)
@@ -387,7 +387,7 @@ async function rulesEvalStage(ctx: InboundStageCtx): Promise<void> {
     }
   }
   ctx.rules = {
-    // Placement override applies at INSERT time so rule-matched mail never
+    // Placement override applies at insert time so rule-matched mail never
     // appears in Inbox first — a new thread lands filed/junked directly.
     placement: outcome.junk
       ? { newThread: "spam", unarchiveOnReply: false }
@@ -396,7 +396,7 @@ async function rulesEvalStage(ctx: InboundStageCtx): Promise<void> {
         : null,
     // Junk is silent. Folder-filed mail is silenced via the target folder's
     // notify_new_mail setting (rule-fed folders default to None), which
-    // recordNewMail reads AFTER labels apply — see notify.ts folderSilenced.
+    // recordNewMail reads after labels apply — see notify.ts folderSilenced.
     suppressNotification: outcome.junk,
     outcome,
   };
@@ -431,12 +431,12 @@ async function placementStage(ctx: InboundStageCtx): Promise<void> {
 }
 
 /**
- * Rules-engine `forward` action. Mail-loop + exfiltration guards, in order of
- * cheapness: needs the outbound binding; never re-forward our own forwards
- * (X-Doota-Forwarded); never forward auto-generated mail; never forward a
- * bounce (null envelope); never forward to the mailbox itself. Sends are
- * authorized as the rule's creator, so the normal can() send gate and the
- * outbound rate limit both apply.
+ * Rules-engine `forward` action. Mail-loop + exfiltration guards, cheapest
+ * first: needs the outbound binding; never re-forward our own forwards
+ * (X-Doota-Forwarded); never forward auto-generated mail; never forward a bounce
+ * (null envelope); never forward to the mailbox itself. Sends are authorized as
+ * the rule's creator, so the normal can() send gate and the outbound rate limit
+ * both apply.
  */
 async function executeForwards(ctx: InboundStageCtx): Promise<void> {
   const forwards = ctx.rules?.outcome?.forwards ?? [];
@@ -512,7 +512,7 @@ async function notifyStage(ctx: InboundStageCtx): Promise<void> {
 }
 
 /**
- * Vacation auto-responder (Phase 4) — evaluates AFTER rulesEval (the junk
+ * Vacation auto-responder (Phase 4) — evaluates after rulesEval (the junk
  * decision is an input: junked mail never gets an auto-reply) and after
  * placement. Best-effort: a responder failure never fails the delivery.
  */
@@ -591,14 +591,14 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
       const buf = await getDecryptedBlob(env.MAIL_RAW, job.r2RawKey, ck);
       if (!buf) {
         // Raw is gone (already processed + swept, or never landed). Nothing to
-        // reconstruct — ack so the job doesn't retry forever.
+        // reconstruct, so ack rather than retry forever.
         m.ack();
         continue;
       }
       const parsed = (await PostalMime.parse(buf)) as PMParsed;
 
       // Bounce/complaint short-circuit (Part F): a DSN routed to our return-path
-      // must update submission state + suppressions, NEVER land in an inbox.
+      // must update submission state + suppressions, never land in an inbox.
       const rp = await db.query.orgMailSettings.findFirst({
         where: eq(schema.orgMailSettings.orgId, job.orgId),
         columns: { returnPathDomain: true },
@@ -612,20 +612,20 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           returnPathDomain: rp?.returnPathDomain ?? null,
         })
       ) {
-        // The heuristic said "bounce" — but only DROP if the DSN body actually
-        // parses to a failure/complaint. A mail that merely LOOKS like a bounce
+        // The heuristic said "bounce", but only drop if the DSN body actually
+        // parses to a failure/complaint. A mail that merely looks like a bounce
         // (subject regex, or addressed to the return-path subdomain) with no
         // parseable failures is a real reply that tripped the heuristic — deliver
         // it instead of eating it silently (the historical misclassification bug).
         const rawText = new TextDecoder().decode(buf);
-        // DROP only a STRUCTURAL report (multipart/report). A real reply that
-        // merely quotes a bounce is text/* — parseable failures alone must not
+        // Drop only a structural report (multipart/report). A real reply that
+        // merely quotes a bounce is text/*, so parseable failures alone must not
         // eat it. Non-report bounces still update state via the primary event path.
         const bounce = parseBounce(rawText);
         if (isDeliveryReport(rawText) && (bounce.failures.length > 0 || bounce.isComplaint)) {
           // DSN fallback path (structured event subscriptions are primary; a DSN
-          // that slips through still updates state and wakes the user's stream —
-          // client-side dedupe absorbs any double notification).
+          // that slips through still updates state and wakes the user's stream,
+          // and client-side dedupe absorbs any double notification).
           const applied = await applyBounce(db, job.orgId, bounce, { hub: env.MAIL_EVENTS, push: env });
           if (applied.matchedSubmission && applied.worstStatus) {
             await notifySubmissionState(db, env.MAIL_EVENTS, applied.matchedSubmission, applied.worstStatus);
@@ -642,7 +642,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           m.ack();
           continue;
         }
-        // Looked like a bounce, wasn't one — log the averted drop and fall through
+        // Looked like a bounce, wasn't one: log the averted drop and fall through
         // to normal delivery. Watch this to tune looksLikeBounce if it fires often.
         log.warn("in.bounce_false_positive", {
           r2Key: job.r2RawKey,
@@ -675,7 +675,7 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
           const userIds = await sendGrantUserIds(db, job.resolvedMailboxId);
           await Promise.all(userIds.map((u) => env.AUTH_KV!.delete(`contacts:${u}`)));
         } catch (e) {
-          log.warn("in.contacts_bust_failed", errInfo(e)); // never fail the delivery over cache hygiene
+          log.warn("in.contacts_bust_failed", errInfo(e)); // cache hygiene, never fail the delivery
         }
       }
 

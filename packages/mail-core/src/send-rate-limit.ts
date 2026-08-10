@@ -9,8 +9,8 @@ type Db = DrizzleD1Database<typeof schema>;
 /**
  * Outbound rate limiting (Part G) over the DB-backed windowed-counter pattern.
  * A compromised account or a reply loop must not be able to torch the domain's
- * reputation, so caps apply per-mailbox AND per-instance before any provider
- * call. Counts EXTERNAL recipients (the reputation-bearing volume), not messages.
+ * reputation, so caps apply per-mailbox and per-instance before any provider
+ * call. Counts external recipients (the reputation-bearing volume), not messages.
  *
  * ponytail: bump-then-check. The upsert increment is atomic per row; the
  * read-back can let two concurrent sends overshoot the cap by a little. That errs

@@ -17,7 +17,7 @@ import welcome from "./templates/welcome.html?raw";
  * composed into the shared branded `_layout.html`, which pulls the org name +
  * logo + from-address so every mail is org-branded (T2 sender + BIMI logo).
  *
- * Replaces the old `@better-svelte-email` renderer (dropped — buggy per T6).
+ * Replaces the old `@better-svelte-email` renderer (dropped as buggy, per T6).
  */
 
 type Ctx = Record<string, unknown> & { brand: Brand };

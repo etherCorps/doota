@@ -3,11 +3,11 @@ import Cloudflare from "cloudflare";
 import { APP_CLOUDFLARE_ACCOUNT_ID, APP_CLOUDFLARE_API_TOKEN } from "$app/env/private";
 
 /**
- * Cloudflare is the source of truth for all mail wiring. This module is the ONLY
- * place we talk to the CF API. It must never be called on the inbound-email hot
- * path or on login validation — those read the cached D1 domain→org→zone map.
+ * Cloudflare is the source of truth for all mail wiring. This module is the only
+ * place we talk to the CF API. Don't call it on the inbound-email hot path or on
+ * login validation; those read the cached D1 domain→org→zone map.
  *
- * Credential is a SCOPED API Token (Bearer), never the Global API Key. No
+ * Credential is a scoped API token (Bearer), never the global API key. No
  * account email. Every call here is idempotent: check-then-create where a list
  * exists, tolerate "already exists / already enabled" otherwise.
  */
@@ -119,7 +119,7 @@ export async function pollZoneStatus(zoneId: string): Promise<ZoneRef> {
   return toZoneRef(z);
 }
 
-/** Find an existing zone by name WITHOUT creating one (for the Link path). */
+/** Find an existing zone by name without creating one (for the Link path). */
 export async function findZone(domain: string): Promise<ZoneRef | undefined> {
   const res = await cf().zones.list({ account: { id: APP_CLOUDFLARE_ACCOUNT_ID }, name: domain });
   const found = res.result?.[0];
@@ -145,9 +145,9 @@ export type ZoneDnsRecord = {
 };
 
 /**
- * Every DNS record in the zone, LIVE from Cloudflare (never persisted). Cloudflare
- * holds the full zone — the apex (domain.tld itself) and every subdomain — so this
- * is the operator's complete view of what's published. Best-effort: [] on error.
+ * Every DNS record in the zone, live from Cloudflare (never persisted). Cloudflare
+ * holds the full zone (the apex and every subdomain), so this is the operator's
+ * complete view of what's published. Best-effort: [] on error.
  */
 export async function listZoneDnsRecords(zoneId: string): Promise<ZoneDnsRecord[]> {
   try {
@@ -270,10 +270,10 @@ export async function inspectZoneMail(zoneId: string): Promise<{
 
 /**
  * Point the zone's catch-all routing rule at the deployed mail-in Worker.
- * `update` is an upsert, so this is idempotent by construction; the
+ * `update` is an upsert, so this is idempotent by construction. The
  * check-first read just skips the write when the rule is already enabled
- * AND pointed at this worker (a disabled-but-correct rule still falls
- * through so the PUT re-enables it). The read is guarded — on a zone
+ * and pointed at this worker (a disabled-but-correct rule still falls
+ * through so the PUT re-enables it). The read is guarded: on a zone
  * whose routing isn't up yet it can throw, and we'd rather attempt the
  * upsert than fail on the peek.
  */
@@ -397,7 +397,7 @@ export async function setSubaddressing(zoneId: string, on: boolean): Promise<voi
 
 // ---- Zone observability: analytics · email logs · audit logs ----------------
 //
-// All read-only, LIVE from Cloudflare (never persisted). To respect Cloudflare's
+// All read-only, live from Cloudflare (never persisted). To respect Cloudflare's
 // API rate limit (~1200 req / 5 min per token; the GraphQL Analytics API has its
 // own per-minute ceiling) these go through a tiny per-isolate TTL cache so an
 // admin refreshing a dashboard collapses to at most one upstream call per TTL
@@ -436,8 +436,8 @@ async function cfGraphql<T>(query: string, variables: Record<string, unknown>): 
       body: JSON.stringify({ query, variables }),
     });
     const j = (await r.json()) as { data?: T; errors?: Array<{ message?: string }> };
-    // GraphQL can return PARTIAL data alongside per-field errors — surface the
-    // errors but keep whatever data came back (a bad field must not blank the view).
+    // GraphQL can return partial data alongside per-field errors: surface the
+    // errors but keep whatever data came back, so a bad field doesn't blank the view.
     if (j.errors?.length) console.warn("[cf:graphql]", r.status, j.errors.map((gqlError) => gqlError.message).join("; "));
     if (!r.ok && !j.data) return null;
     return j.data ?? null;
@@ -574,7 +574,7 @@ export async function zoneSendingReputation(
   });
 }
 
-/** Per-zone sends TODAY, summed from the analytics dataset (per-domain context
+/** Per-zone sends today, summed from the analytics dataset (per-domain context
  * for the org overview). The account-wide daily limit lives in accountSendLimits. */
 export async function zoneSendUsage(zoneId: string): Promise<{ today: number }> {
   return memo(`usage:${zoneId}`, 300_000, async () => {
@@ -598,7 +598,7 @@ export type SendLimits = {
 };
 
 /**
- * The account's LIVE sending limit + usage, straight from Cloudflare
+ * The account's live sending limit + usage, straight from Cloudflare
  * (`GET /accounts/{id}/email/sending/limits`). The daily quota is dynamic
  * (scales with reputation), so it's read live — never hardcoded. Account-scoped
  * (superadmin/dashboard). Unknown fields degrade to null, not a fabricated value.
@@ -642,8 +642,8 @@ export type EmailEvent = {
   spf: string | null;
 };
 
-// Individual-event dataset — recipient is `to` (a scalar); `envelopeTo` is a
-// GROUP dimension and comes back as an object on this dataset. Confirmed fields.
+// Individual-event dataset: recipient is `to` (a scalar); `envelopeTo` is a
+// group dimension and comes back as an object on this dataset. Confirmed fields.
 const EVENTS_Q = `query($zoneTag:string!,$start:Time!,$end:Time!){
   viewer{ zones(filter:{zoneTag:$zoneTag}){
     emailSendingAdaptive(filter:{datetime_geq:$start,datetime_leq:$end},limit:100,orderBy:[datetime_DESC]){

@@ -3,13 +3,13 @@
  * Per-user mail event hub — a Durable Object (one instance per user id via
  * idFromName) that turns "a send failed" into a push instead of a DB poll.
  *
- * Transport is HIBERNATABLE WebSockets: subscribers' sockets are parked with
+ * Transport is hibernatable WebSockets: subscribers' sockets are parked with
  * ctx.acceptWebSocket, so the DO is evicted from memory between events and
  * bills nothing while idle. Producers (the outbound consumer in
  * doota-mail-jobs, or the dev bridge in the web Worker) POST /notify, which
  * wakes the DO just long enough to fan the event out to parked sockets.
  *
- * The subscriber is NOT the browser: the web Worker's failedSends query.live
+ * The subscriber is not the browser: the web Worker's failedSends query.live
  * generator connects as a WebSocket client (mailEventStream) inside its
  * streaming request, so browser-facing transport stays query.live and auth
  * stays in the web Worker. The DB is only read when a stream connects,
@@ -19,8 +19,8 @@
  * script); the web Worker reaches it through a cross-script binding
  * (script_name: "doota-mail-jobs").
  *
- * ponytail: no DO storage. Liveness via a ping/pong heartbeat — the DO
- * auto-responds "pong" to "ping" WITHOUT waking from hibernation
+ * ponytail: no DO storage. Liveness via a ping/pong heartbeat: the DO
+ * auto-responds "pong" to "ping" without waking from hibernation
  * (setWebSocketAutoResponse: no wake, no bill), and the subscriber ends its
  * stream when pongs stop. A half-open socket (dropped with no close event) is
  * thus detected and reconnected instead of hanging the stream forever.
@@ -32,8 +32,8 @@ import * as schema from "@doota/db/schema";
 
 /**
  * Events pushed to a user's clients. Thin on purpose: subscribers re-read the
- * DB for display data (subject, reason, recipients) — an event only says WHAT
- * changed and WHERE (thread/mailbox) to look.
+ * DB for display data (subject, reason, recipients); an event only says what
+ * changed and where (thread/mailbox) to look.
  */
 export type MailStateEvent = {
   type: "send_state";
@@ -43,7 +43,7 @@ export type MailStateEvent = {
   status: string;
 };
 
-/** New mail landed in a mailbox the user can read (external inbound OR an
+/** New mail landed in a mailbox the user can read (external inbound or an
  * internal same-org delivery). Drives live inbox lists + unread badges. */
 export type InboundMailEvent = {
   type: "inbound";
@@ -51,7 +51,7 @@ export type InboundMailEvent = {
   mailboxId: string;
 };
 
-/** A durable notification (assigned / note / …) was written for the user — a
+/** A durable notification (assigned / note / …) was written for the user: a
  * bare ping so the client refetches its unread count. new_mail / send_failed
  * already ride the inbound / send_state events; this covers the rest. */
 export type NotificationEvent = {
@@ -103,7 +103,7 @@ export class MailEventHub {
       // already closed
     }
   }
-  // A parked socket dropped abruptly (client vanished mid-stream). WITHOUT this
+  // A parked socket dropped abruptly (client vanished mid-stream). Without this
   // handler the Hibernation runtime has nowhere to deliver the error and surfaces
   // it as an uncaught DO exception ("Worker threw exception"). Absorb it: close
   // our side; the subscriber's stream reconnects + catch-up reads, losing nothing.
@@ -117,7 +117,7 @@ export class MailEventHub {
 }
 
 /**
- * Minimal structural surface of the binding — keeps tests trivial to fake and
+ * Minimal structural surface of the binding: keeps tests trivial to fake and
  * avoids coupling call sites to a workers-types DurableObjectNamespace version.
  */
 export type EventHubNamespace = {
@@ -131,7 +131,7 @@ export type EventHubNamespace = {
 };
 
 /**
- * Best-effort state notification: wake the user's hub. Never throws — a
+ * Best-effort state notification: wake the user's hub. Never throws; a
  * notification must not fail a job that already did its bookkeeping.
  * (The https://hub host is fictitious: a DO stub fetch needs a valid URL but
  * routes over the binding, never DNS — only the path matters.)
@@ -145,7 +145,7 @@ export async function notifyMailState(
   await post(hub, userId, JSON.stringify({ type: "send_state", ...evt } satisfies MailStateEvent));
 }
 
-/** Wake one user's bell — a durable notification (assigned / note) was written.
+/** Wake one user's bell: a durable notification (assigned / note) was written.
  * Best-effort; free when the binding is absent. */
 export async function notifyNotification(
   hub: EventHubNamespace | undefined,
@@ -165,7 +165,7 @@ async function post(hub: EventHubNamespace, userId: string, frame: string): Prom
 }
 
 /**
- * New-mail fan-out: a delivery landed in `mailboxId` — wake every user holding
+ * New-mail fan-out: a delivery landed in `mailboxId`, so wake every user holding
  * a mailbox_access grant on it (shared mailboxes have several). Called from
  * both delivery producers: the inbound consumer and the outbound consumer's
  * internal short-circuit. Best-effort like all hub traffic, and free when the
@@ -187,7 +187,7 @@ export async function notifyInboundMail(
     .from(schema.mailboxAccess)
     .where(eq(schema.mailboxAccess.mailboxId, mailboxId));
   if (!users.length) return;
-  // Assigned-only members are woken only for THEIR threads — a live ping for a
+  // Assigned-only members are woken only for their threads: a live ping for a
   // thread they can't open would be both noise and a leak.
   const restricted = users.filter((u) => u.assignedOnly && !u.canManage);
   let assigneeUserId: string | null = null;
@@ -209,9 +209,9 @@ export async function notifyInboundMail(
 }
 
 /**
- * THE notification seam for submission-status writers: resolves the sending
+ * The notification seam for submission-status writers: resolves the sending
  * user + thread itself, so callers announce a transition with just the id and
- * new status — no per-caller lookup plumbing to forget or duplicate. Pass
+ * new status, no per-caller lookup plumbing to forget or duplicate. Pass
  * `known` fields when already in scope to skip the resolving reads. All
  * lookups are gated on the hub existing (free when the binding is absent).
  */
@@ -245,8 +245,8 @@ export async function notifySubmissionState(
 
 /**
  * Subscribe to a user's events: connect a WebSocket to their hub and yield
- * each pushed event. Returns (ends the iteration) when the socket closes —
- * the caller loops: catch-up read, then re-subscribe. Throws only if the
+ * each pushed event. Ends the iteration when the socket closes, and the
+ * caller loops: catch-up read, then re-subscribe. Throws only if the
  * upgrade itself is refused.
  */
 export async function* mailEventStream(
@@ -265,7 +265,7 @@ export async function* mailEventStream(
   let closed = false;
   let lastSeen = Date.now();
   ws.addEventListener("message", (e) => {
-    lastSeen = Date.now(); // any frame — a real event OR a "pong" — proves the socket lives
+    lastSeen = Date.now(); // any frame (a real event or a "pong") proves the socket lives
     try {
       queue.push(JSON.parse(String(e.data)) as MailEvent);
     } catch {
@@ -283,7 +283,7 @@ export async function* mailEventStream(
 
   // Detect a half-open socket (dropped with no close event): the DO pongs each
   // "ping" without waking. If pongs stop, end the stream so the caller
-  // reconnects + catch-up reads. DEAD_MS > 2·PING_MS tolerates one lost frame.
+  // reconnects + catch-up reads. DEAD_MS > 2·PING_MS to tolerate one lost frame.
   const PING_MS = 30_000;
   const DEAD_MS = 75_000;
   const beat = setInterval(() => {

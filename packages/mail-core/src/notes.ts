@@ -14,8 +14,8 @@ import type { WebPushEnv } from "./web-push";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Internal notes (Task 5). A note is team-internal thread context — it NEVER
- * touches messages, deliveries, submissions, or placement. It cannot enter the
+ * Internal notes (Task 5). A note is team-internal thread context — it never
+ * touches messages, deliveries, submissions, or placement. It can't enter the
  * outbound path: the outbound worker only sources `message`/`draft` rows, and a
  * note is a row in its own table that nothing in that path reads (structural
  * guarantee of the sibling-table model). Bodies are encrypted (crypto.ts).

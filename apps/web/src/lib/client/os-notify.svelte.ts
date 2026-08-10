@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Tab-open OS notifications (Notification API) for the FOCUSED/visible case. The
+// Tab-open OS notifications (Notification API) for the focused/visible case. The
 // app-closed case is Web Push (client/push.ts + the service worker); granting
 // permission here also registers the push subscription.
 import { subscribeToPush, type PushEnableResult } from './push';
@@ -11,8 +11,8 @@ export const notifPerm = $state({
 });
 
 /** Must be called from a user gesture (browsers block ambient prompts). Awaits
- * the full chain — permission → browser subscribe → server persist — and returns
- * the outcome so the caller knows browser AND server are in sync (or why not). */
+ * the full chain (permission → browser subscribe → server persist) and returns
+ * the outcome so the caller knows browser and server are in sync (or why not). */
 export async function enableOsNotifications(): Promise<PushEnableResult> {
 	if (typeof Notification === 'undefined') return 'unsupported';
 	notifPerm.current = await Notification.requestPermission();

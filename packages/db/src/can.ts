@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Single authorization chokepoint — route EVERY permission decision
+ * Single authorization chokepoint: route every permission decision
  * through can() so there is one place to audit and log.
  *
  * can() is a pure decision function: the caller looks up the facts (the actor's
@@ -11,7 +11,7 @@
  *   - Instance role (member | admin | superadmin) comes from the admin plugin.
  *   - Org membership role (owner | admin | member) is per-organization; the
  *     caller resolves the actor's owner/admin memberships into `orgAdminOf`.
- *   - superadmin is the platform operator: read/manage anything, but NOT
+ *   - superadmin is the platform operator: read/manage anything, but not
  *     send-as-others (sending is a mailbox capability, never granted by role).
  */
 
@@ -54,13 +54,13 @@ export function can(user: Actor, action: Action, target: Target): boolean {
 function decide(user: Actor, action: Action, target: Target): boolean {
   const isOwner = user.id === target.ownerId;
 
-  // Sending is a mailbox capability, not a role — even superadmin can't send as
+  // Sending is a mailbox capability, not a role: even superadmin can't send as
   // someone else. Only the mailbox owner or an explicitly granted sender.
   if (action === "send") {
     return isOwner || (target.grantedSenderIds?.includes(user.id) ?? false);
   }
 
-  // superadmin: platform operator — read/manage everything.
+  // superadmin: platform operator, read/manage everything.
   if (user.role === "superadmin") return true;
 
   // org-admin over the target's organization → read/manage within that org.
@@ -71,7 +71,7 @@ function decide(user: Actor, action: Action, target: Target): boolean {
     return true;
   }
 
-  // Mailbox-scoped manager: a can_manage grant lets a member administer THAT
+  // Mailbox-scoped manager: a can_manage grant lets a member administer that
   // mailbox (rename, access, activate) without being an org admin.
   if (action === "manage" && (target.grantedManagerIds?.includes(user.id) ?? false)) {
     return true;

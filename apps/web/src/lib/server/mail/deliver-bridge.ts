@@ -3,11 +3,11 @@ import { getRequestEvent } from "$app/server";
 import { deliverSubmissionNow, type OutboundConsumerEnv } from "@doota/mail-core/outbound-consumer";
 
 /**
- * TEMPORARY synchronous delivery bridge. The outbound queue's consumer lives in
+ * Temporary synchronous delivery bridge. The outbound queue's consumer lives in
  * the standalone doota-mail Worker, which isn't running under `vite dev`, so
  * composer sends would sit `queued` forever. This kicks the consumer in-process
  * (background, via waitUntil) after the undo window, using the app Worker's own
- * env — the SAME EMAIL_SENDER binding invites already send through.
+ * env — the same EMAIL_SENDER binding invites already send through.
  *
  * ponytail: bridge, not the real path. Idempotent with the queue (recipients
  * already `sent` are skipped), so enabling the doota-mail consumer later is a
@@ -29,7 +29,7 @@ export function deliverInBackground(submissionId: string, undoSeconds: number): 
     EMAIL_SENDER: env.EMAIL_SENDER,
     MAIL_OUT_QUEUE: env.MAIL_OUT_QUEUE,
     MAIL_EVENTS: env.MAIL_EVENTS,
-    // Forward VAPID so an INTERNAL delivery (short-circuited in-app, never
+    // Forward VAPID so an internal delivery (short-circuited in-app, never
     // touching the send binding) still fires the OS push, not just the bell.
     VAPID_PUBLIC_KEY: env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: env.VAPID_PRIVATE_KEY,

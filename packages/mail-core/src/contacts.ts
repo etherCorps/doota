@@ -122,7 +122,7 @@ export async function recordCorrespondents(
     address: string | null | undefined;
     name?: string | null;
     seenAt: number | null;
-    /** 'inbound' (they wrote us — default) bumps message_count + first_seen_at;
+    /** 'inbound' (they wrote us, the default) bumps message_count + first_seen_at;
      * 'sent' (we wrote them) stamps last_replied_at, the tier-2 ham signal. */
     direction?: "inbound" | "sent";
   }[],

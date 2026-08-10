@@ -84,7 +84,7 @@ export const pauseUser = command(z.string(), async (userId) => {
   if (paused) {
     await locals.auth.api.banUser({ body: { userId }, headers: request.headers });
     // Cut live access immediately (the ban check would otherwise only bite after
-    // the 5-min session cookie cache expires).
+    // the 5-minute session cookie cache expires).
     await tryCatch(
       locals.auth.api.revokeUserSessions({ body: { userId }, headers: request.headers }),
     );
@@ -160,7 +160,7 @@ export const getMemberDetail = query(
       memberSince: memberRow.createdAt,
       sessionCount: sessionTally?.sessionCount ?? 0,
       inviterName,
-      // Same status rules as the members-table load — the sheet header renders
+      // Same status rules as the members-table load. The sheet header renders
       // this after mutations so it never shows the stale table-row status.
       status: target.banned
         ? "paused"
@@ -188,7 +188,7 @@ export const updateMemberProfile = command(
     });
     const data: Record<string, unknown> = { name };
     if (recoveryEmail !== current?.recoveryEmail) {
-      // An edited recovery address must re-verify — it's where invites/resets land.
+      // An edited recovery address must re-verify: it's where invites/resets land.
       data.recoveryEmail = recoveryEmail;
       data.recoveryEmailVerified = false;
       data.recoveryEmailVerifiedAt = null;
@@ -238,11 +238,11 @@ export const removeUser = command(z.string(), async (userId) => {
   await assertCanManage(actor, userId);
   const { locals, request } = getRequestEvent();
   // admin.removeUser deletes the user + its sessions/accounts/2FA/passkey, but
-  // NOT the org plugin's member rows (and D1 cascade is unreliable) — purge those
-  // first, then remove the user.
+  // not the org plugin's member rows (and D1 cascade is unreliable), so purge
+  // those first, then remove the user.
   await purgeUserMemberships(userId);
   await locals.auth.api.removeUser({ body: { userId }, headers: request.headers });
-  // Deleted from D1 → deleted from KV: no cached snapshot may outlive the row.
+  // Deleted from D1, deleted from KV: no cached snapshot may outlive the row.
   await invalidateAuthz(userId);
   await invalidateUserMailCache(userId);
   return { removed: true };

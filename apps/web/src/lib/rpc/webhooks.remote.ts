@@ -10,11 +10,11 @@ import { isWebhookEvent } from "@doota/mail-core/webhooks";
 import { validateWebhookUrl } from "$lib/server/ssrf.js";
 
 /**
- * Per-MAILBOX outbound webhook endpoints. Every mutation gates through
- * grantOn(mailboxId) — the SAME chokepoint as label/sender-lists: a user with
+ * Per-mailbox outbound webhook endpoints. Every mutation gates through
+ * grantOn(mailboxId), the same chokepoint as label/sender-lists: a user with
  * access to the mailbox manages its webhooks (the "they decide" model), not the
- * org admin. The signing secret is minted here, returned in cleartext ONCE, and
- * only ever persisted ENCRYPTED with the instance DEK (the delivery worker must
+ * org admin. The signing secret is minted here, returned in cleartext once, and
+ * only ever persisted encrypted with the instance DEK (the delivery worker must
  * recover it to sign).
  */
 
@@ -57,7 +57,7 @@ async function endpointMailbox(endpointId: string): Promise<string> {
   return row.mailboxId;
 }
 
-/** List a mailbox's endpoints with a delivered/failed delivery tally. NEVER returns secretEnc. */
+/** List a mailbox's endpoints with a delivered/failed delivery tally. Never returns secretEnc. */
 export const mailboxWebhooks = query(z.object({ mailboxId: z.string().min(1) }), async ({ mailboxId }) => {
   const { db } = await grantOn(mailboxId);
 
@@ -121,8 +121,8 @@ const eventsSchema = z
 
 /**
  * Create an endpoint on a mailbox. SSRF gate on save (rejects e.g.
- * 169.254.169.254), mint + encrypt the signing secret, then fire ONE test
- * delivery so the owner sees it arrive. Returns the plaintext secret ONCE — it's
+ * 169.254.169.254), mint + encrypt the signing secret, then fire one test
+ * delivery so the owner sees it arrive. Returns the plaintext secret once; it's
  * never exposed again.
  */
 export const createWebhook = command(

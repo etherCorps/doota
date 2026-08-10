@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Signature detection + contact-field extraction (build guide, Phase 3).
- * Locating the block is a DIFF, not NLP: the longest common line-suffix
- * across 3+ messages from one sender — repeated verbatim trailing lines ARE
- * the signature. Extraction is limited to high-precision structural fields
- * (phone / url / email / handles); title and company are deliberately
- * skipped. Everything here is pure and side-effect free: callers surface
- * results as SUGGESTIONS only — nothing is written without an explicit tap.
+ * Locating the block is a diff, not NLP: the longest common line-suffix across
+ * 3+ messages from one sender. Repeated verbatim trailing lines are the
+ * signature. Extraction is limited to high-precision structural fields
+ * (phone / url / email / handles); title and company are deliberately skipped.
+ * Everything here is pure and side-effect free: callers surface results as
+ * suggestions only, nothing is written without an explicit tap.
  */
 
 const TAIL_LINES = 15;
@@ -64,8 +64,8 @@ function dedupe(values: string[]): string[] {
 }
 
 /** High-precision fields only. A phone match must be mostly digits (kills
- * dates and ids); handles exclude email local parts (consumed by EMAIL_RE
- * first is not possible in one pass, so emails are stripped before handles). */
+ * dates and ids). Handles exclude email local parts: a single pass can't
+ * consume emails first, so emails are stripped before matching handles. */
 export function extractContactFields(lines: string[]): ExtractedContactFields {
   const text = lines.join("\n");
   const emails = dedupe((text.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()));

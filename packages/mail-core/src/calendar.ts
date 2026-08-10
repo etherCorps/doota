@@ -2,13 +2,13 @@
 /**
  * Dependency-free iCalendar (RFC 5545) parsing for inbound invites. Workers have
  * no Node; a small hand-rolled parser (like the sanitizer + bounce parser) beats
- * pulling ical.js/node-ical and its edge cases into the isolate. Scope is
- * DISPLAY + local RSVP, not a full calendar engine: we pull the first VEVENT out
- * of a VCALENDAR, its METHOD, times (resolved to real UTC instants via an Intl
- * offset probe so DST is correct), organizer/attendees, and the meeting join
- * URL. VTIMEZONE blocks are ignored — Intl already knows every IANA zone.
+ * pulling ical.js/node-ical and its edge cases into the isolate. Scope is display
+ * + local RSVP, not a full calendar engine: we pull the first VEVENT out of a
+ * VCALENDAR, its METHOD, times (resolved to real UTC instants via an Intl offset
+ * probe so DST is correct), organizer/attendees, and the meeting join URL.
+ * VTIMEZONE blocks are ignored — Intl already knows every IANA zone.
  *
- * iMIP REPLY (sending an RSVP back) is NOT here: the outbound provider can't emit
+ * iMIP REPLY (sending an RSVP back) isn't here: the outbound provider can't emit
  * a `text/calendar; method=REPLY` part today (see provider.ts). RSVP is local
  * status + the provider's own embedded Yes/Maybe/No links (extractRsvpLinks).
  */
@@ -134,7 +134,7 @@ function wallClockToUtc(
 
 /**
  * ICS date/date-time → { ms, tz, allDay }. Handles DATE (all-day, `20260801`),
- * UTC (`...Z`), TZID (`TZID=America/New_York`), and floating (no zone → treated
+ * UTC (`...Z`), TZID (`TZID=America/New_York`), and floating (no zone, treated
  * as UTC; the ceiling of a hand-rolled parser, and rare for real invites).
  */
 export function icsDateToMs(value: string, tz: string | null): { ms: number; tz: string | null; allDay: boolean } | null {
@@ -190,7 +190,7 @@ function detectOrigin(prodId: string, organizerEmail: string | null): CalOrigin 
   if (p.includes("google")) return "google";
   if (p.includes("microsoft") || p.includes("exchange") || p.includes("outlook")) return "microsoft";
   if (p.includes("apple") || p.includes("mac os") || p.includes("icloud")) return "apple";
-  // Match a DOMAIN COMPONENT, not a bare substring — "acme.com" must not read as
+  // Match a domain component, not a bare substring — "acme.com" must not read as
   // Apple via the "me.com" substring. Anchor each to a start/dot boundary + end.
   const dom = organizerEmail?.split("@")[1]?.toLowerCase() ?? "";
   if (/(^|\.)(google\.com|gmail\.com|googlemail\.com)$/.test(dom)) return "google";
@@ -300,7 +300,7 @@ export function parseIcs(raw: string): ParsedInvite | null {
 
 /**
  * Pull the raw ICS text out of a parsed message's parts. postal-mime surfaces a
- * `text/calendar` alternative AND an `invite.ics` file attachment both in
+ * `text/calendar` alternative and an `invite.ics` file attachment both in
  * `attachments`; either is a valid source. Returns the decoded string of the
  * first calendar part, or null.
  */
@@ -319,12 +319,12 @@ export function findCalendarPart(
 export type RsvpLinks = { accepted: string | null; declined: string | null; tentative: string | null };
 
 /**
- * The provider's OWN Yes/Maybe/No links, extracted from the invite HTML — lets a
+ * The provider's own Yes/Maybe/No links, extracted from the invite HTML — lets a
  * user RSVP through Google/Microsoft's flow (which updates the organizer's
  * calendar) without us sending an iMIP reply. Google mail invites carry
  * `action=RESPOND&...&rst=N` anchors (rst 1=Yes 2=Maybe 3=No). Best-effort:
  * returns nulls when the pattern isn't found (Apple/Fastmail invites have none,
- * and there local status is the only option).
+ * where local status is the only option).
  */
 export function extractRsvpLinks(html: string | null | undefined): RsvpLinks {
   const out: RsvpLinks = { accepted: null, declined: null, tentative: null };

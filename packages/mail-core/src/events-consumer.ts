@@ -13,15 +13,15 @@ import { log } from "./log";
  * Cloudflare Email Service event-subscriptions consumer (doota-mail-events
  * queue). The authoritative per-recipient delivery lifecycle: delivered /
  * deferred / bounced / failed / rejected / complained, correlated back to our
- * rows via the provider-minted Message-ID we captured from send() —
- * submission_recipient.provider_message_id + address (indexes from 0012).
+ * rows via the provider-minted Message-ID captured from send()
+ * (submission_recipient.provider_message_id + address, indexes from 0012).
  *
  * Replaces DSN regex-parsing as the primary signal (bounce.ts stays as the
  * fallback for DSNs that arrive as plain inbound mail). Every transition ends
  * with a hub notification so open clients update ticks live; failure statuses
- * additionally raise a toast client-side.
+ * also raise a toast client-side.
  *
- * Idempotent: statuses only move "forward" (a redelivered event converges),
+ * Idempotent: statuses only move forward (a redelivered event converges),
  * suppression upserts, rollups are monotonic-worst.
  */
 
@@ -97,7 +97,7 @@ export async function applyProviderEvent(
           ),
         );
       // All non-dropped recipients delivered → submission `delivered` (double
-      // tick). One conditional UPDATE — no row fetch, redelivery converges.
+      // tick). One conditional UPDATE, no row fetch; redelivery converges.
       const upgraded = await db
         .update(mail.submission)
         .set({ status: "delivered" })
@@ -152,7 +152,7 @@ export async function applyProviderEvent(
         bounceReason: evt.smtpResponse ?? `provider ${kind} the message`,
       });
       // Shared lattice: failed only when nothing was sent/delivered (a
-      // deliberate drop is not a failure) — same rules as the send-time rollup.
+      // deliberate drop isn't a failure), same rules as the send-time rollup.
       notifyStatus = (await rollup(db, submission.id)).status;
       break;
     }

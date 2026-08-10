@@ -5,7 +5,7 @@ import { isHttpError } from "@sveltejs/kit";
  * Pull a human message out of a caught value for a toast.
  *
  * Remote functions (query/command) reject with SvelteKit's `HttpError`, which
- * is NOT an `instanceof Error` — its message lives at `err.body.message`. So
+ * is not an `instanceof Error`; its message lives at `err.body.message`. So
  * the common `err instanceof Error ? err.message : fallback` silently drops
  * every server `error(status, "message")` and shows the generic fallback. This
  * covers HttpError, real Errors, and plain `{ message }` objects (e.g. some

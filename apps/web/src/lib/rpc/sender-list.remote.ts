@@ -8,7 +8,7 @@ import { getAuthz } from "$lib/server/authz.js";
 import { addSenderListEntry, removeSenderListEntry } from "@doota/mail-core/spam";
 
 /** Per-mailbox allow/block lists (build guide, Phase 5). Evaluated before the
- * spam classifier; the un-junk implicit allow also lands here. */
+ * spam classifier. The un-junk implicit allow also lands here. */
 
 async function grantOn(mailboxId: string) {
   const { locals } = getRequestEvent();

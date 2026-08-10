@@ -20,8 +20,8 @@ import {
 } from "@doota/mail-core/rules-backfill";
 
 /**
- * Rules rpc. Rules are per MAILBOX (evaluation runs at ingest for that
- * mailbox); a mailbox grant is the write gate — same chokepoint as filing by
+ * Rules RPC. Rules are per mailbox (evaluation runs at ingest for that
+ * mailbox); a mailbox grant is the write gate, same chokepoint as filing by
  * hand. The DSL is validated here via the closed-enum validators; nothing
  * unvalidated ever reaches the executor.
  */
@@ -115,8 +115,8 @@ export const createRule = command(
         stopProcessing: input.stopProcessing,
       })
       .returning({ id: mail.rule.id });
-    // Rule-fed folders default to notifications OFF (build guide: filing away
-    // mail that still buzzes achieves nothing). Creation-time only — a later
+    // Rule-fed folders default to notifications off (build guide: filing away
+    // mail that still buzzes achieves nothing). Creation-time only; a later
     // manual re-enable is respected.
     const fed = filedLabelIds(actions);
     if (fed.length) {

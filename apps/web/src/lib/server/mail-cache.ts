@@ -5,7 +5,7 @@
 // out the TTL. Cross-PoP the ceiling is the TTL — all three datasets tolerate
 // that (render preference, composer identity list, signatures).
 //
-//  - remote-content policy  rcp:v1:{orgId}   — read on EVERY message render
+//  - remote-content policy  rcp:v1:{orgId}   — read on every message render
 //    (a 20-message thread = 20 body fetches); changes via one admin toggle.
 //  - send identities        ids:v1:{userId}  — 5 D1 queries per composer open.
 //  - mailbox signatures     sig:v1:{userId}  — read per compose/reply open.

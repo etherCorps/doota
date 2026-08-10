@@ -19,8 +19,8 @@ import { log, tryLog } from "./log";
 type Db = DrizzleD1Database<typeof schema>;
 
 /**
- * Outbound enqueue (Part B step 1-2, Part D). A submission row is written FIRST
- * (status queued, idempotency_key set) and only THEN is a job enqueued — that
+ * Outbound enqueue (Part B step 1-2, Part D). A submission row is written first
+ * (status queued, idempotency_key set) and only then is a job enqueued — that
  * ordering is what makes queue redelivery safe. The sender's own copy is
  * materialized here (not in the consumer) so it shows in Sent immediately with a
  * queued/clock state; the consumer only fans out to recipients.
@@ -69,7 +69,7 @@ export type SendRequest = {
   wireHeaders?: Record<string, string>;
 };
 
-// Sent is a VIEW (deliveries with role `from`), not a placement. A new outbound
+// Sent is a view (deliveries with role `from`), not a placement. A new outbound
 // thread starts `archived` — Gmail's "no Inbox label" state — so the first
 // inbound reply un-archives it into the inbox via the normal inbound policy,
 // while it already shows in Sent through the delivery. Our own reply must not
@@ -144,10 +144,10 @@ export async function enqueueSend(
         columns: { id: true, messageIdHeader: true, references: true },
       })
     : null;
-  // Replying to OUR OWN message: its stored header id is the internally minted
+  // Replying to our own message: its stored header id is the internally minted
   // one, but the wire copy carried the provider's Message-ID — the only id the
-  // recipient's client has ever seen. Thread on THAT id, or a self-follow-up
-  // (second send before anyone replies) lands as a NEW conversation in
+  // recipient's client has ever seen. Thread on that id, or a self-follow-up
+  // (second send before anyone replies) lands as a new conversation in
   // Gmail/Outlook. Our own inbound resolver handles both ids either way.
   if (parent) {
     const psub = await db.query.submission.findFirst({

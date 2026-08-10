@@ -15,8 +15,8 @@ import {
 
 /**
  * Hide-my-email alias management. An actor may manage a mailbox's aliases if
- * they hold mailbox access (personal or shared grant) or administer the org —
- * both resolved through can(), never a parallel permission path.
+ * they hold mailbox access (personal or shared grant) or administer the org.
+ * Both resolved through can(), never a parallel permission path.
  */
 
 async function requireMailboxActor(mailboxId: string) {
@@ -56,7 +56,7 @@ export const generateAlias = command(
   z.object({ mailboxId: z.string().min(1), label: z.string().trim().max(120).optional() }),
   async ({ mailboxId, label }) => {
     const box = await requireMailboxActor(mailboxId);
-    // Hide-my-email is a PERSONAL privacy feature. A shared mailbox (support@)
+    // Hide-my-email is a personal privacy feature. A shared mailbox (support@)
     // has many senders and no single owner, so a revocable per-person forwarding
     // alias is meaningless there and would leak/confuse routing. Personal only.
     if (!box.isPersonal) {

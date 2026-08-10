@@ -21,9 +21,9 @@ import {
 import { countUnreadByLabel } from "@doota/mail-core/read";
 
 /**
- * Folders (labels) rpc. `label` is MAILBOX-scoped — folder names are private
+ * Folders (labels) rpc. `label` is mailbox-scoped: folder names are private
  * to their mailbox (a personal mailbox's folders must not leak to the rest of
- * the org) — and application (`thread_label`) is per (thread, mailbox). A
+ * the org), and application (`thread_label`) is per (thread, mailbox). A
  * grant on the mailbox gates both the folder list and thread filing (same
  * chokepoints as thread.remote.ts, never a parallel permission path).
  */
@@ -128,7 +128,7 @@ export const deleteFolder = command(
     mailboxId: z.string().min(1),
     labelId: z.string().min(1),
     /** Where the folder's threads go; omitted = they just lose the label
-     * (mail keeps its placement — never orphaned, never deleted). */
+     * (mail keeps its placement, never orphaned, never deleted). */
     moveContentsToLabelId: z.string().nullish(),
   }),
   async ({ mailboxId, labelId, moveContentsToLabelId }) => {
@@ -152,7 +152,7 @@ export const threadFolders = query(
   },
 );
 
-/** "Add label" — additive, for the cross-cutting case. */
+/** "Add label", additive, for the cross-cutting case. */
 export const addThreadLabel = command(
   z.object({ mailboxId: z.string().min(1), threadId: z.string().min(1), labelId: z.string().min(1) }),
   async ({ mailboxId, threadId, labelId }) => {
@@ -175,7 +175,7 @@ export const removeThreadLabel = command(
   },
 );
 
-/** "Move to…" — replaces the thread's folders with the target (null = Inbox).
+/** "Move to…" replaces the thread's folders with the target (null = Inbox).
  * Returns the prior state; the undo snackbar posts it back to undoMove. */
 export const moveToFolder = command(
   z.object({

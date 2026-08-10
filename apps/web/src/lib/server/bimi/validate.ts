@@ -7,8 +7,8 @@
  * legitimate `http` occurrences, so bans target attribute/url positions rather
  * than the substring "http".
  */
-// Safety-only checks for ANY origin-served SVG (branding logo, BIMI): no scripts,
-// event handlers, external references, or @import — but NO Tiny-PS requirement,
+// Safety-only checks for any origin-served SVG (branding logo, BIMI): no scripts,
+// event handlers, external references, or @import, but no Tiny-PS requirement,
 // so a normal brand SVG passes. xmlns namespace URLs are the only legitimate
 // `http` occurrences, so bans target attribute/url positions, not "http".
 export function svgSafetyProblem(text: string): string | null {

@@ -15,10 +15,10 @@ import {
 } from "@doota/mail-core/signature-detect";
 
 /**
- * Contact card (build guide, Phase 3). ~80% of the card's value needs ZERO
+ * Contact card (build guide, Phase 3). Most of the card's value needs no
  * signature parsing: display name, interaction history (correspondent), and
- * domain colleagues. Signature extraction is optional enrichment computed AT
- * READ TIME from the sender's recent message texts — deterministic fields
+ * domain colleagues. Signature extraction is optional enrichment computed at
+ * read time from the sender's recent message texts. Deterministic fields
  * only, surfaced as suggestions; nothing is written to `correspondent`
  * without an explicit accept (acceptContactDetail).
  */
@@ -79,7 +79,7 @@ export const contactCard = query(
 
     // Optional enrichment: recent stripped texts from this sender → repeated
     // trailing block (or `-- ` delimiter) → high-precision fields. Allowed to
-    // fail silently — the card stands without it.
+    // fail silently; the card stands without it.
     const accepted: Record<string, string> = row?.details ? safeJson(row.details) : {};
     let suggestions: { field: (typeof DETAIL_FIELDS)[number]; value: string }[] = [];
     try {
@@ -135,7 +135,7 @@ export const contactCard = query(
   },
 );
 
-/** One-tap accept of a suggested field — the ONLY writer of details. */
+/** One-tap accept of a suggested field — the only writer of details. */
 export const acceptContactDetail = command(
   z.object({
     mailboxId: z.string().min(1),

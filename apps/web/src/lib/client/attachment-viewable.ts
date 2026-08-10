@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Which viewer renders which attachment type. Two shells:
-//  - 'base': the OPAQUE hard-isolated viewer (/api/attachment-view) — images
+//  - 'base': the opaque hard-isolated viewer (/api/attachment-view): images
 //    incl. svg, media, text/code, pdf. The classic exploit vectors (pdf!) stay
 //    here, in the strongest sandbox we have.
-//  - 'rich': the file-viewer shell (/viewer — same-origin, session-gated) —
+//  - 'rich': the file-viewer shell (/viewer, same-origin, session-gated):
 //    Office, archives, markdown, epub. Weaker isolation (see that route's CSP
 //    notes), so only formats the opaque viewer can't render nicely route there.
 // Standalone (no Svelte/remote deps) so it's cheap to import + unit-test.
@@ -11,7 +11,7 @@
 type Shell = "base" | "rich";
 
 // Extensions the file-viewer shell handles beyond the base set. Conservative
-// mail-relevant subset of its 208 — obscure formats still download fine.
+// mail-relevant subset of its 208; obscure formats still download fine.
 const RICH_EXTENSIONS = new Set([
 	"doc", "docx", "rtf", "odt",
 	"xls", "xlsx", "ods", "csv",
@@ -39,8 +39,8 @@ const RICH_MIME = new Set([
 	"text/markdown",
 ]);
 
-// Markdown arrives as text/markdown OR (often) text/plain with a .md name. It
-// matches text/* so it WOULD route base as flat text — but the rich shell
+// Markdown arrives as text/markdown or (often) text/plain with a .md name. It
+// matches text/* so it would route base as flat text, but the rich shell
 // renders it formatted, so it must win over the base text branch. Checked first.
 function isMarkdown(type: string, ext: string): boolean {
 	return type === "text/markdown" || ext === "md" || ext === "markdown";
@@ -77,8 +77,8 @@ export function viewerFor(
 	return null;
 }
 
-/** True when the OPAQUE viewer renders it (media bytes are inert — the browser
- * decodes them, no script runs — so audio/video are safe here). */
+/** True when the opaque viewer renders it (media bytes are inert: the browser
+ * decodes them, no script runs, so audio/video are safe here). */
 export function isBaseViewable(
 	contentType: string | null | undefined,
 	filename?: string | null,

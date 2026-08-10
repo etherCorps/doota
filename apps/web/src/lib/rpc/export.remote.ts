@@ -9,9 +9,9 @@ import { kickExport, type MailboxExportJob } from "@doota/mail-core/export";
 import { signResourceToken } from "$lib/server/resource-token.js";
 
 /**
- * Mailbox export rpc (build guide, Phase 6). The export is PLAINTEXT BY
- * DEFINITION — it decrypts everything — so:
- *  - gated behind a FRESH authentication (session younger than 30 min; an
+ * Mailbox export rpc (build guide, Phase 6). The export is plaintext by
+ * definition (it decrypts everything), so:
+ *  - gated behind a fresh authentication (session younger than 30 min; an
  *    older session must re-login first),
  *  - the capability URL lives minutes, not days,
  *  - the mail_export row + export.requested log are the audit trail.
