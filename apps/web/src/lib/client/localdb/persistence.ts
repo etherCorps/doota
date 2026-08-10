@@ -41,6 +41,7 @@ export async function pickBackend(sqlite3: any): Promise<{
   kind: "opfs" | "idb";
   openDb(name: string): Promise<any>;
   persist(db: any): Promise<void>;
+  destroy(name: string): Promise<void>;
 }> {
   // Tier 1: OPFS-sahpool — needs SyncAccessHandle (worker context) but NOT COOP/COEP.
   if (sqlite3.installOpfsSAHPoolVfs) {
@@ -50,6 +51,10 @@ export async function pickBackend(sqlite3: any): Promise<{
         kind: "opfs",
         openDb: async (name: string) => new pool.OpfsSAHPoolDb(`/${name}.sqlite3`),
         persist: async () => {},
+        async destroy(name: string) {
+          // ponytail: unlink returns false if not found — both outcomes are fine here
+          try { pool.unlink(`/${name}.sqlite3`); } catch { /* missing = ok */ }
+        },
       };
     } catch {
       // fall through to IDB tier
@@ -74,6 +79,14 @@ export async function pickBackend(sqlite3: any): Promise<{
     async persist(db: any) {
       const bytes: Uint8Array = sqlite3.capi.sqlite3_js_db_export(db.pointer ?? db);
       await writeSnapshot(idb, IDB_STORE, (db as any).__idbKey, bytes);
+    },
+    async destroy(name: string) {
+      await new Promise<void>((resolve, reject) => {
+        const txn = idb.transaction(IDB_STORE, "readwrite");
+        const req = txn.objectStore(IDB_STORE).delete(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
     },
   };
 }
