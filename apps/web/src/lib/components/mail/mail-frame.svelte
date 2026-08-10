@@ -7,6 +7,7 @@
 <script lang="ts">
 	let {
 		src,
+		srcdoc,
 		collapsedMax = 352,
 		collapse = true,
 		fadeClass = 'from-card',
@@ -15,7 +16,9 @@
 		onviewfull
 	}: {
 		/** URL of the sanitized body route (already carries ?images=0|1). */
-		src: string;
+		src?: string;
+		/** Server-built framed document to render via srcdoc (mirror path; mutually exclusive with src). */
+		srcdoc?: string;
 		collapsedMax?: number;
 		/** Self-collapse long content to `collapsedMax` with a "Show full message"
 		 * toggle. OFF in mail (Gmail) view — the expanded card is already the
@@ -48,6 +51,7 @@
 	// New document → re-measure from scratch.
 	$effect(() => {
 		void src;
+		void srcdoc;
 		contentH = 0;
 		expanded = false;
 	});
@@ -87,7 +91,8 @@
 	<iframe
 		bind:this={frame}
 		title="Message content"
-		{src}
+		src={srcdoc ? undefined : src}
+		{srcdoc}
 		sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals"
 		scrolling="no"
 		style:height={`${height}px`}

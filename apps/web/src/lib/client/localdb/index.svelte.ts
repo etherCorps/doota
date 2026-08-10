@@ -13,6 +13,9 @@ import { createBridge } from "./rpc";
 
 export type Bridge = { call<T>(method: string, params: unknown): Promise<T> };
 
+/** MessageDTO augmented with the framed HTML from the local mirror. */
+export type MirroredMessageView = MessageDTO & { framedHtml: string | null };
+
 /** A live thread list handle returned by liveThreadList. */
 export type LiveThreadList = {
   /** The most recently fetched list for (mailboxId, folder). $state-backed. */
@@ -24,7 +27,7 @@ export type LiveThreadList = {
 /** A live message list handle returned by liveThread. */
 export type LiveThread = {
   /** The most recently fetched messages for a thread. $state-backed. */
-  readonly current: MessageDTO[];
+  readonly current: MirroredMessageView[];
   /** Release the watcher registration — call when the consumer unmounts. */
   destroy(): void;
 };
@@ -156,8 +159,8 @@ export function makeLocalDb(bridge: Bridge) {
       });
     },
 
-    listMessages(threadId: string): Promise<MessageDTO[]> {
-      return bridge.call<MessageDTO[]>("listMessages", { threadId });
+    listMessages(threadId: string): Promise<MirroredMessageView[]> {
+      return bridge.call<MirroredMessageView[]>("listMessages", { threadId });
     },
 
     /**
@@ -168,7 +171,7 @@ export function makeLocalDb(bridge: Bridge) {
      */
     liveThread(getThreadId: () => string): LiveThread {
       // ponytail: $state in .svelte.ts so Svelte templates auto-track reads.
-      let current = $state<MessageDTO[]>([]);
+      let current = $state<MirroredMessageView[]>([]);
 
       const watcher: ThreadWatcher = {
         get threadId() {

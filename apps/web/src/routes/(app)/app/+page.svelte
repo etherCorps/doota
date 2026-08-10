@@ -75,8 +75,11 @@
 		imagesLoadAll,
 		setInviteRsvp,
 		seedThreadList,
-		threadChanges
+		threadChanges,
+		seedThread,
+		threadMessageChanges
 	} from '$lib/rpc/thread.remote';
+	import { RENDER_CACHE_VERSION } from '@doota/mail-core/mime';
 	import { localdb } from '$lib/client/localdb';
 	import { createSync } from '$lib/client/localdb/sync.svelte';
 	import { SEED_THREAD_LIMIT } from '$lib/rpc/thread-localdb';
@@ -177,7 +180,19 @@
 	const sync = createSync({
 		localdb,
 		seedFn: async (mailboxId) => await seedThreadList({ mailboxId }),
-		changesFn: async ({ mailboxId, sinceSeq }) => await threadChanges({ mailboxId, sinceSeq })
+		changesFn: async ({ mailboxId, sinceSeq }) => await threadChanges({ mailboxId, sinceSeq }),
+		seedThreadFn: async (threadId) => {
+			const mb = mailboxId;
+			if (!mb) throw new Error('No active mailbox');
+			return seedThread({ mailboxId: mb, threadId });
+		},
+		threadChangesFn: async ({ threadId, sinceSeq }) => {
+			const mb = mailboxId;
+			if (!mb) throw new Error('No active mailbox');
+			const result = await threadMessageChanges({ mailboxId: mb, threadId, sinceSeq });
+			return result;
+		},
+		currentRenderVersion: () => RENDER_CACHE_VERSION,
 	});
 	onMount(() => {
 		// Cleanup: release the liveRows watcher on unmount.
@@ -193,6 +208,34 @@
 			if (mailboxId) void sync.ensure(mailboxId);
 		} catch {
 			// open() failed (Worker unavailable, storage quota, etc.) — stay on remote path.
+		}
+	});
+
+	// Live thread message mirror. Tracks the open thread; re-queries after every
+	// seedThreadMessages/applyMessageDeltas. Empty until the thread is seeded.
+	// ponytail: same liveThreadList pattern — stable handle, SSR-safe, noop on no worker.
+	const liveThreadMsgs = localdb.liveThread(() => threadId ?? '');
+	onMount(() => {
+		return () => liveThreadMsgs.destroy();
+	});
+
+	// Map from message id → framedHtml from the local mirror. Used in the template
+	// to pick srcdoc (mirror, instant) over src (network) for rich messages where
+	// images have not been opted in. Re-derived whenever liveThreadMsgs.current changes.
+	const framedHtmlById = $derived(
+		new Map(
+			liveThreadMsgs.current
+				.filter((mirroredMsg) => mirroredMsg.framedHtml !== null)
+				.map((mirroredMsg) => [mirroredMsg.id, mirroredMsg.framedHtml as string])
+		)
+	);
+
+	// Ensure the thread mirror is seeded when a thread opens via direct URL or
+	// notification nav (not through selectThread). Runs once per new threadId.
+	$effect(() => {
+		const tid = threadId;
+		if (tid && localReady) {
+			untrack(() => void sync.ensureThread(tid));
 		}
 	});
 
@@ -360,6 +403,8 @@
 		if (evt.mailboxId !== mb) return;
 		const openHere = evt.threadId === th;
 		if (openHere) void threadQ?.refresh();
+		// Mirror the updated thread messages into the local store.
+		if (openHere && localReady && th) void sync.onThreadRealtime(th);
 		// A reply landing in the thread you're looking at is already on screen —
 		// advance the read cursor so it doesn't resurface as unread. Visible tab is
 		// enough (don't require window focus — the thread is on screen); a hidden
@@ -875,6 +920,8 @@
 		nav({ thread: id });
 		lastOpenedRead = id; // this path owns the read-mark; the load-effect stands down
 		if (!mailboxId) return;
+		// Mirror this thread's messages on first open (lazy, idempotent).
+		if (localReady) void sync.ensureThread(id);
 		{
 			const row = items.find((thread) => thread.threadId === id);
 			pushRecentThread({ threadId: id, mailboxId, subject: row?.subject ?? null, from: row?.from ?? null });
@@ -2894,10 +2941,14 @@
 												{#if !m.calendarInvite || showOriginal.has(m.id)}
 												{#if m.htmlKind === 'rich'}
 													{@const allow = loadedImages.has(m.id) || !!m.senderTrusted || imagesAll}
+													{@const mirroredFrameHtml = !allow ? framedHtmlById.get(m.id) : undefined}
 													<div class="w-[min(34rem,calc(85cqi-2rem))]">
-														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
+														<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route).
+														     Mirror path: srcdoc from local store (instant, offline).
+														     Fallback / images-on path: src from the live /body route. -->
 														<MailFrame
-															src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`}
+															src={mirroredFrameHtml ? undefined : `/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`}
+															srcdoc={mirroredFrameHtml}
 															fadeClass={outbound ? 'from-foreground' : 'from-card'}
 															linkClass={outbound ? 'text-background/80' : 'text-brand'}
 															onmailto={openMailto}
@@ -3040,10 +3091,13 @@
 												<div class={m.calendarInvite ? 'mt-2 border-t pt-2' : ''}>
 											{#if m.htmlKind === 'rich'}
 												{@const allow = loadedImages.has(m.id) || !!m.senderTrusted || imagesAll}
-												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route). -->
+												{@const mirroredFrameHtml = !allow ? framedHtmlById.get(m.id) : undefined}
+												<!-- Server-sanitized, opaque-origin frame (MailFrame loads the route).
+												     Mirror path: srcdoc from local store (instant, offline).
+												     Fallback / images-on path: src from the live /body route. -->
 												<!-- Mail (Gmail) view: the card is the container — render full height,
 												     no second collapse layer. -->
-												<MailFrame src={`/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
+												<MailFrame src={mirroredFrameHtml ? undefined : `/api/messages/${m.id}/body?images=${allow ? 1 : 0}${sigsQS}`} srcdoc={mirroredFrameHtml} collapse={false} onmailto={openMailto} onviewfull={() => openFullView(m.id, allow)} />
 												{#if !allow && m.hasRemoteImages}
 													<div class="mt-1.5 flex flex-wrap gap-x-2 text-xs">
 														<button type="button" class="text-brand hover:underline" onclick={() => loadedImages.add(m.id)}>

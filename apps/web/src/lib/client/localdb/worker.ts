@@ -147,7 +147,7 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
   listMessages: ({ threadId }: { threadId: string }) => {
     const resultRows: any[] = [];
     db.exec({ sql: listMessagesSql().sql, bind: { $thread_id: threadId }, rowMode: "object", resultRows });
-    return resultRows.map(rowToMessageDto);
+    return resultRows.map((row) => ({ ...rowToMessageDto(row), framedHtml: (row.framed_html as string) ?? null }));
   },
 
   getThreadSync: ({ threadId }: { threadId: string }) => {
