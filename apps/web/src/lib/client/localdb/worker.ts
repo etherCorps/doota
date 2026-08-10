@@ -25,8 +25,8 @@ async function open(userId: string): Promise<void> {
   db.exec(DDL);
 }
 
-// Readonly methods that skip the persist step.
-const READ_ONLY_METHODS = new Set(["list", "getCursor"]);
+// Methods that skip the persist step: reads, open (snapshot just loaded), clear (db nulled).
+const NO_PERSIST_METHODS = new Set(["list", "getCursor", "open"]);
 
 const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
   open: async ({ userId }: { userId: string }) => {
@@ -91,7 +91,7 @@ self.onmessage = async (ev: MessageEvent<Req>) => {
   const { id, method, params } = ev.data;
   try {
     const result = await handlers[method](params);
-    if (backend?.kind === "idb" && !READ_ONLY_METHODS.has(method) && method !== "clear") {
+    if (backend?.kind === "idb" && !NO_PERSIST_METHODS.has(method) && method !== "clear") {
       await backend.persist(db);
     }
     (self as unknown as Worker).postMessage({ id, ok: true, result } satisfies Res);

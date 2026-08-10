@@ -11,7 +11,7 @@ function openIdb(dbName: string, storeName: string): Promise<IDBDatabase> {
       request.result.createObjectStore(storeName);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
   });
 }
 
@@ -21,7 +21,7 @@ function readSnapshot(idb: IDBDatabase, storeName: string, key: string): Promise
     const txn = idb.transaction(storeName, "readonly");
     const request = txn.objectStore(storeName).get(key);
     request.onsuccess = () => resolve(request.result ? new Uint8Array(request.result as ArrayBuffer) : null);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
   });
 }
 
@@ -31,7 +31,7 @@ function writeSnapshot(idb: IDBDatabase, storeName: string, key: string, bytes: 
     const txn = idb.transaction(storeName, "readwrite");
     const request = txn.objectStore(storeName).put(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), key);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB write failed"));
   });
 }
 
