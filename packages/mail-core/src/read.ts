@@ -177,25 +177,65 @@ export async function listThreads(
     .limit(input.pinnedOnly ? 50 : (input.limit ?? 30))
     .offset(input.pinnedOnly ? 0 : (input.offset ?? 0));
 
+  return projectThreadRows(db, {
+    mailboxId: input.mailboxId,
+    ck: input.ck,
+    userId: input.userId,
+    includeCollab: input.includeCollab,
+    assignedTo: input.assignedTo,
+    states,
+  });
+}
+
+// Thread-state row shape shared between listThreads and threadSummariesByIds.
+type ThreadStateRow = {
+  threadId: string;
+  isStarred: boolean;
+  assigneeUserId: string | null;
+  placement: string;
+  lastInboundAt: Date | null;
+  lastActivityAt: Date | null;
+  pinnedAt: Date | null;
+};
+
+/**
+ * Shared projection: given a set of already-fetched thread_state rows, hydrate
+ * them into ThreadSummary[] (decrypt subject/snippet, build participant list,
+ * compute unread, check notes). Called by both listThreads and
+ * threadSummariesByIds so the decrypt+participant logic lives in one place.
+ */
+async function projectThreadRows(
+  db: Db,
+  opts: {
+    mailboxId: string;
+    ck: ContentKey;
+    userId?: string;
+    includeCollab?: boolean;
+    assignedTo?: string | null;
+    states: ThreadStateRow[];
+  },
+): Promise<ThreadSummary[]> {
+  const { mailboxId, ck, states } = opts;
+
   // Unread keys on the mailbox mode (same model as unreadCount below):
   // personal → last_inbound_at (an own send never marks unread); shared →
   // last_activity_at (a teammate's send does).
   const listBox = await db.query.mailbox.findFirst({
-    where: eq(schema.mailbox.id, input.mailboxId),
+    where: eq(schema.mailbox.id, mailboxId),
     columns: { isPersonal: true },
   });
 
   // Per-user read cursors for these threads (shared-mailbox unread is per person,
   // not per mailbox). One indexed read for the page, keyed to this user.
   const readByThread = new Map<string, number>();
-  if (input.userId && states.length) {
+  if (opts.userId && states.length) {
     const reads = await db
       .select({ threadId: schema.threadRead.threadId, lastReadAt: schema.threadRead.lastReadAt })
       .from(schema.threadRead)
       .where(
         and(
-          eq(schema.threadRead.userId, input.userId),
-          eq(schema.threadRead.mailboxId, input.mailboxId),
+          eq(schema.threadRead.userId, opts.userId),
+          eq(schema.threadRead.mailboxId, mailboxId),
           inArray(schema.threadRead.threadId, states.map((s) => s.threadId)),
         ),
       );
@@ -222,12 +262,8 @@ export async function listThreads(
     // party to, not the globally-latest (which could be a colleague's reply it
     // can't see). Shared mailbox: whole conversation, so globally-latest. Mirrors
     // getThread's visibility model.
-    const mbox = await db.query.mailbox.findFirst({
-      where: eq(schema.mailbox.id, input.mailboxId),
-      columns: { isPersonal: true },
-    });
-    const visibleCond = mbox?.isPersonal
-      ? sql`AND id IN (SELECT message_id FROM delivery WHERE mailbox_id = ${input.mailboxId})`
+    const visibleCond = listBox?.isPersonal
+      ? sql`AND id IN (SELECT message_id FROM delivery WHERE mailbox_id = ${mailboxId})`
       : sql``;
     const rows = await db.all<LatestRow>(sql`
       SELECT thread_id AS "threadId", subject_enc AS "subjectEnc", body_stripped_enc AS "bodyStrippedEnc",
@@ -244,13 +280,13 @@ export async function listThreads(
 
   // Which of these threads carry notes — one IN query, not a findFirst per row.
   const notedThreads = new Set<string>();
-  if (input.includeCollab && threadIds.length) {
+  if (opts.includeCollab && threadIds.length) {
     const noteRows = await db
       .selectDistinct({ threadId: schema.internalNote.threadId })
       .from(schema.internalNote)
       .where(
         and(
-          eq(schema.internalNote.mailboxId, input.mailboxId),
+          eq(schema.internalNote.mailboxId, mailboxId),
           inArray(schema.internalNote.threadId, threadIds),
           isNull(schema.internalNote.deletedAt),
         ),
@@ -262,8 +298,8 @@ export async function listThreads(
   for (const s of states) {
     const latest = latestByThread.get(s.threadId);
     const [subject, body] = await Promise.all([
-      decryptContent(input.ck, latest?.subjectEnc),
-      decryptContent(input.ck, latest?.bodyStrippedEnc),
+      decryptContent(ck, latest?.subjectEnc),
+      decryptContent(ck, latest?.bodyStrippedEnc),
     ]);
     const lastMessageAt = latest?.sentAt != null ? Number(latest.sentAt) : null;
     const lastReadAt = readByThread.get(s.threadId);
@@ -299,12 +335,58 @@ export async function listThreads(
         return newestRelevantAt != null && (lastReadAt == null || lastReadAt < newestRelevantAt);
       })(),
       hasNotes: notedThreads.has(s.threadId),
-      assigneeUserId: input.includeCollab ? s.assigneeUserId : null,
+      assigneeUserId: opts.includeCollab ? s.assigneeUserId : null,
       placement: s.placement,
       pinnedAt: s.pinnedAt?.getTime() ?? null,
     });
   }
   return out;
+}
+
+/**
+ * Hydrate specific threads by id for a mailbox (used by the local-first delta
+ * endpoint). Same projection as listThreads; scoped to threadIds, any
+ * placement. Thread ids not present in this mailbox are simply omitted —
+ * caller treats missing as removed.
+ */
+export async function threadSummariesByIds(
+  db: Db,
+  opts: {
+    mailboxId: string;
+    threadIds: string[];
+    ck: ContentKey;
+    userId: string;
+    includeCollab: boolean;
+    assignedTo: string | null;
+  },
+): Promise<ThreadSummary[]> {
+  if (opts.threadIds.length === 0) return [];
+  const states = await db
+    .select({
+      threadId: schema.threadState.threadId,
+      isStarred: schema.threadState.isStarred,
+      assigneeUserId: schema.threadState.assigneeUserId,
+      placement: schema.threadState.placement,
+      lastInboundAt: schema.threadState.lastInboundAt,
+      lastActivityAt: schema.threadState.lastActivityAt,
+      pinnedAt: schema.threadState.pinnedAt,
+    })
+    .from(schema.threadState)
+    .where(
+      and(
+        eq(schema.threadState.mailboxId, opts.mailboxId),
+        inArray(schema.threadState.threadId, opts.threadIds),
+        isNull(schema.threadState.hiddenAt),
+      ),
+    );
+  return projectThreadRows(db, {
+    mailboxId: opts.mailboxId,
+    ck: opts.ck,
+    userId: opts.userId,
+    includeCollab: opts.includeCollab,
+    assignedTo: opts.assignedTo,
+    states,
+  });
 }
 
 export type UnreadNotice = {
