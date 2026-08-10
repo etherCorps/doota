@@ -73,8 +73,12 @@
 		unreadCount,
 		setSenderImageTrust,
 		imagesLoadAll,
-		setInviteRsvp
+		setInviteRsvp,
+		seedThreadList,
+		threadChanges
 	} from '$lib/rpc/thread.remote';
+	import { localdb } from '$lib/client/localdb';
+	import { createSync } from '$lib/client/localdb/sync.svelte';
 	import { myFolders, threadFolders, moveToFolder, undoMove, createFolder, addThreadLabel, removeThreadLabel } from '$lib/rpc/label.remote';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import { unread } from '$lib/client/unread.svelte.js';
@@ -155,6 +159,40 @@
 	let identities = $state<SendIdentity[]>([]);
 	onMount(async () => {
 		[mailboxes, identities] = await Promise.all([myMailboxes(), sendIdentities()]);
+	});
+
+	// Local-first thread mirror. liveRows is a stable reactive handle whose
+	// `.current` refreshes after every seed/applyDeltas for the active mailbox.
+	// Created once (not inside a reactive context) so the watcher registration
+	// persists across folder switches. localReady gates the list-source switch so
+	// any open() failure keeps the remote path as sole source.
+	// ponytail: liveThreadList registration is SSR-safe (noop bridge in Node);
+	// localReady stays false on SSR/open-failure → remote path always renders.
+	const liveRows = localdb.liveThreadList(
+		() => mailboxId ?? '',
+		() => placement
+	);
+	let localReady = $state(false);
+	const sync = createSync({
+		localdb,
+		seedFn: async (mailboxId) => await seedThreadList({ mailboxId }),
+		changesFn: async ({ mailboxId, sinceSeq }) => await threadChanges({ mailboxId, sinceSeq })
+	});
+	onMount(() => {
+		// Cleanup: release the liveRows watcher on unmount.
+		return () => liveRows.destroy();
+	});
+	onMount(async () => {
+		const userId = page.data.user?.id;
+		if (!userId) return;
+		try {
+			await localdb.open(userId);
+			localReady = true;
+			// Seed/catch-up the active mailbox immediately after open.
+			if (mailboxId) void sync.ensure(mailboxId);
+		} catch {
+			// open() failed (Worker unavailable, storage quota, etc.) — stay on remote path.
+		}
 	});
 
 	// URL is the source of truth — shareable, back-button, and lets the sidebar
@@ -330,6 +368,13 @@
 			await markThreadRead({ mailboxId: mb, threadId: th });
 			void refreshUnread();
 		}
+		// Pull the delta into the local mirror so liveRows reflects the inbound
+		// immediately. The reconcile-via-onRealtime path is simpler than bookkeeping
+		// an exact cursor here — the delta lands via changesFn and applyDeltas updates
+		// the watcher, which re-renders the list without a separate patchItem call.
+		// ponytail: onRealtime reconcile path chosen over localdb.applyDeltas(single row)
+		// because it avoids cursor bookkeeping and handles removals correctly too.
+		if (mb && localReady) void sync.onRealtime(mb);
 		// ponytail: full first-page reload on inbound — fine at inbox scale; switch
 		// to a prepend-merge if reset scroll ever annoys. Runs after markThreadRead,
 		// so the reloaded row reflects the advanced cursor.
@@ -347,11 +392,19 @@
 	// preserved. Reloaded on every reset, appended never (pins don't paginate).
 	let pinnedItems = $state<ThreadSummary[]>([]);
 	const pinnedIds = $derived(new Set(pinnedItems.map((thread) => thread.threadId)));
+	// When the local mirror is ready and has rows, prefer it; otherwise fall back
+	// to the remote-paged `items`. This keeps the remote path fully intact for SSR,
+	// open() failures, and the initial load before the first seed completes.
+	// ponytail: (liveRows.current ?? []) guards the noop-bridge undefined case.
+	const listSource = $derived(
+		localReady && (liveRows.current ?? []).length > 0 ? (liveRows.current ?? []) : items
+	);
 	// Pinned rows on top, then the main list with any duplicates dropped. A stable
 	// filter over this keeps pinned-first order within the filtered set.
+	// Pinned list stays remote for now (out of local scope); main body from listSource.
 	const merged = $derived([
 		...pinnedItems,
-		...items.filter((thread) => !pinnedIds.has(thread.threadId))
+		...listSource.filter((thread) => !pinnedIds.has(thread.threadId))
 	]);
 	let nextOffset = $state(0);
 	let reachedEnd = $state(false);
@@ -442,6 +495,8 @@
 			nextOffset = 0;
 			reachedEnd = false;
 			if (mb && !virt) loadThreads(true);
+			// Seed/catch-up the local mirror for the new mailbox when ready.
+			if (mb && localReady) void sync.ensure(mb);
 		}
 	);
 
@@ -624,6 +679,9 @@
 		// Search has its own (capped) result set; don't fire folder pagination,
 		// which would mutate `items` under the search view.
 		if (searchQ) return;
+		// When local mirror is the source the whole mailbox is already seeded —
+		// remote pagination would fight liveRows and serve no visible purpose.
+		if (localReady && (liveRows.current ?? []).length > 0) return;
 		const el = e.currentTarget as HTMLElement;
 		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadThreads(false);
 	}
@@ -645,6 +703,11 @@
 		pinnedItems = pinnedItems.map((thread) =>
 			thread.threadId === id ? { ...thread, ...patch } : thread
 		);
+		// Reconcile the local mirror so liveRows reflects this optimistic patch
+		// instantly. Uses onRealtime (delta from server) rather than direct applyDeltas
+		// to avoid cursor bookkeeping — the change_log row from the action drives it.
+		// ponytail: reconcile-via-onRealtime; upgrade to direct upsert if latency bites.
+		if (localReady && mailboxId) void sync.onRealtime(mailboxId);
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: one
@@ -898,6 +961,8 @@
 		items = items.filter((thread) => thread.threadId !== id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
+		// Reconcile local mirror so the row leaves liveRows immediately.
+		if (localReady) void sync.onRealtime(mb);
 		const progress = progressToast(MOVE_BUSY[target] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: target });
@@ -943,6 +1008,8 @@
 		const prev = rowPrev(id);
 		nav({ thread: null });
 		items = items.filter((thread) => thread.threadId !== id);
+		// Reconcile local mirror so the row leaves liveRows immediately.
+		if (localReady) void sync.onRealtime(mb);
 		const progress = progressToast(MOVE_BUSY[placement] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
