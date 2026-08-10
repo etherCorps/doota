@@ -738,6 +738,10 @@
 		else if (quickFilter === 'starred') out = out.filter((row) => row.isStarred);
 		return out;
 	}
+	// Memoized once per (list, filter) change — NOT per render. Inlined as a
+	// template `@const` it re-ran on every pointermove during a swipe (swipeProg
+	// churn); as a $derived it only recomputes when merged/filters actually change.
+	const filteredThreads = $derived(applyListFilters(merged));
 	async function assign(userId: string | null) {
 		if (!mailboxId || !threadId) return;
 		const id = threadId;
@@ -2000,7 +2004,7 @@
 			{@const inDrafts = placement === 'drafts'}
 			{@const visibleIds = inDrafts
 				? (myDrafts().current ?? []).map((draft) => draft.id)
-				: applyListFilters(merged).map((thread) => thread.threadId)}
+				: filteredThreads.map((thread) => thread.threadId)}
 			{@const sel = inDrafts ? draftSel : threadSel}
 			{@const n = sel.size}
 			{@const allSelected = visibleIds.length > 0 && visibleIds.every((id) => sel.has(id))}
@@ -2227,7 +2231,6 @@
 					{@render listSkeleton()}
 				{/if}
 			{:else if mailboxId && !isVirtual}
-					{@const filteredThreads = applyListFilters(merged)}
 					{#if filteredThreads.length}
 						{#each filteredThreads as thread, threadIndex (thread.threadId)}
 							{@const selected = (navCursor ?? threadId) === thread.threadId}
@@ -2235,10 +2238,16 @@
 							{@const fx = rowFx.get(thread.threadId)}
 							{@const prog = swipeProg.get(thread.threadId) ?? 0}
 							{@const rightTarget = (placement === 'archived' ? 'inbox' : 'archived') as 'inbox' | 'archived'}
+							<!-- content-visibility:auto — the browser skips render + layout for
+							     rows off-screen (native windowing) while keeping them in the DOM,
+							     so swipe/flip/keyboard-nav all still work. contain-intrinsic-size
+							     is the placeholder height (auto = remember last real size), keeping
+							     the scrollbar stable. Unsupported browsers just render normally. -->
 							<div
 								data-row={thread.threadId}
 								animate:flip={{ duration: 200 }}
 								out:exitFx={{ kind: fx }}
+								style="content-visibility:auto;contain-intrinsic-size:auto 76px"
 								class="relative overflow-hidden border-b {fx === 'pulse' ? PULSE_CLASS : ''}"
 							>
 								<!-- Section boundary for pins — INSIDE the row wrapper because
