@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { makeDb } from "./mail-db";
 import { importKey } from "@doota/mail-core/crypto";
 import { seedMailboxWithThreads } from "./helpers/seed-threads";
-import { buildSeed, buildChanges } from "$lib/rpc/thread-localdb"; // pure helpers (see Step 3)
+import { buildSeed, buildChanges, buildThreadMessageChanges } from "$lib/rpc/thread-localdb"; // pure helpers (see Step 3)
 
 let db: any, ck: any;
 beforeEach(async () => { db = await makeDb(); ck = await importKey(btoa("0123456789abcdef0123456789abcdef")); });
@@ -56,5 +56,35 @@ describe("local-first endpoints", () => {
     const returnedThreadIds = delta.upserts.map((summary) => summary.threadId);
     expect(returnedThreadIds).toContain(threadForU1);
     expect(returnedThreadIds).not.toContain(threadForU2);
+  });
+
+  it("buildChanges resolves Email change_log (delivery ids) to thread ids", async () => {
+    // Regression test for the bug where resolveThreadIds matched delivery ids against
+    // message.id — meaning Email-type changes never produced thread-list deltas.
+    const { mailboxId, threadIds } = await seedMailboxWithThreads(db, ck, 2);
+    const [targetThreadId, otherThreadId] = threadIds;
+    const seed = await buildSeed(db, { mailboxId, ck, userId: "u1", includeCollab: true, assignedTo: null });
+
+    // Fire an Email change_log row by flipping is_read on a delivery in targetThread.
+    // The trigger writes type='Email', object_id=delivery.id (NOT message.id).
+    await db.run(
+      `UPDATE delivery SET is_read=1 WHERE mailbox_id='${mailboxId}' AND message_id IN (SELECT id FROM message WHERE thread_id='${targetThreadId}')`,
+    );
+
+    const delta = await buildChanges(db, {
+      mailboxId, sinceSeq: seed.cursor, ck, userId: "u1", includeCollab: true, assignedTo: null,
+    });
+
+    // (a) buildChanges must surface targetThread via the Email-type change_log entry.
+    const deltaThreadIds = delta.upserts.map((summary) => summary.threadId);
+    expect(deltaThreadIds).toContain(targetThreadId);
+
+    // (b) buildThreadMessageChanges for otherThread must NOT include targetThread's message.
+    const msgDelta = await buildThreadMessageChanges(db, {
+      mailboxId, threadId: otherThreadId, sinceSeq: seed.cursor,
+      ck, userId: "u1", includeCollab: true, assignedTo: null,
+      env: { MAIL_RAW: undefined },
+    });
+    expect(msgDelta.upserts).toHaveLength(0);
   });
 });

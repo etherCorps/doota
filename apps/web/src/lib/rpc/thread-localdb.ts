@@ -64,7 +64,7 @@ export async function buildChanges(
   // Map change_log entries → affected thread ids. Email changes → their threadId;
   // Thread changes → objectId directly. (EmailSubmission/Mailbox ignored for the
   // thread-list surface.)
-  const threadIds = await resolveThreadIds(db, res.changes);
+  const threadIds = await resolveThreadIds(db, ctx.mailboxId, res.changes);
   const present = await threadSummariesByIds(db, { ...ctx, threadIds });
   const presentIds = new Set(present.map((summary) => summary.threadId));
   const removals = threadIds.filter((threadId) => !presentIds.has(threadId));
@@ -147,32 +147,18 @@ export async function buildThreadMessageChanges(
     return { upserts: [], removals: [], newSeq: res.newSeq, cannotCalculate: false };
   }
 
-  // Email change_log objectId = delivery.id (not message.id). Resolve:
-  //   delivery.id → message.id → threadId check.
+  // Email change_log objectId = delivery.id (not message.id). Resolve via the
+  // shared helper: delivery.id → { messageId, threadId } (mailbox-scoped join).
   const deliveryIds = emailChanges.map((change) => change.objectId);
-  const deliveryRows = await db
-    .select({ deliveryId: mail.delivery.id, messageId: mail.delivery.messageId })
-    .from(mail.delivery)
-    .where(and(inArray(mail.delivery.id, deliveryIds), eq(mail.delivery.mailboxId, ctx.mailboxId)));
-  // Map delivery ids to message ids, then check which message ids belong to this thread.
-  const deliveryToMsg = new Map(deliveryRows.map((row) => [row.deliveryId, row.messageId]));
-  const candidateMsgIds = [...new Set(deliveryRows.map((row) => row.messageId))];
-  let ownedMsgIds: Set<string>;
-  if (candidateMsgIds.length) {
-    const threadMsgRows = await db
-      .select({ id: mail.message.id })
-      .from(mail.message)
-      .where(and(inArray(mail.message.id, candidateMsgIds), eq(mail.message.threadId, ctx.threadId)));
-    ownedMsgIds = new Set(threadMsgRows.map((row) => row.id));
-  } else {
-    ownedMsgIds = new Set();
+  const deliveryInfoMap = await deliveriesToThreadInfo(db, ctx.mailboxId, deliveryIds);
+  // deliveryToMsg: deliveryId → messageId, filtered to this thread.
+  const deliveryToMsg = new Map<string, string>();
+  for (const [deliveryId, info] of deliveryInfoMap) {
+    if (info.threadId === ctx.threadId) deliveryToMsg.set(deliveryId, info.messageId);
   }
 
   // Filter email changes to those that belong to this thread.
-  const ownedDeliveryChanges = emailChanges.filter((change) => {
-    const msgId = deliveryToMsg.get(change.objectId);
-    return msgId !== undefined && ownedMsgIds.has(msgId);
-  });
+  const ownedDeliveryChanges = emailChanges.filter((change) => deliveryToMsg.has(change.objectId));
   if (!ownedDeliveryChanges.length) {
     return { upserts: [], removals: [], newSeq: res.newSeq, cannotCalculate: false };
   }
@@ -224,23 +210,47 @@ export async function buildThreadMessageChanges(
   return { upserts, removals: destroyedIds, newSeq: res.newSeq, cannotCalculate: false };
 }
 
-// Email objectId → threadId via the message row; Thread objectId is the threadId.
+/**
+ * Maps a set of Email change_log delivery-ids (scoped to a mailbox) to their
+ * message and thread ids via the delivery→message join.
+ *
+ * Returns a Map keyed by deliveryId so each caller can project what it needs:
+ *   - resolveThreadIds needs the threadId set (for the thread-list surface)
+ *   - buildThreadMessageChanges needs deliveryId→messageId + threadId filter
+ */
+async function deliveriesToThreadInfo(
+  db: Db,
+  mailboxId: string,
+  deliveryIds: string[],
+): Promise<Map<string, { messageId: string; threadId: string }>> {
+  if (!deliveryIds.length) return new Map();
+  const rows = await db
+    .select({
+      deliveryId: mail.delivery.id,
+      messageId: mail.delivery.messageId,
+      threadId: mail.message.threadId,
+    })
+    .from(mail.delivery)
+    .innerJoin(mail.message, eq(mail.message.id, mail.delivery.messageId))
+    .where(and(inArray(mail.delivery.id, deliveryIds), eq(mail.delivery.mailboxId, mailboxId)));
+  return new Map(rows.map((row) => [row.deliveryId, { messageId: row.messageId, threadId: row.threadId }]));
+}
+
+// Email objectId → threadId via the delivery→message join; Thread objectId is the threadId directly.
 async function resolveThreadIds(
   db: Db,
+  mailboxId: string,
   changes: { type: string; objectId: string }[],
 ): Promise<string[]> {
   const ids = new Set<string>();
-  const emailIds: string[] = [];
+  const deliveryIds: string[] = [];
   for (const change of changes) {
     if (change.type === "Thread") ids.add(change.objectId);
-    else if (change.type === "Email") emailIds.push(change.objectId);
+    else if (change.type === "Email") deliveryIds.push(change.objectId);
   }
-  if (emailIds.length) {
-    const rows = await db
-      .select({ threadId: mail.message.threadId })
-      .from(mail.message)
-      .where(inArray(mail.message.id, emailIds));
-    for (const row of rows) ids.add(row.threadId);
+  if (deliveryIds.length) {
+    const infoMap = await deliveriesToThreadInfo(db, mailboxId, deliveryIds);
+    for (const { threadId } of infoMap.values()) ids.add(threadId);
   }
   return [...ids];
 }
