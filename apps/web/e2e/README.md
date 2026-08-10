@@ -49,6 +49,16 @@ Flow:
 5. Wipe storage via CDP, reload → assert the list still renders via the remote
    fallback path (no crash).
 6. Navigate away and back (reconnect) → assert no console errors.
+7. Click the first `[data-row]` → assert thread view renders (message content
+   present).
+8. Navigate back to inbox then re-open the same thread → assert the thread renders
+   from the mirror (reports any background body fetches but does not fail on them —
+   same honest posture as check 2).
+9. Reload with the thread open → assert the thread or list still renders (persisted
+   mirror intact).
+10. Open a thread → assert `iframe[srcdoc]` is present (rich HTML message rendered
+    from the local framed-body store); skips rather than fails if the first thread
+    is plain-text only.
 
 ```bash
 SMOKE_LOCAL_FIRST=1 SMOKE_EMAIL=you@example.com SMOKE_PASSWORD=… \
@@ -77,3 +87,10 @@ Env:
   refetch) — requires a real realtime event; not triggered automatically.
 - **Component reactivity under concurrent edits** — unit tests cover reconcile
   logic; browser behaviour under real concurrent writes needs manual observation.
+- **srcdoc from cold mirror** (check 10) — confirming the iframe uses `srcdoc`
+  specifically when the body is served from the local store (vs. a live fetch)
+  requires the test account to have a rich HTML message and a deployed
+  `renderFramedBody` + mirror; the check reports honestly if no iframe is found.
+- **Zero body fetch on re-open** (check 8) — verifying no background body fetch
+  fires at all (not just that the render is local) needs the background-sync
+  optimization to land; current check asserts render, not strict zero-network.
