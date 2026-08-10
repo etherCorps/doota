@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { fileURLToPath } from "node:url";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
@@ -7,6 +8,8 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // outside the build, so they're aliased to test stubs — `$app/server` exposes a
 // settable getRequestEvent so boundary functions can be driven with fake locals.
 export default defineConfig({
+  // svelte plugin transforms .svelte.ts so $state/$derived runes compile in tests.
+  plugins: [svelte()],
   resolve: {
     alias: [
       { find: "$app/server", replacement: r("./src/test/stubs/app-server.ts") },
