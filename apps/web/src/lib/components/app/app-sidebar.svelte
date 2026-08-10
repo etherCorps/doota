@@ -47,7 +47,7 @@
 		user,
 		onCompose
 	}: {
-		user: { name: string; email: string; role: string; image?: string | null };
+		user: { id: string; name: string; email: string; role: string; image?: string | null };
 		onCompose: () => void;
 	} = $props();
 
@@ -554,7 +554,7 @@
 		</Sidebar.Menu>
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
-				<UserChip name={user.name} email={user.email} role={user.role} image={user.image} />
+				<UserChip userId={user.id} name={user.name} email={user.email} role={user.role} image={user.image} />
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
 	</Sidebar.Footer>

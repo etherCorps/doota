@@ -9,6 +9,7 @@ export const load = async ({ locals }) => {
   if (!ADMIN_ROLES.includes(user.role ?? "")) redirect(302, "/app");
   return {
     user: {
+      id: user.id,
       name: user.name,
       email: user.email,
       role: user.role ?? "member",

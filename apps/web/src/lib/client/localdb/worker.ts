@@ -80,9 +80,39 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
     return resultRows[0]?.cursor ?? null;
   },
 
-  clear: ({ userId: _userId }: { userId: string }) => {
+  clear: async ({ userId }: { userId: string }) => {
+    const dbName = `u_${userId}`;
     db?.close?.();
     db = null;
+    // Purge persisted data so no plaintext mirror survives the session.
+    if (backend?.kind === "opfs") {
+      // OPFS-sahpool stores files in the Origin Private File System.
+      try {
+        const opfsRoot = await navigator.storage.getDirectory();
+        await opfsRoot.removeEntry(`${dbName}.sqlite3`).catch(() => {});
+      } catch {
+        // OPFS unavailable in this context — ignore; the DB is closed anyway.
+      }
+    } else if (backend?.kind === "idb") {
+      // IDB tier: delete the snapshot key so the bytes don't survive reload.
+      try {
+        const idb = await new Promise<IDBDatabase>((resolve, reject) => {
+          const req = indexedDB.open("doota-localdb", 1);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        await new Promise<void>((resolve, reject) => {
+          const txn = idb.transaction("snapshots", "readwrite");
+          const req = txn.objectStore("snapshots").delete(dbName);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+        idb.close();
+      } catch {
+        // IDB delete failed — non-fatal; DB closed, next open gets a fresh DB.
+      }
+    }
+    backend = null;
     return true;
   },
 };

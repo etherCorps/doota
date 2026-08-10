@@ -27,6 +27,7 @@ code actually does.
 | **Search index** (subject + body) | D1 (`message_search`, FTS5) | **Readable plaintext by design** — a deliberate exception (see below). |
 | Note search tokens | D1 (`note_fts`) | **HMAC blind tokens** (`MAIL_SEARCH_KEY`) — reveals no plaintext. |
 | Draft-staged attachments (file attached while composing, before send) | R2 (`draft/…`) | **Cleartext** — a plaintext content path (see below). |
+| **Local thread-list mirror** (subjects, snippets, sender names) | Client-side SQLite (OPFS or IndexedDB, per-user, per-device) | **Plaintext on the device** — same posture as any native mail client (Apple Mail, Outlook). Cleared on logout and account switch. Zero-access-at-rest is a server property; the local mirror is intentional and local only. |
 
 <Aside type="danger" title="The search index holds your mail's words in the clear">
   To give real full-text search (ranking, prefix, phrase), Doota keeps a

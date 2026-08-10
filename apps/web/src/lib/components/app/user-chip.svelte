@@ -7,6 +7,7 @@
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import { authClient } from '$lib/client/auth-client.js';
 	import { MAX_DEVICE_SESSIONS } from '$lib/auth-limits.js';
+	import { localdb } from '$lib/client/localdb';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -17,11 +18,12 @@
 	import { Spinner } from '$lib/components/ui/spinner/index.js';
 
 	let {
+		userId,
 		name,
 		email,
 		role,
 		image = null
-	}: { name: string; email: string; role: string; image?: string | null } = $props();
+	}: { userId: string; name: string; email: string; role: string; image?: string | null } = $props();
 
 	const toInitials = (fullName: string) =>
 		fullName
@@ -80,6 +82,9 @@
 			toast.error(error.message ?? 'Could not switch accounts.');
 			return;
 		}
+		// Clear local mirror before the document reload so this user's plaintext
+		// thread data doesn't persist into the next account's session.
+		await localdb.clear(userId).catch(() => {});
 		reenter();
 	}
 
@@ -102,12 +107,14 @@
 		busy = true;
 		if (current) await authClient.multiSession.revoke({ sessionToken: current.session.token });
 		else await authClient.signOut();
+		await localdb.clear(userId).catch(() => {});
 		reenter();
 	}
 	async function logoutAll() {
 		busy = true;
 		// signOut ends every device session (multiSession's sign-out hook).
 		await authClient.signOut();
+		await localdb.clear(userId).catch(() => {});
 		reenter();
 	}
 

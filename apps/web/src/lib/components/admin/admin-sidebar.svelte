@@ -11,7 +11,7 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import MailIcon from '@lucide/svelte/icons/mail';
 
-	let { user }: { user: { name: string; email: string; role: string; image?: string | null } } = $props();
+	let { user }: { user: { id: string; name: string; email: string; role: string; image?: string | null } } = $props();
 
 	const nav = [
 		{ href: '/admin', label: 'Dashboard', icon: LayoutDashboardIcon },
@@ -86,7 +86,7 @@
 		{/if}
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
-				<UserChip name={user.name} email={user.email} role={user.role} image={user.image}/>
+				<UserChip userId={user.id} name={user.name} email={user.email} role={user.role} image={user.image}/>
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
 	</Sidebar.Footer>
