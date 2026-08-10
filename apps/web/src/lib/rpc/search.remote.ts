@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { query, command, getRequestEvent } from "$app/server";
+import { query, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { and, desc, eq, gte, inArray, isNotNull, like, lte, or } from "drizzle-orm";
@@ -7,7 +7,6 @@ import * as schema from "@doota/db/schema";
 import { importKey, decryptContent } from "@doota/mail-core/crypto";
 import { words } from "@doota/mail-core/search";
 import { plaintextIndex } from "@doota/mail-core/search-index";
-import { reindexMessages } from "@doota/mail-core/search-reindex";
 import { accessibleMailboxIds, assignedOnlyMailboxIds } from "@doota/mail-core/mailbox";
 import { parseSearchQuery, snippetAround } from "$lib/utils/search-query";
 
@@ -253,39 +252,5 @@ export const searchMail = query(
         terms,
       })),
     );
-  },
-);
-
-/**
- * Operator-run search reindex (superadmin only). Rebuilds `message_search` from
- * the encrypted D1 columns — run once after the Porter migration (0055 DROPs the
- * table) and to backfill mail that predates the plaintext index. Idempotent.
- *
- * Loops batches within one request to cut round-trips, capped so a huge box
- * can't blow the Worker CPU budget: when capped it returns `nextCursor` — call
- * again with it until `done`.
- */
-export const reindexSearch = command(
-  z.object({ cursor: z.string().optional() }),
-  async ({ cursor }): Promise<{ processed: number; nextCursor: string | null; done: boolean }> => {
-    const { locals } = getRequestEvent();
-    if (!locals.user) error(401, "Not authenticated");
-    if (locals.user.role !== "superadmin") error(403, "Superadmin only.");
-    const ck = await importKey(dekOrThrow());
-
-    const MAX_PER_CALL = 2000;
-    let processed = 0;
-    let cur = cursor ?? "";
-    let done = false;
-    while (processed < MAX_PER_CALL) {
-      const batch = await reindexMessages(locals.db, ck, { cursor: cur });
-      processed += batch.processed;
-      if (batch.nextCursor) cur = batch.nextCursor;
-      if (batch.done) {
-        done = true;
-        break;
-      }
-    }
-    return { processed, nextCursor: done ? null : cur, done };
   },
 );

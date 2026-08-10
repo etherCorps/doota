@@ -5,9 +5,10 @@
 -- over the plain unicode61 index in 0054.
 --
 -- FTS5 fixes the tokenizer at CREATE (no ALTER), so this DROPs and re-CREATEs.
--- Journaled migrations (deploy / db:migrate) run this ONCE, so the drop is safe:
--- the table returns EMPTY and is repopulated by the search reindex backfill
--- (reindexMessages) — new mail re-indexes automatically at ingest.
+-- Journaled migrations (deploy / db:migrate) run this ONCE. The table returns
+-- EMPTY and there is no backfill: new mail re-indexes automatically at ingest,
+-- but mail that existed before this migration is no longer searchable
+-- (acceptable pre-launch — little/no existing mail).
 DROP TABLE IF EXISTS message_search;
 --> statement-breakpoint
 CREATE VIRTUAL TABLE IF NOT EXISTS message_search USING fts5(
