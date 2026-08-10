@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Local-first thread-mirror facade. Wraps the worker bridge with typed async
-// methods and a reactive liveThreadList that re-queries whenever a write
-// (seed/applyDeltas) bumps that mailbox's version counter.
+// methods and a reactive liveThreadList / liveThread that re-queries whenever
+// a write (seed/applyDeltas / seedThreadMessages/applyMessageDeltas) bumps
+// that mailbox's or thread's version counter.
 //
-// .svelte.ts so $state runes compile — liveThreadList.current is $state-backed,
-// meaning Svelte templates that read it will auto-re-render on delta writes.
+// .svelte.ts so $state runes compile — current fields are $state-backed,
+// meaning Svelte templates that read them will auto-re-render on delta writes.
 
 import type { ThreadSummary } from "@doota/mail-core/read";
+import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
 import { createBridge } from "./rpc";
 
 export type Bridge = { call<T>(method: string, params: unknown): Promise<T> };
@@ -19,17 +21,36 @@ export type LiveThreadList = {
   destroy(): void;
 };
 
+/** A live message list handle returned by liveThread. */
+export type LiveThread = {
+  /** The most recently fetched messages for a thread. $state-backed. */
+  readonly current: MessageDTO[];
+  /** Release the watcher registration — call when the consumer unmounts. */
+  destroy(): void;
+};
+
 type Watcher = {
   readonly mailboxId: string;
+  refresh(): Promise<void>;
+};
+
+type ThreadWatcher = {
+  readonly threadId: string;
   refresh(): Promise<void>;
 };
 
 export function makeLocalDb(bridge: Bridge) {
   // ponytail: plain Set tracks watchers; no pub/sub lib needed.
   const watchers = new Set<Watcher>();
+  const threadWatchers = new Set<ThreadWatcher>();
 
   async function notifyWatchers(mailboxId: string): Promise<void> {
     const matchingWatchers = [...watchers].filter((watcher) => watcher.mailboxId === mailboxId);
+    await Promise.all(matchingWatchers.map((watcher) => watcher.refresh()));
+  }
+
+  async function notifyThreadWatchers(threadId: string): Promise<void> {
+    const matchingWatchers = [...threadWatchers].filter((watcher) => watcher.threadId === threadId);
     await Promise.all(matchingWatchers.map((watcher) => watcher.refresh()));
   }
 
@@ -97,6 +118,76 @@ export function makeLocalDb(bridge: Bridge) {
       };
 
       watchers.add(watcher);
+      // Kick off the initial load without blocking the caller. The DB may not
+      // be open yet (open() is async), so swallow a rejection here — the UI
+      // drives from the remote path until localReady anyway.
+      void watcher.refresh().catch(() => {});
+
+      return handle;
+    },
+
+    // ---- Thread-message mirror methods (slice 2) --------------------------------
+
+    seedThreadMessages(
+      threadId: string,
+      messages: MessageDTO[],
+      cursor: number,
+      renderVersion: number,
+    ): Promise<void> {
+      return bridge
+        .call<void>("seedThreadMessages", { threadId, messages, cursor, renderVersion })
+        .then(() => notifyThreadWatchers(threadId));
+    },
+
+    applyMessageDeltas(
+      threadId: string,
+      upserts: MessageDTO[],
+      removals: string[],
+      newCursor: number,
+    ): Promise<void> {
+      return bridge
+        .call<void>("applyMessageDeltas", { threadId, upserts, removals, newCursor })
+        .then(() => notifyThreadWatchers(threadId));
+    },
+
+    getThreadSync(threadId: string): Promise<{ cursor: number; renderVersion: number } | null> {
+      return bridge.call<{ cursor: number; renderVersion: number } | null>("getThreadSync", {
+        threadId,
+      });
+    },
+
+    listMessages(threadId: string): Promise<MessageDTO[]> {
+      return bridge.call<MessageDTO[]>("listMessages", { threadId });
+    },
+
+    /**
+     * Returns a live handle whose `current` is refreshed after every
+     * seedThreadMessages/applyMessageDeltas for the matching thread.
+     *
+     * @param getThreadId - getter so callers can pass reactive values
+     */
+    liveThread(getThreadId: () => string): LiveThread {
+      // ponytail: $state in .svelte.ts so Svelte templates auto-track reads.
+      let current = $state<MessageDTO[]>([]);
+
+      const watcher: ThreadWatcher = {
+        get threadId() {
+          return getThreadId();
+        },
+        async refresh() {
+          const freshMessages = await facade.listMessages(getThreadId());
+          current = freshMessages; // $state write — triggers component re-render
+        },
+      };
+
+      const handle: LiveThread = {
+        get current() { return current; },
+        destroy() {
+          threadWatchers.delete(watcher);
+        },
+      };
+
+      threadWatchers.add(watcher);
       // Kick off the initial load without blocking the caller. The DB may not
       // be open yet (open() is async), so swallow a rejection here — the UI
       // drives from the remote path until localReady anyway.
