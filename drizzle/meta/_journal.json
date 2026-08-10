@@ -386,6 +386,13 @@
       "when": 1786190015587,
       "tag": "0054_message_search_fts5",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1786365322413,
+      "tag": "0055_message_search_porter",
+      "breakpoints": true
     }
   ]
 }

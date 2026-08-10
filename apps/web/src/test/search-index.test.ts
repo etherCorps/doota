@@ -85,6 +85,13 @@ describe("plaintext search index", () => {
     expect(await idx.search("quarterly", { mailboxId: "mb_b" })).toEqual([]);
   });
 
+  it("stems inflected forms (porter): singular query finds a plural", async () => {
+    const m = await deliver("mb_a", { subject: "Billing", text: "we sent three invoices last week" });
+    // "invoices" is indexed as the stem "invoic"; a search for "invoice" stems to
+    // the same root and matches — the recall win the porter tokenizer buys.
+    expect(ids(await plaintextIndex(db).search("invoice", { mailboxId: "mb_a" }))).toContain(m);
+  });
+
   it("supports prefix (auto) and exact phrase queries", async () => {
     const m = await deliver("mb_a", { subject: "Quarterly planning", text: "budget and headcount" });
     const idx = plaintextIndex(db);

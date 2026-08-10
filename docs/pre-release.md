@@ -182,6 +182,14 @@ Split add/drop across two migration files when a rename would otherwise trigger
 drizzle-kit's interactive prompt (see 0026 add / 0027 drop; 0032/0033 add
 send-log + templates).
 
+**After `0055_message_search_porter` — rebuild the search index.** That migration
+DROPs `message_search` to switch it to the Porter stemming tokenizer, so it comes
+back **empty**; new mail re-indexes at ingest, but existing mail won't be
+searchable until reindexed. Run the superadmin `reindexSearch` command once
+post-deploy, re-invoking with the returned `nextCursor` until `done: true`. It's
+idempotent (upserts) and honors each mailbox's `search_indexed` flag, so it's safe
+to re-run.
+
 ### 1.3 Bump caches when render/logic changes
 
 - **`RENDER_CACHE_VERSION`** (`apps/web/src/lib/server/render-cache.ts`, currently
