@@ -228,6 +228,44 @@ describe("onThreadRealtime", () => {
   });
 });
 
+describe("onThreadRealtime before ensureThread (idle FSM)", () => {
+  // Regression: threadFsm idle must accept RESYNC. If idle lacked RESYNC, runed
+  // would silently drop the send and the FSM would stay idle after a successful
+  // delta — threadState stuck "idle" instead of "live".
+  it("realtime push before any open → delta runs, threadState reaches live", async () => {
+    // Thread has a stored sync row (simulates: message arrived after login but user
+    // never opened the thread; the row was created server-side or by a prior session)
+    const fakeDb = makeLocalDbFake({ cursor: 3, renderVersion: "14" });
+    const seedThreadFn = vi.fn(async () => ({ messages: [], cursor: 0, renderVersion: "14" }));
+    const threadChangesFn = vi.fn(async (_args: { threadId: string; sinceSeq: number }) => ({
+      upserts: [FAKE_MSG],
+      removals: [],
+      newSeq: 10,
+      cannotCalculate: false,
+    }));
+
+    const sync = makeSyncWithThreadDeps(fakeDb, seedThreadFn, threadChangesFn, "14");
+    // FSM is idle (ensureThread was never called)
+    expect(sync.threadState).toBe("idle");
+
+    await sync.onThreadRealtime("t1");
+
+    // Delta path ran: threadChangesFn called, applyMessageDeltas called
+    expect(threadChangesFn).toHaveBeenCalledWith({ threadId: "t1", sinceSeq: 3 });
+    expect(fakeDb.applyDeltasCalls).toHaveLength(1);
+    expect(fakeDb.applyDeltasCalls[0]).toMatchObject({
+      threadId: "t1",
+      upserts: [FAKE_MSG],
+      removals: [],
+      newCursor: 10,
+    });
+    // FSM must reach live (not stuck idle)
+    expect(sync.threadState).toBe("live");
+    // Seed must NOT have been called
+    expect(seedThreadFn).not.toHaveBeenCalled();
+  });
+});
+
 describe("cannotCalculate → reseed", () => {
   it("threadChangesFn cannotCalculate:true → seedThreadFn + seedThreadMessages called, threadState live", async () => {
     const fakeDb = makeLocalDbFake({ cursor: 5, renderVersion: "14" });
