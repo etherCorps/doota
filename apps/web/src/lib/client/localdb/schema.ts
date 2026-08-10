@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ThreadSummary } from "@doota/mail-core/read";
+import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
 
 /** A mirrored thread-list row: ThreadSummary + owning mailbox. JSON arrays are
  *  stored as TEXT so the row is a flat bind object. */
@@ -21,6 +22,28 @@ export type ThreadRow = {
   $pinned_at: number | null;
 };
 
+/** A mirrored message row: typed columns for query/filter paths + meta_json for
+ *  the long tail of MessageDTO fields the render layer needs but queries don't. */
+export type MessageRow = {
+  $thread_id: string;
+  $message_id: string;
+  $seq: number;
+  $from_addr: string | null;
+  $from_name: string | null;
+  $sent_at: number | null;
+  $item_type: string;            // external_message | note | system
+  $content_kind: string;         // bubble | card
+  $html_kind: string | null;     // rich | plain | null
+  $body_text: string | null;     // bodyStripped / bodyFull for bubble render
+  $framed_html: string | null;   // server-built framed doc (rich only; null for plain)
+  $dmarc_pass: number;           // 0 | 1
+  $has_remote_images: number;    // 0 | 1
+  $is_read: number;              // 0 | 1
+  $outbound: number;             // 0 | 1
+  $meta_json: string;            // JSON: to, cc, replyTo, keywords, attachments, submission, replyContext, calendarInvite, senderTrusted, senderVerified, viaAlias, viaAliasId, subject, messageIdHeader
+  $render_version: string | null;
+};
+
 export const DDL = `
 CREATE TABLE IF NOT EXISTS thread_list (
   mailbox_id TEXT NOT NULL,
@@ -39,6 +62,31 @@ CREATE TABLE IF NOT EXISTS thread_list (
 );
 CREATE INDEX IF NOT EXISTS thread_list_view ON thread_list (mailbox_id, placement, last_message_at);
 CREATE TABLE IF NOT EXISTS sync_state (mailbox_id TEXT PRIMARY KEY, cursor INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS message (
+  thread_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  from_addr TEXT, from_name TEXT,
+  sent_at INTEGER,
+  item_type TEXT NOT NULL DEFAULT 'external_message',
+  content_kind TEXT NOT NULL DEFAULT 'bubble',
+  html_kind TEXT,
+  body_text TEXT,
+  framed_html TEXT,
+  dmarc_pass INTEGER NOT NULL DEFAULT 0,
+  has_remote_images INTEGER NOT NULL DEFAULT 0,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  outbound INTEGER NOT NULL DEFAULT 0,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  render_version TEXT,
+  PRIMARY KEY (thread_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS message_by_thread ON message (thread_id, seq);
+CREATE TABLE IF NOT EXISTS thread_synced (
+  thread_id TEXT PRIMARY KEY,
+  cursor INTEGER NOT NULL,
+  render_version TEXT NOT NULL
+);
 `;
 
 export const upsertThreadSql = () => ({
@@ -97,5 +145,131 @@ export function rowToThreadSummary(row: Record<string, unknown>): ThreadSummary 
     isStarred: !!row.is_starred, unread: !!row.unread, hasNotes: !!row.has_notes,
     assigneeUserId: (row.assignee_user_id as string) ?? null,
     placement: row.placement as string, pinnedAt: (row.pinned_at as number) ?? null,
+  };
+}
+
+// ── Message SQL builders ──────────────────────────────────────────────────────
+
+export const upsertMessageSql = () => ({
+  sql: `INSERT INTO message
+    (thread_id, message_id, seq, from_addr, from_name, sent_at, item_type, content_kind,
+     html_kind, body_text, framed_html, dmarc_pass, has_remote_images, is_read, outbound,
+     meta_json, render_version)
+    VALUES ($thread_id,$message_id,$seq,$from_addr,$from_name,$sent_at,$item_type,$content_kind,
+     $html_kind,$body_text,$framed_html,$dmarc_pass,$has_remote_images,$is_read,$outbound,
+     $meta_json,$render_version)
+    ON CONFLICT(thread_id, message_id) DO UPDATE SET
+     seq=excluded.seq, from_addr=excluded.from_addr, from_name=excluded.from_name,
+     sent_at=excluded.sent_at, item_type=excluded.item_type, content_kind=excluded.content_kind,
+     html_kind=excluded.html_kind, body_text=excluded.body_text, framed_html=excluded.framed_html,
+     dmarc_pass=excluded.dmarc_pass, has_remote_images=excluded.has_remote_images,
+     is_read=excluded.is_read, outbound=excluded.outbound, meta_json=excluded.meta_json,
+     render_version=excluded.render_version`,
+});
+
+export const deleteMessageSql = () => ({
+  sql: `DELETE FROM message WHERE thread_id=$thread_id AND message_id=$message_id`,
+});
+
+export const listMessagesSql = () => ({
+  sql: `SELECT * FROM message WHERE thread_id=$thread_id ORDER BY seq`,
+});
+
+export const clearThreadMessagesSql = () => ({
+  sql: `DELETE FROM message WHERE thread_id=$thread_id`,
+});
+
+export const getThreadSyncSql = () => ({
+  sql: `SELECT cursor, render_version FROM thread_synced WHERE thread_id=$thread_id`,
+});
+
+export const setThreadSyncSql = () => ({
+  sql: `INSERT INTO thread_synced (thread_id, cursor, render_version)
+        VALUES ($thread_id,$cursor,$render_version)
+        ON CONFLICT(thread_id) DO UPDATE SET cursor=excluded.cursor, render_version=excluded.render_version`,
+});
+
+// ── MessageDTO ↔ MessageRow marshaling ───────────────────────────────────────
+
+/** Fields stored as typed columns (query/filter paths); everything else goes into meta_json. */
+export function messageDtoToRow(
+  threadId: string,
+  seq: number,
+  dto: MessageDTO,
+  framedHtml: string | null,
+  renderVersion: string,
+): MessageRow {
+  // ponytail: meta_json carries the render tail; typed cols are only what queries touch
+  const meta = {
+    id: dto.id,
+    to: dto.to,
+    cc: dto.cc,
+    replyTo: dto.replyTo,
+    keywords: dto.keywords,
+    attachments: dto.attachments,
+    submission: dto.submission,
+    replyContext: dto.replyContext,
+    calendarInvite: dto.calendarInvite,
+    senderTrusted: dto.senderTrusted,
+    senderVerified: dto.senderVerified,
+    viaAlias: dto.viaAlias,
+    viaAliasId: dto.viaAliasId,
+    subject: dto.subject,
+    messageIdHeader: dto.messageIdHeader,
+  };
+  return {
+    $thread_id: threadId,
+    $message_id: dto.id,
+    $seq: seq,
+    $from_addr: dto.from,
+    $from_name: dto.fromName,
+    $sent_at: dto.sentAt,
+    $item_type: dto.type,
+    $content_kind: dto.contentKind,
+    $html_kind: dto.htmlKind,
+    // ponytail: rich cards use bodyFull; bubbles use bodyStripped (the reply quote strip)
+    $body_text: dto.htmlKind === "rich" ? (dto.bodyFull ?? dto.bodyStripped ?? null) : (dto.bodyStripped ?? dto.bodyFull ?? null),
+    $framed_html: dto.htmlKind === "rich" ? framedHtml : null,
+    $dmarc_pass: dto.senderVerified ? 1 : 0,
+    $has_remote_images: dto.hasRemoteImages ? 1 : 0,
+    $is_read: dto.isRead ? 1 : 0,
+    $outbound: dto.outbound ? 1 : 0,
+    $meta_json: JSON.stringify(meta),
+    $render_version: renderVersion,
+  };
+}
+
+/** Raw sqlite row (snake_case columns) → MessageDTO. */
+export function rowToMessageDto(row: Record<string, unknown>): MessageDTO {
+  const meta = JSON.parse((row.meta_json as string) || "{}");
+  return {
+    type: "external_message",
+    id: meta.id as string,
+    threadId: row.thread_id as string,
+    messageIdHeader: meta.messageIdHeader as string,
+    from: (row.from_addr as string) ?? null,
+    fromName: (row.from_name as string) ?? null,
+    sentAt: (row.sent_at as number) ?? null,
+    contentKind: row.content_kind as "bubble" | "card",
+    htmlKind: (row.html_kind as "rich" | "plain" | null) ?? null,
+    // ponytail: body_text holds bodyFull for rich cards, bodyStripped for plain bubbles
+    bodyStripped: row.html_kind !== "rich" ? (row.body_text as string) ?? null : null,
+    bodyFull: row.html_kind === "rich" ? (row.body_text as string) ?? null : null,
+    hasRemoteImages: !!row.has_remote_images,
+    isRead: !!row.is_read,
+    outbound: !!row.outbound,
+    subject: meta.subject as string | null,
+    to: (meta.to as string[]) ?? [],
+    cc: (meta.cc as string[]) ?? [],
+    replyTo: meta.replyTo as string | null,
+    keywords: (meta.keywords as string[]) ?? [],
+    attachments: meta.attachments ?? [],
+    senderTrusted: meta.senderTrusted,
+    senderVerified: meta.senderVerified,
+    viaAlias: meta.viaAlias as string | null,
+    viaAliasId: meta.viaAliasId as string | null,
+    submission: meta.submission,
+    replyContext: meta.replyContext,
+    calendarInvite: meta.calendarInvite,
   };
 }
