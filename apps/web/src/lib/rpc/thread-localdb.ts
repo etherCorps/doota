@@ -11,6 +11,10 @@ import { changesSince } from "@doota/mail-core/change-log";
 type Db = DrizzleD1Database<typeof schema>;
 type Ctx = { mailboxId: string; ck: ContentKey; userId: string; includeCollab: boolean; assignedTo: string | null };
 
+// ponytail: shared cap — client uses this to decide when local drives the list;
+// at/over the cap the remote paginated path takes over so no threads are hidden.
+export const SEED_THREAD_LIMIT = 1000;
+
 async function currentSeq(db: Db, mailboxId: string): Promise<number> {
   const row = await db.select({ m: max(mail.changeLog.seq) }).from(mail.changeLog).where(eq(mail.changeLog.mailboxId, mailboxId));
   return row[0]?.m ?? 0;
@@ -25,7 +29,7 @@ export async function buildSeed(db: Db, ctx: Ctx): Promise<{ rows: ThreadSummary
   const rows = await listThreads(db, {
     mailboxId: ctx.mailboxId,
     ck: ctx.ck,
-    limit: 1000,
+    limit: SEED_THREAD_LIMIT,
     offset: 0,
     includeCollab: ctx.includeCollab,
     userId: ctx.userId,

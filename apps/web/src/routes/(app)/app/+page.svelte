@@ -79,6 +79,7 @@
 	} from '$lib/rpc/thread.remote';
 	import { localdb } from '$lib/client/localdb';
 	import { createSync } from '$lib/client/localdb/sync.svelte';
+	import { SEED_THREAD_LIMIT } from '$lib/rpc/thread-localdb';
 	import { myFolders, threadFolders, moveToFolder, undoMove, createFolder, addThreadLabel, removeThreadLabel } from '$lib/rpc/label.remote';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import { unread } from '$lib/client/unread.svelte.js';
@@ -392,13 +393,18 @@
 	// preserved. Reloaded on every reset, appended never (pins don't paginate).
 	let pinnedItems = $state<ThreadSummary[]>([]);
 	const pinnedIds = $derived(new Set(pinnedItems.map((thread) => thread.threadId)));
-	// When the local mirror is ready and has rows, prefer it; otherwise fall back
-	// to the remote-paged `items`. This keeps the remote path fully intact for SSR,
-	// open() failures, and the initial load before the first seed completes.
+	// Local drives the list only when the mirror is ready, has rows, AND fits under
+	// the seed cap. At/over the cap the seed is truncated — silently hiding threads
+	// beyond position SEED_THREAD_LIMIT — so fall back to remote pagination which
+	// already shows everything. Under the cap the whole mailbox is seeded and local
+	// can drive without dropping threads.
 	// ponytail: (liveRows.current ?? []) guards the noop-bridge undefined case.
-	const listSource = $derived(
-		localReady && (liveRows.current ?? []).length > 0 ? (liveRows.current ?? []) : items
+	const localDriving = $derived(
+		localReady &&
+		(liveRows.current ?? []).length > 0 &&
+		(liveRows.current ?? []).length < SEED_THREAD_LIMIT
 	);
+	const listSource = $derived(localDriving ? (liveRows.current ?? []) : items);
 	// Pinned rows on top, then the main list with any duplicates dropped. A stable
 	// filter over this keeps pinned-first order within the filtered set.
 	// Pinned list stays remote for now (out of local scope); main body from listSource.
@@ -679,9 +685,10 @@
 		// Search has its own (capped) result set; don't fire folder pagination,
 		// which would mutate `items` under the search view.
 		if (searchQ) return;
-		// When local mirror is the source the whole mailbox is already seeded —
+		// When local is driving the list the whole mailbox is seeded under the cap —
 		// remote pagination would fight liveRows and serve no visible purpose.
-		if (localReady && (liveRows.current ?? []).length > 0) return;
+		// Over the cap localDriving is false, so pagination runs normally.
+		if (localDriving) return;
 		const el = e.currentTarget as HTMLElement;
 		if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadThreads(false);
 	}
