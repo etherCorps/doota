@@ -97,8 +97,10 @@ export function makeLocalDb(bridge: Bridge) {
       };
 
       watchers.add(watcher);
-      // Kick off the initial load without blocking the caller.
-      void watcher.refresh();
+      // Kick off the initial load without blocking the caller. The DB may not
+      // be open yet (open() is async), so swallow a rejection here — the UI
+      // drives from the remote path until localReady anyway.
+      void watcher.refresh().catch(() => {});
 
       return handle;
     },

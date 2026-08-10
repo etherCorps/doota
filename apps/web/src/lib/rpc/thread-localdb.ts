@@ -43,6 +43,9 @@ export async function buildChanges(
   db: Db,
   ctx: Ctx & { sinceSeq: number },
 ): Promise<{ upserts: ThreadSummary[]; removals: string[]; newSeq: number; cannotCalculate: boolean }> {
+  // ponytail: single page per call — changesSince caps at 500 and we drop hasMore;
+  // the next realtime event/ensure drains the rest. Loop while hasMore if large
+  // silent catch-ups ever matter.
   const res = await changesSince(db, ctx.mailboxId, ctx.sinceSeq);
   if (res.cannotCalculateChanges) return { upserts: [], removals: [], newSeq: ctx.sinceSeq, cannotCalculate: true };
 

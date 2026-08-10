@@ -18,6 +18,9 @@ import type { Req, Res } from "./rpc";
 let db: any = null;
 let backend: Awaited<ReturnType<typeof pickBackend>> | null = null;
 
+// ponytail: no multi-tab Web Lock — SAH-pool serializes handle access so
+// concurrent tabs are unlikely to corrupt; add a Web Lock leader if two-tab
+// writes ever conflict.
 async function open(userId: string): Promise<void> {
   const sqlite3 = await sqlite3InitModule();
   backend = await pickBackend(sqlite3);
