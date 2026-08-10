@@ -77,7 +77,9 @@ export async function listThreads(
   db: Db,
   input: {
     mailboxId: string;
-    placement: string;
+    /** Required for per-placement queries. Ignored (and may be omitted) when
+     * `allPlacements: true`. */
+    placement?: string;
     ck: ContentKey;
     limit?: number;
     /** Page offset for infinite scroll (rows to skip). */
@@ -94,13 +96,18 @@ export async function listThreads(
     /** Pinned-list mode: only pinned threads of this view, newest-pin first.
      * Served by the partial pinned index, so the main list index is untouched. */
     pinnedOnly?: boolean;
+    /** Seed mode: return rows for ALL placements so a folder switch is fully
+     * local. Existing callers never pass this — default false is behavior-preserving. */
+    allPlacements?: boolean;
   },
 ): Promise<ThreadSummary[]> {
   // `snoozed` is a view like `sent`: any non-spam/trash thread with a pending
   // snooze, soonest-to-wake first. Every other placement excludes snoozed threads
   // (they've left the inbox until the cron wakes them — see the where clause).
   const isSnoozedView = input.placement === "snoozed" && !input.labelId;
-  const placementCond = input.labelId
+  // ponytail: allPlacements skips the placement filter entirely — only used by the
+  // seed endpoint so the local mirror covers all folders in one request.
+  const placementCond = input.allPlacements ? undefined : input.labelId
     ? and(
         notInArray(schema.threadState.placement, ["spam", "trash"]),
         exists(
@@ -138,7 +145,7 @@ export async function listThreads(
             notInArray(schema.threadState.placement, ["spam", "trash"]),
             isNotNull(schema.threadState.snoozedUntil),
           )
-        : eq(schema.threadState.placement, input.placement);
+        : eq(schema.threadState.placement, input.placement ?? "inbox");
 
   // Sort on the denormalized recency column (mirrors thread.last_message_at) so
   // thread_state_list_idx serves ORDER BY + LIMIT without joining `thread`.
@@ -159,7 +166,8 @@ export async function listThreads(
         placementCond,
         isNull(schema.threadState.hiddenAt), // "emptied" trash/spam stays out
         // Snoozed threads are hidden from every other view until they wake.
-        isSnoozedView ? undefined : isNull(schema.threadState.snoozedUntil),
+        // allPlacements includes snoozed rows so the client Snoozed view is local.
+        isSnoozedView || input.allPlacements ? undefined : isNull(schema.threadState.snoozedUntil),
         // Pinned-list mode: restrict to the pinned set (partial index).
         input.pinnedOnly ? isNotNull(schema.threadState.pinnedAt) : undefined,
         input.assignedTo

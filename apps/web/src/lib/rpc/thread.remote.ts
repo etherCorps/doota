@@ -19,6 +19,7 @@ import { deliverInBackground } from "$lib/server/mail/deliver-bridge.js";
 import { markThreadNotificationsRead } from "@doota/mail-core/notify";
 import { tryLog, log } from "@doota/mail-core/log";
 import { listThreads, getThread, countUnread, recentUnread } from "@doota/mail-core/read";
+import { buildSeed, buildChanges } from "./thread-localdb.js";
 import { createNote, editNote, softDeleteNote } from "@doota/mail-core/notes";
 import {
   trustSenderImages,
@@ -192,6 +193,35 @@ export const mailboxThreadsPinned = query(
       labelId,
       pinnedOnly: true,
     });
+  },
+);
+
+/**
+ * Seed the local thread mirror: all placements for the mailbox in one request
+ * plus the current change_log seq as a cursor for subsequent delta polling.
+ * The local DB does the folder switch; no second round-trip needed.
+ */
+export const seedThreadList = query(
+  z.object({ mailboxId: z.string().min(1) }),
+  async ({ mailboxId }) => {
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const { locals } = getRequestEvent();
+    return buildSeed(locals.db, { mailboxId, ck: await contentKey(), userId: locals.user!.id, includeCollab: hasGrant, assignedTo });
+  },
+);
+
+/**
+ * Incremental delta since the client's last cursor. Returns upserts (present
+ * threads whose state changed) + removals (thread ids no longer in this mailbox)
+ * + the new cursor. If the cursor is too old to reconstruct a complete diff,
+ * `cannotCalculate: true` tells the client to re-seed.
+ */
+export const threadChanges = query(
+  z.object({ mailboxId: z.string().min(1), sinceSeq: z.number().int().min(0) }),
+  async ({ mailboxId, sinceSeq }) => {
+    const { hasGrant, assignedTo } = await assertMailboxAccess(mailboxId);
+    const { locals } = getRequestEvent();
+    return buildChanges(locals.db, { mailboxId, sinceSeq, ck: await contentKey(), userId: locals.user!.id, includeCollab: hasGrant, assignedTo });
   },
 );
 
