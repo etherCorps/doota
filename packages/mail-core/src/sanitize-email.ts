@@ -222,12 +222,19 @@ export function buildFramedDocument(
   sanitized: string,
   opts: { csp: string; headExtra?: string; bodyExtra?: string },
 ): string {
+  // Match the tag boundary the way a parser does: consume quoted attribute values
+  // whole, so a `>` INSIDE a quote ends up in the attribute, not treated as the tag
+  // end. neosanitize keeps raw `>` in attribute values (spec-correct), so a naive
+  // `[^>]*` splits `<body title="]>…">` at the inner `>` and releases the rest as
+  // live markup that never went through the allowlist. `"[^"]*"|'[^']*'` swallow a
+  // quoted value; `[^>]` covers everything else up to the real closing `>`.
+  const TAG_TAIL = String.raw`(?:"[^"]*"|'[^']*'|[^>])*`;
   // Transfer the email's <body> attributes onto our single body (sanitized, so safe).
-  const bodyAttrs = sanitized.match(/<body\b([^>]*)>/i)?.[1]?.trim() ?? "";
+  const bodyAttrs = sanitized.match(new RegExp(`<body\\b(${TAG_TAIL})>`, "i"))?.[1]?.trim() ?? "";
   // Drop the structural wrappers; keep <style> blocks + body children in order.
   const flat = sanitized
-    .replace(/<\/?(?:html|head|body)\b[^>]*>/gi, "")
-    .replace(/<!doctype[^>]*>/gi, "")
+    .replace(new RegExp(`</?(?:html|head|body)\\b${TAG_TAIL}>`, "gi"), "")
+    .replace(new RegExp(`<!doctype${TAG_TAIL}>`, "gi"), "")
     .trim();
   const reset =
     "*{resize:none!important}" + // stray editor drag-grips from legacy sends

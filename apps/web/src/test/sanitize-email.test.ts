@@ -113,6 +113,21 @@ describe("framed document (A2)", () => {
     expect(doc).toContain('<meta charset="utf-8">');
     expect(doc).toContain("color-scheme:light dark"); // follows the reader's scheme
   });
+  it("does not release markup smuggled in a body attribute value (quoted `>`)", () => {
+    // neosanitize keeps a raw `>` inside a quoted attribute value (spec-correct),
+    // so the framing regexes must be quote-aware or they split the <body> tag and
+    // release the post-`>` bytes as live markup that skipped the allowlist.
+    const raw = '<body title="]><iframe src=//evil></iframe>">hello</body>';
+    const doc = buildFramedDocument(clean(raw), { csp: "default-src 'none'" });
+    // The iframe must stay inside the body open tag's quoted attribute (inert
+    // string), never released as a live child element. Split on the real body
+    // boundary and check the children.
+    const bodyOpen = doc.match(/<body\b(?:"[^"]*"|'[^']*'|[^>])*>/i)![0];
+    const children = doc.slice(doc.indexOf(bodyOpen) + bodyOpen.length);
+    expect(children).not.toMatch(/<iframe/i);
+    expect(children).toContain("hello");
+    expect(doc.match(/<body\b/gi)?.length).toBe(1);
+  });
   it("frame chrome adapts to the reader's color scheme (dark mode allowed)", () => {
     const doc = buildFramedDocument(clean("<p>hi</p>"), { csp: "default-src 'none'" });
     expect(doc).toContain('<meta name="color-scheme" content="light dark">');
