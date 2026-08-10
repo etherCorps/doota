@@ -132,7 +132,7 @@ export function makeLocalDb(bridge: Bridge) {
       threadId: string,
       messages: MessageDTO[],
       cursor: number,
-      renderVersion: number,
+      renderVersion: string,
     ): Promise<void> {
       return bridge
         .call<void>("seedThreadMessages", { threadId, messages, cursor, renderVersion })
@@ -150,8 +150,8 @@ export function makeLocalDb(bridge: Bridge) {
         .then(() => notifyThreadWatchers(threadId));
     },
 
-    getThreadSync(threadId: string): Promise<{ cursor: number; renderVersion: number } | null> {
-      return bridge.call<{ cursor: number; renderVersion: number } | null>("getThreadSync", {
+    getThreadSync(threadId: string): Promise<{ cursor: number; renderVersion: string } | null> {
+      return bridge.call<{ cursor: number; renderVersion: string } | null>("getThreadSync", {
         threadId,
       });
     },

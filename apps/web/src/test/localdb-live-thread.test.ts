@@ -84,7 +84,7 @@ it("seedThreadMessages also bumps the thread version", async () => {
   flushSync(); await Promise.resolve(); flushSync();
 
   messages = [stubMsg];
-  await local.seedThreadMessages("t1", [stubMsg], 1, 1);
+  await local.seedThreadMessages("t1", [stubMsg], 1, "14");
   flushSync(); await Promise.resolve(); flushSync();
 
   expect(live.current.length).toBe(1);
