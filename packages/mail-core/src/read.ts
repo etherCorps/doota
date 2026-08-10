@@ -190,7 +190,6 @@ export async function listThreads(
     ck: input.ck,
     userId: input.userId,
     includeCollab: input.includeCollab,
-    assignedTo: input.assignedTo,
     states,
   });
 }
@@ -219,7 +218,6 @@ async function projectThreadRows(
     ck: ContentKey;
     userId?: string;
     includeCollab?: boolean;
-    assignedTo?: string | null;
     states: ThreadStateRow[];
   },
 ): Promise<ThreadSummary[]> {
@@ -385,6 +383,8 @@ export async function threadSummariesByIds(
         eq(schema.threadState.mailboxId, opts.mailboxId),
         inArray(schema.threadState.threadId, opts.threadIds),
         isNull(schema.threadState.hiddenAt),
+        // Assigned-only grantee: exclude threads not assigned to them.
+        opts.assignedTo ? eq(schema.threadState.assigneeUserId, opts.assignedTo) : undefined,
       ),
     );
   return projectThreadRows(db, {
@@ -392,7 +392,6 @@ export async function threadSummariesByIds(
     ck: opts.ck,
     userId: opts.userId,
     includeCollab: opts.includeCollab,
-    assignedTo: opts.assignedTo,
     states,
   });
 }

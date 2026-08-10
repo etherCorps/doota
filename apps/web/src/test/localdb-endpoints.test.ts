@@ -36,4 +36,25 @@ describe("local-first endpoints", () => {
     const delta = await buildChanges(db, { mailboxId, sinceSeq: 0, ck, userId: "u1", includeCollab: true, assignedTo: null });
     expect(delta.cannotCalculate).toBe(true);
   });
+
+  it("buildChanges with assignedTo only surfaces threads assigned to that user", async () => {
+    // Seed 2 threads, assign each to a different user id.
+    const { mailboxId, threadIds } = await seedMailboxWithThreads(db, ck, 2);
+    const [threadForU1, threadForU2] = threadIds;
+    // Insert stub user rows so the FK on assignee_user_id is satisfied.
+    const { user } = await import("@doota/db/schema");
+    await db.insert(user).values({ id: "u1", name: "User One", email: "u1@seed.test", emailVerified: false });
+    await db.insert(user).values({ id: "u2", name: "User Two", email: "u2@seed.test", emailVerified: false });
+    await db.run(`UPDATE thread_state SET assignee_user_id='u1' WHERE thread_id='${threadForU1}' AND mailbox_id='${mailboxId}'`);
+    await db.run(`UPDATE thread_state SET assignee_user_id='u2' WHERE thread_id='${threadForU2}' AND mailbox_id='${mailboxId}'`);
+
+    const seed = await buildSeed(db, { mailboxId, ck, userId: "u1", includeCollab: true, assignedTo: "u1" });
+    // Trigger a change so there's a delta to fetch.
+    await db.run(`UPDATE thread_state SET placement='archived' WHERE thread_id='${threadForU1}' AND mailbox_id='${mailboxId}'`);
+    const delta = await buildChanges(db, { mailboxId, sinceSeq: seed.cursor, ck, userId: "u1", includeCollab: true, assignedTo: "u1" });
+
+    const returnedThreadIds = delta.upserts.map((summary) => summary.threadId);
+    expect(returnedThreadIds).toContain(threadForU1);
+    expect(returnedThreadIds).not.toContain(threadForU2);
+  });
 });
