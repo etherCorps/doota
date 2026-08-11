@@ -307,8 +307,11 @@
 
 	const threadQ = $derived(mailboxId && threadId && !isVirtual ? openThread({ mailboxId, threadId }) : null);
 	// Open-thread pane renders from `.current` so a refresh() updates in place
-	// instead of blanking, which read like a full reload.
-	const openDto = $derived(threadQ?.current ?? null);
+	// instead of blanking, which read like a full reload. But `.current` holds the
+	// PREVIOUS thread's result while switching (the new query is in flight ~1-2s),
+	// so gate on id: a stale other-thread DTO is discarded, letting the mirror
+	// (instant) or the skeleton (proper loading) show instead of the old mail.
+	const openDto = $derived(threadQ?.current && threadQ.current.id === threadId ? threadQ.current : null);
 
 	// Mirror drives the full timeline when mirrored + ready. Falls back to openThread.
 	// ponytail: revalidate-whole replaces notes+system on every open/realtime tick.
