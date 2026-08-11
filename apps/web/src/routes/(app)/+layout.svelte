@@ -11,7 +11,9 @@
 	import ShortcutsDialog from '$lib/components/app/shortcuts-dialog.svelte';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
+	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
 	import XIcon from '@lucide/svelte/icons/x';
+	import { network } from '$lib/client/online.svelte.js';
 	import { onMount, untrack } from 'svelte';
 	import { pushState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -118,11 +120,30 @@
 			{#snippet action()}
 				<!-- Below `sm` the list pane's floating compose button takes over and the
 				     search field gets this width back. -->
-				<Button variant="brand" size="sm" class="hidden gap-1.5 sm:inline-flex" onclick={() => compose.start()}>
+				<Button
+					variant="brand"
+					size="sm"
+					class="hidden gap-1.5 sm:inline-flex"
+					disabled={network.offline}
+					title={network.offline ? "You're offline — sending needs a connection" : undefined}
+					onclick={() => compose.start()}
+				>
 					<PenLineIcon class="size-4" /> Compose
 				</Button>
 			{/snippet}
 		</TopBar>
+		{#if network.offline}
+			<div
+				role="status"
+				class="bg-muted text-muted-foreground flex items-center gap-2 border-b px-4 py-1.5 text-xs"
+			>
+				<CloudOffIcon class="size-3.5 shrink-0" />
+				<span class="min-w-0 flex-1"
+					>You're offline. Reading works from this device; sending, search, and new mail resume when you
+					reconnect.</span
+				>
+			</div>
+		{/if}
 		{#if enroll2faBy && (!enroll2faDismissed || enroll2faUrgent)}
 			<div
 				role="status"

@@ -3,6 +3,8 @@
 // bound to this store; every entry point (sidebar / top bar / ⌘K / `c` key /
 // forward / resume-draft / empty-state CTA) routes through `compose.start(...)`
 // instead of each mounting its own panel.
+import { network } from './online.svelte.js';
+import { toast } from 'svelte-sonner';
 
 export type ComposePrefill = {
 	kind?: 'new' | 'forward';
@@ -31,6 +33,12 @@ class ComposeStore {
 
 	/** Open the compose panel. No args = blank new message. */
 	start(opts?: { prefill?: ComposePrefill; resumeDraftId?: string; scheduleAt?: number }) {
+		// Composing needs the server (drafts, send, forward HTML are all server-side).
+		// Every entry point routes through here, so one guard covers them all.
+		if (network.offline) {
+			toast.error("You're offline — composing needs a connection.");
+			return;
+		}
 		this.prefill = opts?.prefill;
 		this.resumeDraftId = opts?.resumeDraftId;
 		this.scheduleAt = opts?.scheduleAt;

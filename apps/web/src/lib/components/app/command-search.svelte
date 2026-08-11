@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { searchMail } from '$lib/rpc/search.remote';
+	import { network } from '$lib/client/online.svelte.js';
 	import { Debounced } from 'runed';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
@@ -50,7 +51,11 @@
 	// Live blind-token search over the user's mailboxes; ≥2 chars to fire.
 	// Debounced so a fast typist costs one request, not one per keystroke.
 	const dq = new Debounced(() => q.trim(), 250);
-	const results = $derived(dq.current.length >= 2 ? searchMail({ q: dq.current, mailboxId: activeMailbox }) : null);
+	// Search is a server FTS query — don't fire it offline (it would just spin on
+	// the debounce skeleton). The offline branch in the list shows why instead.
+	const results = $derived(
+		!network.offline && dq.current.length >= 2 ? searchMail({ q: dq.current, mailboxId: activeMailbox }) : null
+	);
 
 	// Clear the query whenever the palette closes (Esc / outside-click / ⌘K —
 	// only `run()` reset it before). Otherwise reopening lands on stale results
@@ -226,6 +231,8 @@
 					<Command.Empty>No messages match “{q.trim()}”.</Command.Empty>
 				{/if}
 			{/await}
+		{:else if network.offline}
+			<Command.Empty>Search is unavailable offline. It works again when you reconnect.</Command.Empty>
 		{:else}
 			<!-- Debounce window: typed enough, query not fired yet. -->
 			<Command.Loading>{@render searchSkeleton()}</Command.Loading>
