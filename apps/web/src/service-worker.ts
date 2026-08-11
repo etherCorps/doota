@@ -16,35 +16,97 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `doota-cache-${version}`;
 const PRECACHE = new Set([...build, ...files]);
 
+// The app shell is cached separately so logout can drop it (it embeds the
+// signed-in user's identity) without wiping the immutable asset precache. The
+// SHELL_KEY prefix is what $lib/client/app-shell-cache.ts clears; the -version
+// suffix lets `activate` retire an old deploy's shell like it does the precache.
+const SHELL_KEY = 'doota-shell';
+const SHELL_CACHE = `${SHELL_KEY}-${version}`;
+// One shell entry per app: /app is server-rendered from the session (user
+// identity) only — the thread list and bodies are fetched client-side + from the
+// local mirror — so the SSR HTML is query-param-independent. Cache it once under
+// this canonical key and serve it for every /app* navigation.
+const SHELL_URL = '/app';
+
+// Precache best-effort: cache.addAll is atomic AND unbounded, so a single 404,
+// opaque, or slow-to-respond asset aborts the whole install — the worker then
+// sits at "installing" forever, never activates, and never controls the page
+// (so nothing offline works). Add each asset on its own with a per-request
+// timeout and swallow failures: a missing asset just isn't precached, install
+// still completes, and the worker activates.
+async function precache(cache: Cache, urls: string[]): Promise<void> {
+	await Promise.allSettled(
+		urls.map(async (url) => {
+			const abort = new AbortController();
+			const timer = setTimeout(() => abort.abort(), 10_000);
+			try {
+				const res = await fetch(url, { signal: abort.signal });
+				if (res.ok) await cache.put(url, res);
+			} catch {
+				// best-effort — skip anything that 404s, is opaque, or hangs
+			} finally {
+				clearTimeout(timer);
+			}
+		}),
+	);
+}
+
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
-		caches
-			.open(CACHE)
-			.then((cache) => cache.addAll([...build, ...files]))
-			.then(() => sw.skipWaiting()),
+		(async () => {
+			const cache = await caches.open(CACHE);
+			await precache(cache, [...build, ...files]);
+			await sw.skipWaiting();
+		})(),
 	);
 });
 
 sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
-			for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
+			for (const key of await caches.keys())
+				if (key !== CACHE && key !== SHELL_CACHE) await caches.delete(key);
 			await sw.clients.claim();
 		})(),
 	);
 });
 
-// Cache-first ONLY for the precached, content-hashed assets (immutable → a hash
-// change is a new URL, so this can never serve stale app code). Everything else
-// — pages, /api, the sandboxed message body, images — falls through to default
-// network handling (no respondWith); those carry their own auth + cache headers.
 sw.addEventListener('fetch', (event) => {
 	if (event.request.method !== 'GET') return;
 	const url = new URL(event.request.url);
-	if (url.origin !== location.origin || !PRECACHE.has(url.pathname)) return;
-	event.respondWith(
-		caches.open(CACHE).then(async (cache) => (await cache.match(event.request)) ?? fetch(event.request)),
-	);
+	if (url.origin !== location.origin) return;
+
+	// Cache-first ONLY for the precached, content-hashed assets (immutable → a
+	// hash change is a new URL, so this can never serve stale app code).
+	if (PRECACHE.has(url.pathname)) {
+		event.respondWith(
+			caches.open(CACHE).then(async (cache) => (await cache.match(event.request)) ?? fetch(event.request)),
+		);
+		return;
+	}
+
+	// App-shell navigations: network-first, falling back to the last cached shell
+	// so a cold reload works offline — the client boots from the precached JS and
+	// renders the list/thread from the local mirror. Online always gets the fresh
+	// shell (and re-caches it). Scoped to /app pages; /login, /api, the sandboxed
+	// message body and images keep default network handling (auth + freshness).
+	if (event.request.mode === 'navigate' && url.pathname.startsWith('/app')) {
+		event.respondWith(
+			(async () => {
+				const cache = await caches.open(SHELL_CACHE);
+				try {
+					const res = await fetch(event.request);
+					if (res.ok) cache.put(SHELL_URL, res.clone());
+					return res;
+				} catch {
+					return (await cache.match(SHELL_URL)) ?? Response.error();
+				}
+			})(),
+		);
+		return;
+	}
+
+	// Everything else falls through to default network handling.
 });
 
 type PushPayload = { title?: string; body?: string; url?: string; tag?: string };

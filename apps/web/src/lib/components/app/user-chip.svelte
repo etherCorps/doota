@@ -8,6 +8,7 @@
 	import { authClient } from '$lib/client/auth-client.js';
 	import { MAX_DEVICE_SESSIONS } from '$lib/auth-limits.js';
 	import { localdb } from '$lib/client/localdb';
+	import { clearAppShellCache } from '$lib/client/app-shell-cache.js';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -82,9 +83,11 @@
 			toast.error(error.message ?? 'Could not switch accounts.');
 			return;
 		}
-		// Clear local mirror before the document reload so this user's plaintext
-		// thread data doesn't persist into the next account's session.
+		// Clear local mirror + cached app shell before the document reload so this
+		// user's plaintext thread data and identity don't persist into the next
+		// account's session.
 		await localdb.clear(userId).catch(() => {});
+		await clearAppShellCache().catch(() => {});
 		reenter();
 	}
 
@@ -108,6 +111,7 @@
 		if (current) await authClient.multiSession.revoke({ sessionToken: current.session.token });
 		else await authClient.signOut();
 		await localdb.clear(userId).catch(() => {});
+		await clearAppShellCache().catch(() => {});
 		reenter();
 	}
 	async function logoutAll() {
@@ -115,6 +119,7 @@
 		// signOut ends every device session (multiSession's sign-out hook).
 		await authClient.signOut();
 		await localdb.clear(userId).catch(() => {});
+		await clearAppShellCache().catch(() => {});
 		reenter();
 	}
 

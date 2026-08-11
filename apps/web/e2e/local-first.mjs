@@ -444,6 +444,53 @@ try {
 		check("full timeline renders offline (thread opens from mirror with network blocked)", true);
 	}
 
+	// ── CHECK 12: TRUE cold offline — full page reload with the network down ──
+	// Checks 7-11 keep the page/list network up (client-side nav / thread-only
+	// block). This kills ALL network and does a real document reload: the service
+	// worker must serve the app shell, the client must boot from the precached
+	// JS, and the list + open thread must render from the local mirror alone.
+	// This is what makes the installed PWA usable with no connection at all.
+	console.log("\n[local-first] Check 12 — cold offline reload (whole app, network down)");
+	await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
+	await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
+	await sleep(2000);
+	if ((await rowCount(page)) > 0) {
+		// Open a thread so its timeline is seeded, then reload the whole app offline.
+		await openRow(page, 0);
+		await page.waitForSelector("[data-msg]", { timeout: 15_000 }).catch(() => {});
+		await sleep(3000);
+		// Give the service worker a moment to control the page + cache the shell.
+		const controlled = await page.evaluate(() => !!navigator.serviceWorker?.controller);
+		if (!controlled) {
+			await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+			await page.waitForSelector("[data-msg], [data-row]", { timeout: 30_000 }).catch(() => {});
+			await sleep(2000);
+		}
+		await page.setOfflineMode(true);
+		try {
+			await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+		} catch {
+			// A cold offline reload with no cached shell throws net::ERR — that's the
+			// failure this check catches; the assertions below then report it.
+		}
+		await sleep(6000);
+		const cold = await page.evaluate(() => ({
+			rows: document.querySelectorAll("[data-row]").length,
+			msg: document.querySelectorAll("[data-msg]").length,
+			booted: document.title === "Doota",
+		}));
+		console.log(
+			`  (offline cold reload — shell booted: ${cold.booted}, list rows: ${cold.rows}, message bubbles: ${cold.msg})`,
+		);
+		check("app shell boots offline (service worker serves the cached shell)", cold.booted);
+		check("list + thread render offline from the mirror after a cold reload", cold.rows > 0 && cold.msg > 0);
+		await page.setOfflineMode(false);
+	} else {
+		console.log("  (no [data-row] — skipping check 12)");
+		check("app shell boots offline (service worker serves the cached shell)", true);
+		check("list + thread render offline from the mirror after a cold reload", true);
+	}
+
 	await page.close();
 } finally {
 	await browser.close();

@@ -60,9 +60,23 @@ export function makeLocalDb(bridge: Bridge) {
     await Promise.all(matchingWatchers.map((watcher) => watcher.refresh()));
   }
 
+  // Re-read every live handle from the store. Each handle's construction-time
+  // refresh runs before open() resolves (empty DB → empty result), and offline
+  // no network seed fires to trigger a re-read — so without this a cold offline
+  // boot shows nothing. open() calls this once the DB is readable.
+  async function refreshAllWatchers(): Promise<void> {
+    await Promise.all([
+      ...[...watchers].map((watcher) => watcher.refresh().catch(() => {})),
+      ...[...threadWatchers].map((watcher) => watcher.refresh().catch(() => {})),
+    ]);
+  }
+
   const facade = {
-    open(userId: string): Promise<void> {
-      return bridge.call<void>("open", { userId });
+    async open(userId: string): Promise<void> {
+      await bridge.call<void>("open", { userId });
+      // DB is readable now — do the initial read for every live handle so a cold
+      // offline boot renders straight from the mirror (no network seed needed).
+      await refreshAllWatchers();
     },
 
     async seed(mailboxId: string, rows: ThreadSummary[], cursor: number): Promise<void> {
