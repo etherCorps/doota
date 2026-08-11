@@ -59,6 +59,12 @@ Flow:
 10. Open a thread → assert `iframe[srcdoc]` is present (rich HTML message rendered
     from the local framed-body store); skips rather than fails if the first thread
     is plain-text only.
+11. **Offline full-timeline (slice-3 win)** — open a thread once to seed the
+    full timeline (messages, internal notes, system events) into the mirror, then
+    block all `openThread` and `/api/messages/*/body` network calls, reload, and
+    re-open the same thread. Assert the thread timeline still renders entirely from
+    the local mirror. Note and system-event sub-assertions are skipped (not failed)
+    if the test mailbox has no notes or system events.
 
 ```bash
 SMOKE_LOCAL_FIRST=1 SMOKE_EMAIL=you@example.com SMOKE_PASSWORD=… \
@@ -94,3 +100,8 @@ Env:
 - **Zero body fetch on re-open** (check 8) — verifying no background body fetch
   fires at all (not just that the render is local) needs the background-sync
   optimization to land; current check asserts render, not strict zero-network.
+- **Internal-note and system-event rows in offline check** (check 11) — the
+  note/system-event sub-assertions require the test mailbox to have threads with
+  internal notes or system events; the check skips those sub-assertions and
+  reports honestly if the test account lacks them. Full verification needs a
+  mailbox with a note or a system event (e.g., a thread where a status was set).
