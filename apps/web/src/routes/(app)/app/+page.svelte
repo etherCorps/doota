@@ -444,11 +444,17 @@
 	// or folder changes. Common actions patch `items` in place (no refetch/flash).
 	const PAGE = 30;
 	let items = $state<ThreadSummary[]>([]);
-	// Pins are a separate small list (server partial index), merged atop the main
-	// list, never folded into the main sort, so the list index's backward-scan is
-	// preserved. Reloaded on every reset, appended never (pins don't paginate).
+	// Pins are a separate small list (server partial index). It ONLY supplements
+	// pins the remote pagination hasn't reached yet — the sort below puts pins on
+	// top from each row's own pinnedAt, so pins never sit in the body and then jump
+	// to the top when this loads (the two-pass flicker).
 	let pinnedItems = $state<ThreadSummary[]>([]);
-	const pinnedIds = $derived(new Set(pinnedItems.map((thread) => thread.threadId)));
+	// Optimistic pin state: threadId → pinnedAt (ms) or null (unpinned). Applied
+	// over whichever source drives, so a pin/unpin re-sorts instantly without
+	// waiting for the mirror re-seed or the remote pinned index. Cleared on reset.
+	const pinOverride = new SvelteMap<string, number | null>();
+	const withPin = (thread: ThreadSummary): ThreadSummary =>
+		pinOverride.has(thread.threadId) ? { ...thread, pinnedAt: pinOverride.get(thread.threadId)! } : thread;
 	// Local drives the list only when the mirror is ready, has rows, AND fits under
 	// the seed cap. At/over the cap the seed is truncated — silently hiding threads
 	// beyond position SEED_THREAD_LIMIT — so fall back to remote pagination which
@@ -461,13 +467,19 @@
 		(liveRows.current ?? []).length < SEED_THREAD_LIMIT
 	);
 	const listSource = $derived(localDriving ? (liveRows.current ?? []) : items);
-	// Pinned rows on top, then the main list with any duplicates dropped. A stable
-	// filter over this keeps pinned-first order within the filtered set.
-	// Pinned list stays remote for now (out of local scope); main body from listSource.
-	const merged = $derived([
-		...pinnedItems,
-		...listSource.filter((thread) => !pinnedIds.has(thread.threadId))
-	]);
+	// One list, one paint. Every row already carries pinnedAt (mirror AND the remote
+	// page), so a single stable sort lifts pins to the top by pin time and leaves the
+	// rest in source order. pinnedItems only adds pins pagination hasn't reached yet;
+	// it never reorders what's already here, so the pinned section can't pop in a
+	// second pass. withPin layers the optimistic toggle over all of it.
+	const merged = $derived.by(() => {
+		const base = listSource.map(withPin);
+		const have = new Set(base.map((thread) => thread.threadId));
+		const extraPins = pinnedItems.filter((pin) => !have.has(pin.threadId)).map(withPin);
+		return [...extraPins, ...base].sort(
+			(left, right) => (right.pinnedAt ?? 0) - (left.pinnedAt ?? 0)
+		);
+	});
 	let nextOffset = $state(0);
 	let reachedEnd = $state(false);
 	let loadingList = $state(false);
@@ -554,6 +566,7 @@
 			// this watch), so in-place updates never flash.
 			items = [];
 			pinnedItems = [];
+			pinOverride.clear(); // re-pull the exact server pin order for the new view
 			nextOffset = 0;
 			reachedEnd = false;
 			if (mb && !virt) loadThreads(true);
@@ -1319,29 +1332,25 @@
 		}
 	}
 
-	// Pin / unpin (mirrors the star pattern): optimistically move the row in/out of
-	// the separate pinnedItems list and patch its pinnedAt, then reconcile with the
-	// server. Rolls back both surfaces on failure; the 409 cap message surfaces
-	// through errorMessage. A later reset re-pulls the exact server order.
+	// Pin / unpin (mirrors the star pattern): set an optimistic pinOverride so the
+	// row re-sorts to/from the top instantly over any source (mirror or remote),
+	// then reconcile with the server. Rolls back on failure; the 409 cap message
+	// surfaces through errorMessage. A later reset clears the override and re-pulls
+	// the exact server order.
 	async function togglePin(id: string, current: boolean) {
 		if (!mailboxId) return;
 		const next = !current;
-		const prevPinned = pinnedItems;
-		if (next) {
-			const row = merged.find((thread) => thread.threadId === id);
-			if (row) pinnedItems = [{ ...row, pinnedAt: Date.now() }, ...pinnedItems];
-		} else {
-			pinnedItems = pinnedItems.filter((thread) => thread.threadId !== id);
-		}
-		patchItem(id, { pinnedAt: next ? Date.now() : null });
+		const had = pinOverride.has(id);
+		const prev = pinOverride.get(id);
+		pinOverride.set(id, next ? Date.now() : null);
 		// Direct-URL open may have no list row; the header pin state reads the
 		// override first, so the toggle reflects immediately either way.
 		if (id === threadId) openFlagOverride = { ...openFlagOverride, pinnedAt: next ? Date.now() : null };
 		try {
 			await pinThread({ mailboxId, threadId: id, pinned: next });
 		} catch (err) {
-			pinnedItems = prevPinned;
-			patchItem(id, { pinnedAt: current ? Date.now() : null });
+			if (had) pinOverride.set(id, prev ?? null);
+			else pinOverride.delete(id);
 			if (id === threadId)
 				openFlagOverride = { ...openFlagOverride, pinnedAt: current ? Date.now() : null };
 			toast.error(errorMessage(err, 'Could not update the pin.'));
