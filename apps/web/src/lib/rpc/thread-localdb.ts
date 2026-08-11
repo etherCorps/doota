@@ -5,7 +5,7 @@ import * as schema from "@doota/db/schema";
 import * as mail from "@doota/db/mail.schema";
 import type { ContentKey, R2Like } from "@doota/mail-core/crypto";
 import type { ThreadSummary } from "@doota/mail-core/read";
-import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
+import type { MessageDTO, TimelineItem } from "@doota/mail-core/mail-thread-contract";
 import { listThreads, threadSummariesByIds, getThread } from "@doota/mail-core/read";
 import { changesSince } from "@doota/mail-core/change-log";
 import { RENDER_CACHE_VERSION } from "@doota/mail-core/mime";
@@ -20,6 +20,15 @@ export type MirroredMessage = MessageDTO & {
   /** Index within the thread (sentAt order), used for the client's seq column. */
   seq: number;
   /** Server-built framed document (images=0) for rich messages; null for plain. */
+  framedHtml: string | null;
+};
+
+/** A full-timeline item for the slice-3 thread mirror. */
+export type MirroredItem = {
+  itemId: string;
+  seq: number;
+  itemType: string;
+  payload: TimelineItem;
   framedHtml: string | null;
 };
 
@@ -72,16 +81,21 @@ export async function buildChanges(
 }
 
 /**
- * Seed a single thread's messages into the mirror. Uses `getThread` for the
- * DTO and `renderFramedBody` per rich message to produce the framed doc.
+ * Seed a single thread's FULL timeline into the mirror. Uses `getThread` for
+ * the DTO and maps EVERY item (external_message, internal_note, system_event)
+ * to a `MirroredItem`. Rich message items get `renderFramedBody`; others null.
  *
  * `cursor` is snapshotted BEFORE the read so any change mid-seed re-appears as
  * a delta (same invariant as buildSeed for the thread list).
+ *
+ * ponytail: re-renders ALL rich messages on each revalidation; acceptable for
+ * typical thread sizes. Upgrade path: wire slice-2 incremental delta for only
+ * changed messages once re-render cost is measurably a problem.
  */
 export async function buildSeedThread(
   db: Db,
   ctx: ThreadCtx,
-): Promise<{ messages: MirroredMessage[]; cursor: number; renderVersion: string }> {
+): Promise<{ items: MirroredItem[]; cursor: number; renderVersion: string }> {
   const cursor = await currentSeq(db, ctx.mailboxId);
   const dto = await getThread(db, {
     mailboxId: ctx.mailboxId,
@@ -91,16 +105,15 @@ export async function buildSeedThread(
     userId: ctx.userId,
     assignedTo: ctx.assignedTo,
   });
-  if (!dto) return { messages: [], cursor, renderVersion: RENDER_CACHE_VERSION };
+  if (!dto) return { items: [], cursor, renderVersion: RENDER_CACHE_VERSION };
 
-  const externalMessages = dto.items.filter((item): item is MessageDTO => item.type === "external_message");
   const bucket = ctx.env.MAIL_RAW ?? null;
 
-  // r2RawKey is not on MessageDTO — fetch it from the DB for rich messages.
-  // ponytail: one extra read per rich message; acceptable for the seed path
-  // (lazy, once per thread open). A future optimization: extend getThread to
-  // carry r2RawKey on the DTO so this extra read disappears.
-  const richIds = externalMessages.filter((m) => m.htmlKind === "rich").map((m) => m.id);
+  // Pre-fetch r2RawKey for all rich external_message items in one query.
+  // ponytail: one extra read per seed; acceptable (lazy, once per thread open).
+  const richIds = dto.items
+    .filter((item): item is MessageDTO => item.type === "external_message" && item.htmlKind === "rich")
+    .map((item) => item.id);
   const r2KeyRows = richIds.length
     ? await db
         .select({ id: mail.message.id, r2RawKey: mail.message.r2RawKey })
@@ -109,20 +122,20 @@ export async function buildSeedThread(
     : [];
   const r2KeyByMsgId = new Map(r2KeyRows.map((row) => [row.id, row.r2RawKey]));
 
-  const messages: MirroredMessage[] = await Promise.all(
-    externalMessages.map(async (msgDto, seqIndex) => {
+  const items: MirroredItem[] = await Promise.all(
+    dto.items.map(async (item, seq) => {
       let framedHtml: string | null = null;
-      if (msgDto.htmlKind === "rich" && bucket) {
-        const r2RawKey = r2KeyByMsgId.get(msgDto.id) ?? null;
+      if (item.type === "external_message" && item.htmlKind === "rich" && bucket) {
+        const r2RawKey = r2KeyByMsgId.get(item.id) ?? null;
         if (r2RawKey) {
-          framedHtml = await renderFramedBody(bucket, { id: msgDto.id, r2RawKey }, ctx.ck).catch(() => null);
+          framedHtml = await renderFramedBody(bucket, { id: item.id, r2RawKey }, ctx.ck).catch(() => null);
         }
       }
-      return { ...msgDto, seq: seqIndex, framedHtml };
+      return { itemId: item.id, seq, itemType: item.type, payload: item, framedHtml };
     }),
   );
 
-  return { messages, cursor, renderVersion: RENDER_CACHE_VERSION };
+  return { items, cursor, renderVersion: RENDER_CACHE_VERSION };
 }
 
 /**

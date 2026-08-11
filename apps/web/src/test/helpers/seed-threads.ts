@@ -5,7 +5,8 @@
 import * as schema from "@doota/db/schema";
 import { invalidateDomainCache } from "@doota/db/org-domains";
 import { materializeMessage, materializeDelivery, type ParsedMessage } from "@doota/mail-core/materialize";
-import { putEncryptedBlob, type ContentKey, type R2Like } from "@doota/mail-core/crypto";
+import { putEncryptedBlob, encryptContent, type ContentKey, type R2Like } from "@doota/mail-core/crypto";
+import * as mailSchema from "@doota/db/mail.schema";
 
 const ORG_ID = "org_seed";
 
@@ -161,4 +162,105 @@ export async function seedThreadWithRichAndPlainMessage(
   });
 
   return { mailboxId, threadId, richMessageId, plainMessageId, bucket };
+}
+
+/**
+ * Seeds one thread with: a rich message, a plain message, and an internal note.
+ * Used by slice-3 tests that assert `buildSeedThread` returns the full timeline.
+ *
+ * Uses mailboxId "mb_note" (distinct from the "mb_rich" mailbox so tests can
+ * run against a blank DB). authorUserId is "u1" (no FK in test schema).
+ */
+export async function seedThreadWithRichNoteAndPlainMessage(
+  db: any,
+  ck: ContentKey,
+): Promise<{
+  mailboxId: string;
+  threadId: string;
+  richMessageId: string;
+  plainMessageId: string;
+  noteId: string;
+  bucket: R2Like;
+}> {
+  const mailboxId = "mb_note";
+  await seedOrg(db, mailboxId);
+  const deps = { ck, searchKeyB64: "" };
+
+  const richHtmlBody = '<table><tr><td style="font-size:14px">Hello <strong>rich</strong> world</td></tr></table>';
+  const rawMime =
+    "From: sender@external.test\r\n" +
+    "To: user@seed.test\r\n" +
+    "Subject: Rich HTML message\r\n" +
+    "MIME-Version: 1.0\r\n" +
+    "Content-Type: text/html; charset=utf-8\r\n" +
+    "\r\n" +
+    richHtmlBody;
+  const rawMimeBytes = new TextEncoder().encode(rawMime);
+
+  const store = new Map<string, Uint8Array>();
+  const bucket: R2Like = {
+    async put(key: string, value: ArrayBuffer | ArrayBufferView | string) {
+      store.set(key, new Uint8Array(value as ArrayBuffer));
+    },
+    async get(key: string) {
+      const data = store.get(key);
+      if (!data) return null;
+      return { arrayBuffer: async () => data.buffer as ArrayBuffer };
+    },
+  };
+
+  const richR2Key = `raw/${ORG_ID}/note-thread-rich`;
+  await putEncryptedBlob(bucket, richR2Key, ck, rawMimeBytes);
+
+  const sentAt1 = Date.now();
+  const pmRich: ParsedMessage = {
+    messageIdHeader: "<rich-note@seed.test>",
+    inReplyTo: null,
+    references: null,
+    from: "sender@external.test",
+    subject: "Rich HTML message with note",
+    sentAt: sentAt1,
+    text: null,
+    html: richHtmlBody,
+    r2RawKey: richR2Key,
+    attachments: [],
+  };
+  const { messageId: richMessageId, threadId } = await materializeMessage(db, ORG_ID, pmRich, deps, false);
+  await materializeDelivery(db, {
+    orgId: ORG_ID, messageId: richMessageId, threadId, mailboxId,
+    role: "to", viaAliasId: null, subaddressTag: null, sentAt: sentAt1,
+  });
+
+  // Add a user row required by the author_user_id FK on internal_note.
+  await db.insert(schema.user).values({ id: "u1", name: "Test User", email: "u1@seed.test", emailVerified: false }).onConflictDoNothing();
+
+  // Insert note directly (bypasses createNote's FTS index which requires a valid search key).
+  // ponytail: direct insert avoids the search-key-required path; tests only need the row in getThread.
+  const bodyEnc = await encryptContent(ck, "This is a test note.");
+  const noteRows = await db
+    .insert(mailSchema.internalNote)
+    .values({ orgId: ORG_ID, threadId, mailboxId, authorUserId: "u1", bodyEnc })
+    .returning({ id: mailSchema.internalNote.id });
+  const noteId = noteRows[0].id;
+
+  const sentAt2 = sentAt1 + 2000;
+  const pmPlain: ParsedMessage = {
+    messageIdHeader: "<plain-note@seed.test>",
+    inReplyTo: "<rich-note@seed.test>",
+    references: "<rich-note@seed.test>",
+    from: "user@seed.test",
+    subject: "Re: Rich HTML message with note",
+    sentAt: sentAt2,
+    text: "Plain reply body.",
+    html: null,
+    r2RawKey: `raw/${ORG_ID}/note-thread-plain`,
+    attachments: [],
+  };
+  const { messageId: plainMessageId } = await materializeMessage(db, ORG_ID, pmPlain, deps, false);
+  await materializeDelivery(db, {
+    orgId: ORG_ID, messageId: plainMessageId, threadId, mailboxId,
+    role: "to", viaAliasId: null, subaddressTag: null, sentAt: sentAt2,
+  });
+
+  return { mailboxId, threadId, richMessageId, plainMessageId, noteId, bucket };
 }
