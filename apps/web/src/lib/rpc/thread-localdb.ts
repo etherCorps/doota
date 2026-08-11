@@ -32,9 +32,12 @@ export type MirroredItem = {
   framedHtml: string | null;
 };
 
-// ponytail: shared cap — client uses this to decide when local drives the list;
-// at/over the cap the remote paginated path takes over so no threads are hidden.
-export const SEED_THREAD_LIMIT = 1000;
+// Shared cap — client uses this to decide when local drives the list; at/over the
+// cap the remote paginated path takes over so no threads are hidden. Defined in a
+// client-safe module so importing it never drags this server file (framed-body,
+// R2, sanitizer) into the client bundle. Re-exported for existing server callers.
+import { SEED_THREAD_LIMIT } from "$lib/shared/thread-mirror-limits";
+export { SEED_THREAD_LIMIT };
 
 async function currentSeq(db: Db, mailboxId: string): Promise<number> {
   const row = await db.select({ m: max(mail.changeLog.seq) }).from(mail.changeLog).where(eq(mail.changeLog.mailboxId, mailboxId));

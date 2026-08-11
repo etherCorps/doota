@@ -81,7 +81,7 @@
 	import { RENDER_CACHE_VERSION } from '@doota/mail-core/mime';
 	import { localdb } from '$lib/client/localdb';
 	import { createSync } from '$lib/client/localdb/sync.svelte';
-	import { SEED_THREAD_LIMIT } from '$lib/rpc/thread-localdb';
+	import { SEED_THREAD_LIMIT } from '$lib/shared/thread-mirror-limits';
 	import { myFolders, threadFolders, moveToFolder, undoMove, createFolder, addThreadLabel, removeThreadLabel } from '$lib/rpc/label.remote';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import { unread } from '$lib/client/unread.svelte.js';
