@@ -95,7 +95,7 @@
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, retrySendById } from '$lib/rpc/draft.remote';
 	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
-	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus, TimelineItem as ContractTimelineItem } from '@doota/mail-core/mail-thread-contract';
+	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus, TimelineItem as ContractTimelineItem, ThreadDTO } from '@doota/mail-core/mail-thread-contract';
 	import { replySubject, RETRYABLE_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import {
@@ -766,6 +766,32 @@
 	// Priority: optimistic override, then the list row (when the open thread is
 	// loaded), then the thread DTO (direct-URL case). Override resets per thread.
 	const openThreadItem = $derived(merged.find((thread) => thread.threadId === threadId));
+
+	// ponytail: synthesized envelope so the pane renders when the mirror can drive
+	// without waiting for openThread to succeed (true offline — C1 fix).
+	// When openDto exists, use it verbatim (remote is authoritative).
+	// When mirrorDriving, synthesize from openThreadItem + timelineItems.
+	// openThreadItem may be null if the thread isn't in the list mirror yet —
+	// fall back to minimal safe defaults so subject/metadata just show blank.
+	const threadEnvelope = $derived(
+		openDto ??
+		(mirrorDriving && threadId
+			? ({
+					id: threadId,
+					subject:
+						openThreadItem?.subject ??
+						(timelineItems.find((item) => item.type === 'external_message') as MessageDTO | undefined)?.subject ??
+						null,
+					lastMessageAt: openThreadItem?.lastMessageAt ?? null,
+					placement: openThreadItem?.placement ?? 'inbox',
+					isStarred: openThreadItem?.isStarred ?? false,
+					pinnedAt: openThreadItem?.pinnedAt ?? null,
+					assigneeUserId: openThreadItem?.assigneeUserId ?? null,
+					items: timelineItems,
+				} as ThreadDTO)
+			: null)
+	);
+
 	let openFlagOverride = $state<{
 		isStarred?: boolean;
 		assigneeUserId?: string | null;
@@ -2552,9 +2578,9 @@
 	<!-- Conversation -->
 	<div class="relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden {threadId ? 'flex' : '@4xl:flex hidden'}">
 		{#if threadId && threadQ}
-			{#if openDto}
-				{@const thread = openDto}
-					{@const msgs = thread.items.filter((item): item is MessageDTO => item.type === 'external_message')}
+			{#if threadEnvelope}
+				{@const thread = threadEnvelope}
+					{@const msgs = timelineItems.filter((item): item is MessageDTO => item.type === 'external_message')}
 					{@const parts = threadParticipants(msgs)}
 					{@const ctx = replyCtx(msgs, replyTarget, self)}
 					{@const attTotal = msgs.reduce((sum, msg) => sum + shownAttachments(msg).length, 0)}

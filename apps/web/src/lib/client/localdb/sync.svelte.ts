@@ -218,16 +218,9 @@ export function createSync(deps: {
      */
     async ensureThread(threadId: string): Promise<void> {
       if (isThreadBusy(threadId)) return;
-      // ponytail: renderVersion check is kept for fast-path clarity, but absent
-      // or drifted versions both take the same revalidateThread action.
-      const sync = await localdb.getThreadSync(threadId);
-      if (sync !== null && sync.renderVersion === currentRenderVersion()) {
-        // Already mirrored + version current → still revalidate to pick up notes/system.
-        await revalidateThread(threadId);
-      } else {
-        // Not mirrored or renderVersion drift → seed.
-        await revalidateThread(threadId);
-      }
+      // ponytail: absent + present + version-drifted all take the same revalidate-whole
+      // action (slice 3 has no incremental delta); drop the getThreadSync read.
+      await revalidateThread(threadId);
     },
 
     /**
