@@ -242,6 +242,10 @@
 		params.get('mailbox') ??
 			mailboxes.find((mailbox) => mailbox.id === lastMailbox.current)?.id ??
 			mailboxes[0]?.id ??
+			// Offline / pre-fetch: mailboxes[] (from myMailboxes) is empty, so trust the
+			// persisted pick directly. Without this a cold offline PWA launch (start_url
+			// /app, no ?mailbox=) resolves to null and the mirror has nothing to show.
+			lastMailbox.current ??
 			null
 	);
 	const placement = $derived(params.get('folder') ?? 'inbox');
@@ -259,7 +263,12 @@
 	// Folders group (gated on ?mailbox) never appeared on a bare load.
 	$effect(() => {
 		const mb = mailboxId;
-		if (!mb || params.get('mailbox')) return;
+		if (!mb) return;
+		// Persist the active mailbox for cold-offline resolution (see the mailboxId
+		// fallback). Written for any active mailbox, not just an explicit switch, so
+		// a single-mailbox user who never opens the switcher still has it offline.
+		if (mb !== lastMailbox.current) untrack(() => (lastMailbox.current = mb));
+		if (params.get('mailbox')) return;
 		untrack(() => {
 			const sp = new URLSearchParams(page.url.searchParams);
 			sp.set('mailbox', mb);
