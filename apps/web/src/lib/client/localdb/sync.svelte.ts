@@ -18,14 +18,15 @@
 // contention: a mailbox resync would block thread navigation and vice-versa.
 // ponytail: two FSMs, same state/event alphabet — simplest isolation.
 //
-//   idle ──ensureThread──► seeding ──► live
-//   live ──onThreadRealtime──► resyncing ──► live
-//                                      │
-//                               cannotCalculate ──► seeding ──► live
+// Slice 3: thread sync is revalidate-whole — no incremental delta path.
+// Both ensureThread (present or absent) and onThreadRealtime re-fetch the full
+// seedThreadFn result and replace all local thread_item rows via seedThreadItems.
+// ponytail: re-seeding costs one R2+sanitize+frame pass per revalidation; upgrade
+// to per-message delta (slice-2 path) when profiling shows this is a bottleneck.
 
 import { FiniteStateMachine } from "runed";
 import type { ThreadSummary } from "@doota/mail-core/read";
-import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
+import type { TimelineItem } from "./schema";
 
 // ---------------------------------------------------------------------------
 // Injected-dependency types (mirrors the real localdb facade + remote fns)
@@ -40,10 +41,9 @@ export type SyncLocalDb = {
     removals: string[],
     newCursor: number,
   ): Promise<void>;
-  // Thread-message mirror methods
+  // Thread timeline mirror methods (slice 3)
   getThreadSync(threadId: string): Promise<{ cursor: number; renderVersion: string } | null>;
-  seedThreadMessages(threadId: string, messages: MessageDTO[], cursor: number, renderVersion: string): Promise<void>;
-  applyMessageDeltas(threadId: string, upserts: MessageDTO[], removals: string[], newCursor: number): Promise<void>;
+  seedThreadItems(threadId: string, items: TimelineItem[], cursor: number, renderVersion: string): Promise<void>;
 };
 
 export type SeedFn = (mailboxId: string) => Promise<{ rows: ThreadSummary[]; cursor: number }>;
@@ -53,23 +53,11 @@ export type ChangesFn = (args: {
   sinceSeq: number;
 }) => Promise<{ upserts: ThreadSummary[]; removals: string[]; newSeq: number; cannotCalculate: boolean }>;
 
-// MirroredMessage is what the seed/delta RPCs return (MessageDTO + seq + framedHtml)
-type MirroredMessage = MessageDTO & { seq: number; framedHtml: string | null };
-
+/** Slice-3 seedThread returns the full timeline (items = TimelineItem[] with seq + framedHtml). */
 export type SeedThreadFn = (threadId: string) => Promise<{
-  messages: MirroredMessage[];
+  items: TimelineItem[];
   cursor: number;
   renderVersion: string;
-}>;
-
-export type ThreadChangesFn = (args: {
-  threadId: string;
-  sinceSeq: number;
-}) => Promise<{
-  upserts: MirroredMessage[];
-  removals: string[];
-  newSeq: number;
-  cannotCalculate: boolean;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -89,12 +77,10 @@ export function createSync(deps: {
   changesFn: ChangesFn;
   // Thread-level sync deps (optional; callers that don't need thread sync can omit)
   seedThreadFn?: SeedThreadFn;
-  threadChangesFn?: ThreadChangesFn;
   currentRenderVersion?: () => string;
 }) {
   const { localdb, seedFn, changesFn } = deps;
   const seedThreadFn = deps.seedThreadFn;
-  const threadChangesFn = deps.threadChangesFn;
   const currentRenderVersion = deps.currentRenderVersion ?? (() => "");
 
   const fsm = new FiniteStateMachine<SyncState, SyncEvent>("idle", {
@@ -170,38 +156,20 @@ export function createSync(deps: {
     return busyThreadIds.has(threadId);
   }
 
-  async function doSeedThread(threadId: string): Promise<void> {
+  /**
+   * Fetch the full thread timeline and replace local rows.
+   * Used by both ensureThread (absent + present) and onThreadRealtime.
+   * ponytail: revalidate-whole — notes/system have no incremental delta;
+   * upgrade to per-message delta when profiling warrants it.
+   */
+  async function revalidateThread(threadId: string): Promise<void> {
     if (!seedThreadFn) return;
     threadFsm.send("SEED");
     busyThreadIds.add(threadId);
     try {
       const seed = await seedThreadFn(threadId);
-      await localdb.seedThreadMessages(threadId, seed.messages, seed.cursor, seed.renderVersion);
+      await localdb.seedThreadItems(threadId, seed.items, seed.cursor, seed.renderVersion);
       threadFsm.send("DONE");
-    } catch (_err) {
-      threadFsm.send("ERROR");
-    } finally {
-      busyThreadIds.delete(threadId);
-    }
-  }
-
-  async function doResyncThread(threadId: string, sinceSeq: number): Promise<void> {
-    if (!threadChangesFn) return;
-    threadFsm.send("RESYNC");
-    busyThreadIds.add(threadId);
-    try {
-      const result = await threadChangesFn({ threadId, sinceSeq });
-      if (result.cannotCalculate) {
-        // Fall back to full reseed — transitions through SEED within RESYNC branch
-        if (!seedThreadFn) { threadFsm.send("DONE"); return; }
-        threadFsm.send("SEED");
-        const seed = await seedThreadFn(threadId);
-        await localdb.seedThreadMessages(threadId, seed.messages, seed.cursor, seed.renderVersion);
-        threadFsm.send("DONE");
-      } else {
-        await localdb.applyMessageDeltas(threadId, result.upserts, result.removals, result.newSeq);
-        threadFsm.send("DONE");
-      }
     } catch (_err) {
       threadFsm.send("ERROR");
     } finally {
@@ -240,29 +208,32 @@ export function createSync(deps: {
     },
 
     /**
-     * Ensure the thread message mirror is initialised for threadId.
-     * - No thread_synced row → seed.
-     * - renderVersion mismatch → reseed (render cache changed, stale HTML).
-     * - cursor present + version matches → delta resync.
+     * Ensure the thread timeline mirror is initialised for threadId.
+     * Slice 3: always revalidates (re-seeds the whole thread) regardless of
+     * whether a sync row exists, because notes/system events have no incremental
+     * delta path. renderVersion drift also triggers revalidation (same action).
      */
     async ensureThread(threadId: string): Promise<void> {
       if (isThreadBusy(threadId)) return;
+      // ponytail: renderVersion check is kept for fast-path clarity, but absent
+      // or drifted versions both take the same revalidateThread action.
       const sync = await localdb.getThreadSync(threadId);
-      if (sync === null || sync.renderVersion !== currentRenderVersion()) {
-        await doSeedThread(threadId);
+      if (sync !== null && sync.renderVersion === currentRenderVersion()) {
+        // Already mirrored + version current → still revalidate to pick up notes/system.
+        await revalidateThread(threadId);
       } else {
-        await doResyncThread(threadId, sync.cursor);
+        // Not mirrored or renderVersion drift → seed.
+        await revalidateThread(threadId);
       }
     },
 
     /**
-     * Called when a realtime push arrives for a thread — pulls the delta and
-     * applies it. Silently ignored if a sync is already in flight for this thread.
+     * Called when a realtime push arrives for a thread — revalidates (re-seeds)
+     * the full thread timeline. Silently ignored if a sync is already in flight.
      */
     async onThreadRealtime(threadId: string): Promise<void> {
       if (isThreadBusy(threadId)) return;
-      const sync = await localdb.getThreadSync(threadId);
-      await doResyncThread(threadId, sync?.cursor ?? 0);
+      await revalidateThread(threadId);
     },
 
     /** Current thread FSM state — reactive ($state-backed via runed). */

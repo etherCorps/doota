@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Local-first thread-mirror facade. Wraps the worker bridge with typed async
 // methods and a reactive liveThreadList / liveThread that re-queries whenever
-// a write (seed/applyDeltas / seedThreadMessages/applyMessageDeltas) bumps
-// that mailbox's or thread's version counter.
+// a write (seed/applyDeltas / seedThreadItems) bumps that mailbox's or thread's
+// version counter.
 //
 // .svelte.ts so $state runes compile — current fields are $state-backed,
-// meaning Svelte templates that read them will auto-re-render on delta writes.
+// meaning Svelte templates that read them will auto-re-render on seed writes.
 
 import type { ThreadSummary } from "@doota/mail-core/read";
-import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
+import type { TimelineItem } from "./schema";
 import { createBridge } from "./rpc";
 
 export type Bridge = { call<T>(method: string, params: unknown): Promise<T> };
 
-/** MessageDTO augmented with the framed HTML from the local mirror. */
-export type MirroredMessageView = MessageDTO & { framedHtml: string | null };
+// Re-export so callers don't need to import schema separately.
+export type { TimelineItem };
 
 /** A live thread list handle returned by liveThreadList. */
 export type LiveThreadList = {
@@ -24,10 +24,12 @@ export type LiveThreadList = {
   destroy(): void;
 };
 
-/** A live message list handle returned by liveThread. */
+/** A live timeline handle returned by liveThread (slice 3: full ordered timeline). */
+export type LiveThreadItem = TimelineItem;
+
 export type LiveThread = {
-  /** The most recently fetched messages for a thread. $state-backed. */
-  readonly current: MirroredMessageView[];
+  /** The most recently fetched full timeline for a thread. $state-backed. */
+  readonly current: LiveThreadItem[];
   /** Release the watcher registration — call when the consumer unmounts. */
   destroy(): void;
 };
@@ -129,27 +131,20 @@ export function makeLocalDb(bridge: Bridge) {
       return handle;
     },
 
-    // ---- Thread-message mirror methods (slice 2) --------------------------------
+    // ---- Thread timeline mirror methods (slice 3) --------------------------------
 
-    seedThreadMessages(
+    /**
+     * Replace all thread_item rows + set thread_synced.
+     * Notifies all liveThread watchers for threadId.
+     */
+    seedThreadItems(
       threadId: string,
-      messages: MessageDTO[],
+      items: TimelineItem[],
       cursor: number,
       renderVersion: string,
     ): Promise<void> {
       return bridge
-        .call<void>("seedThreadMessages", { threadId, messages, cursor, renderVersion })
-        .then(() => notifyThreadWatchers(threadId));
-    },
-
-    applyMessageDeltas(
-      threadId: string,
-      upserts: MessageDTO[],
-      removals: string[],
-      newCursor: number,
-    ): Promise<void> {
-      return bridge
-        .call<void>("applyMessageDeltas", { threadId, upserts, removals, newCursor })
+        .call<void>("seedThreadItems", { threadId, items, cursor, renderVersion })
         .then(() => notifyThreadWatchers(threadId));
     },
 
@@ -159,27 +154,28 @@ export function makeLocalDb(bridge: Bridge) {
       });
     },
 
-    listMessages(threadId: string): Promise<MirroredMessageView[]> {
-      return bridge.call<MirroredMessageView[]>("listMessages", { threadId });
+    listThreadItems(threadId: string): Promise<LiveThreadItem[]> {
+      return bridge.call<LiveThreadItem[]>("listThreadItems", { threadId });
     },
 
     /**
-     * Returns a live handle whose `current` is refreshed after every
-     * seedThreadMessages/applyMessageDeltas for the matching thread.
+     * Returns a live handle whose `current` is the full ordered timeline for
+     * the thread (message items carry framedHtml). Refreshed after every
+     * seedThreadItems for the matching thread.
      *
      * @param getThreadId - getter so callers can pass reactive values
      */
     liveThread(getThreadId: () => string): LiveThread {
       // ponytail: $state in .svelte.ts so Svelte templates auto-track reads.
-      let current = $state<MirroredMessageView[]>([]);
+      let current = $state<LiveThreadItem[]>([]);
 
       const watcher: ThreadWatcher = {
         get threadId() {
           return getThreadId();
         },
         async refresh() {
-          const freshMessages = await facade.listMessages(getThreadId());
-          current = freshMessages; // $state write — triggers component re-render
+          const freshItems = await facade.listThreadItems(getThreadId());
+          current = freshItems; // $state write — triggers component re-render
         },
       };
 
