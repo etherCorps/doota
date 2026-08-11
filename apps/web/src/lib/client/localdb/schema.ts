@@ -87,6 +87,16 @@ CREATE TABLE IF NOT EXISTS thread_synced (
   cursor INTEGER NOT NULL,
   render_version TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS thread_item (
+  thread_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  item_type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  framed_html TEXT,
+  PRIMARY KEY (thread_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS thread_item_order ON thread_item (thread_id, seq);
 `;
 
 export const upsertThreadSql = () => ({
@@ -178,6 +188,61 @@ export const listMessagesSql = () => ({
 export const clearThreadMessagesSql = () => ({
   sql: `DELETE FROM message WHERE thread_id=$thread_id`,
 });
+
+// ── thread_item SQL builders (slice 3: unified timeline mirror) ───────────────
+
+/** Opaque union of all timeline item types. The mirror stores the full JSON. */
+export type TimelineItem = { type: string; id: string; [key: string]: unknown };
+
+export type ThreadItemRow = {
+  $thread_id: string;
+  $item_id: string;
+  $seq: number;
+  $item_type: string;
+  $payload: string;       // JSON.stringify(item)
+  $framed_html: string | null;
+};
+
+export const upsertThreadItemSql = () => ({
+  sql: `INSERT INTO thread_item (thread_id, item_id, seq, item_type, payload, framed_html)
+        VALUES ($thread_id,$item_id,$seq,$item_type,$payload,$framed_html)
+        ON CONFLICT(thread_id, item_id) DO UPDATE SET
+          seq=excluded.seq, item_type=excluded.item_type,
+          payload=excluded.payload, framed_html=excluded.framed_html`,
+});
+
+export const deleteThreadItemSql = () => ({
+  sql: `DELETE FROM thread_item WHERE thread_id=$thread_id AND item_id=$item_id`,
+});
+
+export const listThreadItemsSql = () => ({
+  sql: `SELECT * FROM thread_item WHERE thread_id=$thread_id ORDER BY seq`,
+});
+
+export const clearThreadItemsSql = () => ({
+  sql: `DELETE FROM thread_item WHERE thread_id=$thread_id`,
+});
+
+export function itemToRow(
+  threadId: string,
+  seq: number,
+  item: TimelineItem,
+  framedHtml: string | null,
+): ThreadItemRow {
+  return {
+    $thread_id: threadId,
+    $item_id: item.id,
+    $seq: seq,
+    $item_type: item.type,
+    $payload: JSON.stringify(item),
+    $framed_html: framedHtml,
+  };
+}
+
+export function rowToItem(row: Record<string, unknown>): TimelineItem & { framedHtml?: string } {
+  const item = JSON.parse(row.payload as string) as TimelineItem;
+  return row.framed_html ? { ...item, framedHtml: row.framed_html as string } : item;
+}
 
 export const getThreadSyncSql = () => ({
   sql: `SELECT cursor, render_version FROM thread_synced WHERE thread_id=$thread_id`,
