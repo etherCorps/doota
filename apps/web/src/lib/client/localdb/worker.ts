@@ -106,7 +106,7 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
     db.transaction(() => {
       db.exec({ sql: clearThreadItemsSql().sql, bind: { $thread_id: threadId } });
       for (const item of items) {
-        db.exec({ sql: upsertThreadItemSql().sql, bind: itemToRow(threadId, item.seq, { id: item.itemId, type: item.itemType, ...(item.payload as object) }, item.framedHtml) });
+        db.exec({ sql: upsertThreadItemSql().sql, bind: itemToRow(threadId, item.seq, item.payload as import("./schema").TimelineItem, item.framedHtml) });
       }
       db.exec({ sql: setThreadSyncSql().sql, bind: { $thread_id: threadId, $cursor: cursor, $render_version: renderVersion } });
     });
