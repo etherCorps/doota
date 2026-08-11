@@ -183,14 +183,19 @@ export function makeLocalDb(bridge: Bridge) {
     liveThread(getThreadId: () => string): LiveThread {
       // ponytail: $state in .svelte.ts so Svelte templates auto-track reads.
       let current = $state<LiveThreadItem[]>([]);
+      // The threadId `current` belongs to. Guards against showing the previous
+      // thread's items after a switch (see the $effect below).
+      let loadedThreadId: string | null = null;
 
       const watcher: ThreadWatcher = {
         get threadId() {
           return getThreadId();
         },
         async refresh() {
-          const freshItems = await facade.listThreadItems(getThreadId());
+          const id = getThreadId();
+          const freshItems = await facade.listThreadItems(id);
           current = freshItems; // $state write — triggers component re-render
+          loadedThreadId = id;
         },
       };
 
@@ -202,10 +207,19 @@ export function makeLocalDb(bridge: Bridge) {
       };
 
       threadWatchers.add(watcher);
-      // Kick off the initial load without blocking the caller. The DB may not
-      // be open yet (open() is async), so swallow a rejection here — the UI
-      // drives from the remote path until localReady anyway.
-      void watcher.refresh().catch(() => {});
+      // Re-query the moment the tracked threadId changes (a thread switch).
+      // Without this `current` lingers on the previous thread's items until the
+      // next seed notification lands (a network round-trip later) — so the pane
+      // shows the OLD mail for seconds after switching. Drop the stale items
+      // immediately (empty → skeleton, not wrong mail), then read the new thread
+      // from the store (instant if already mirrored).
+      $effect(() => {
+        const id = getThreadId(); // tracked dependency
+        if (id !== loadedThreadId) {
+          current = [];
+          void watcher.refresh().catch(() => {});
+        }
+      });
 
       return handle;
     },
