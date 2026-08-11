@@ -11,18 +11,16 @@ import {
   clearMailboxSql,
   threadSummaryToRow,
   rowToThreadSummary,
-  upsertMessageSql,
-  deleteMessageSql,
-  listMessagesSql,
-  clearThreadMessagesSql,
+  upsertThreadItemSql,
+  clearThreadItemsSql,
+  listThreadItemsSql,
+  itemToRow,
+  rowToItem,
   getThreadSyncSql,
   setThreadSyncSql,
-  messageDtoToRow,
-  rowToMessageDto,
 } from "./schema";
-import type { MessageDTO } from "@doota/mail-core/mail-thread-contract";
 // ponytail: inline to avoid importing the server-only thread-localdb module
-type MirroredMessage = MessageDTO & { seq: number; framedHtml: string | null };
+type MirroredItem = { itemId: string; seq: number; itemType: string; payload: unknown; framedHtml: string | null };
 import { pickBackend } from "./persistence";
 import type { Req, Res } from "./rpc";
 
@@ -40,7 +38,7 @@ async function open(userId: string): Promise<void> {
 }
 
 // Methods that skip the persist step: reads, open (snapshot just loaded), clear (db nulled).
-const NO_PERSIST_METHODS = new Set(["list", "getCursor", "open", "listMessages", "getThreadSync"]);
+const NO_PERSIST_METHODS = new Set(["list", "getCursor", "open", "listThreadItems", "getThreadSync"]);
 
 const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
   open: async ({ userId }: { userId: string }) => {
@@ -94,60 +92,31 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
     return resultRows[0]?.cursor ?? null;
   },
 
-  seedThreadMessages: ({
+  seedThreadItems: ({
     threadId,
-    messages,
+    items,
     cursor,
     renderVersion,
   }: {
     threadId: string;
-    messages: MirroredMessage[];
+    items: MirroredItem[];
     cursor: number;
     renderVersion: string;
   }) => {
     db.transaction(() => {
-      db.exec({ sql: clearThreadMessagesSql().sql, bind: { $thread_id: threadId } });
-      for (const msg of messages) {
-        db.exec({ sql: upsertMessageSql().sql, bind: messageDtoToRow(threadId, msg.seq, msg, msg.framedHtml, renderVersion) });
+      db.exec({ sql: clearThreadItemsSql().sql, bind: { $thread_id: threadId } });
+      for (const item of items) {
+        db.exec({ sql: upsertThreadItemSql().sql, bind: itemToRow(threadId, item.seq, { id: item.itemId, type: item.itemType, ...(item.payload as object) }, item.framedHtml) });
       }
       db.exec({ sql: setThreadSyncSql().sql, bind: { $thread_id: threadId, $cursor: cursor, $render_version: renderVersion } });
     });
     return true;
   },
 
-  applyMessageDeltas: ({
-    threadId,
-    upserts,
-    removals,
-    newCursor,
-  }: {
-    threadId: string;
-    upserts: MirroredMessage[];
-    removals: string[];
-    newCursor: number;
-  }) => {
-    // ponytail: read stored render_version once so upserted rows stay on the
-    // same render version as the seed; if no thread_synced row exists yet,
-    // fall back to a stable sentinel (shouldn't happen in practice).
-    const syncRows: any[] = [];
-    db.exec({ sql: getThreadSyncSql().sql, bind: { $thread_id: threadId }, rowMode: "object", resultRows: syncRows });
-    const renderVersion: string = (syncRows[0]?.render_version as string) ?? "0";
-    db.transaction(() => {
-      for (const msg of upserts) {
-        db.exec({ sql: upsertMessageSql().sql, bind: messageDtoToRow(threadId, msg.seq, msg, msg.framedHtml, renderVersion) });
-      }
-      for (const messageId of removals) {
-        db.exec({ sql: deleteMessageSql().sql, bind: { $thread_id: threadId, $message_id: messageId } });
-      }
-      db.exec({ sql: setThreadSyncSql().sql, bind: { $thread_id: threadId, $cursor: newCursor, $render_version: renderVersion } });
-    });
-    return true;
-  },
-
-  listMessages: ({ threadId }: { threadId: string }) => {
+  listThreadItems: ({ threadId }: { threadId: string }) => {
     const resultRows: any[] = [];
-    db.exec({ sql: listMessagesSql().sql, bind: { $thread_id: threadId }, rowMode: "object", resultRows });
-    return resultRows.map((row) => ({ ...rowToMessageDto(row), framedHtml: (row.framed_html as string) ?? null }));
+    db.exec({ sql: listThreadItemsSql().sql, bind: { $thread_id: threadId }, rowMode: "object", resultRows });
+    return resultRows.map(rowToItem);
   },
 
   getThreadSync: ({ threadId }: { threadId: string }) => {
