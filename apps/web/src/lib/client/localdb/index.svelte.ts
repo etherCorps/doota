@@ -140,15 +140,16 @@ export function makeLocalDb(bridge: Bridge) {
 
       watchers.add(watcher);
       // Re-read on every mailbox/folder change — and once immediately for the
-      // initial load (watch is eager). Without this `current` lingers on the
-      // previous folder's rows after a switch until the next seed notification.
-      // Unlike liveThread we do NOT blank `current` first: the list has a
-      // localDriving gate (rows>0), so emptying it would flip the visible source
-      // to the remote path mid-switch (a flicker). facade.list is a sub-frame
-      // local read, so re-querying swaps old→new rows in one clean transition.
-      // The DB may not be open yet (open() is async) — swallow that rejection;
-      // the UI drives from the remote path until localReady, and open() re-reads.
+      // initial load (watch is eager). Blank `current` first so the switch shows
+      // a skeleton, not the previous folder's rows (which linger — with pinned
+      // threads prominently on top — until the re-read lands). This watch fires
+      // ONLY on a mailbox/folder switch, where the caller also clears the remote
+      // `items`, so emptying here can't flip the visible source to stale remote
+      // content; realtime refreshes go through notifyWatchers (no blank), so
+      // in-place updates never flash. The DB may not be open yet (open() is
+      // async) — swallow that rejection; open() re-reads once it is.
       watch([getMailboxId, getFolder], () => {
+        current = [];
         void watcher.refresh().catch(() => {});
       });
 
