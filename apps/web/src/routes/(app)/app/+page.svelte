@@ -76,8 +76,7 @@
 		setInviteRsvp,
 		seedThreadList,
 		threadChanges,
-		seedThread,
-		threadMessageChanges
+		seedThread
 	} from '$lib/rpc/thread.remote';
 	import { RENDER_CACHE_VERSION } from '@doota/mail-core/mime';
 	import { localdb } from '$lib/client/localdb';
@@ -96,7 +95,7 @@
 	import { sendIdentities, myDrafts, scheduledSends, undoDraftById, discardDrafts, retrySendById } from '$lib/rpc/draft.remote';
 	import { realtime } from '$lib/client/mail-events.svelte.js';
 	import type { SendIdentity } from '@doota/mail-core/identities';
-	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus } from '@doota/mail-core/mail-thread-contract';
+	import type { MessageDTO, CalendarInviteDTO, InviteRsvpStatus, TimelineItem as ContractTimelineItem } from '@doota/mail-core/mail-thread-contract';
 	import { replySubject, RETRYABLE_SEND_STATUSES } from '@doota/mail-core/mail-thread-contract';
 	import type { ThreadSummary } from '@doota/mail-core/read';
 	import {
@@ -186,12 +185,6 @@
 			if (!mb) throw new Error('No active mailbox');
 			return seedThread({ mailboxId: mb, threadId });
 		},
-		threadChangesFn: async ({ threadId, sinceSeq }) => {
-			const mb = mailboxId;
-			if (!mb) throw new Error('No active mailbox');
-			const result = await threadMessageChanges({ mailboxId: mb, threadId, sinceSeq });
-			return result;
-		},
 		currentRenderVersion: () => RENDER_CACHE_VERSION,
 	});
 	onMount(() => {
@@ -225,8 +218,8 @@
 	const framedHtmlById = $derived(
 		new Map(
 			liveThreadMsgs.current
-				.filter((mirroredMsg) => mirroredMsg.framedHtml !== null)
-				.map((mirroredMsg) => [mirroredMsg.id, mirroredMsg.framedHtml as string])
+				.filter((item) => item.type === 'external_message' && (item as unknown as { framedHtml?: string }).framedHtml != null)
+				.map((item) => [item.id, (item as unknown as { framedHtml: string }).framedHtml])
 		)
 	);
 
@@ -316,6 +309,12 @@
 	// Open-thread pane renders from `.current` so a refresh() updates in place
 	// instead of blanking, which read like a full reload.
 	const openDto = $derived(threadQ?.current ?? null);
+
+	// Mirror drives the full timeline when mirrored + ready. Falls back to openThread.
+	// ponytail: revalidate-whole replaces notes+system on every open/realtime tick.
+	const mirrorTimeline = $derived(liveThreadMsgs.current);
+	const mirrorDriving = $derived(localReady && mirrorTimeline.length > 0);
+	const timelineItems = $derived((mirrorDriving ? mirrorTimeline : (openDto?.items ?? [])) as ContractTimelineItem[]);
 
 	// Unread inbox count feeds the sidebar badge + tab title. The mail page owns
 	// the fetch (it knows the mailbox); readers watch the shared store.
@@ -2887,8 +2886,8 @@
 						     the composer; a short thread sits there too (space collapses above
 						     the oldest, not as a gap over the reply bar). -->
 						<div bind:this={streamEl} class="@container/thread flex min-h-full w-full flex-col justify-end p-4 md:p-6 {threadView.current === 'mail' ? 'gap-2.5' : 'gap-3'}">
-							{#each thread.items as item, i (item.id)}
-								{#if threadView.current === 'chat' && isNewDay(thread.items, i)}
+							{#each timelineItems as item, i (item.id)}
+								{#if threadView.current === 'chat' && isNewDay(timelineItems, i)}
 									{@const ms = itemMs(item)}
 									{#if ms != null}
 										<div class="flex justify-center py-1">

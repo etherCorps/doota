@@ -9,6 +9,7 @@
 
 import type { ThreadSummary } from "@doota/mail-core/read";
 import type { TimelineItem } from "./schema";
+import type { SeedThreadItem } from "./sync.svelte";
 import { createBridge } from "./rpc";
 
 export type Bridge = { call<T>(method: string, params: unknown): Promise<T> };
@@ -139,7 +140,7 @@ export function makeLocalDb(bridge: Bridge) {
      */
     seedThreadItems(
       threadId: string,
-      items: TimelineItem[],
+      items: SeedThreadItem[],
       cursor: number,
       renderVersion: string,
     ): Promise<void> {

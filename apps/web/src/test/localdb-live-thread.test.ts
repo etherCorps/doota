@@ -3,11 +3,20 @@ import { it, expect, vi } from "vitest";
 import { flushSync } from "svelte";
 import { makeLocalDb } from "$lib/client/localdb";
 import type { TimelineItem } from "$lib/client/localdb/schema";
+import type { SeedThreadItem } from "$lib/client/localdb/sync.svelte";
 
-const stubItem: TimelineItem & { framedHtml: string | null } = {
+/** What rowToItem returns from the worker after a seed (TimelineItem + framedHtml). */
+const stubDbRow: TimelineItem & { framedHtml: string } = {
   type: "external_message",
   id: "msg-1",
   threadId: "t1",
+  framedHtml: "<html>framed</html>",
+};
+
+/** What seedThreadItems accepts (wire shape: seq + payload + framedHtml). */
+const stubItem: SeedThreadItem = {
+  seq: 0,
+  payload: { type: "external_message", id: "msg-1", threadId: "t1" },
   framedHtml: "<html>framed</html>",
 };
 
@@ -25,8 +34,8 @@ it("liveThread re-queries after seedThreadItems bumps the thread version", async
   // let the initial effect run + resolve
   flushSync(); await Promise.resolve(); flushSync();
 
-  // prime the return value
-  items = [stubItem];
+  // prime the return value (DB read returns TimelineItem + framedHtml)
+  items = [stubDbRow];
   await local.seedThreadItems("t1", [stubItem], 1, "14");
   flushSync(); await Promise.resolve(); flushSync();
 
@@ -47,7 +56,7 @@ it("liveThread destroy removes watcher so further writes do not trigger refresh"
   flushSync(); await Promise.resolve(); flushSync();
 
   live.destroy();
-  items = [stubItem];
+  items = [stubDbRow];
   await local.seedThreadItems("t1", [stubItem], 1, "14");
   flushSync(); await Promise.resolve(); flushSync();
 
@@ -67,7 +76,7 @@ it("seedThreadItems bumps version and liveThread picks up TimelineItem with fram
   const live = local.liveThread(() => "t1");
   flushSync(); await Promise.resolve(); flushSync();
 
-  items = [stubItem];
+  items = [stubDbRow];
   await local.seedThreadItems("t1", [stubItem], 1, "14");
   flushSync(); await Promise.resolve(); flushSync();
 

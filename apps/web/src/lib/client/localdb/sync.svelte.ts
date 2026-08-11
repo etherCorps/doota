@@ -43,7 +43,7 @@ export type SyncLocalDb = {
   ): Promise<void>;
   // Thread timeline mirror methods (slice 3)
   getThreadSync(threadId: string): Promise<{ cursor: number; renderVersion: string } | null>;
-  seedThreadItems(threadId: string, items: TimelineItem[], cursor: number, renderVersion: string): Promise<void>;
+  seedThreadItems(threadId: string, items: SeedThreadItem[], cursor: number, renderVersion: string): Promise<void>;
 };
 
 export type SeedFn = (mailboxId: string) => Promise<{ rows: ThreadSummary[]; cursor: number }>;
@@ -53,9 +53,12 @@ export type ChangesFn = (args: {
   sinceSeq: number;
 }) => Promise<{ upserts: ThreadSummary[]; removals: string[]; newSeq: number; cannotCalculate: boolean }>;
 
-/** Slice-3 seedThread returns the full timeline (items = TimelineItem[] with seq + framedHtml). */
+/** Wire-shape of one thread timeline item as returned by the server seed endpoint. */
+export type SeedThreadItem = { seq: number; payload: TimelineItem; framedHtml: string | null };
+
+/** Slice-3 seedThread returns the full timeline (items = SeedThreadItem[] with seq + payload + framedHtml). */
 export type SeedThreadFn = (threadId: string) => Promise<{
-  items: TimelineItem[];
+  items: SeedThreadItem[];
   cursor: number;
   renderVersion: string;
 }>;

@@ -19,8 +19,7 @@ import {
   getThreadSyncSql,
   setThreadSyncSql,
 } from "./schema";
-// ponytail: inline to avoid importing the server-only thread-localdb module
-type MirroredItem = { itemId: string; seq: number; itemType: string; payload: unknown; framedHtml: string | null };
+import type { SeedThreadItem } from "./sync.svelte";
 import { pickBackend } from "./persistence";
 import type { Req, Res } from "./rpc";
 
@@ -99,14 +98,14 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
     renderVersion,
   }: {
     threadId: string;
-    items: MirroredItem[];
+    items: SeedThreadItem[];
     cursor: number;
     renderVersion: string;
   }) => {
     db.transaction(() => {
       db.exec({ sql: clearThreadItemsSql().sql, bind: { $thread_id: threadId } });
       for (const item of items) {
-        db.exec({ sql: upsertThreadItemSql().sql, bind: itemToRow(threadId, item.seq, item.payload as import("./schema").TimelineItem, item.framedHtml) });
+        db.exec({ sql: upsertThreadItemSql().sql, bind: itemToRow(threadId, item.seq, item.payload, item.framedHtml) });
       }
       db.exec({ sql: setThreadSyncSql().sql, bind: { $thread_id: threadId, $cursor: cursor, $render_version: renderVersion } });
     });

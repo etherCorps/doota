@@ -38,3 +38,4 @@ fern
 # at prepare time (apps/web/scripts/copy-file-viewer.mjs), 159MB, never committed
 apps/web/static/file-viewer/
 apps/web/static/file-viewer-runtime.iife.js
+.claude/
