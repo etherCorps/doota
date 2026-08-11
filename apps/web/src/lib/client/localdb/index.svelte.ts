@@ -10,6 +10,7 @@
 import type { ThreadSummary } from "@doota/mail-core/read";
 import type { TimelineItem } from "./schema";
 import type { SeedThreadItem } from "./sync.svelte";
+import { watch } from "runed";
 import { createBridge } from "./rpc";
 
 export type Bridge = { call<T>(method: string, params: unknown): Promise<T> };
@@ -183,19 +184,14 @@ export function makeLocalDb(bridge: Bridge) {
     liveThread(getThreadId: () => string): LiveThread {
       // ponytail: $state in .svelte.ts so Svelte templates auto-track reads.
       let current = $state<LiveThreadItem[]>([]);
-      // The threadId `current` belongs to. Guards against showing the previous
-      // thread's items after a switch (see the $effect below).
-      let loadedThreadId: string | null = null;
 
       const watcher: ThreadWatcher = {
         get threadId() {
           return getThreadId();
         },
         async refresh() {
-          const id = getThreadId();
-          const freshItems = await facade.listThreadItems(id);
+          const freshItems = await facade.listThreadItems(getThreadId());
           current = freshItems; // $state write — triggers component re-render
-          loadedThreadId = id;
         },
       };
 
@@ -207,18 +203,16 @@ export function makeLocalDb(bridge: Bridge) {
       };
 
       threadWatchers.add(watcher);
-      // Re-query the moment the tracked threadId changes (a thread switch).
-      // Without this `current` lingers on the previous thread's items until the
-      // next seed notification lands (a network round-trip later) — so the pane
-      // shows the OLD mail for seconds after switching. Drop the stale items
-      // immediately (empty → skeleton, not wrong mail), then read the new thread
-      // from the store (instant if already mirrored).
-      $effect(() => {
-        const id = getThreadId(); // tracked dependency
-        if (id !== loadedThreadId) {
-          current = [];
-          void watcher.refresh().catch(() => {});
-        }
+      // Re-read on every threadId change (a thread switch) — and once immediately
+      // for the initial load (watch is eager by default). Without this `current`
+      // lingers on the previous thread's items until the next seed notification
+      // lands (a network round-trip later), so the pane shows the OLD mail for
+      // seconds after switching. Drop the stale items first (empty → skeleton,
+      // not wrong mail), then read the new thread from the store (instant if
+      // already mirrored).
+      watch(getThreadId, () => {
+        current = [];
+        void watcher.refresh().catch(() => {});
       });
 
       return handle;
