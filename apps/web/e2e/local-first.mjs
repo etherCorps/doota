@@ -83,6 +83,45 @@ async function login(page) {
 
 const rowCount = (page) => page.evaluate(() => document.querySelectorAll("[data-row]").length);
 
+// Open the thread at list row `index`. The click handler lives on the row's
+// inner subject button (`button.flex-1`), NOT the [data-row] wrapper — a
+// coordinate click on the wrapper hits the avatar/checkbox and never navigates.
+// An in-page .click() on the right button is the only reliable open. Returns
+// false if the row (or its button) isn't there.
+const openRow = (page, index) =>
+	page.evaluate((idx) => {
+		const row = document.querySelectorAll("[data-row]")[idx];
+		const button = row?.querySelector("button.flex-1");
+		if (button) button.click();
+		return !!button;
+	}, index);
+
+// A rendered message body frame lives inside [data-msg]; the app shell carries
+// its own stray iframe, so scope to the message bubble to detect a real rich
+// body (and its srcdoc when the mirror serves it).
+const msgFrameCount = (page) =>
+	page.evaluate(() => document.querySelectorAll("[data-msg] iframe").length);
+const msgSrcdocCount = (page) =>
+	page.evaluate(() => document.querySelectorAll("[data-msg] iframe[srcdoc]").length);
+
+// Open a thread whose message renders as an iframe (rich HTML). Plain-text
+// threads render text, not a frame, so the srcdoc/offline checks silently skip
+// on a plain-only mailbox (false green). Walks up to `max` rows, opening each
+// fresh from the inbox, and stops on the first with a message-body frame.
+// Returns the row index it left open, or -1 if no rich thread exists.
+async function openRichThread(page, max = 8) {
+	for (let index = 0; index < max; index++) {
+		await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
+		await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
+		await sleep(1500);
+		if (index >= (await rowCount(page))) return -1;
+		if (!(await openRow(page, index))) continue;
+		await sleep(2500);
+		if ((await msgFrameCount(page)) > 0) return index;
+	}
+	return -1;
+}
+
 // Persistence probe that understands BOTH tiers: OPFS (Chrome's SAH-pool creates
 // a `.doota-localdb` directory) or IndexedDB (the fallback tier). CDP can't see
 // OPFS, so we ask the page directly.
@@ -238,23 +277,12 @@ try {
 	await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
 	await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
 	await sleep(2000);
-	const firstRow = await page.$("[data-row]");
-	if (firstRow) {
-		await firstRow.click();
-		// Wait for the thread view — message content or a frame.
-		await page
-			.waitForSelector(
-				"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-				{ timeout: 15_000 },
-			)
-			.catch(() => {});
+	if ((await rowCount(page)) > 0) {
+		await openRow(page, 0);
+		// Wait for a rendered message bubble (the thread pane's message stream).
+		await page.waitForSelector("[data-msg]", { timeout: 15_000 }).catch(() => {});
 		await sleep(2000);
-		const threadRendered = await page.evaluate(
-			() =>
-				!!document.querySelector(
-					"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-				),
-		);
+		const threadRendered = (await page.$("[data-msg]")) != null;
 		check("thread view renders after clicking a row", threadRendered);
 	} else {
 		console.log("  (no [data-row] found — inbox empty on this account; skipping check 7)");
@@ -268,15 +296,9 @@ try {
 	await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
 	await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
 	await sleep(2000);
-	const firstRowAgain = await page.$("[data-row]");
-	if (firstRowAgain) {
-		await firstRowAgain.click();
-		await page
-			.waitForSelector(
-				"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-				{ timeout: 15_000 },
-			)
-			.catch(() => {});
+	if ((await rowCount(page)) > 0) {
+		await openRow(page, 0);
+		await page.waitForSelector("[data-msg]", { timeout: 15_000 }).catch(() => {});
 		await sleep(2000);
 		const bodyAfter = listRequests.filter((u) => THREAD_BODY_RE.test(u)).length;
 		const bodyFetches = bodyAfter - bodyBefore;
@@ -285,12 +307,7 @@ try {
 		console.log(
 			`  (re-open fired ${bodyFetches} background body call(s) — mirror serves the visible render)`,
 		);
-		const threadRenderedAgain = await page.evaluate(
-			() =>
-				!!document.querySelector(
-					"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-				),
-		);
+		const threadRenderedAgain = (await page.$("[data-msg]")) != null;
 		check("thread renders on re-open (from mirror, background sync may still fire)", threadRenderedAgain);
 	} else {
 		console.log("  (no [data-row] — skipping check 8)");
@@ -300,19 +317,9 @@ try {
 	// ── CHECK 9: reload with thread open → thread still renders ───────────────
 	console.log("\n[local-first] Check 9 — thread still renders after reload (persisted mirror)");
 	await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
-	await page
-		.waitForSelector(
-			"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-			{ timeout: 20_000 },
-		)
-		.catch(() => {});
+	await page.waitForSelector("[data-msg], [data-row]", { timeout: 20_000 }).catch(() => {});
 	await sleep(2000);
-	const threadAfterReload = await page.evaluate(
-		() =>
-			!!document.querySelector(
-				"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-			),
-	);
+	const threadAfterReload = (await page.$("[data-msg]")) != null;
 	// The app may redirect to inbox on reload if the URL doesn't include a thread
 	// param; assert at least a list row is visible in that case (mirror still live).
 	const listAfterReload = (await rowCount(page)) > 0;
@@ -323,34 +330,30 @@ try {
 
 	// ── CHECK 10: rich HTML message renders via srcdoc ────────────────────────
 	console.log("\n[local-first] Check 10 — rich HTML message renders via iframe[srcdoc]");
-	// Open the first thread and look for an iframe; if present, check for srcdoc.
-	await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
-	await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
-	await sleep(2000);
-	const rowForRich = await page.$("[data-row]");
-	if (rowForRich) {
-		await rowForRich.click();
-		await page.waitForSelector("iframe", { timeout: 15_000 }).catch(() => {});
-		await sleep(2000);
-		const iframeCount = await page.evaluate(() => document.querySelectorAll("iframe").length);
-		const srcdocCount = await page.evaluate(
-			() => document.querySelectorAll("iframe[srcdoc]").length,
+	// Walk rows to find a genuinely rich (iframe-bearing) thread. Re-open it a
+	// second time so it's served from the mirror — that's when the frame should
+	// carry srcdoc (local doc) rather than src (network route).
+	const richIndex = await openRichThread(page);
+	if (richIndex < 0) {
+		console.log(
+			"  (no rich HTML thread in the first 8 rows — mailbox is plain-text only; srcdoc check skipped)",
 		);
-		if (iframeCount === 0) {
-			console.log(
-				"  (no iframe found — first thread may be plain-text only; srcdoc check skipped)",
-			);
-			check("rich message iframe present or skipped (no rich message in first thread)", true);
-		} else {
-			console.log(`  (${iframeCount} iframe(s) found, ${srcdocCount} with srcdoc)`);
-			check(
-				"rich message renders in sandboxed iframe (srcdoc when served from mirror)",
-				srcdocCount > 0,
-			);
-		}
+		check("rich message renders in sandboxed iframe (srcdoc from mirror)", true);
 	} else {
-		console.log("  (no [data-row] — skipping check 10)");
-		check("rich message renders in sandboxed iframe (srcdoc when served from mirror)", true);
+		console.log(`  (rich thread found at row ${richIndex}; re-opening from mirror)`);
+		// Re-open the same thread from the inbox so the mirror serves it — an
+		// untrusted sender with images off is when the frame carries srcdoc (the
+		// local doc) rather than src (the network route).
+		await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
+		await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
+		await sleep(2000);
+		await openRow(page, richIndex);
+		await page.waitForSelector("[data-msg] iframe", { timeout: 15_000 }).catch(() => {});
+		await sleep(2000);
+		const iframeCount = await msgFrameCount(page);
+		const srcdocCount = await msgSrcdocCount(page);
+		console.log(`  (${iframeCount} message frame(s), ${srcdocCount} with srcdoc)`);
+		check("rich message renders in sandboxed iframe (srcdoc from mirror)", srcdocCount > 0);
 	}
 
 	// ── CHECK 11: offline full-timeline (slice-3 win) ────────────────────────
@@ -360,20 +363,17 @@ try {
 	// from the local mirror. This is the true offline guarantee slice 3 ships.
 	console.log("\n[local-first] Check 11 — offline full-timeline (thread open with network blocked)");
 
-	// Navigate to inbox so we have a seeded thread in the mirror.
+	// Target the rich thread found in Check 10 so the offline proof covers the
+	// srcdoc path (rich HTML), not just plain text. Fall back to row 0 if no rich
+	// thread exists in this mailbox.
+	const offlineIndex = richIndex >= 0 ? richIndex : 0;
 	await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
 	await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
 	await sleep(2000);
-	const seedRow = await page.$("[data-row]");
-	if (seedRow) {
+	if (offlineIndex < (await rowCount(page))) {
 		// Open the thread once to seed the full timeline into the mirror.
-		await seedRow.click();
-		await page
-			.waitForSelector(
-				"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-				{ timeout: 15_000 },
-			)
-			.catch(() => {});
+		await openRow(page, offlineIndex);
+		await page.waitForSelector("[data-msg]", { timeout: 15_000 }).catch(() => {});
 		await sleep(3000); // give the mirror time to write the full timeline
 
 		// Now block all thread-data network calls (openThread + body endpoints).
@@ -393,22 +393,20 @@ try {
 		await page.goto(`${BASE}/app?folder=inbox`, { waitUntil: "networkidle2", timeout: 60_000 });
 		await page.waitForSelector("[data-row]", { timeout: 30_000 }).catch(() => {});
 		await sleep(2000);
-		const offlineRow = await page.$("[data-row]");
-		if (offlineRow) {
-			await offlineRow.click();
-			await page
-				.waitForSelector(
-					"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-					{ timeout: 15_000 },
-				)
-				.catch(() => {});
+		if (offlineIndex < (await rowCount(page))) {
+			await openRow(page, offlineIndex);
+			await page.waitForSelector("[data-msg]", { timeout: 15_000 }).catch(() => {});
 			await sleep(2000);
-			const offlineThreadRendered = await page.evaluate(
-				() =>
-					!!document.querySelector(
-						"[data-thread-view], [data-message], [data-messages], iframe, .message-body, .thread-content, article",
-					),
-			);
+			const offlineThreadRendered = (await page.$("[data-msg]")) != null;
+
+			// With network blocked, a rich thread must still show its message frame
+			// carrying srcdoc (the local framed doc) — proof the HTML came from the
+			// mirror, not the network. Only asserted when we targeted a rich thread.
+			const offlineSrcdoc = await msgSrcdocCount(page);
+			if (richIndex >= 0) {
+				console.log(`  (offline rich thread shows ${offlineSrcdoc} iframe[srcdoc])`);
+				check("rich HTML renders offline via srcdoc (network blocked)", offlineSrcdoc > 0);
+			}
 
 			// Report note/system-event coverage honestly — if the mailbox has no
 			// notes or system events the sub-assertions are skipped, not failed.
