@@ -90,6 +90,34 @@ in the repo for the full set and relationships.
    ticks the hub.
 5. A 5-minute cron releases scheduled sends and runs garbage collection.
 
+## Local-first client (offline reading)
+
+The web app keeps a per-user, per-device mirror in **client-side SQLite**
+(`@sqlite.org/sqlite-wasm` in a dedicated Worker; OPFS `opfs-sahpool` VFS where
+available, memory + IndexedDB snapshot elsewhere):
+
+- **Thread list** — seeded across all folders on sign-in (up to 1,000 threads;
+  above that the client falls back to remote pagination), then kept live by
+  `change_log` deltas (`changesSince`) triggered from the realtime WebSocket.
+  The mirror wins the visible paint; the network refreshes in the background.
+- **Thread timeline** — lazily mirrored per opened thread: the full timeline
+  (messages, internal notes, system events) plus the **server-rendered framed
+  HTML** for rich messages, re-rendered into a sandboxed `iframe[srcdoc]`
+  locally. Notes and system events have no per-item delta, so a thread
+  re-validates whole on open and on realtime events.
+- **App shell** — the service worker precaches build assets (best-effort,
+  per-asset, so one bad asset can't wedge the install) and serves `/app`
+  navigations network-first with a cached-shell fallback. A cold launch with no
+  network boots the shell, resolves the active mailbox from the persisted pick,
+  and renders entirely from the mirror.
+
+Sanitization and framing stay **server-side only** — the mirror stores the
+already-framed document, never raw sender HTML. The mirror and shell cache are
+cleared on logout and account switch; what this leaves readable on the device is
+covered in [Security](/reference/security). Offline is **read-only**: compose
+and search (server FTS) are disabled with an offline indicator, and there is no
+offline outbox.
+
 ## Security posture
 
 Doota is **zero-access at rest, not end-to-end encrypted** — the operator can

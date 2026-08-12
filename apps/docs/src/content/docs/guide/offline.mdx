@@ -1,0 +1,64 @@
+---
+title: Reading mail offline
+description: Doota keeps a copy of your mail on your device, so the inbox and your conversations open instantly — even with no connection.
+audience: human
+sidebar:
+  order: 16
+---
+
+Doota keeps a private copy of your mail **on your device**. That's why the inbox
+paints instantly when you switch folders — and it's why the app still works when
+you have no connection at all: on a flight, in a tunnel, on hotel Wi-Fi that
+gave up.
+
+There's nothing to turn on. Use Doota normally while online and your device
+quietly fills in: the thread list for every folder syncs on sign-in, and each
+conversation you open is saved in full — including formatted HTML mail.
+
+## What works offline
+
+- **Your inbox and folders** — the full thread list, in every folder, as of the
+  last time you were connected.
+- **Any conversation you've opened before** — the whole back-and-forth, message
+  bodies included, plus your team's internal notes on it.
+- **Opening the app cold** — you can close the tab (or the installed app) and
+  launch it again with no connection; it boots straight from the device copy.
+
+## What waits for a connection
+
+Anything that has to reach the server pauses until you're back online — Doota
+tells you with a small **"You're offline"** bar under the header, and puts things
+that can't work on hold instead of letting them fail silently:
+
+- **Writing and sending** — the Compose button is disabled offline. (There's no
+  offline outbox yet; nothing is queued behind your back.)
+- **Search** — [search](/guide/search) runs on the server, so ⌘K says it's
+  unavailable rather than spinning.
+- **New mail** — arrives the moment you reconnect, along with anything that
+  changed while you were away.
+- **Attachments and remote images** — files and blocked-image loads fetch from
+  the server, so they need a connection.
+
+Actions like archiving or starring also need the server; offline is for
+**reading**.
+
+<Aside type="tip" title="Install Doota for the best offline experience">
+Offline works in a browser tab, but it's most useful with Doota **installed as an
+app** — launch it from your dock or Home Screen and it opens your inbox with or
+without a network. Installing is also what enables
+[push notifications on iPhone](/guide/notifications).
+</Aside>
+
+## What's on your device, and when it's removed
+
+The device copy is your mail, readable — the same as any mail app on your phone
+that shows messages without a connection. It stays in your browser's private
+storage for that browser profile, and it's **removed when you sign out or switch
+accounts**. On a shared or borrowed computer, sign out when you're done and the
+local copy goes with you. The full picture lives in the
+[security reference](/reference/security).
+
+A conversation you've **never opened** while online isn't on the device yet — so
+if you know you're about to lose signal, open the threads you'll want to read.
+Very large mailboxes (thousands of conversations) fall back to loading from the
+server, so offline reading may not be available there.

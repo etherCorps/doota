@@ -61,6 +61,10 @@ architecture-beta
   so the sender never sees you.
 - The **realtime hub** pushes live updates (a message arrived, a send delivered)
   back to your screen without refreshing.
+- Your **browser keeps a local mirror** of the thread list and every opened
+  conversation (SQLite in the browser, synced from the change log), and a service
+  worker caches the app shell — so folder switches paint instantly and the app
+  still opens and reads [offline](/guide/offline).
 
 **A few terms, once:** a **Worker** is a small program that runs on Cloudflare's
 edge; **D1** is Cloudflare's SQL database; **R2** is its file storage. You don't
