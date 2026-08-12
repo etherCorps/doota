@@ -38,6 +38,7 @@
     "/overview",
     "/reference",
     "/reference/architecture-diagrams",
+    "/reference/decision-flows",
     "/reference/security",
     "/self-hosting",
     "/self-hosting/cloudflare-api-token",
