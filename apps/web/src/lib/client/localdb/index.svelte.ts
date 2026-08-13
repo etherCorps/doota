@@ -99,6 +99,14 @@ export function makeLocalDb(bridge: Bridge) {
       return bridge.call<number | null>("getCursor", { mailboxId });
     },
 
+    /** Optimistic quick-action patch: upsert/remove rows without moving the
+     * sync cursor (the next real delta reconciles server truth), then refresh
+     * the list watchers so the mirror-driven render reacts instantly. */
+    async patchThreads(mailboxId: string, rows: ThreadSummary[], removals: string[] = []): Promise<void> {
+      await bridge.call<void>("patchThreads", { mailboxId, rows, removals });
+      await notifyWatchers(mailboxId);
+    },
+
     clear(userId: string): Promise<void> {
       return bridge.call<void>("clear", { userId });
     },

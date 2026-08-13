@@ -403,7 +403,12 @@
 	});
 	async function onRealtime(evt: NonNullable<typeof realtime.event>) {
 		if (evt.type === 'send_state') {
-			if (evt.threadId && evt.threadId === threadId) void threadQ?.refresh();
+			if (evt.threadId && evt.threadId === threadId) {
+				void threadQ?.refresh();
+				// The mirror drives the visible timeline — revalidate it too, or the
+				// delivery tick / sent bubble only shows on reopen.
+				if (localReady) void sync.onThreadRealtime(evt.threadId);
+			}
 			return;
 		}
 		// `notification` pings (assigned/note) are the bell's business, not the list's.
@@ -611,12 +616,17 @@
 		const ids = [...threadSel];
 		const mb = mailboxId;
 		bulkBusy = true;
-		const prevs = ids.map((id) => ({ threadId: id, prev: rowPrev(id) }));
+		const prevs = ids.map((id) => ({
+			threadId: id,
+			prev: rowPrev(id),
+			row: merged.find((thread) => thread.threadId === id)
+		}));
 		const fx: RowFx = pl === 'trash' ? 'delete' : pl;
 		for (const id of ids) rowFx.set(id, fx);
 		// Optimistic: rows leave immediately (exit transition reads rowFx). A
 		// loading toast tracks the write, flipping to Undo on success (same flow as
 		// swipe triage), or to an error + list reload on failure.
+		mirrorPatch(ids, { placement: pl }); // mirror-driven list reacts instantly
 		items = items.filter((thread) => !threadSel.has(thread.threadId));
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
@@ -640,6 +650,7 @@
 		for (const id of ids) rowFx.set(id, 'pulse');
 		try {
 			await bulkMarkRead({ mailboxId, threadIds: ids, read });
+			mirrorPatch(ids, { unread: !read }); // mirror-driven list reacts instantly
 			items = items.map((thread) => (threadSel.has(thread.threadId) ? { ...thread, unread: !read } : thread));
 			threadSel.clear();
 			void refreshUnread();
@@ -660,13 +671,22 @@
 		const pl = placement;
 		const name = folder.name;
 		const kept = items;
+		// Mirror removals: the server hides these rows (a flag the mirror schema
+		// doesn't carry), so delete them from the local store outright — instant
+		// clear, and a re-seed simply won't bring hidden rows back.
+		const clearedRows = merged.filter((thread) => thread.placement === pl);
+		if (localReady && clearedRows.length)
+			void localdb.patchThreads(mb, [], clearedRows.map((thread) => thread.threadId));
 		items = [];
 		threadSel.clear();
 		if (threadId) nav({ thread: null });
 		const ok = await runWithToast(`Emptying ${name}…`, `Could not empty ${name.toLowerCase()}.`, () => emptyFolder({ mailboxId: mb, placement: pl }), {
 			done: (progress) => progress.success(`${name} emptied.`)
 		});
-		if (!ok) items = kept;
+		if (!ok) {
+			items = kept;
+			mirrorRestore(clearedRows);
+		}
 	}
 
 	// Drafts multi-select. Single-row delete goes through the same bulk call.
@@ -772,18 +792,34 @@
 	});
 
 	/** Patch one loaded row in place, avoiding a full refetch (and its flash). */
+	// Optimistic mirror write. When the mirror drives the list, patching `items`
+	// alone is invisible (the render source is liveRows) — the old reconcile-via-
+	// onRealtime waited a full network round-trip, and could even fire before the
+	// server wrote the change_log row (patch showed only on the NEXT event). This
+	// upserts the patched rows straight into the local store — no cursor movement,
+	// instant repaint; the realtime delta reconciles server truth right after.
+	function mirrorPatch(ids: string[], patch: Partial<ThreadSummary>) {
+		if (!localReady || !mailboxId) return;
+		const rows = ids
+			.map((id) => merged.find((thread) => thread.threadId === id))
+			.filter((row): row is ThreadSummary => !!row)
+			.map((row) => ({ ...row, ...patch }));
+		if (rows.length) void localdb.patchThreads(mailboxId, rows);
+	}
+	/** Put previously-captured rows back verbatim (Undo paths). */
+	function mirrorRestore(rows: ThreadSummary[]) {
+		if (!localReady || !mailboxId || !rows.length) return;
+		void localdb.patchThreads(mailboxId, rows);
+	}
+
 	function patchItem(id: string, patch: Partial<ThreadSummary>) {
+		mirrorPatch([id], patch); // before the items write — reads the pre-patch row
 		items = items.map((thread) => (thread.threadId === id ? { ...thread, ...patch } : thread));
 		// Pinned rows render from their own list — patch there too so a pinned row's
 		// star/read/assignee flip stays coherent with the main list.
 		pinnedItems = pinnedItems.map((thread) =>
 			thread.threadId === id ? { ...thread, ...patch } : thread
 		);
-		// Reconcile the local mirror so liveRows reflects this optimistic patch
-		// instantly. Uses onRealtime (delta from server) rather than direct applyDeltas
-		// to avoid cursor bookkeeping — the change_log row from the action drives it.
-		// ponytail: reconcile-via-onRealtime; upgrade to direct upsert if latency bites.
-		if (localReady && mailboxId) void sync.onRealtime(mailboxId);
 	}
 
 	// Coherent star/assignee between the list and the open-thread header: one
@@ -866,6 +902,11 @@
 	);
 
 	async function refresh() {
+		// Revalidate the thread mirror FIRST: when it drives the timeline, a
+		// refreshed threadQ alone is invisible — this is why a just-sent reply
+		// didn't appear until reopen. The server materializes the outbound message
+		// before sendDraftById resolves, so the re-seed picks it up immediately.
+		if (localReady && threadId) void sync.onThreadRealtime(threadId);
 		await threadQ?.refresh();
 		await loadThreads(true);
 		// Sending a reply bumps the thread's activity; in a shared mailbox the row
@@ -1025,7 +1066,7 @@
 	}
 	// `id` updates an existing (loading) toast in place, the promise-toast flow:
 	// spinner while the write is in flight, then this Undo toast replaces it.
-	function toastUndoMove(entries: { threadId: string; prev: string }[], target: string, progress: ProgressToast) {
+	function toastUndoMove(entries: { threadId: string; prev: string; row?: ThreadSummary }[], target: string, progress: ProgressToast) {
 		const mb = mailboxId;
 		if (!mb) return;
 		const label = MOVE_LABEL[target] ?? 'Moved';
@@ -1034,6 +1075,9 @@
 			{
 				label: 'Undo',
 				onClick: async () => {
+					// Mirror first: the rows reappear instantly (captured pre-move),
+					// then the server restore settles behind them.
+					mirrorRestore(entries.map((entry) => entry.row).filter((row): row is ThreadSummary => !!row));
 					for (const entry of entries) {
 						try {
 							await moveThread({ mailboxId: mb, threadId: entry.threadId, placement: entry.prev as never });
@@ -1061,19 +1105,22 @@
 		if (!mailboxId) return;
 		const mb = mailboxId;
 		const prev = rowPrev(id);
+		const row = merged.find((thread) => thread.threadId === id); // pre-move snapshot for Undo
 		rowFx.set(id, target === 'inbox' ? 'inbox' : target === 'archived' ? 'archived' : 'delete');
+		// Mirror upsert with the new placement — the row leaves this view (and
+		// appears in the target view) instantly, no round-trip.
+		mirrorPatch([id], { placement: target });
 		items = items.filter((thread) => thread.threadId !== id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
-		// Reconcile local mirror so the row leaves liveRows immediately.
-		if (localReady) void sync.onRealtime(mb);
 		const progress = progressToast(MOVE_BUSY[target] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: target });
-			toastUndoMove([{ threadId: id, prev }], target, progress);
+			toastUndoMove([{ threadId: id, prev, row }], target, progress);
 			void refreshUnread();
 		} catch {
 			progress.error('Action failed — restoring the list.');
+			if (row) mirrorRestore([row]);
 			void loadThreads(true);
 		} finally {
 			setTimeout(() => rowFx.delete(id), 350);
@@ -1110,17 +1157,19 @@
 		const mb = mailboxId;
 		const id = threadId;
 		const prev = rowPrev(id);
+		const row = merged.find((thread) => thread.threadId === id); // pre-move snapshot for Undo
 		nav({ thread: null });
+		// Mirror upsert with the new placement — instant, no round-trip.
+		mirrorPatch([id], { placement: placement as ThreadSummary['placement'] });
 		items = items.filter((thread) => thread.threadId !== id);
-		// Reconcile local mirror so the row leaves liveRows immediately.
-		if (localReady) void sync.onRealtime(mb);
 		const progress = progressToast(MOVE_BUSY[placement] ?? 'Moving…');
 		try {
 			await moveThread({ mailboxId: mb, threadId: id, placement: placement as never });
-			toastUndoMove([{ threadId: id, prev }], placement, progress);
+			toastUndoMove([{ threadId: id, prev, row }], placement, progress);
 			void refreshUnread();
 		} catch {
 			progress.error('Action failed — restoring the list.');
+			if (row) mirrorRestore([row]);
 			void loadThreads(true);
 		}
 	}
@@ -1171,6 +1220,12 @@
 			: 'Inbox';
 		const fx: RowFx = targetLabelId ? 'archived' : 'inbox';
 		for (const id of ids) rowFx.set(id, fx);
+		// Snapshot rows pre-move for the Undo mirror restore, then patch the mirror
+		// so the filing reflects instantly (filing archives server-side).
+		const movedRows = ids
+			.map((id) => merged.find((thread) => thread.threadId === id))
+			.filter((row): row is ThreadSummary => !!row);
+		mirrorPatch(ids, { placement: targetLabelId ? 'archived' : 'inbox' });
 		items = items.filter((thread) => !ids.includes(thread.threadId));
 		if (threadId && ids.includes(threadId)) nav({ thread: null });
 		threadSel.clear();
@@ -1186,6 +1241,7 @@
 				{
 					label: 'Undo',
 					onClick: async () => {
+						mirrorRestore(movedRows); // rows reappear instantly, server settles behind
 						for (const snapshot of snapshots) {
 							try {
 								await undoMove(snapshot);
@@ -1891,9 +1947,20 @@
 		>
 			<InfoIcon class="size-4" />
 		</Popover.Trigger>
-		<!-- right-start beside the info glyph, into the thread's empty right
-		     margin, instead of dropping over the message bubble below. -->
-		<Popover.Content side="right" align="start" sideOffset={8} collisionPadding={16} class="w-80 max-w-[calc(100vw-2rem)] p-3">
+		<!-- Prefers right-start (the thread's empty right margin on desktop) and
+		     flips/shifts on collision — but on a phone there's no room on EITHER
+		     side of a 320px card, so avoidCollisions alone left it clipped
+		     off-screen. The mobile-first fix: below `sm` it drops under the glyph
+		     (side=bottom always fits horizontally via max-w) and the height is
+		     capped with internal scroll so a long recipient list can't run past
+		     the viewport bottom. -->
+		<Popover.Content
+			side={isMobile.current ? 'bottom' : 'right'}
+			align={isMobile.current ? 'end' : 'start'}
+			sideOffset={8}
+			collisionPadding={12}
+			class="w-80 max-w-[calc(100vw-1.5rem)] max-h-[min(60svh,480px)] overflow-y-auto overscroll-contain p-3"
+		>
 			<MessageDetails {m} />
 		</Popover.Content>
 	</Popover.Root>

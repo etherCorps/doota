@@ -789,8 +789,15 @@
 		{/if}
 
 		{#if !minimized}
-				<!-- Body fills the fixed-height panel; the editor flexes so nothing shifts. -->
-				<div class="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-3">
+				<!-- Body fills the fixed-height panel; the editor flexes so nothing
+				     shifts. overflow-y-auto is the small-screen escape valve: with the
+				     iOS keyboard up the panel can be ~350px tall, and the fixed rows
+				     (From/To/Cc/Bcc, subject, forward preview) can exceed that — without
+				     a scroll container they crushed the editor to zero and pushed the
+				     send bar out of the panel. Now the middle scrolls (Gmail-style: the
+				     header rows scroll away while you type) and the send bar, a sibling
+				     below, stays pinned. -->
+				<div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-3 pt-3">
 					<div class="flex shrink-0 flex-col gap-2">
 						<div class="flex items-center gap-2">
 							<span class="text-muted-foreground w-10 shrink-0 text-xs">From</span>
@@ -837,7 +844,11 @@
 						onblur={flushSave}
 					/>
 
-					<div class="min-h-0 flex-1 pb-2">
+					<!-- min-h-36 is the typing-area floor: the editor still flexes to fill
+					     spare height, but can no longer be crushed to nothing when the
+					     rows above outgrow a keyboard-shrunken panel — the body scrolls
+					     instead (see the container above). -->
+					<div class="min-h-36 flex-1 pb-2">
 						{#key editorKey}
 							<TiptapEditor
 								fill

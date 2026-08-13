@@ -79,6 +79,23 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
     return true;
   },
 
+  // Optimistic quick-action patch: upsert/remove rows WITHOUT touching the sync
+  // cursor — the next real delta reconciles server truth. Star/read/move from
+  // the list go through this so the mirror-driven render reacts instantly
+  // instead of after a network round-trip (the old reconcile-via-onRealtime
+  // could even fire before the server wrote the change_log row and no-op).
+  patchThreads: ({ mailboxId, rows, removals }: { mailboxId: string; rows: any[]; removals?: string[] }) => {
+    db.transaction(() => {
+      for (const summary of rows) {
+        db.exec({ sql: upsertThreadSql().sql, bind: threadSummaryToRow(mailboxId, summary) });
+      }
+      for (const threadId of removals ?? []) {
+        db.exec({ sql: deleteThreadSql().sql, bind: { $mailbox_id: mailboxId, $thread_id: threadId } });
+      }
+    });
+    return true;
+  },
+
   list: ({ mailboxId, placement }: { mailboxId: string; placement: string }) => {
     const resultRows: any[] = [];
     db.exec({ sql: listThreadsSql().sql, bind: { $mailbox_id: mailboxId, $placement: placement }, rowMode: "object", resultRows });
