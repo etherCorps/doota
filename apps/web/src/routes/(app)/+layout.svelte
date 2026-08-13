@@ -14,47 +14,33 @@
 	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { network } from '$lib/client/online.svelte.js';
+	import { appViewport } from '$lib/client/app-viewport.svelte.js';
 	import { onMount, untrack } from 'svelte';
-	import { pushState } from '$app/navigation';
-	import { page } from '$app/state';
-	import { isIOS } from '$lib/utils/platform';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { compose } from '$lib/client/compose.svelte.js';
 
 	let { data, children } = $props();
-
-	// iOS single-pane composes as a full-screen page (keyboard fights the drawer on
-	// iOS). Everyone else keeps the drawer/desktop panel. Detected once.
-	const ios = isIOS();
 
 	// Persist the sidebar collapsed state across navigations/reloads (runed).
 	const sidebarOpen = new PersistedState('doota:sidebar-open', true);
 
 	// Width of the content region (sidebar excluded) — same 56rem line the mail
 	// page's @4xl container query uses for its list/thread split. Below it the
-	// composer renders as a bottom drawer instead of the docked window.
+	// composer is a real page (/app/compose): a document-flow route the mobile
+	// keyboard can't break — iOS scrolling to a focused input is then correct
+	// behavior on a normal page, not a fixed-overlay fight. Back gesture closes
+	// it natively (no history-entry mirroring).
 	let regionW = $state(0);
 	const singlePane = $derived(regionW > 0 && regionW < 896);
-	const iosCompose = $derived(singlePane && ios);
 
-	// iOS composer ↔ history sync. The composer's `open` flag drives visibility;
-	// we mirror it into a shallow-routed history entry so the back gesture / button
-	// closes it (and closing pops the entry). No change to the panel's close().
-	let composePushed = false;
+	// Route every single-pane compose to the page. compose.start() keeps setting
+	// the store (prefill/resumeDraftId/scheduleAt) — the page reads it on mount.
 	$effect(() => {
-		if (!iosCompose) return;
-		const o = compose.open;
-		const hasState = !!page.state.compose;
+		if (!compose.open || !singlePane) return;
 		untrack(() => {
-			if (o && !hasState && !composePushed) {
-				composePushed = true;
-				pushState('', { ...page.state, compose: true });
-			} else if (o && !hasState && composePushed) {
-				composePushed = false;
-				compose.open = false; // back gesture popped the entry → close
-			} else if (!o && hasState && composePushed) {
-				composePushed = false;
-				history.back(); // closed via the panel → pop the entry
-			}
+			compose.open = false; // the page is the surface; the panel never mounts
+			void goto(resolve('/app/compose'));
 		});
 	});
 
@@ -73,6 +59,8 @@
 	);
 	onMount(() => {
 		if (sessionStorage.getItem('doota:enroll2fa-dismissed')) enroll2faDismissed = true;
+		// The one keyboard/viewport controller — the shell height below reads it.
+		return appViewport.attach();
 	});
 	function dismissEnroll2fa() {
 		enroll2faDismissed = true;
@@ -115,7 +103,14 @@
 	<RealtimeSync />
 	<SendFailureNotifier />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />
-	<Sidebar.Inset class="relative flex h-svh min-w-0 flex-col overflow-hidden">
+	<!-- Sized to the VISIBLE viewport (appViewport), falling back to h-svh before
+	     the first measure. On iOS the keyboard shrinks this frame, so anything at
+	     the bottom of the column (the reply bar) sits exactly above the keyboard
+	     — no per-component keyboard math anywhere. -->
+	<Sidebar.Inset
+		class="relative flex h-svh min-w-0 flex-col overflow-hidden"
+		style={appViewport.height > 0 ? `height:${appViewport.height}px` : undefined}
+	>
 		<TopBar>
 			{#snippet action()}
 				<!-- Below `sm` the list pane's floating compose button takes over and the
@@ -169,31 +164,24 @@
 		{/if}
 		<!-- overflow-y-auto (not hidden): the mail view is h-full and contains itself
 		     (panes scroll internally), but document-flow pages like /account scroll here.
-		     overscroll-contain: no iOS rubber-band bleeding to the document.
-		     While the iOS full-screen composer is open, lock this region (overflow-hidden)
-		     so scrolling inside the composer can't chain into — and reveal — the mail list
-		     behind it. The composer is position:fixed, so it isn't clipped by the lock. -->
-		<div
-			class="min-h-0 flex-1 overscroll-contain {iosCompose && compose.open
-				? 'overflow-hidden'
-				: 'overflow-y-auto'}"
-			bind:clientWidth={regionW}
-		>
+		     overscroll-contain: no iOS rubber-band bleeding to the document. -->
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:clientWidth={regionW}>
 			{@render children()}
 		</div>
 
-		<!-- Mounted inside the content region so the full-screen composer fills the
-		     mail view (beside the sidebar), not the whole viewport. -->
-		{#key compose.nonce}
-			<ComposePanel
-				bind:open={compose.open}
-				prefill={compose.prefill as never}
-				resumeDraftId={compose.resumeDraftId}
-				scheduleAt={compose.scheduleAt}
-				asDrawer={singlePane && !ios}
-				iosPage={iosCompose}
-			/>
-		{/key}
+		<!-- Desktop composer (docked panel). Single-pane widths route to the
+		     /app/compose page instead (the effect above), so the panel never
+		     mounts there. -->
+		{#if !singlePane}
+			{#key compose.nonce}
+				<ComposePanel
+					bind:open={compose.open}
+					prefill={compose.prefill}
+					resumeDraftId={compose.resumeDraftId}
+					scheduleAt={compose.scheduleAt}
+				/>
+			{/key}
+		{/if}
 	</Sidebar.Inset>
 </Sidebar.Provider>
 
