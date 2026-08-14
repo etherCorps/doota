@@ -1,3 +1,18 @@
+<script lang="ts" module>
+	// Device sessions (multiSession plugin) — every account signed in on this
+	// browser. Every mutation that changes this list (switch account, add
+	// account, log out) ends in a full document load, so fetching once per
+	// page load is always fresh. Module scope so the mobile sidebar sheet
+	// remounting the chip doesn't refetch either.
+	// ponytail: no TTL — a sign-in from another tab stays stale until reload;
+	// add a TTL if that ever matters.
+	type DeviceSession = {
+		session: { token: string };
+		user: { id: string; name: string; email: string; image?: string | null };
+	};
+	let cachedSessions: DeviceSession[] | null = null;
+</script>
+
 <script lang="ts">
 	// SPDX-License-Identifier: Apache-2.0
 	import * as Avatar from '$lib/components/ui/avatar/index.js';
@@ -37,21 +52,22 @@
 
 	const sidebar = useSidebar();
 
-	// Device sessions (multiSession plugin) — every account signed in on this
-	// browser. Fetched when the menu opens, so the list is fresh without polling.
-	type DeviceSession = {
-		session: { token: string };
-		user: { id: string; name: string; email: string; image?: string | null };
-	};
-	let deviceSessions = $state<DeviceSession[]>([]);
+	let deviceSessions = $state<DeviceSession[]>(cachedSessions ?? []);
 	// The current account is identified by email (unique per user) — the props
 	// come from server data, the list from the client API.
 	const others = $derived(deviceSessions.filter((entry) => entry.user.email !== email));
 	const current = $derived(deviceSessions.find((entry) => entry.user.email === email));
 
 	async function loadSessions() {
-		const { data } = await authClient.multiSession.listDeviceSessions();
-		deviceSessions = (data as DeviceSession[] | null) ?? [];
+		if (cachedSessions) {
+			deviceSessions = cachedSessions;
+			return;
+		}
+		const { data, error } = await authClient.multiSession.listDeviceSessions();
+		// Don't cache a failed fetch — the next menu open retries.
+		if (error) return;
+		cachedSessions = (data as DeviceSession[] | null) ?? [];
+		deviceSessions = cachedSessions;
 	}
 	// At the cap another sign-in wouldn't be tracked by multiSession (it works
 	// until you switch away, then vanishes), so "Add account" blocks with the
