@@ -159,7 +159,7 @@ describe("createSync", () => {
     expect(sync.state).toBe("error");
   });
 
-  it("concurrent onRealtime while busy does not double-call changesFn", async () => {
+  it("pushes while busy coalesce into ONE replayed resync (not dropped, not one-per-push)", async () => {
     const fakeDb = makeLocalDbFake(null);
     let resolveChanges!: () => void;
     const slowChanges = new Promise<void>((resolve) => {
@@ -170,8 +170,9 @@ describe("createSync", () => {
     let changesFnCallCount = 0;
     const changesFn = vi.fn(async (_args: { mailboxId: string; sinceSeq: number }) => {
       changesFnCallCount++;
-      await slowChanges;
-      return { upserts: [], removals: [], newSeq: 2, cannotCalculate: false };
+      // Only the first call is slow — the replay resolves immediately.
+      if (changesFnCallCount === 1) await slowChanges;
+      return { upserts: [], removals: [], newSeq: changesFnCallCount + 1, cannotCalculate: false };
     });
 
     const sync = createSync({ localdb: fakeDb as any, seedFn, changesFn });
@@ -179,16 +180,17 @@ describe("createSync", () => {
     await sync.ensure("mb_test");
     expect(sync.state).toBe("live");
 
-    // Kick off two concurrent onRealtime calls
+    // Three concurrent pushes: the first runs, the other two land while busy.
     const first = sync.onRealtime("mb_test");
-    const second = sync.onRealtime("mb_test"); // should be ignored while busy
+    const second = sync.onRealtime("mb_test");
+    const third = sync.onRealtime("mb_test");
 
-    // Let the slow changes resolve
     resolveChanges();
-    await first;
-    await second;
+    await Promise.all([first, second, third]);
 
-    // changesFn should only have been called once (second call was ignored)
-    expect(changesFnCallCount).toBe(1);
+    // The two while-busy pushes coalesce into exactly one replayed resync:
+    // a drop would leave the count at 1, a queue would push it to 3.
+    expect(changesFnCallCount).toBe(2);
+    expect(sync.state).toBe("live");
   });
 });

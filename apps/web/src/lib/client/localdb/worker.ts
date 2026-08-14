@@ -39,6 +39,26 @@ async function open(userId: string): Promise<void> {
 // Methods that skip the persist step: reads, open (snapshot just loaded), clear (db nulled).
 const NO_PERSIST_METHODS = new Set(["list", "getCursor", "open", "listThreadItems", "getThreadSync"]);
 
+// IDB-tier persist exports the ENTIRE database (sqlite3_js_db_export) — with a
+// seeded mailbox that's multi-MB per call, so per-write persistence made every
+// star click O(DB size). Debounce to one trailing export per write burst. The
+// mirror is a cache of server truth: losing the last ~500ms on a crash just
+// means a delta re-pull on next open.
+const PERSIST_DEBOUNCE_MS = 500;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+function schedulePersist() {
+  if (!backend || backend.kind !== "idb") return;
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    if (db && backend) void backend.persist(db).catch(() => {});
+  }, PERSIST_DEBOUNCE_MS);
+}
+function cancelScheduledPersist() {
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = null;
+}
+
 const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
   open: async ({ userId }: { userId: string }) => {
     await open(userId);
@@ -144,6 +164,7 @@ const handlers: Record<string, (params: any) => unknown | Promise<unknown>> = {
   },
 
   clear: async ({ userId }: { userId: string }) => {
+    cancelScheduledPersist(); // a late export must not resurrect purged data
     db?.close?.();
     db = null;
     // Purge persisted data so no plaintext mirror survives the session.
@@ -160,7 +181,7 @@ self.onmessage = async (ev: MessageEvent<Req>) => {
   try {
     const result = await handlers[method](params);
     if (backend?.kind === "idb" && !NO_PERSIST_METHODS.has(method) && method !== "clear") {
-      await backend.persist(db);
+      schedulePersist();
     }
     (self as unknown as Worker).postMessage({ id, ok: true, result } satisfies Res);
   } catch (err) {

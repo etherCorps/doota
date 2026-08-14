@@ -94,15 +94,23 @@ export function createSync(deps: {
     error: { SEED: "seeding", RESYNC: "resyncing" },
   });
 
-  // ponytail: plain busy-ignore for onRealtime — concurrent pushes while a sync
-  // is in-flight are dropped. The next realtime push or ensure() will catch up.
-  // A dirty-flag re-check would handle the case where the in-flight op takes
-  // so long that no further push arrives, but in practice realtime push rates
-  // are high enough that a subsequent event always arrives. Upgrade to a
-  // dirty-flag or queue if telemetry shows missed-event gaps.
+  // Pushes arriving while a sync is in flight coalesce into ONE replayed
+  // resync after the in-flight op settles (dirty flag, not a queue). Without
+  // the replay, a burst — send ticks, a reply landing mid-seed — whose
+  // change_log row commits after the in-flight read simply never shows until
+  // the next unrelated event, which for a quiet mailbox can be hours away.
+  let pendingResyncMailboxId: string | null = null;
 
   function isBusy(): boolean {
     return fsm.current === "seeding" || fsm.current === "resyncing";
+  }
+
+  async function drainPendingResync(): Promise<void> {
+    while (pendingResyncMailboxId !== null) {
+      const mailboxToResync = pendingResyncMailboxId;
+      pendingResyncMailboxId = null;
+      await doResync(mailboxToResync);
+    }
   }
 
   async function doSeed(mailboxId: string): Promise<void> {
@@ -152,8 +160,12 @@ export function createSync(deps: {
 
   // ponytail: per-threadId busy set so concurrent ensureThread/onThreadRealtime
   // calls for DIFFERENT threads don't block each other, while concurrent calls
-  // for the SAME thread are deduplicated (same drop-on-busy policy as mailbox).
+  // for the SAME thread coalesce into one replayed revalidation (same
+  // dirty-flag policy as mailbox). Without the replay a send's delivered tick
+  // — which lands while the sent tick's revalidation is still in flight —
+  // never renders until the thread is reopened.
   const busyThreadIds = new Set<string>();
+  const dirtyThreadIds = new Set<string>();
 
   function isThreadBusy(threadId: string): boolean {
     return busyThreadIds.has(threadId);
@@ -178,6 +190,9 @@ export function createSync(deps: {
     } finally {
       busyThreadIds.delete(threadId);
     }
+    // A push landed for this thread while the revalidation above was in
+    // flight — its data may postdate what we just fetched, so go again.
+    if (dirtyThreadIds.delete(threadId)) await revalidateThread(threadId);
   }
 
   return {
@@ -187,22 +202,31 @@ export function createSync(deps: {
      * - Cursor present → catch-up resync.
      */
     async ensure(mailboxId: string): Promise<void> {
-      if (isBusy()) return;
+      if (isBusy()) {
+        pendingResyncMailboxId = mailboxId;
+        return;
+      }
       const cursor = await localdb.getCursor(mailboxId);
       if (cursor === null) {
         await doSeed(mailboxId);
       } else {
         await doResync(mailboxId);
       }
+      await drainPendingResync();
     },
 
     /**
      * Called when a realtime push arrives — pulls the delta and applies it.
-     * Silently ignored if a sync is already in flight (see ponytail comment above).
+     * If a sync is already in flight the push coalesces into one replayed
+     * resync after it settles (see the dirty-flag comment above).
      */
     async onRealtime(mailboxId: string): Promise<void> {
-      if (isBusy()) return;
+      if (isBusy()) {
+        pendingResyncMailboxId = mailboxId;
+        return;
+      }
       await doResync(mailboxId);
+      await drainPendingResync();
     },
 
     /** Current FSM state — reactive ($state-backed via runed). */
@@ -217,7 +241,10 @@ export function createSync(deps: {
      * delta path. renderVersion drift also triggers revalidation (same action).
      */
     async ensureThread(threadId: string): Promise<void> {
-      if (isThreadBusy(threadId)) return;
+      if (isThreadBusy(threadId)) {
+        dirtyThreadIds.add(threadId);
+        return;
+      }
       // ponytail: absent + present + version-drifted all take the same revalidate-whole
       // action (slice 3 has no incremental delta); drop the getThreadSync read.
       await revalidateThread(threadId);
@@ -225,10 +252,14 @@ export function createSync(deps: {
 
     /**
      * Called when a realtime push arrives for a thread — revalidates (re-seeds)
-     * the full thread timeline. Silently ignored if a sync is already in flight.
+     * the full thread timeline. If one is already in flight for this thread the
+     * push coalesces into one replayed revalidation after it settles.
      */
     async onThreadRealtime(threadId: string): Promise<void> {
-      if (isThreadBusy(threadId)) return;
+      if (isThreadBusy(threadId)) {
+        dirtyThreadIds.add(threadId);
+        return;
+      }
       await revalidateThread(threadId);
     },
 

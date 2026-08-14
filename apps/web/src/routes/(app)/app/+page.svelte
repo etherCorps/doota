@@ -404,10 +404,12 @@
 	async function onRealtime(evt: NonNullable<typeof realtime.event>) {
 		if (evt.type === 'send_state') {
 			if (evt.threadId && evt.threadId === threadId) {
-				void threadQ?.refresh();
-				// The mirror drives the visible timeline — revalidate it too, or the
-				// delivery tick / sent bubble only shows on reopen.
+				// The mirror drives the visible timeline — revalidate it, or the
+				// delivery tick / sent bubble only shows on reopen. The openThread
+				// DTO refetch is the same server render again; only pay for it when
+				// the mirror ISN'T driving (it seeds the mirror for next time too).
 				if (localReady) void sync.onThreadRealtime(evt.threadId);
+				if (!mirrorDriving) void threadQ?.refresh();
 			}
 			return;
 		}
@@ -418,9 +420,10 @@
 		const th = threadId;
 		if (evt.mailboxId !== mb) return;
 		const openHere = evt.threadId === th;
-		if (openHere) void threadQ?.refresh();
-		// Mirror the updated thread messages into the local store.
+		// Mirror the updated thread messages into the local store; the openThread
+		// DTO refetch duplicates that render, so skip it while the mirror drives.
 		if (openHere && localReady && th) void sync.onThreadRealtime(th);
+		if (openHere && !mirrorDriving) void threadQ?.refresh();
 		// A reply landing in the thread you're looking at is already on screen —
 		// advance the read cursor so it doesn't resurface as unread. Visible tab is
 		// enough (don't require window focus — the thread is on screen); a hidden
@@ -437,10 +440,18 @@
 		// ponytail: onRealtime reconcile path chosen over localdb.applyDeltas(single row)
 		// because it avoids cursor bookkeeping and handles removals correctly too.
 		if (mb && localReady) void sync.onRealtime(mb);
-		// ponytail: full first-page reload on inbound — fine at inbox scale; switch
-		// to a prepend-merge if reset scroll ever annoys. Runs after markThreadRead,
-		// so the reloaded row reflects the advanced cursor.
-		if (placement === 'inbox' || placement === 'sent') await loadThreads(true);
+		// While the mirror drives, the delta above already paints the new row —
+		// the full remote reload (page + pinned + chips) renders nothing and is
+		// pure wasted network on every inbound. Just fetch the one new row's
+		// folder chips. Remote-driven lists still take the full reload.
+		// ponytail: full first-page reload on inbound (remote path) — fine at inbox
+		// scale; switch to a prepend-merge if reset scroll ever annoys. Runs after
+		// markThreadRead, so the reloaded row reflects the advanced cursor.
+		if (localDriving) {
+			if (evt.threadId) void loadRowLabels(mb, [evt.threadId]);
+		} else if (placement === 'inbox' || placement === 'sent') {
+			await loadThreads(true);
+		}
 		if (viewing && th) patchItem(th, { unread: false });
 	}
 
@@ -628,6 +639,8 @@
 		// swipe triage), or to an error + list reload on failure.
 		mirrorPatch(ids, { placement: pl }); // mirror-driven list reacts instantly
 		items = items.filter((thread) => !threadSel.has(thread.threadId));
+		// Pinned supplement ignores placement — drop moved pins or they linger.
+		pinnedItems = pinnedItems.filter((thread) => !threadSel.has(thread.threadId));
 		if (threadId && threadSel.has(threadId)) nav({ thread: null });
 		threadSel.clear();
 		const label = MOVE_BUSY[pl] ?? 'Moving…';
@@ -635,7 +648,12 @@
 		try {
 			const ok = await runWithToast(busy, 'Action failed — restoring the list.', () => bulkMoveThreads({ mailboxId: mb, threadIds: ids, placement: pl }), { done: (progress) => toastUndoMove(prevs, pl, progress) });
 			if (ok) void refreshUnread();
-			else void loadThreads(true);
+			else {
+				// Restore the mirror too — when it drives the list, reloading `items`
+				// alone leaves the optimistically-moved rows vanished.
+				mirrorRestore(prevs.map((entry) => entry.row).filter((row): row is ThreadSummary => !!row));
+				void loadThreads(true);
+			}
 		} finally {
 			setTimeout(() => {
 				for (const id of ids) rowFx.delete(id);
@@ -678,6 +696,7 @@
 		if (localReady && clearedRows.length)
 			void localdb.patchThreads(mb, [], clearedRows.map((thread) => thread.threadId));
 		items = [];
+		pinnedItems = []; // pinned supplement is per-view; emptied with it
 		threadSel.clear();
 		if (threadId) nav({ thread: null });
 		const ok = await runWithToast(`Emptying ${name}…`, `Could not empty ${name.toLowerCase()}.`, () => emptyFolder({ mailboxId: mb, placement: pl }), {
@@ -805,6 +824,17 @@
 			.filter((row): row is ThreadSummary => !!row)
 			.map((row) => ({ ...row, ...patch }));
 		if (rows.length) void localdb.patchThreads(mailboxId, rows);
+		// Rows not in the current view (search results, a direct-URL thread whose
+		// page isn't loaded) can't be patched optimistically — and own mutations
+		// emit no realtime event, so without a reconcile the mirror keeps the
+		// stale row indefinitely ("archived it from search, still in inbox").
+		// Pull the change_log delta once the server write has had a moment.
+		// ponytail: fixed 2s grace beats plumbing a post-await hook through every
+		// action site; a slower write self-heals at the next ensure()/inbound delta.
+		if (rows.length < ids.length) {
+			const mb = mailboxId;
+			setTimeout(() => void sync.onRealtime(mb), 2000);
+		}
 	}
 	/** Put previously-captured rows back verbatim (Undo paths). */
 	function mirrorRestore(rows: ThreadSummary[]) {
@@ -907,8 +937,14 @@
 		// didn't appear until reopen. The server materializes the outbound message
 		// before sendDraftById resolves, so the re-seed picks it up immediately.
 		if (localReady && threadId) void sync.onThreadRealtime(threadId);
-		await threadQ?.refresh();
-		await loadThreads(true);
+		// The openThread DTO is the same server render the re-seed just did —
+		// only pay for it when the mirror isn't driving the timeline.
+		if (!mirrorDriving) await threadQ?.refresh();
+		// The list row (snippet, lastMessageAt) after an own send: own mutations
+		// emit no realtime event, so pull the change_log delta into the mirror;
+		// the full remote reload only serves the remote-driven list.
+		if (localDriving && mailboxId) void sync.onRealtime(mailboxId);
+		else await loadThreads(true);
 		// Sending a reply bumps the thread's activity; in a shared mailbox the row
 		// would re-derive as unread. Keep the open thread read.
 		await markOpenRead();
@@ -1078,13 +1114,16 @@
 					// Mirror first: the rows reappear instantly (captured pre-move),
 					// then the server restore settles behind them.
 					mirrorRestore(entries.map((entry) => entry.row).filter((row): row is ThreadSummary => !!row));
-					for (const entry of entries) {
-						try {
-							await moveThread({ mailboxId: mb, threadId: entry.threadId, placement: entry.prev as never });
-						} catch {
-							// row may have moved again meanwhile; restore the rest
-						}
-					}
+					// Concurrent, not serial — a 50-thread undo was 50 sequential
+					// round-trips. A single failed restore (row moved again meanwhile)
+					// doesn't block the rest.
+					await Promise.all(
+						entries.map((entry) =>
+							moveThread({ mailboxId: mb, threadId: entry.threadId, placement: entry.prev as never }).catch(
+								() => {}
+							)
+						)
+					);
 					await loadThreads(true);
 					void refreshUnread();
 				}
@@ -1111,6 +1150,9 @@
 		// appears in the target view) instantly, no round-trip.
 		mirrorPatch([id], { placement: target });
 		items = items.filter((thread) => thread.threadId !== id);
+		// The pinned supplement renders independently of placement — without this
+		// an archived PINNED thread stays in the list via the pin merge.
+		pinnedItems = pinnedItems.filter((thread) => thread.threadId !== id);
 		swipeProg.delete(id); // stale progress would re-render the reveal if the row returns via Undo
 		if (threadId === id) nav({ thread: null });
 		const progress = progressToast(MOVE_BUSY[target] ?? 'Moving…');

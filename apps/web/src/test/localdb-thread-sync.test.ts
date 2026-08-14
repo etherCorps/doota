@@ -175,4 +175,60 @@ describe("onThreadRealtime", () => {
     expect(fakeDb.seedCalls).toHaveLength(1);
     expect(sync.threadState).toBe("live");
   });
+
+  it("pushes while a revalidation is in flight coalesce into ONE replay (delivered-tick case)", async () => {
+    const fakeDb = makeLocalDbFake({ cursor: 10, renderVersion: "14" });
+    let resolveFirstSeed!: () => void;
+    const firstSeedGate = new Promise<void>((resolve) => {
+      resolveFirstSeed = resolve;
+    });
+    let seedCallCount = 0;
+    const seedThreadFn = vi.fn(async (_threadId: string) => {
+      seedCallCount++;
+      // Only the first fetch is slow — the replay resolves immediately.
+      if (seedCallCount === 1) await firstSeedGate;
+      return { items: [FAKE_ITEM], cursor: 10 + seedCallCount, renderVersion: "14" };
+    });
+
+    const sync = makeSyncWithThreadDeps(fakeDb, seedThreadFn, "14");
+
+    // A send's ticks: "sent" starts a revalidation, "delivered" (and a
+    // straggler) land while it's still in flight.
+    const sentTick = sync.onThreadRealtime("t1");
+    const deliveredTick = sync.onThreadRealtime("t1");
+    const straggler = sync.onThreadRealtime("t1");
+
+    resolveFirstSeed();
+    await Promise.all([sentTick, deliveredTick, straggler]);
+
+    // Exactly one replayed revalidation: a drop leaves it at 1 (delivered tick
+    // never renders until reopen), a queue would run 3.
+    expect(seedThreadFn).toHaveBeenCalledTimes(2);
+    expect(fakeDb.storedSync?.cursor).toBe(12); // replay's data won
+    expect(sync.threadState).toBe("live");
+  });
+
+  it("busy state is per-thread — a different thread's revalidation is not blocked or coalesced", async () => {
+    const fakeDb = makeLocalDbFake({ cursor: 10, renderVersion: "14" });
+    let resolveSlowSeed!: () => void;
+    const slowSeedGate = new Promise<void>((resolve) => {
+      resolveSlowSeed = resolve;
+    });
+    const seedThreadFn = vi.fn(async (threadId: string) => {
+      if (threadId === "t-slow") await slowSeedGate;
+      return { items: [FAKE_ITEM], cursor: 99, renderVersion: "14" };
+    });
+
+    const sync = makeSyncWithThreadDeps(fakeDb, seedThreadFn, "14");
+
+    const slow = sync.onThreadRealtime("t-slow");
+    await sync.onThreadRealtime("t-other"); // completes while t-slow is in flight
+    resolveSlowSeed();
+    await slow;
+
+    // One call each — no cross-thread blocking, no spurious replay.
+    expect(seedThreadFn).toHaveBeenCalledTimes(2);
+    const calledWith = seedThreadFn.mock.calls.map((call) => call[0]);
+    expect(calledWith.sort()).toEqual(["t-other", "t-slow"]);
+  });
 });
