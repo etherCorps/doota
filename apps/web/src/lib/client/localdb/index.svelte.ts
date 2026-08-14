@@ -101,9 +101,15 @@ export function makeLocalDb(bridge: Bridge) {
 
     /** Optimistic quick-action patch: upsert/remove rows without moving the
      * sync cursor (the next real delta reconciles server truth), then refresh
-     * the list watchers so the mirror-driven render reacts instantly. */
+     * the list watchers so the mirror-driven render reacts instantly.
+     *
+     * $state.snapshot: callers hand us rows straight out of reactive lists
+     * (merged/liveRows), which are $state proxies — postMessage's structured
+     * clone can't serialize a Proxy (DataCloneError), so unwrap to plain
+     * objects before crossing the Worker boundary. */
     async patchThreads(mailboxId: string, rows: ThreadSummary[], removals: string[] = []): Promise<void> {
-      await bridge.call<void>("patchThreads", { mailboxId, rows, removals });
+      const plainRows = rows.map((row) => $state.snapshot(row) as ThreadSummary);
+      await bridge.call<void>("patchThreads", { mailboxId, rows: plainRows, removals: [...removals] });
       await notifyWatchers(mailboxId);
     },
 
