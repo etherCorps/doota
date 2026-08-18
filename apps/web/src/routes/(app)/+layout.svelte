@@ -99,7 +99,16 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<Sidebar.Provider bind:open={sidebarOpen.current}>
+<!-- Provider wrapper is min-h-svh, and svh is keyboard-blind on iOS: with the
+     keyboard up the DOCUMENT stays taller than the visual viewport even though
+     the Inset below shrinks — so iOS scrolls the document to chase the caret
+     and the whole frame slides under the sticky TopBar (reply composer
+     "disappears while typing"). Pin the wrapper to the visible viewport too:
+     document == viewport == nothing to scroll. -->
+<Sidebar.Provider
+	bind:open={sidebarOpen.current}
+	style={appViewport.height > 0 ? `height:${appViewport.height}px;min-height:0` : undefined}
+>
 	<RealtimeSync />
 	<SendFailureNotifier />
 	<AppSidebar user={data.user} onCompose={() => compose.start()} />

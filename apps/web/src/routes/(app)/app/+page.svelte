@@ -85,6 +85,7 @@
 	import { myFolders, threadFolders, moveToFolder, undoMove, createFolder, addThreadLabel, removeThreadLabel } from '$lib/rpc/label.remote';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import { unread } from '$lib/client/unread.svelte.js';
+	import { network } from '$lib/client/online.svelte.js';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { linkifySegments } from '$lib/utils/linkify.js';
@@ -126,6 +127,7 @@
 	import InboxDownIcon from '@lucide/svelte/icons/inbox';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
 	import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
+	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import LockIcon from '@lucide/svelte/icons/lock';
@@ -3389,9 +3391,12 @@
 							<!-- Re-key on the picked message + scope so a per-message Reply
 							     remounts the composer with that message's audience. The wrapper
 							     is the scroll/flash target that acknowledges the click. -->
+							<!-- min-h-0 flex chain: with the iOS keyboard up the pane is short;
+							     the composer must SHRINK and scroll internally instead of
+							     overflowing the pane (which iOS chases with document scroll). -->
 							<div
 								bind:this={composerEl}
-								class="transition-shadow duration-300 motion-reduce:transition-none {composerFlash
+								class="flex min-h-0 flex-col transition-shadow duration-300 motion-reduce:transition-none {composerFlash
 									? 'ring-brand/60 rounded-t-2xl ring-2'
 									: ''}"
 							>
@@ -3417,6 +3422,17 @@
 							</div>
 						{/if}
 					{/if}
+			{:else if network.offline}
+				<!-- Offline with nothing mirrored for this thread: the timeline is
+				     seeded lazily on first open, so a conversation never opened on
+				     this device has no local copy and the remote fetch can't run.
+				     A skeleton here shimmers forever and the shell banner ("reading
+				     works from this device") reads as a lie — say it plainly instead. -->
+				<EmptyState
+					icon={CloudOffIcon}
+					title="Not saved on this device"
+					description="You haven't opened this conversation here yet, so there's no offline copy. It'll load as soon as you're back online."
+				/>
 			{:else}
 				{@render threadSkeleton()}
 			{/if}

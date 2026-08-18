@@ -17,6 +17,7 @@
 	import ReplyIcon from '@lucide/svelte/icons/reply';
 	import ReplyAllIcon from '@lucide/svelte/icons/reply-all';
 	import { IsMobile } from '$lib/utils/hooks/is-mobile.svelte.js';
+	import { appViewport } from '$lib/client/app-viewport.svelte.js';
 	import {
 		startDraft,
 		autosaveDraft,
@@ -150,7 +151,23 @@
 	// too. Collapsing only CSS-hides the body — the editor stays mounted, so an
 	// in-progress draft survives the round-trip.
 	const isMobile = new IsMobile();
-	let collapsed = $state(false);
+	// Start in the state we'll actually settle in. Defaulting to expanded and
+	// collapsing in onMount painted one expanded frame, which was long enough
+	// for the autofocusing editor to grab focus — focus then stayed inside the
+	// collapsed (hidden) contenteditable, and the page's single-key shortcuts
+	// (`/` find, `e` archive, `r`/`a` reply, `j`/`k` nav) all bail on a
+	// contenteditable target, so they were dead for any open thread.
+	// Capturing the initial value is intended: the composer is re-keyed per reply
+	// target, so autoOpen is fixed for this instance's lifetime.
+	// svelte-ignore state_referenced_locally
+	let collapsed = $state(!autoOpen);
+	let editorRef = $state<{ focus: () => void } | undefined>();
+	/** Expand and put the caret in the body — the editor only autofocuses on
+	 * mount when it mounts already open, so expanding has to focus explicitly. */
+	function expand() {
+		collapsed = false;
+		queueMicrotask(() => editorRef?.focus());
+	}
 
 	// Re-expand when the user taps a message's Reply while this composer is already
 	// mounted for that target but collapsed. The first effect run snapshots the tick
@@ -166,7 +183,7 @@
 		}
 		if (t > seenExpand) {
 			seenExpand = t;
-			collapsed = false;
+			expand();
 		}
 	});
 
@@ -192,7 +209,6 @@
 			ccList = [];
 			showCc = false;
 		}
-		collapsed = !autoOpen;
 		sweepMirrors();
 		const local = readMirror(mirrorKey);
 		// Only a mirror with real text is a restore — an empty editor mirrors
@@ -438,8 +454,13 @@
 	}}
 />
 
+<!-- flex min-h-0 chain (down through the grid to the scrolling content): the
+     composer is a flex child of the fixed-height thread pane — when the iOS
+     keyboard shrinks the pane, this lets it compress and scroll its content
+     instead of overflowing the pane (iOS chases overflow with document scroll,
+     sliding the whole frame under the top bar). -->
 <div
-	class="bg-card border-t shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)] transition-[padding] duration-200 motion-reduce:transition-none {collapsed
+	class="bg-card flex min-h-0 flex-col border-t shadow-[0_-6px_20px_-12px_oklch(0.2_0.02_285/0.15)] transition-[padding] duration-200 motion-reduce:transition-none {collapsed
 		? 'px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'
 		: 'px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]'}"
 >
@@ -450,7 +471,7 @@
 			type="button"
 			transition:slide={{ duration: 150 }}
 			class="text-muted-foreground hover:border-ring/40 flex h-9 w-full items-center gap-2 rounded-full border bg-background px-3.5 text-sm transition-colors"
-			onclick={() => (collapsed = false)}
+			onclick={expand}
 		>
 			<ReplyIcon class="size-4 shrink-0" />
 			<span class="truncate">
@@ -462,12 +483,12 @@
 	     (an {#if} + slide would unmount it and drop the draft). Popovers inside
 	     survive the overflow-hidden because bits-ui portals them to body. -->
 	<div
-		class="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none {collapsed
+		class="grid min-h-0 transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none {collapsed
 			? 'grid-rows-[0fr]'
 			: 'grid-rows-[1fr]'}"
 	>
 	<div class="min-h-0 overflow-hidden">
-	<div class="space-y-2">
+	<div class="max-h-full min-h-0 space-y-2 overflow-y-auto overscroll-contain">
 			<div class="flex flex-wrap items-center gap-2">
 				<!-- From + selector: own full-width line under the scope row on mobile
 				     (order-2), inline and flex-1 on desktop. With no scope switch it is
@@ -575,11 +596,22 @@
 				/>
 			</div>
 			{#key editorKey}
+				<!-- Editor body cap: 45svh normally, but svh is keyboard-blind on iOS —
+				     with the keyboard up that cap exceeds the whole visible pane, so
+				     derive a px cap from the real visible height instead (~300px of
+				     surrounding chrome: top bar, thread header, fields, toolbar,
+				     sticky send row). Gated on a SHORT visible viewport rather than
+				     keyboardInset: that is the condition we actually care about, and
+				     it holds even where the inset itself reads 0. -->
 				<TiptapEditor
-					focusStart
+					bind:this={editorRef}
+					focusStart={autoOpen}
 					initial={body}
 					placeholder="Reply to {toAddress}…"
 					bodyClass="max-h-[45svh]"
+					bodyStyle={appViewport.height > 0 && appViewport.height < 600
+						? `max-height:${Math.max(112, appViewport.height - 300)}px`
+						: ''}
 					oninput={(html) => {
 						body = html;
 						// Don't mirror an empty editor ("<p></p>"); clear any prior husk so
@@ -608,7 +640,12 @@
 					{/each}
 				</div>
 			{/if}
-			<div class="flex items-center justify-end gap-2">
+			<!-- Sticky so the send control stays reachable while you type: the
+			     content above scrolls (fields, then a growing body), and without
+			     this the Reply button slides below the fold on a long reply with
+			     the keyboard up — exactly what the compose page avoids by putting
+			     Send in its header. -->
+			<div class="bg-card sticky bottom-0 -mx-1 flex items-center justify-end gap-2 px-1 pt-2 pb-1">
 				{#if uploading}
 					<span class="text-muted-foreground inline-flex items-center gap-1.5 text-[11px]">
 						<Spinner class="size-3" /> Uploading…

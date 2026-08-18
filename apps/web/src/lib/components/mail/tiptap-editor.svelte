@@ -38,6 +38,7 @@
 		onattach,
 		onsend,
 		bodyClass = '',
+		bodyStyle = '',
 		fill = false,
 		dense = false,
 		focusStart = false
@@ -50,6 +51,10 @@
 		onsend?: () => void;
 		/** Extra classes for the scrollable body — e.g. a max-height cap when inlined. */
 		bodyClass?: string;
+		/** Inline style for the scrollable body — for caps that need runtime px
+		 * values (e.g. a visible-viewport-derived max-height; svh/dvh can't see
+		 * the iOS keyboard). Overrides bodyClass where they collide. */
+		bodyStyle?: string;
 		/** Fill a definite-height parent instead of holding the 180px min floor. The
 		 * floor overflows a keyboard-shrunk viewport (iOS compose); fill lets the
 		 * editor shrink and scroll its own body. Only for parents with real height. */
@@ -57,7 +62,12 @@
 		/** Short-body mode for small jobs (e.g. a signature): a lower height floor so
 		 * the control is sized to a few lines, not a full message composer. */
 		dense?: boolean;
-		/** Put the caret at the very start on mount. Composers seed the signature at
+		/** Put the caret at the very start on mount. Only for editors that are
+		 * VISIBLE on mount — autofocusing one that mounts inside a collapsed
+		 * container strands focus in a hidden contenteditable, which silently
+		 * disables every single-key shortcut on the page. Callers that mount
+		 * collapsed should pass false and call `focus()` when they expand.
+		 * Composers seed the signature at
 		 * the end of the body, so the caret must land above it. Otherwise clicking
 		 * the empty editor drops the caret after the signature and typing pushes the
 		 * user's text below their sign-off. */
@@ -66,6 +76,12 @@
 
 	let element = $state<HTMLDivElement>();
 	let editor = $state<Editor>();
+
+	/** Put the caret in the body. For containers that mount collapsed (and so
+	 * pass focusStart={false}) and want focus once the user expands them. */
+	export function focus(): void {
+		editor?.chain().focus('start').run();
+	}
 	let imageInput = $state<HTMLInputElement>();
 	let tick = $state(0);
 
@@ -345,7 +361,7 @@
 
 	<!-- scroll-pb-16: iOS reveals the caret at the visual-viewport bottom, which the
 	     compose send/footer bar overlays — pad the scrollport so the caret lands above it. -->
-	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto overscroll-contain scroll-pb-16 {bodyClass}"></div>
+	<div bind:this={element} class="scrollbar-thin min-h-0 flex-1 overflow-auto overscroll-contain scroll-pb-16 {bodyClass}" style={bodyStyle || undefined}></div>
 	<input bind:this={imageInput} type="file" accept="image/*" multiple class="hidden" onchange={onImageFiles} />
 
 	{#if activeLint}
