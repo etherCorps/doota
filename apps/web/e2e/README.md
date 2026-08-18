@@ -1,8 +1,44 @@
 # e2e smoke
 
-One runtime smoke against a **deployed** stack, for the class of bug unit tests
-can't see: opaque-origin/CORS, iframe sandbox + CSP, rAF throttling in sandboxed
-frames, `color-scheme` canvas, cross-frame `postMessage`, downloads.
+Three runtime suites against a **deployed** stack (`smoke.mjs`, `full-sweep.mjs`,
+`deep-sweep.mjs`), for the class of bug unit tests can't see: opaque-origin/CORS,
+iframe sandbox + CSP, rAF throttling in sandboxed frames, `color-scheme` canvas,
+cross-frame `postMessage`, downloads, and whole-app functional regressions.
+
+## Suites
+
+| file | scope | run |
+| --- | --- | --- |
+| `smoke.mjs` | attachment preview + download | `pnpm --filter @doota/web run test:e2e` |
+| `full-sweep.mjs` | breadth: auth, folders, filters, threads, quick actions, bulk, compose, search, settings, templates, admin gating, PWA/offline | `node e2e/full-sweep.mjs [core\|actions\|peripheral\|offline]` |
+| `deep-sweep.mjs` | depth: attachments, thread menus, move/labels, find, contacts, calendar RSVP, theme/sidebar, notifications, template CRUD | `node e2e/deep-sweep.mjs` |
+
+Both sweeps are **non-destructive**: stars/pins are toggled back, archives are
+undone, nothing is sent (staging may only mail `shivam@doota.dev`) and nothing is
+hard-deleted.
+
+### Selector gotchas these suites encode
+
+Learned the hard way; keep them in mind before "fixing" a failing check:
+
+- **Draft and search rows are not `[data-row]`** — drafts render `.group/row`
+  divs, search hits render plain full-width `<button>`s. Counting `[data-row]`
+  reports zero and looks like a broken view.
+- **bits-ui dropdowns/menus open on `pointerdown`**, and never open at all in
+  **headless** Chrome. Run headed, and dispatch a synthetic `PointerEvent`
+  rather than relying on CDP mouse input.
+- **`Emulation.setFocusEmulationEnabled` is required** — without it
+  `document.hasFocus()` is false whenever Chrome isn't the OS key window and
+  several focus-gated surfaces silently do nothing.
+- **Chrome swallows a real ⌘K** (its own shortcut). Dispatch a synthetic
+  `keydown` with `metaKey` to exercise the app's palette handler.
+- **`page.keyboard.type` does not reach ProseMirror** — use
+  `document.execCommand("insertText", …)` to put text in the composer.
+- **Checkbox `textContent` is `""`, not null**, so `textContent ?? ariaLabel`
+  never falls through. Match on `aria-label` directly.
+- **The sweep account is a Member**, so `/admin/*` and `/account/developer`
+  correctly redirect away. That is the gate working, not a failure — run as an
+  admin to exercise those pages themselves.
 
 Flow: login → open a thread with an attachment → preview in the sandboxed frame
 → trigger a download.
