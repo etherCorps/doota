@@ -39,3 +39,6 @@ fern
 apps/web/static/file-viewer/
 apps/web/static/file-viewer-runtime.iife.js
 .claude/
+
+# Raw capture output for docs screenshots
+.shots/

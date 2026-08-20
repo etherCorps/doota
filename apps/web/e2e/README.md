@@ -12,6 +12,7 @@ cross-frame `postMessage`, downloads, and whole-app functional regressions.
 | `smoke.mjs` | attachment preview + download | `pnpm --filter @doota/web run test:e2e` |
 | `full-sweep.mjs` | breadth: auth, folders, filters, threads, quick actions, bulk, compose, search, settings, templates, admin gating, PWA/offline | `node e2e/full-sweep.mjs [core\|actions\|peripheral\|offline]` |
 | `deep-sweep.mjs` | depth: attachments, thread menus, move/labels, find, contacts, calendar RSVP, theme/sidebar, notifications, template CRUD | `node e2e/deep-sweep.mjs` |
+| `capture-shots.mjs` | docs/README screenshots at four form factors × two themes | `node e2e/capture-shots.mjs [screen…]` |
 
 Both sweeps are **non-destructive**: stars/pins are toggled back, archives are
 undone, nothing is sent (staging may only mail `shivam@doota.dev`) and nothing is

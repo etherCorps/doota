@@ -41,33 +41,26 @@ Outlook, and they can write back.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/thread-dark.png">
-  <img src="apps/docs/public/media/thread-light.png" alt="Threaded conversation view" width="820">
+  <img src="apps/docs/public/media/thread-light.png" alt="Threaded conversation view" width="860">
 </picture>
 
-<p><em>Every conversation as one chat-style timeline.</em></p>
+<p><em>Every conversation as one chat-style timeline. Light or dark, following your system.</em></p>
 
 <table>
   <tr>
-    <td width="50%">
+    <td width="50%" valign="top">
       <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/composer-dark.png"><img src="apps/docs/public/media/composer-light.png" alt="Composer"></picture>
       <br><strong>Composer</strong> — rich text, scheduled send, undo.
     </td>
-    <td width="50%">
-      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/aliases-dark.png"><img src="apps/docs/public/media/aliases-light.png" alt="Hide-my-email aliases"></picture>
-      <br><strong>Aliases</strong> — throwaway addresses on your own domain.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/admin-org-dashboard-dark.png"><img src="apps/docs/public/media/admin-org-dashboard-light.png" alt="Admin dashboard"></picture>
-      <br><strong>Admin</strong> — org, members, domains in one place.
-    </td>
-    <td width="50%">
-      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/sign-in-dark.png"><img src="apps/docs/public/media/sign-in-light.png" alt="Sign in"></picture>
-      <br><strong>Sign in</strong> — passwords or passkeys, out of the box.
+    <td width="50%" valign="top">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="apps/docs/public/media/thread-mobile-dark.png"><img src="apps/docs/public/media/thread-mobile-light.png" alt="Conversation on a phone"></picture>
+      <br><strong>On a phone</strong> — the same app, re-shaped.
     </td>
   </tr>
 </table>
+
+<p><a href="docs/screenshots.md"><strong>More screenshots →</strong></a><br>
+<sub>Phone, tablet, 13&#8221; laptop and desktop, light and dark.</sub></p>
 
 </div>
 
