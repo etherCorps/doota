@@ -87,6 +87,21 @@
 		};
 	});
 
+	// iOS: with the software keyboard up and the search input focused, a
+	// finger-drag over the results list doesn't scroll the list — Safari treats
+	// the gesture as "scroll the page to keep the caret in view" and the inner
+	// scroller never gets it. Users discovered the workaround themselves: tap a
+	// result (which blurs the input, dropping the keyboard) and *then* scroll.
+	// Do that for them: the first touch on the list blurs the input, so the
+	// gesture that follows lands on the list. Blur only — the palette stays
+	// open, the query stays, and a tap on a result still selects it (the item's
+	// own pointer/click handlers are unaffected). Desktop pointers never hit
+	// this path (touch events only).
+	function releaseKeyboardForListScroll() {
+		const active = document.activeElement;
+		if (active instanceof HTMLInputElement) active.blur();
+	}
+
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
@@ -129,7 +144,7 @@
 
 <Command.Dialog bind:open shouldFilter={false}>
 	<Command.Input placeholder="Search — from: to: has:attachment is:unread after:7d…" bind:value={q} />
-	<Command.List bind:ref={listRef}>
+	<Command.List bind:ref={listRef} ontouchstart={releaseKeyboardForListScroll}>
 		{#if q.trim().length < 2}
 			{#if recents.length}
 				<Command.Group heading="Recent">
