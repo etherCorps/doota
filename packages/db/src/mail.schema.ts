@@ -469,6 +469,10 @@ export const mailExport = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     status: text("status").default("running").notNull(), // running | done | failed
     cursor: text("cursor").default("").notNull(), // last delivery id processed
+    /** Why it failed. Without this a failed export is indistinguishable from a
+     * slow one: the job would retry, dead-letter, and leave the row `running`
+     * forever with nothing to show the user. */
+    error: text("error"),
     messageCount: integer("message_count").default(0).notNull(),
     partCount: integer("part_count").default(0).notNull(),
     createdAt: now(),

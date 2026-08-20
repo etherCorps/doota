@@ -1,0 +1,1 @@
+ALTER TABLE `mail_export` ADD `error` text;

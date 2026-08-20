@@ -102,6 +102,12 @@
 		uploading = boxId;
 		uploadPercent = 0;
 		controller = new AbortController();
+		// Open the polling window HERE, not after the handoff succeeds. The row
+		// exists from beginImport onward, and it is exactly the paths that fail
+		// partway — a rejected chunk, a lost completeImport — where the user most
+		// needs the card to keep looking. Gating this on success meant any break
+		// after the upload left the card frozen on a stale view.
+		pollUntil = Date.now() + 10 * 60 * 1000;
 		try {
 			const importId =
 				resumeOf?.id ??
@@ -112,9 +118,6 @@
 				onProgress: (p) => (uploadPercent = Math.round((p.uploadedBytes / p.totalBytes) * 100))
 			});
 			await completeImport({ mailboxId: boxId, importId });
-			// Cover the handoff gap: the row is `queued` but the job may not have
-			// started, so "nothing live" must not stop the polling.
-			pollUntil = Date.now() + 5 * 60 * 1000;
 			toast.success('Upload done — importing in the background. You can close this tab.');
 		} catch (err) {
 			if (err instanceof UploadAborted) toast.info('Upload stopped. You can resume it later.');

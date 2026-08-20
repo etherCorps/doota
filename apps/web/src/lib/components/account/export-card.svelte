@@ -195,6 +195,9 @@
 										</Button>
 									{/if}
 								</li>
+								{#if row.error}
+									<li class="text-destructive px-3 pb-1.5 text-xs">{row.error}</li>
+								{/if}
 							{/each}
 						</ul>
 					{/if}

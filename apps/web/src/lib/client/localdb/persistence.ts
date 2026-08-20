@@ -37,6 +37,15 @@ function writeSnapshot(idb: IDBDatabase, storeName: string, key: string, bytes: 
 
 const IDB_STORE = "snapshots";
 
+/** The local mirror is single-owner; another tab already holds it. Not an
+ * error condition for the user — the app reads from the server instead. */
+export class MirrorHeldByAnotherTab extends Error {
+  constructor() {
+    super("The offline copy is open in another tab");
+    this.name = "MirrorHeldByAnotherTab";
+  }
+}
+
 export async function pickBackend(sqlite3: any): Promise<{
   kind: "opfs" | "idb";
   openDb(name: string): Promise<any>;
@@ -56,7 +65,23 @@ export async function pickBackend(sqlite3: any): Promise<{
           try { pool.unlink(`/${name}.sqlite3`); } catch { /* missing = ok */ }
         },
       };
-    } catch {
+    } catch (err) {
+      // A second tab is the common case here: SAH-pool needs an exclusive
+      // SyncAccessHandle, so the loser throws NoModificationAllowedError.
+      //
+      // Falling through to the IndexedDB tier was wrong for that case. The
+      // leader's data lives in OPFS, so the follower got an EMPTY database,
+      // then re-seeded into it and raced the leader — a silent downgrade that
+      // looked like data loss. Refusing instead leaves localReady false, and
+      // the app renders from the server, which is correct and honest.
+      //
+      // Any other failure (no OPFS support at all) still earns the IDB tier.
+      // ponytail: error-name sniffing. A navigator.locks leader election would
+      // be deterministic; do that if the names ever shift under us.
+      const name = (err as { name?: string } | null)?.name ?? "";
+      if (name === "NoModificationAllowedError" || name === "InvalidStateError") {
+        throw new MirrorHeldByAnotherTab();
+      }
       // fall through to IDB tier
     }
   }

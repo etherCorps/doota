@@ -59,6 +59,25 @@ function header(name: string, value: string | null | undefined): string {
   return value ? `${name}: ${value.replace(/[\r\n]+/g, " ")}\r\n` : "";
 }
 
+/**
+ * Mark an export terminally failed with a reason.
+ *
+ * Retries still happen — the queue owns that — but each attempt leaves the
+ * cause on the row, so a job that exhausts its retries ends visibly failed
+ * rather than frozen at `running`. A later successful attempt overwrites the
+ * status back to running/done, so a transient failure doesn't stick.
+ */
+export async function failExport(db: Db, exportId: string, cause: unknown): Promise<void> {
+  await db
+    .update(mail.mailExport)
+    .set({
+      status: "failed",
+      error: String(cause instanceof Error ? cause.message : cause).slice(0, 300),
+      completedAt: new Date(),
+    })
+    .where(eq(mail.mailExport.id, exportId));
+}
+
 /** One batch; re-enqueues itself until the mailbox is exhausted. */
 export async function handleExportJob(db: Db, env: MailEnv, job: MailboxExportJob): Promise<void> {
   const exp = await db.query.mailExport.findFirst({ where: eq(schema.mailExport.id, job.exportId) });

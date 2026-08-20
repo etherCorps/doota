@@ -26,9 +26,11 @@ import type { Req, Res } from "./rpc";
 let db: any = null;
 let backend: Awaited<ReturnType<typeof pickBackend>> | null = null;
 
-// ponytail: no multi-tab Web Lock — SAH-pool serializes handle access so
-// concurrent tabs are unlikely to corrupt; add a Web Lock leader if two-tab
-// writes ever conflict.
+// Multi-tab: the mirror is single-owner. SAH-pool serializes handle access, so
+// a second tab's install throws and pickBackend refuses rather than silently
+// dropping to an empty IndexedDB copy (which raced the leader and read as data
+// loss). The follower's open() rejects, localReady stays false, and that tab
+// renders from the server.
 async function open(userId: string): Promise<void> {
   const sqlite3 = await sqlite3InitModule();
   backend = await pickBackend(sqlite3);

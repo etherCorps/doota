@@ -9,7 +9,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { loadRules, evalRules, applyRuleOutcome, emptyOutcome, type RuleOutcome, type RuleMessageView } from "./rules";
 import { classifyInbound } from "./spam";
 import { handleRuleBackfill, type RuleBackfillJob } from "./rules-backfill";
-import { handleExportJob, type MailboxExportJob } from "./export";
+import { handleExportJob, failExport, type MailboxExportJob } from "./export";
 import { handleImportJob, type MailboxImportJob } from "./import";
 import { enqueueSend, type OutboundEnv } from "./outbound";
 import { maybeVacationReply } from "./vacation";
@@ -597,6 +597,11 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         m.ack();
       } catch (e) {
         log.error("export.retry", { exportId: m.body.exportId, ...errInfo(e) });
+        // Record why on the row itself. The status vocabulary always claimed
+        // `failed` but nothing ever wrote it, so a dead-lettered export sat at
+        // `running` indefinitely and the user was left watching a spinner that
+        // would never finish.
+        await failExport(db, m.body.exportId, e).catch(() => {});
         m.retry();
       }
       continue;

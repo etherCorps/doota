@@ -66,6 +66,7 @@ export const exportStatus = query(
       id: r.id,
       status: r.status,
       messageCount: r.messageCount,
+      error: r.error,
       createdAt: r.createdAt.getTime(),
       completedAt: r.completedAt ? r.completedAt.getTime() : null,
     }));

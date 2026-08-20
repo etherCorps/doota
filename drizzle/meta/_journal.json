@@ -400,6 +400,13 @@
       "when": 1787220980569,
       "tag": "0056_freezing_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1787229355163,
+      "tag": "0057_jittery_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }
