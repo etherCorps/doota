@@ -148,7 +148,7 @@
 				<Field.Label>Role</Field.Label>
 				<select
 					{...createUser.fields.role.as('text')}
-					class="border-input bg-background h-9 rounded-md border px-3 text-sm"
+					class="border-input bg-background h-9 rounded-md border px-3 text-base md:text-sm"
 				>
 					<option value="member">Member</option>
 					<option value="admin">Admin</option>

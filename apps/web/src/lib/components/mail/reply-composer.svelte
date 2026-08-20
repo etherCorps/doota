@@ -592,7 +592,7 @@
 					bind:value={subjectText}
 					oninput={scheduleSave}
 					placeholder="Subject"
-					class="focus-visible:ring-ring/40 min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2"
+					class="focus-visible:ring-ring/40 min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-base outline-none focus-visible:ring-2 md:text-sm"
 				/>
 			</div>
 			{#key editorKey}

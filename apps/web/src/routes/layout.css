@@ -373,3 +373,14 @@
 	from { opacity: 0.6; }
 	to { opacity: 1; }
 }
+
+@layer utilities {
+	@media (pointer: coarse) {
+		input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+		textarea,
+		select,
+		[contenteditable='true'] {
+			font-size: max(1rem, 1em) !important;
+		}
+	}
+}
