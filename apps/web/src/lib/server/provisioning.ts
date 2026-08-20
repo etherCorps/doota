@@ -12,6 +12,8 @@ import { sendMail, sendMailBackground } from "./mailer";
 import { renderEmail } from "./email";
 import { setUserAuthFlags } from "./auth/escape-hatches.js";
 import { ensurePersonalMailbox, addressHosts } from "@doota/mail-core/mailbox";
+import { seedWelcomeMessage } from "@doota/mail-core/welcome";
+import { importKey } from "@doota/mail-core/crypto";
 
 type Db = DrizzleD1Database<typeof schema>;
 
@@ -26,6 +28,27 @@ export type ProvisionInput = {
    * configured routing subdomain of the org. */
   host?: string;
 };
+
+/**
+ * Bindings lookup for the welcome seed, kept out of the provisioning flow so the
+ * happy path reads as one line. A stack without the mail bindings (a bare dev
+ * run) simply gets no welcome message — never an error.
+ */
+async function seedWelcome(input: {
+  orgId: string;
+  mailboxId: string;
+  address: string;
+  displayName?: string | null;
+  from: { name: string; email: string };
+}): Promise<void> {
+  const env = getRequestEvent().platform?.env;
+  if (!env?.MAIL_RAW || !env?.MAIL_QUEUE || !env?.MAIL_DEK) return;
+  await seedWelcomeMessage(
+    { MAIL_RAW: env.MAIL_RAW, MAIL_QUEUE: env.MAIL_QUEUE as never },
+    await importKey(env.MAIL_DEK),
+    { ...input, from: input.from.email, fromName: input.from.name, appOrigin: requestOrigin() },
+  );
+}
 
 /** Org ids where the actor is owner/admin — the orgs they may provision into. */
 export async function actorOrgAdminOf(
@@ -167,7 +190,7 @@ export async function provisionUser(
   // source of truth for "what address is this person". Idempotent, so a retried
   // provision converges. Failure here is non-fatal to the invite (the mailbox is
   // reconcilable), but log it.
-  const { error: mailboxError } = await tryCatch(
+  const { data: mailboxId, error: mailboxError } = await tryCatch(
     ensurePersonalMailbox(db, {
       orgId: org.id,
       userId,
@@ -182,6 +205,17 @@ export async function provisionUser(
   // first login (with these creds) is itself proof of control, and the
   // session-create hook auto-verifies the recovery email then.
   const from = await senderAddress(db, org.domain);
+
+  // Seed the welcome message so the first login opens on something rather than
+  // an empty list. It rides the normal inbound path (encrypted R2 put + queue),
+  // so it threads, indexes, mirrors and exports like any other mail. Best
+  // effort: a mailbox without it is cosmetically poorer, never broken — and the
+  // stable Message-ID makes a retried provision converge instead of duplicating.
+  if (mailboxId && from)
+    await tryCatch(
+      seedWelcome({ orgId: org.id, mailboxId, address: email, displayName: input.name, from }),
+    );
+
   const mail = renderEmail("invite", {
     from,
     mailbox: email,
