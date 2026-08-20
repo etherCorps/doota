@@ -61,7 +61,10 @@ const createSchema = z.object({
       "Letters, digits, dot, dash or underscore only",
     ),
   recoveryEmail: Email,
-  role: z.enum(["member", "admin"]),
+  // Custom message: zod's default is `Invalid option: expected one of
+  // "member"|"admin"`, which is schema-speak in an admin's face. Reachable
+  // without JS or from a stale client even now the select always submits.
+  role: z.enum(["member", "admin"], { error: "Choose a role — Member or Admin." }),
   organizationId: z.string().min(1),
   host: z.string().optional(),
 });

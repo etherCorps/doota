@@ -6,6 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Field from '$lib/components/ui/field/index.js';
 	import * as InputGroup from '$lib/components/ui/input-group/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { DataTable, renderSnippet } from '$lib/components/ui/data-table/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -35,6 +36,20 @@
 
 	let addOpen = $state(false);
 	let host = $derived(data.mailHosts[0]);
+	// Role rides a hidden input (bits-ui `name`), so it needs its own state and
+	// its own reset — the remote form's own fields clear themselves, this one
+	// won't. Defaulting to member is what stops an untouched field submitting
+	// nothing and failing the schema.
+	const ROLE_LABEL = { member: 'Member', admin: 'Admin' } as const;
+	let role = $state<keyof typeof ROLE_LABEL>('member');
+	// The field name for the hidden input. It only exists on the `as()` result —
+	// fields themselves expose value()/set()/issues()/as() and nothing else, and
+	// the index signature types a bogus `.name()` as `any`, so a wrong guess here
+	// type-checks clean and then throws at render time.
+	const roleFieldName = $derived(createUser.fields.role.as('select').name);
+	$effect(() => {
+		if (!addOpen) role = 'member';
+	});
 	let handled: unknown;
 	$effect(() => {
 		const result = createUser.result;
@@ -145,14 +160,16 @@
 				{/each}
 			</Field.Field>
 			<Field.Field>
-				<Field.Label>Role</Field.Label>
-				<select
-					{...createUser.fields.role.as('text')}
-					class="border-input bg-background h-9 rounded-md border px-3 text-base md:text-sm"
-				>
-					<option value="member">Member</option>
-					<option value="admin">Admin</option>
-				</select>
+				<Field.Label for="member-new-role">Role</Field.Label>
+				<Select.Root type="single" name={roleFieldName} bind:value={role}>
+					<Select.Trigger id="member-new-role" class="w-full">
+						{ROLE_LABEL[role]}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="member" label="Member" />
+						<Select.Item value="admin" label="Admin" />
+					</Select.Content>
+				</Select.Root>
 				{#each createUser.fields.role.issues() ?? [] as issue (issue)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
