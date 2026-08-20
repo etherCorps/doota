@@ -3,6 +3,7 @@
     import CheckIcon from "@lucide/svelte/icons/check";
     import RecoveryEmailCard from "$lib/components/account/recovery-email-card.svelte";
     import TwoFactorCard from "$lib/components/account/two-factor-card.svelte";
+    import ImportCard from "$lib/components/account/import-card.svelte";
     import PasskeyCard from "$lib/components/account/passkey-card.svelte";
     import EmailVerifyCard from "$lib/components/account/email-verify-card.svelte";
     import SetPasswordCard from "$lib/components/account/set-password-card.svelte";
@@ -122,4 +123,22 @@
             {/if}
         {/if}
     {/each}
+
+    <!-- Deliberately OUTSIDE the {#each steps}: onboarding is a security gate
+         (recovery email, 2FA, passkey) and nothing optional belongs inside it.
+         An import runs for hours; making it a step would either block people who
+         skip it or make the gate a lie. So it sits below, offered and skippable,
+         and `status.complete` never depends on it. -->
+    <section class="mt-2 flex flex-col gap-2 border-t pt-6">
+        <div class="flex items-baseline justify-between gap-2">
+            <h2 class="font-heading text-sm font-semibold">Bring your mail with you</h2>
+            <span class="text-muted-foreground text-xs">Optional — you can skip this</span>
+        </div>
+        <p class="text-muted-foreground text-xs">
+            Already have mail elsewhere? Import a <span class="font-mono">.mbox</span> export from
+            Gmail, another Doota, or most other mail apps. It lands in Archive under a dated label,
+            so it won't bury anything. You can also do this later from Settings → Mail.
+        </p>
+        <ImportCard />
+    </section>
 </div>

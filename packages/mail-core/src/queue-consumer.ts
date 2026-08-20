@@ -10,6 +10,7 @@ import { loadRules, evalRules, applyRuleOutcome, emptyOutcome, type RuleOutcome,
 import { classifyInbound } from "./spam";
 import { handleRuleBackfill, type RuleBackfillJob } from "./rules-backfill";
 import { handleExportJob, type MailboxExportJob } from "./export";
+import { handleImportJob, type MailboxImportJob } from "./import";
 import { enqueueSend, type OutboundEnv } from "./outbound";
 import { maybeVacationReply } from "./vacation";
 import { extractRsvpLinks, findCalendarPart } from "./calendar";
@@ -291,7 +292,11 @@ export async function persistInvite(
 }
 
 type QueueBatch = {
-  messages: { body: InboundJob | RuleBackfillJob | MailboxExportJob; ack(): void; retry(): void }[];
+  messages: {
+    body: InboundJob | RuleBackfillJob | MailboxExportJob | MailboxImportJob;
+    ack(): void;
+    retry(): void;
+  }[];
 };
 
 /**
@@ -572,6 +577,16 @@ export async function handleQueue(batch: QueueBatch, env: MailEnv): Promise<void
         m.ack();
       } catch (e) {
         log.error("rules.backfill_retry", { ruleId: m.body.ruleId, ...errInfo(e) });
+        m.retry();
+      }
+      continue;
+    }
+    if ("kind" in m.body && m.body.kind === "mailbox_import") {
+      try {
+        await handleImportJob(db, env as never, ck, env.MAIL_SEARCH_KEY, m.body);
+        m.ack();
+      } catch (e) {
+        log.error("import.retry", { importId: m.body.importId, ...errInfo(e) });
         m.retry();
       }
       continue;

@@ -20,6 +20,7 @@
     "./events-hub": "./src/events-hub.ts",
     "./identities": "./src/identities.ts",
     "./ical": "./src/ical.ts",
+    "./import": "./src/import.ts",
     "./inbound-worker": "./src/inbound-worker.ts",
     "./inline-images": "./src/inline-images.ts",
     "./labels": "./src/labels.ts",

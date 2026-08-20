@@ -478,6 +478,58 @@ export const mailExport = sqliteTable(
 );
 
 /**
+ * Mailbox import jobs — export's mirror, with four deliberate departures.
+ *
+ * 1. `cursor` is a BYTE OFFSET, not a row id. Export resumes by row because it
+ *    knows its own rows; import can't know message boundaries until it has read
+ *    them, so the resumable unit is a position in the file.
+ * 2. The upload lands as independently-encrypted part objects, mirroring
+ *    export's `part-NNNNN` layout, NOT an R2 multipart upload. A multipart blob
+ *    would have to be encrypted as a whole, and a whole-object cipher can't be
+ *    range-read — which the byte cursor depends on. Fixing the *plaintext* chunk
+ *    size keeps offset → part index a division.
+ * 3. Three counters, not one. "40,000 imported" hides whether 12,000 were
+ *    duplicates or 3 were lost; deduped and failed are different facts.
+ * 4. `labelId` is the undo handle. Every imported thread gets a dated label, so
+ *    reversing an import is filter-then-delete with machinery that already
+ *    exists, rather than a migration nobody wants to write at 3am.
+ */
+export const mailImport = sqliteTable(
+  "mail_import",
+  {
+    id: id(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+    requestedByUserId: text("requested_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // uploading (row exists before any job) | queued | running | done | failed | canceled
+    status: text("status").default("uploading").notNull(),
+    filename: text("filename").default("").notNull(),
+    /** Total upload size, so progress is an honest fraction before we know the
+     * message count (which needs a full read to establish). */
+    sizeBytes: integer("size_bytes").default(0).notNull(),
+    /** Parts uploaded so far; part i holds plaintext bytes
+     * [i*PART_PLAINTEXT_BYTES, (i+1)*PART_PLAINTEXT_BYTES). */
+    partCount: integer("part_count").default(0).notNull(),
+    /** Byte offset processed so far — the resume point. */
+    cursor: integer("cursor").default(0).notNull(),
+    messageCount: integer("message_count").default(0).notNull(),
+    skippedCount: integer("skipped_count").default(0).notNull(),
+    failedCount: integer("failed_count").default(0).notNull(),
+    labelId: text("label_id"),
+    error: text("error"),
+    createdAt: now(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("mail_import_mailbox_idx").on(t.mailboxId)],
+);
+
+/**
  * Per-mailbox sender allow/block lists (build guide, Phase 5). Evaluated
  * before the spam classifier. `address` is a full address or a "@domain"
  * suffix entry. Moving mail out of Junk adds an implicit allow entry.

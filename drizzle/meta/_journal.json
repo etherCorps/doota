@@ -393,6 +393,13 @@
       "when": 1786365322413,
       "tag": "0055_message_search_porter",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1787220980569,
+      "tag": "0056_freezing_shaman",
+      "breakpoints": true
     }
   ]
 }

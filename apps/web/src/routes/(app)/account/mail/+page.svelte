@@ -2,6 +2,7 @@
 	// SPDX-License-Identifier: Apache-2.0
 	import AliasesCard from '$lib/components/account/aliases-card.svelte';
 	import ExportCard from '$lib/components/account/export-card.svelte';
+	import ImportCard from '$lib/components/account/import-card.svelte';
 	import ReadingCard from '$lib/components/account/reading-card.svelte';
 	import RemoteImagesCard from '$lib/components/account/remote-images-card.svelte';
 	import SenderListsCard from '$lib/components/account/sender-lists-card.svelte';
@@ -99,6 +100,7 @@
 				<div class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-1">
 					<AliasesCard mailboxId={scopedId} />
 					<ExportCard mailboxId={scopedId} />
+					<ImportCard mailboxId={scopedId} />
 				</div>
 			</section>
 		</div>
