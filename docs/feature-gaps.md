@@ -1,9 +1,13 @@
 # Feature gaps & roadmap
 
 Where Doota stands as a mail client versus what a "complete" one carries, grounded
-in a codebase scan (2026-08-02). Each gap notes what it is, why users expect it, a
-rough implementation shape, and effort. Status legend: **present** · **partial** ·
-**absent**.
+in a codebase scan (re-verified 2026-08-20). Each gap notes what it is, why users
+expect it, a rough implementation shape, and effort. Status legend: **present** ·
+**partial** · **absent**.
+
+Verify before trusting: this file drifted badly once (it listed rules, vacation,
+export, attachment preview and bulk actions as missing months after they shipped).
+Check for an RPC surface in `apps/web/src/lib/rpc/` before believing a gap.
 
 A planning doc, not a promise — order is a recommendation, not a schedule.
 
@@ -33,101 +37,64 @@ A planning doc, not a promise — order is a recommendation, not a schedule.
 ## Partial / needs finishing
 
 ### Contacts / address book — *computed, not managed*
-`contact.remote.ts` exposes only `contactRecent` (a query over `correspondent`);
-there is **no** managed store — no save/edit a contact, display name, company,
-notes, or manual add of someone never emailed.
-- **Shape:** a `contact` table (orgId/userId scoped) + CRUD RPC + a contacts view;
+`contact.remote.ts` exposes exactly one query (`contactRecent`, over
+`correspondent`); `contact-card.remote.ts` reads a card and accepts a suggested
+detail. There is **no** managed store — no save/edit, no display name, company or
+notes, no manual add of someone never emailed. Autocomplete works; an address
+book doesn't exist.
+- **Shape:** a `contact` table (org/user scoped) + CRUD RPC + a contacts view;
   recipient autocomplete unions managed + computed.
 - **Effort:** medium.
 
-### Attachment preview — *download-only*
-Attachments serve decrypted but there's **no inline viewer** — no PDF/image/doc
-preview; the user downloads to see them.
-- **Shape:** inline image/PDF render in the sandboxed frame or a dedicated viewer
-  route (PDF via `<embed>`/pdf.js, images inline). Reuse the signed-token +
-  encrypted-serve path in `attachments/[id]`.
-- **Effort:** small (images) → medium (PDF/office).
-
-### Bulk actions / multi-select — *unverified, likely thin*
-No clear multi-select-then-archive/label/delete affordance found.
-- **Shape:** selection state in the list + batch RPC (archive/label/trash over N
-  thread ids).
-- **Effort:** small–medium.
-
-### Data export / portability — *absent for users*
-No user-facing "export my mail" (mbox/EML). Raw RFC822 is in R2, so the data
-exists; there's just no export path.
-- **Shape:** an operator/user job that streams a user's R2 raws as an mbox/zip.
-- **Effort:** medium.
-
----
-
 ## Absent — the real product gaps
 
-Ordered by how much a real mail user misses them.
+### 1. mbox import
+Export round-trips by design (the `X-Doota-*` headers exist for exactly this) but
+nothing consumes it, so a new self-hoster starts at zero mail. Live IMAP pull is
+platform-blocked (Workers have no inbound TCP); mbox upload is not.
+- **Shape:** browser-sliced upload into an R2 multipart object, then a resumable
+  job with a **byte-offset** cursor riding the inbound queue by `kind`. Must skip
+  `rulesEval`/`vacation`/`notify` — nobody wants auto-replies to five-year-old
+  mail — and land archived under a dated label.
+- **Effort:** medium–large. The upload is the hard part, not the parsing.
 
-### 1. Rules / filters (auto-sort incoming)
-No "if from X → label/archive/forward." The single biggest expectation gap for
-anyone coming from Gmail/Fastmail.
-- **Shape:** a `mail_rule` table (org/user, ordered conditions + actions),
-  evaluated in the inbound path (`queue-consumer` after materialize) — match on
-  from/to/subject/list-id → apply label/placement/mark-read/forward. Keep the
-  engine tiny and deterministic; no scripting.
-- **Effort:** medium–large (engine + editor UI).
-
-### 2. Vacation / auto-responder (out-of-office)
-Auto-reply once per sender within a window.
-- **Shape:** per-mailbox setting (enabled, window, message, once-per-sender
-  dedupe) evaluated in the inbound path; send via the existing outbound queue.
-  Must **not** reply to bulk/list mail (`List-*`, `auto-submitted`) — loop safety.
-- **Effort:** medium (the loop/dedupe rules are the hard part, not the send).
-
-### 3. Canned responses / snippets (user-facing)
-The `templates/*.html` are **transactional auth emails** (verify, reset, invite),
-and the service-account templates are for API sending — neither is a reply-snippet
-inserted while composing.
-- **Shape:** a `snippet` table (user/org, title + body), inserted from the
-  composer.
+### 2. Canned responses / snippets
+No `snippet` table, no RPC. The `template` surface is service-account API
+sending, and `templates/*.html` are transactional auth mails — neither is a reply
+snippet inserted while composing.
+- **Shape:** a `snippet` table (user/org, title + body) and a composer picker.
+  Trigger expansion (`;hours`) is a second pass.
 - **Effort:** small.
 
-### 4. IMAP / POP import
-Can't pull mail from an external account — Doota only receives via Cloudflare
-Email Routing.
-- **Shape:** a separate importer (IMAP fetch → the same materialize path). Large,
-  stateful (connection mgmt, incremental sync), and arguably out of the
-  self-hosted-single-domain model.
-- **Effort:** large. Lowest priority unless onboarding-from-Gmail is a goal.
+### 3. IMAP / POP import
+Blocked by the platform, not by priority — Workers cannot open inbound TCP. Out
+of scope unless the deployment model changes.
 
-### 5. PGP / S-MIME end-to-end encryption
-Absent — **by design.** Doota's model is zero-access-at-rest + operator oversight,
-not E2EE. Adding it is a philosophy change, not a feature.
+### 4. PGP / S-MIME end-to-end encryption
+Absent — **by design.** Doota's model is zero-access-at-rest plus operator
+oversight, not E2EE. Adding it is a philosophy change, not a feature.
 
-### 6. Read receipts
-Absent — **likely intentional** (privacy). Doota strips the reader signal (proxy).
-Sending MDN requests would sit against that posture; receiving/honoring them even
-more so. Leave out unless there's a concrete ask.
-
----
+### 5. Read receipts
+Absent — **by design.** Doota strips the reader signal (proxied images). Sending
+MDN requests would sit against that posture; honoring them, more so.
 
 ## Infra gaps (tracked elsewhere)
 
 | Gap | Status | Ref |
 | --- | --- | --- |
 | **Re-materialize tool** | spec'd, not built — build on first render-logic change to live data. | `pre-release.md` §2 |
-| **Draft-staged attachment encryption** | deferred, release-blocker — last plaintext content path. | `pre-release.md` §0.2 |
-| **Remove R2 plaintext tolerance** | pre-release, fail-closed. | `pre-release.md` §0.1 |
+| **Draft-staged attachment encryption** | **accepted, not a blocker** (2026-08-08) — transient, re-encrypted on send. The obligation was to footnote the encrypted-at-rest claim; done in the README. | `pre-release.md` §0.2 |
+| **Remove R2 plaintext tolerance** | **done** — `unpackBlob` is encrypted-only and the test asserts a plaintext blob is rejected. | `pre-release.md` §0.1 |
 | **Client remote-content banner sync** | cosmetic follow-up (enforcement already correct). | `remote-content.md` |
 
 ---
 
 ## Recommended order
 
-**Product (quick wins first):** canned responses → attachment preview (images) →
-bulk actions → rules/filters → vacation-responder → managed contacts → export.
-Signatures and snooze — previously the top quick-wins — are **now shipped**;
-rules/filters is the big-ticket item worth doing deliberately.
+**Product:** mbox import → snippets → managed contacts. Import first: it is the
+only one that blocks a new self-hoster from having any mail at all.
 
-**Infra (before public release):** close the `pre-release.md` blockers (plaintext
-tolerance, draft-attachment gap) — correctness/security, not features.
+**Infra (before public release):** the `pre-release.md` items — correctness and
+accuracy, not features.
 
-**Probably never (or by design):** IMAP/POP import, PGP/S-MIME, read receipts.
+**Blocked or by design:** IMAP/POP pull, PGP/S-MIME, read receipts.

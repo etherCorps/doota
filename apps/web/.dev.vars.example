@@ -1,0 +1,58 @@
+# Local dev secrets for the web Worker. Copy to `.dev.vars` and fill in.
+#
+#   cp apps/web/.dev.vars.example apps/web/.dev.vars
+#
+# `.dev.vars` is what wrangler's platform proxy reads under `pnpm dev` — NOT
+# `.env`. (`.env` is only read by drizzle-kit, for `db:studio` / `db:generate`.)
+# It is gitignored; never commit real values.
+
+# ── Required ────────────────────────────────────────────────────────────────
+
+# Must match the port you actually serve on, or every /api/auth/* route 404s.
+# Comma-separated; the first entry is the canonical origin.
+ORIGINS="http://localhost:5173"
+
+# Session/token signing. 32+ chars in production.
+#   openssl rand -base64 32
+BETTER_AUTH_SECRET=""
+
+# AES-256-GCM key for ALL mail content and R2 blobs, base64.
+#   openssl rand -base64 32
+#
+# LOSING THIS IS TOTAL, PERMANENT DATA LOSS — there is no plaintext copy and no
+# recovery path. Back it up outside Cloudflare before storing a single message.
+# The same value must be set on web, mail-in and mail-jobs.
+MAIL_DEK=""
+
+# HMAC key for blind note-search tokens and signed image/resource tokens.
+#   openssl rand -base64 32
+# Same value on all three Workers. Losing it breaks note search and inline
+# images; mail stays readable.
+MAIL_SEARCH_KEY=""
+
+# ── Web push (generate both with `node scripts/gen-vapid-keys.mjs`) ─────────
+VAPID_PUBLIC_KEY=""
+VAPID_PRIVATE_KEY=""
+
+# ── Optional ────────────────────────────────────────────────────────────────
+
+# Local D1 file for drizzle-kit only (studio / generate). Not used at runtime.
+DATABASE_URL=""
+
+# One-time gate for the /setup genesis wizard. Leave empty to disable the web
+# wizard entirely and use `pnpm reset-admin` on the CLI instead.
+SETUP_TOKEN=""
+
+# Domain onboarding via the Cloudflare API. A SCOPED API token — never the
+# Global API Key. Only needed if you exercise domain onboarding locally.
+APP_CLOUDFLARE_ACCOUNT_ID=""
+APP_CLOUDFLARE_API_TOKEN=""
+
+# Deployed mail-in Worker name that the Email Routing catch-all targets.
+MAIL_IN_WORKER_NAME=""
+
+# Bearer secret for POST /api/cron (maintenance sweeps).
+CRON_SECRET=""
+
+# debug | info | warn | error — defaults to info.
+LOG_LEVEL=""

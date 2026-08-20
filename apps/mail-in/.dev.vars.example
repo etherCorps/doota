@@ -1,0 +1,14 @@
+# Local dev secrets for the mail-in Worker. Copy to `.dev.vars` and fill in.
+#
+#   cp apps/mail-in/.dev.vars.example apps/mail-in/.dev.vars
+#
+# MAIL_DEK and MAIL_SEARCH_KEY must be the SAME values used by apps/web —
+# this Worker reads and writes the same encrypted rows and R2 blobs. A
+# mismatch is not a startup error; it surfaces later as unreadable mail.
+
+MAIL_DEK=""
+MAIL_SEARCH_KEY=""
+
+# Web push — same pair as apps/web (node scripts/gen-vapid-keys.mjs).
+VAPID_PUBLIC_KEY=""
+VAPID_PRIVATE_KEY=""

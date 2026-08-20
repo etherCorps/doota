@@ -25,12 +25,20 @@ conversation, and is stored **encrypted at rest** — the raw message,
 attachments, sent mail, and the derived render cache are all encrypted, with the
 raw message kept whole as the source of truth.
 
-**One deliberate exception:** to provide fast full-text search, Doota keeps a
-**readable search index** of your mail's subjects and body text. A database dump
-could therefore recover the words in your mail via this index (not formatting or
-attachments). This is the Fastmail posture — a reasonable trade for a self-hosted
-tool where the operator already has legitimate access to their own box. Set a
-mailbox to non-indexed to exclude it from search and the index entirely.
+**Two deliberate exceptions**, both worth knowing before you trust the claim:
+
+**1 — a readable search index.** To provide fast full-text search, Doota keeps
+the subjects and body text of your mail in a readable index. A database dump
+could therefore recover the words in your mail this way (not formatting, not
+attachments). This is the Fastmail posture — a reasonable trade for a
+self-hosted tool where the operator already has legitimate access to their own
+box. Set a mailbox to non-indexed to exclude it from search and the index
+entirely.
+
+**2 — attachments on an open draft.** A file you attach while composing is
+stored unencrypted until that draft is sent or discarded. It is transient: it is
+encrypted the moment the message goes to the outbound queue, and deleted when
+the draft is closed. Everything already sent or received is encrypted.
 
 It still speaks plain email underneath, so you can write to anyone on Gmail or
 Outlook, and they can write back.
@@ -72,7 +80,8 @@ Outlook, and they can write back.
   the work. One deployment, one operator.
 - **Private by default** — subjects, bodies, attachments, sent mail, and the
   derived render cache are all encrypted at rest; only routing metadata stays
-  cleartext so threading works without decryption. No plaintext copy exists.
+  cleartext so threading works without decryption. Two documented exceptions:
+  the readable search index, and attachments on a draft you haven't sent yet.
 - **Undo & scheduled send** — a first-class submission object tracks every
   message (queued → sent → delivered → bounced), with delivery ticks and
   send-later.
@@ -485,24 +494,66 @@ sequenceDiagram
 
 Requires Node 22+, [pnpm](https://pnpm.io), and a Cloudflare account.
 
+### 1. Create the Cloudflare resources
+
+`wrangler deploy` reconciles *bindings*, but it never creates the things they
+point at — and the `MAIL_RAW` bucket is bound with `"remote": true`, so **even
+local dev talks to the real bucket**. Create these first or `pnpm dev` won't
+boot:
+
+```sh
+wrangler d1 create doota                  # id → database_id in all three wrangler.jsonc
+wrangler r2 bucket create doota-mail-raw
+wrangler kv namespace create AUTH_KV      # id → web + mail-in
+wrangler queues create doota-mail-inbound
+wrangler queues create doota-mail-outbound
+wrangler queues create doota-mail-events
+```
+
+### 2. Configure secrets
+
+Local dev reads each Worker's `.dev.vars` — **not** `.env`, which only exists
+for drizzle-kit. Copy the templates and fill them in:
+
 ```sh
 pnpm install
-cp .env.example .env      # then fill in the values (see below)
-pnpm db:migrate:local     # apply D1 migrations to the local database
-pnpm dev                  # http://localhost:5173
+cp apps/web/.dev.vars.example       apps/web/.dev.vars
+cp apps/mail-in/.dev.vars.example   apps/mail-in/.dev.vars
+cp apps/mail-jobs/.dev.vars.example apps/mail-jobs/.dev.vars
+
+openssl rand -base64 32              # → MAIL_DEK        (back this up first — see below)
+openssl rand -base64 32              # → MAIL_SEARCH_KEY
+openssl rand -base64 32              # → BETTER_AUTH_SECRET
+node scripts/gen-vapid-keys.mjs         # → VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY
 ```
 
-Create the first admin (genesis) with the CLI:
+`MAIL_DEK` and `MAIL_SEARCH_KEY` must be **identical across all three Workers** —
+they read and write the same encrypted rows. A mismatch isn't a startup error; it
+shows up later as unreadable mail.
+
+### 3. Run it
 
 ```sh
-pnpm reset-admin
+pnpm db:migrate:local     # apply D1 migrations to the local database
+pnpm dev                  # http://localhost:5173
+pnpm --filter doota reset-admin   # create the first admin (genesis) — email-free, enrolls TOTP
 ```
+
+`ORIGINS` must include the port you actually serve on, or every `/api/auth/*`
+route 404s.
+
+Mail delivery needs more: an Email Routing catch-all pointing at your deployed
+`mail-in` Worker, and DKIM on the sending domain. Neither is expressible in
+`wrangler.jsonc` — see [`docs/pre-release.md`](docs/pre-release.md) §0.5 for the
+full provisioning list.
 
 ### Environment
 
-See `.env.example` for the full list. The essentials:
+See `apps/web/.dev.vars.example` for the full list — that is the file local
+dev reads. (`.env` is drizzle-kit only.) The essentials:
 
-- `ORIGIN` — your app's URL (must match the dev port, or auth routes 404).
+- `ORIGINS` — comma-separated allowed origins; the first is canonical. Must
+  include the port you actually serve on, or auth routes 404.
 - `BETTER_AUTH_SECRET` — 32+ chars, high entropy.
 - `MAIL_DEK` — the 32-byte (base64) data-encryption key for all mail content.
   Set as a Worker **secret** on `web`, `mail-in`, and `mail-jobs` — the same

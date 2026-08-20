@@ -172,7 +172,7 @@ slip through otherwise (memory `run-full-test-suite-before-push`).
 
 ### 1.2 Apply migrations
 
-Migrations run through **`0033`** (34 files, `0000`–`0033`). Apply remote in order:
+Migrations run through **`0055`** (56 files, `0000`–`0055`). Apply remote in order:
 
 ```
 wrangler d1 migrations apply doota --remote
@@ -274,7 +274,7 @@ pnpm dev                  # web dev server on :5173 (Vite + wrangler platformPro
 - [ ] 0.4 Non-secret vars declared in wrangler configs
 - [ ] 0.5 Infra created: D1 / R2 / KV / 3 queues; Email Routing catch-all → mail-inbound; Email Service subscription → mail-events; DKIM; custom domain
 - [ ] 1.1 tsc + full vitest + svelte-check green
-- [ ] 1.2 `d1 migrations apply --remote` (through `0033`)
+- [ ] 1.2 `d1 migrations apply --remote` (through `0055`)
 - [ ] 1.3 `RENDER_CACHE_VERSION` bumped if render logic changed; SW version rolled
 - [ ] 1.4 Workers deployed in order (jobs → inbound → web); no plaintext var dropped
 - [ ] 1.5 Live smoke: inbound / template / send-reply / attachment / API send / dark / push
