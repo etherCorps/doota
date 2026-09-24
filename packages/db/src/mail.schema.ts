@@ -1439,6 +1439,35 @@ export const mailboxSignature = sqliteTable(
 );
 
 /**
+ * Canned responses ("snippets"): a titled block of composer HTML the user drops
+ * into a message at the caret. Per user, not per mailbox — a snippet is a piece
+ * of the writer's own phrasing, so it should follow them across every address
+ * and shared inbox they send from (unlike a signature, which is the identity's
+ * sign-off). bodyHtml is sanitized on write, same as signatures: it's
+ * re-injected into the composer and rides out with the mail.
+ */
+export const snippet = sqliteTable(
+  "snippet",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    bodyHtml: text("body_html").notNull().default(""),
+    createdAt: now(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [
+    // Titles double as the picker's search key, so keep them unique per user —
+    // two "Thanks" snippets are indistinguishable in the list.
+    uniqueIndex("snippet_user_title_uidx").on(t.userId, t.title),
+  ],
+);
+
+/**
  * Materialized correspondent index for recipient autocomplete. One row per
  * (mailbox, address): the people a mailbox has sent to OR received from, with
  * the best-known display name and the most recent contact time. Upserted in the

@@ -240,6 +240,7 @@
 		{#key session.editorKey}
 			<TiptapEditor
 				focusStart
+				snippets
 				initial={session.body}
 				oninput={(html) => {
 					session.body = html;

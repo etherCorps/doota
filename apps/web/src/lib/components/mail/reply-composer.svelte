@@ -606,6 +606,7 @@
 				<TiptapEditor
 					bind:this={editorRef}
 					focusStart={autoOpen}
+					snippets
 					initial={body}
 					placeholder="Reply to {toAddress}…"
 					bodyClass="max-h-[45svh]"
