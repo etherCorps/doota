@@ -268,13 +268,13 @@ pnpm dev                  # web dev server on :5173 (Vite + wrangler platformPro
 
 ## 4. Quick checklist
 
-- [ ] 0.1 Removed `unpackBlob` plaintext tolerance (fail closed) + flipped test
-- [ ] 0.2 Draft-attachment plaintext gap closed **or** "encrypted at rest" claim footnoted
+- [x] 0.1 Removed `unpackBlob` plaintext tolerance (fail closed) + flipped test
+- [x] 0.2 Draft-attachment plaintext gap closed **or** "encrypted at rest" claim footnoted
 - [ ] 0.3 Secrets set per env: `MAIL_DEK`, `MAIL_SEARCH_KEY`, `VAPID_PRIVATE_KEY`, `BETTER_AUTH_SECRET`, `APP_CLOUDFLARE_API_TOKEN`; vars: `ORIGIN`, `VAPID_PUBLIC_KEY`, `MAIL_IN_WORKER_NAME`, etc.
 - [ ] 0.4 Non-secret vars declared in wrangler configs
 - [ ] 0.5 Infra created: D1 / R2 / KV / 3 queues; Email Routing catch-all → mail-inbound; Email Service subscription → mail-events; DKIM; custom domain
 - [ ] 1.1 tsc + full vitest + svelte-check green
-- [ ] 1.2 `d1 migrations apply --remote` (through `0055`)
+- [ ] 1.2 `d1 migrations apply --remote` (through `0058`)
 - [ ] 1.3 `RENDER_CACHE_VERSION` bumped if render logic changed; SW version rolled
 - [ ] 1.4 Workers deployed in order (jobs → inbound → web); no plaintext var dropped
 - [ ] 1.5 Live smoke: inbound / template / send-reply / attachment / API send / dark / push

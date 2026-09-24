@@ -6,6 +6,7 @@
 	import Placeholder from '@tiptap/extension-placeholder';
 	import { ResizableImage } from './resizable-image.js';
 	import { HarperGrammar, applyHarperFix, type ActiveLint, type HarperSuggestion } from './harper-extension.js';
+	import SnippetPicker from './snippet-picker.svelte';
 	import { portal } from '$lib/client/portal';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Toggle } from '$lib/components/ui/toggle/index.js';
@@ -41,7 +42,8 @@
 		bodyStyle = '',
 		fill = false,
 		dense = false,
-		focusStart = false
+		focusStart = false,
+		snippets = false
 	}: {
 		initial?: string;
 		placeholder?: string;
@@ -72,6 +74,10 @@
 		 * the empty editor drops the caret after the signature and typing pushes the
 		 * user's text below their sign-off. */
 		focusStart?: boolean;
+		/** Show the canned-response picker in the toolbar. Message composers only —
+		 * a snippet inserted into the signature editor would be a snippet stored
+		 * inside a signature. */
+		snippets?: boolean;
 	} = $props();
 
 	let element = $state<HTMLDivElement>();
@@ -81,6 +87,12 @@
 	 * pass focusStart={false}) and want focus once the user expands them. */
 	export function focus(): void {
 		editor?.chain().focus('start').run();
+	}
+	/** Insert HTML at the caret (a canned response). Goes through the editor's
+	 * transaction, so onUpdate → oninput fires and the composer's draft
+	 * autosave sees it like typed text. */
+	export function insertHtml(html: string): void {
+		editor?.chain().focus().insertContent(html).run();
 	}
 	let imageInput = $state<HTMLInputElement>();
 	let tick = $state(0);
@@ -337,6 +349,11 @@
 		<Button variant="ghost" size="icon" class="size-8" title="Clear formatting" onclick={() => editor?.chain().focus().unsetAllMarks().clearNodes().run()}>
 			<RemoveFormattingIcon class="size-4" />
 		</Button>
+
+		{#if snippets}
+			<Separator orientation="vertical" class="mx-1 h-5" />
+			<SnippetPicker oninsert={insertHtml} />
+		{/if}
 		</div>
 
 		{#if hasContent && harperStatus !== 'idle'}

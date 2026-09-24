@@ -1,7 +1,7 @@
 # Feature gaps & roadmap
 
 Where Doota stands as a mail client versus what a "complete" one carries, grounded
-in a codebase scan (re-verified 2026-08-20). Each gap notes what it is, why users
+in a codebase scan (re-verified 2026-09-24). Each gap notes what it is, why users
 expect it, a rough implementation shape, and effort. Status legend: **present** ·
 **partial** · **absent**.
 
@@ -22,6 +22,8 @@ A planning doc, not a promise — order is a recommendation, not a schedule.
 | **Scheduled send + undo** | `submission.sendAt`/`undoUntil`, cron sweep past the queue's 12 h delay. |
 | **Snooze** | `thread_state.snoozedUntil` (migration `0030`) + partial index (`0031`); `mail-core/snooze.ts`, `snooze-menu.svelte`, `thread.remote.ts`; the 5-min cron un-hides due threads. Snoozed view in the sidebar. |
 | **Signatures** | `mailbox_signature` (migration `0029`, per user+mailbox HTML); `signature.remote.ts`; inserted into the composer. |
+| **Snippets (canned responses)** | `snippet` table (migration `0058`, per user, title + sanitized HTML); `mail-core/snippets.ts`, `snippet.remote.ts`; managed in Account → Mail, inserted at the caret from the composer toolbar (`snippet-picker.svelte`). |
+| **mbox import** | `mail_import` (migration `0056`), `mail-core/import.ts`, `import.remote.ts`, `/api/import`; browser-sliced upload into R2 multipart, resumable byte-offset job on the inbound queue; skips rules/vacation/notify. |
 | **Shared mailboxes** | assignment, assigned-only access, internal notes with @mention. |
 | **Calendar invites** | iMIP RSVP — `calendar_event` + `calendar_rsvp` tables, `invite-card.svelte`. |
 | **Notifications** | durable `notification` log (cross-device read state) + Web Push (VAPID, hand-rolled Workers crypto) + installable PWA. See `notifications.md`. |
@@ -46,35 +48,26 @@ book doesn't exist.
   recipient autocomplete unions managed + computed.
 - **Effort:** medium.
 
-## Absent — the real product gaps
-
-### 1. mbox import
-Export round-trips by design (the `X-Doota-*` headers exist for exactly this) but
-nothing consumes it, so a new self-hoster starts at zero mail. Live IMAP pull is
-platform-blocked (Workers have no inbound TCP); mbox upload is not.
-- **Shape:** browser-sliced upload into an R2 multipart object, then a resumable
-  job with a **byte-offset** cursor riding the inbound queue by `kind`. Must skip
-  `rulesEval`/`vacation`/`notify` — nobody wants auto-replies to five-year-old
-  mail — and land archived under a dated label.
-- **Effort:** medium–large. The upload is the hard part, not the parsing.
-
-### 2. Canned responses / snippets
-No `snippet` table, no RPC. The `template` surface is service-account API
-sending, and `templates/*.html` are transactional auth mails — neither is a reply
-snippet inserted while composing.
-- **Shape:** a `snippet` table (user/org, title + body) and a composer picker.
-  Trigger expansion (`;hours`) is a second pass.
+### Snippets — *personal only, no sharing*
+Snippets shipped per user (they follow the writer across every address). What's
+missing is the team half: an org-shared snippet a support inbox's teammates all
+draw from, and trigger expansion (`;hours` in the body → the snippet).
+- **Shape:** a nullable `org_id` + `shared` flag on `snippet`, admin-gated
+  writes, picker groups "Mine" / "Team"; expansion is an editor input rule.
 - **Effort:** small.
 
-### 3. IMAP / POP import
-Blocked by the platform, not by priority — Workers cannot open inbound TCP. Out
-of scope unless the deployment model changes.
+## Absent — the real product gaps
 
-### 4. PGP / S-MIME end-to-end encryption
+### 1. IMAP / POP import
+Blocked by the platform, not by priority — Workers cannot open inbound TCP. Out
+of scope unless the deployment model changes. mbox import covers the migration
+case.
+
+### 2. PGP / S-MIME end-to-end encryption
 Absent — **by design.** Doota's model is zero-access-at-rest plus operator
 oversight, not E2EE. Adding it is a philosophy change, not a feature.
 
-### 5. Read receipts
+### 3. Read receipts
 Absent — **by design.** Doota strips the reader signal (proxied images). Sending
 MDN requests would sit against that posture; honoring them, more so.
 
@@ -91,8 +84,8 @@ MDN requests would sit against that posture; honoring them, more so.
 
 ## Recommended order
 
-**Product:** mbox import → snippets → managed contacts. Import first: it is the
-only one that blocks a new self-hoster from having any mail at all.
+**Product:** managed contacts → shared snippets. Import and personal snippets
+are done; contacts is the last "partial" a user notices day to day.
 
 **Infra (before public release):** the `pre-release.md` items — correctness and
 accuracy, not features.
