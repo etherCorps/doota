@@ -4,7 +4,7 @@ import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import * as mail from "@doota/db/mail.schema";
-import { sanitizeEmailHtml } from "@doota/mail-core/sanitize-email";
+import { cleanStoredHtml } from "@doota/mail-core/snippets";
 import { cachedSendIdentities, kvCached, invalidateUserMailCache } from "$lib/server/mail-cache.js";
 
 /**
@@ -90,19 +90,11 @@ export const setMailboxSignature = command(
       error(403, "You can't set a signature for this mailbox.");
     }
     // Sanitize on the trust boundary: the stored HTML is re-injected into the
-    // composer and rides out with the mail. Empty stays empty (cleared).
-    let clean = "";
-    if (bodyHtml.trim()) {
-      const sanitized = sanitizeEmailHtml(bodyHtml);
-      if (!sanitized.ok) error(400, "Signature is too large.");
-      clean = sanitized.html;
-      // A cleared editor still sends full markup (<html>…<p></p>…</html>), which
-      // is non-empty as a string. Normalize a content-empty signature back to ""
-      // so it reads "Not set" and the composer doesn't inject a blank paragraph.
-      const hasText = clean.replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "").length > 0;
-      const hasMedia = /<(img|hr|table|blockquote)\b/i.test(clean);
-      if (!hasText && !hasMedia) clean = "";
-    }
+    // composer and rides out with the mail. Empty stays empty (cleared), and a
+    // content-empty editor document (<p></p>) normalizes back to "" so it reads
+    // "Not set" and the composer doesn't inject a blank paragraph.
+    const clean = cleanStoredHtml(bodyHtml);
+    if (clean === null) error(400, "Signature is too large.");
     await locals.db
       .insert(mail.mailboxSignature)
       .values({ userId: user.id, mailboxId, bodyHtml: clean, context, updatedAt: new Date() })

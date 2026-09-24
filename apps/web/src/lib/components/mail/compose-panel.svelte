@@ -361,6 +361,7 @@
 								<TiptapEditor
 									fill
 									focusStart
+									snippets
 									initial={session.body}
 									oninput={(html) => {
 										session.body = html;

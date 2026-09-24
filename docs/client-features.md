@@ -1,4 +1,4 @@
-# Client features — folders, rules, signatures, vacation, spam, export
+# Client features — folders, rules, signatures, snippets, vacation, spam, export
 
 Operator/developer reference for the mail-client parity features (built per the
 client-gaps build guide). Each section: what it is, where it lives, what to
@@ -73,6 +73,19 @@ domain colleagues, BIMI avatar. Signature extraction is read-time enrichment:
 longest-common-suffix across 3+ messages (a diff, not NLP), high-precision
 fields only (phone/url/email/handle), surfaced as **suggestions** — nothing is
 written to `correspondent.details` without an explicit accept.
+
+## Snippets (canned responses)
+
+`snippet` per user (title unique per user, sanitized HTML, ≤100 rows); store in
+`@doota/mail-core/snippets`, RPC in `snippet.remote.ts`. Not per mailbox: a
+snippet is the writer's phrasing and follows them across every address and
+shared inbox, unlike a signature (the identity's sign-off). Managed in
+Account → Mail; the composer toolbar's picker (`snippet-picker.svelte`,
+filter-as-you-type, Enter inserts the first match) calls the editor's
+`insertHtml`, so the insert goes through a ProseMirror transaction and the
+draft autosave sees it like typed text. `cleanStoredHtml` (shared with
+signatures) sanitizes, strips the sanitizer's document shell, and normalizes a
+content-empty editor doc to `""`.
 
 ## Vacation auto-responder
 
